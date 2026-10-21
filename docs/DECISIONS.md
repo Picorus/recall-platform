@@ -4,7 +4,8 @@ Newest first. Each: date · decision · why · who.
 
 | Date | Decision | Why | Who |
 |---|---|---|---|
-| 22 Oct 2026 | Laptop file storage is SeaweedFS (S3-compatible), not MinIO | MinIO no longer publishes a free container image; SeaweedFS is open source (Apache 2.0) and speaks the same S3 API, so code moves to AWS S3 unchanged | Claude (P0.2), for Prateek to confirm |
+| 22 Oct 2026 | Design tokens: 4 px spacing grid; text sizes 12/14/16/18/22/28/40/56 px; one source in `packages/design` (TypeScript for apps, generated `tokens.css` for web) | NIGHT_SIGNAL.md sets colours, type families and corners but no spacing or size scale; a common starting scale, tuned in P0.3.2 | Claude (P0.3.1), for Prateek to confirm |
+| 22 Oct 2026 | Laptop file storage is SeaweedFS (S3-compatible), not MinIO | MinIO no longer publishes a free container image; SeaweedFS is open source (Apache 2.0) and speaks the same S3 API, so code moves to AWS S3 unchanged | Prateek (confirmed 22 Oct 2026) |
 | 22 Oct 2026 | Tooling: Node 22 LTS, pnpm 10, TypeScript 6.0 (strict), ESLint + Prettier, Vitest + fast-check for property tests | Current long-term-support versions; TypeScript 7 not yet supported by the lint tools | Claude (P0.2) |
 | 22 Oct 2026 | App folders hold placeholders until their phase; Next.js, Expo and Gradle projects are created in P3/P4/P5/P2 | Don't build what can't be tested yet; framework versions chosen when work starts | Claude (P0.2) |
 | 22 Oct 2026 | CI on GitHub Actions: format, lint, types, tests, laptop services start, gitleaks secret scan, commit messages start with a step id | Nothing merges without passing checks (plan: Testing section; CLAUDE.md) | Claude (P0.2) |
