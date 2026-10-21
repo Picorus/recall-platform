@@ -1,0 +1,19 @@
+{
+  "name": "recall-platform",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "turbo": "2.11.10",
+    "typescript": "6.0.3",
+    "vitest": "5.0.5"
+  }
+}

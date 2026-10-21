@@ -1,0 +1,14 @@
+{
+  "name": "@recall/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Every app's front door: sign-in, bookings, areas, riders, payments, reports.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run --passWithNoTests"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "name": "@recall/domain",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared business rules and types.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run --passWithNoTests"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "name": "@recall/simulator",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Fleet simulator: fake bikes on Hyderabad roads. Built in P1.10.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run --passWithNoTests"
+  }
+}
