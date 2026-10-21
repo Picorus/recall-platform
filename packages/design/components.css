@@ -1,0 +1,267 @@
+/*
+ * RECALL components (Night Signal). Plain CSS on the design tokens, so the brand portal, admin portal
+ * and the RECALL design system all share it. Load tokens.css first, then this file.
+ * Classes start with rc-. Text sizes follow the brand book's type styles (named in the comments).
+ */
+
+/* ---------- Button: 44px tall, 6px corners. One primary per view. ---------- */
+.rc-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: 44px;
+  padding: 12px 18px;
+  border: 1.5px solid transparent;
+  border-radius: var(--radius-sm);
+  font: 600 16px/20px var(--font-body);
+  text-decoration: none;
+  cursor: pointer;
+}
+.rc-button--primary {
+  background: var(--brand);
+  color: var(--on-brand);
+}
+.rc-button--secondary {
+  background: transparent;
+  color: var(--ink);
+  border-color: var(--line-strong);
+}
+.rc-button--quiet {
+  background: transparent;
+  color: var(--ink-muted);
+}
+.rc-button:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.rc-button:disabled,
+.rc-button[aria-disabled='true'] {
+  background: var(--surface-2);
+  color: var(--ink-subtle);
+  border-color: transparent;
+  cursor: not-allowed;
+}
+
+/* ---------- Field: label, input or select, helper or error text. ---------- */
+.rc-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.rc-field__label {
+  /* body, 600 */
+  font: 600 16px/24px var(--font-body);
+  color: var(--ink);
+}
+.rc-field__help {
+  /* caption */
+  font: 400 13px/18px var(--font-body);
+  color: var(--ink-subtle);
+}
+.rc-field__error {
+  /* caption, 600; always a word, never colour alone */
+  font: 600 13px/18px var(--font-body);
+  color: var(--stop);
+}
+.rc-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-0);
+  color: var(--ink);
+  font: 400 16px/24px var(--font-body);
+}
+.rc-input::placeholder {
+  color: var(--ink-subtle);
+}
+.rc-input--number {
+  /* data: figures line up */
+  font: 500 16px/24px var(--font-mono);
+  text-align: right;
+}
+.rc-input:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.rc-input[aria-invalid='true'] {
+  border-color: var(--stop);
+  border-width: 2px;
+  padding: 9px 11px;
+}
+.rc-input:disabled {
+  background: var(--surface-2);
+  color: var(--ink-subtle);
+  cursor: not-allowed;
+}
+
+/* ---------- Chips: status (a dot and a word) and filter (selectable). Pills. ---------- */
+.rc-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--ink-muted);
+  font: 600 13px/16px var(--font-body);
+}
+.rc-chip__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.rc-chip--go {
+  color: var(--go);
+}
+.rc-chip--paused {
+  color: var(--brand-ink);
+}
+.rc-chip--paused .rc-chip__dot {
+  background: var(--brand);
+}
+.rc-chip--offline {
+  color: var(--ink-subtle);
+}
+.rc-chip--stop {
+  color: var(--stop);
+}
+button.rc-chip {
+  min-height: 32px;
+  border-color: var(--line-strong);
+  color: var(--ink);
+  cursor: pointer;
+}
+button.rc-chip:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+button.rc-chip[aria-pressed='true'] {
+  /* selected: wash + tick, so it never depends on colour alone */
+  background: var(--brand-soft);
+  border-color: var(--brand-ink);
+  color: var(--ink);
+}
+button.rc-chip[aria-pressed='true']::before {
+  content: '✓';
+  color: var(--brand-ink);
+}
+
+/* ---------- Card and stat tile: surface-1, hairline, 14px corners. ---------- */
+.rc-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+  color: var(--ink);
+}
+.rc-card__title {
+  /* title */
+  margin: 0;
+  font: 600 24px/32px var(--font-body);
+}
+.rc-card__body {
+  /* body */
+  margin: 0;
+  font: 400 16px/24px var(--font-body);
+  color: var(--ink-muted);
+}
+.rc-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+}
+.rc-stat__label {
+  /* label (11px in tiles) */
+  margin: 0;
+  font: 600 11px/16px var(--font-body);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-subtle);
+}
+.rc-stat__value {
+  margin: 0;
+  font: 800 40px/1 var(--font-display);
+  font-stretch: 110%;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+.rc-stat__note {
+  margin: 0;
+  font: 400 13px/18px var(--font-body);
+  color: var(--ink-muted);
+}
+.rc-stat--hero {
+  /* the one volt thing in the view */
+  background: var(--brand);
+  border-color: var(--brand);
+}
+.rc-stat--hero .rc-stat__label,
+.rc-stat--hero .rc-stat__value,
+.rc-stat--hero .rc-stat__note {
+  color: var(--on-brand);
+}
+
+/* ---------- Table: label headers, mono figures right-aligned, hairline rows. ---------- */
+.rc-table {
+  width: 100%;
+  border-collapse: collapse;
+  font: 400 16px/24px var(--font-body);
+  color: var(--ink-muted);
+}
+.rc-table th {
+  /* label */
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--line-strong);
+  font: 600 12px/16px var(--font-body);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  text-align: left;
+  color: var(--ink-subtle);
+}
+.rc-table td {
+  padding: 12px var(--space-3);
+  border-bottom: 1px solid var(--line);
+}
+.rc-table td:first-child {
+  color: var(--ink);
+}
+.rc-table .rc-num {
+  /* data */
+  font: 500 14px/20px var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+.rc-table th.rc-num {
+  font: 600 12px/16px var(--font-body);
+}
+.rc-table--banded tbody tr:nth-child(even) {
+  background: var(--surface-2);
+}
+.rc-table tr.rc-row--highlight {
+  background: var(--brand-soft);
+}
+.rc-table tr.rc-row--highlight td {
+  color: var(--ink);
+}
+.rc-table-wrap {
+  /* wide tables scroll inside their card on phones, never the page */
+  overflow-x: auto;
+}

@@ -6,10 +6,11 @@
   "description": "Night Signal design tokens: colours, type, spacing, corners (light and dark).",
   "exports": {
     ".": "./src/index.ts",
-    "./tokens.css": "./tokens.css"
+    "./tokens.css": "./tokens.css",
+    "./components.css": "./components.css"
   },
   "scripts": {
-    "build": "node scripts/build-css.ts",
+    "build": "node scripts/build.ts",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run"
   }

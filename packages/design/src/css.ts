@@ -1,27 +1,29 @@
-// Turns the tokens into CSS custom properties for the web portals (packages/design/tokens.css).
-import { core, fonts, lineWidth, radius, space, textSizes, themes, type Theme } from './tokens.ts';
+// Turns the tokens into CSS custom properties for the web apps (packages/design/tokens.css).
+// Names match the RECALL design system's own tokens.css, so components.css works in both places.
+import {
+  coreColors,
+  fontFamilies,
+  lineWidth,
+  radii,
+  shadows,
+  spacing,
+  themedColors,
+  type ThemeName,
+} from './tokens.ts';
 
-function kebab(name: string): string {
-  return name.replace(/([a-z])([A-Z0-9])/g, '$1-$2').toLowerCase();
-}
-
-function themeVars(theme: Theme, indent: string): string {
-  return Object.entries(theme)
-    .map(([name, value]) => `${indent}--${kebab(name)}: ${value};`)
+function themeVars(theme: ThemeName, indent: string): string {
+  return [...themedColors, ...shadows]
+    .map((token) => `${indent}--${token.name}: ${token.value[theme]};`)
     .join('\n');
 }
 
 /** The full stylesheet: light by default, dark from the system setting or data-theme="dark". */
 export function tokensCss(): string {
   const fixed = [
-    ...Object.entries(core).map(([name, value]) => `--${name}: ${value};`),
-    ...Object.entries(fonts).map(([name, value]) => `--font-${name}: ${value};`),
-    ...Object.entries(textSizes).flatMap(([name, { size, lineHeight }]) => [
-      `--text-${name}: ${size}px;`,
-      `--leading-${name}: ${lineHeight}px;`,
-    ]),
-    ...Object.entries(space).map(([step, px]) => `--space-${step}: ${px}px;`),
-    ...Object.entries(radius).map(([name, px]) => `--radius-${name}: ${px}px;`),
+    ...coreColors.map((token) => `--${token.name}: ${token.value};`),
+    ...Object.entries(fontFamilies).map(([name, stack]) => `--font-${name}: ${stack};`),
+    ...spacing.map((token) => `--${token.name}: ${token.value}px;`),
+    ...radii.map((token) => `--${token.name}: ${token.value}px;`),
     `--line-width: ${lineWidth}px;`,
   ]
     .map((line) => `  ${line}`)
@@ -31,19 +33,23 @@ export function tokensCss(): string {
 
 :root {
 ${fixed}
-${themeVars(themes.light, '  ')}
+}
+
+:root,
+[data-theme='light'] {
+${themeVars('light', '  ')}
   color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
-${themeVars(themes.dark, '    ')}
+${themeVars('dark', '    ')}
     color-scheme: dark;
   }
 }
 
-:root[data-theme='dark'] {
-${themeVars(themes.dark, '  ')}
+[data-theme='dark'] {
+${themeVars('dark', '  ')}
   color-scheme: dark;
 }
 `;

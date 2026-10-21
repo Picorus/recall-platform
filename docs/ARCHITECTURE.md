@@ -32,7 +32,7 @@ The screen decides what to play on its own, from a plan the cloud sends ahead of
 | `services/ledger` | Double-entry ledger in paise, invoices, rider pay, payouts | P1 |
 | `services/workers` | Slow jobs: reports, heat maps, PDFs, messages | P1 |
 | `packages/domain` | Shared rules and types (today: paise money, India time and business day) | P0.2 → P1 |
-| `packages/design` | Night Signal design tokens: `@recall/design` for apps, `@recall/design/tokens.css` for web | P0.3.1 |
+| `packages/design` | Night Signal tokens, chart/map colours and component styles: `@recall/design` (TypeScript), `tokens.css` + `components.css` (web). Also generates the RECALL design system's tokens and component cards (`docs/RUNBOOKS/design-system.md`) | P0.3 |
 | `packages/adapters` | Every outside service behind an adapter with a working fake (hard rule 4) | P1 → P6 |
 | `tools/simulator` | Fleet simulator: fake bikes on Hyderabad roads | P1.10 |
 | `tools/repo-checks` | Checks on the repository itself: secrets, `.env.example`, commit messages | P0.2 |

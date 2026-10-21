@@ -6,42 +6,29 @@
   --paper: #F4F5F0;
   --graphite: #161B26;
   --ion: #6E7BFF;
-  --font-sans: 'Anek Latin', system-ui, sans-serif;
-  --font-telugu: 'Anek Telugu', 'Anek Latin', system-ui, sans-serif;
-  --font-devanagari: 'Anek Devanagari', 'Anek Latin', system-ui, sans-serif;
-  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
-  --text-caption: 12px;
-  --leading-caption: 16px;
-  --text-small: 14px;
-  --leading-small: 20px;
-  --text-body: 16px;
-  --leading-body: 24px;
-  --text-lead: 18px;
-  --leading-lead: 28px;
-  --text-title: 22px;
-  --leading-title: 28px;
-  --text-heading: 28px;
-  --leading-heading: 34px;
-  --text-display: 40px;
-  --leading-display: 44px;
-  --text-hero: 56px;
-  --leading-hero: 60px;
-  --space-0: 0px;
+  --font-display: "Anek Latin", Arial, sans-serif;
+  --font-body: "Anek Latin", "Anek Telugu", "Anek Devanagari", Arial, sans-serif;
+  --font-mono: "IBM Plex Mono", "Courier New", monospace;
+  --font-telugu: "Anek Telugu", "Anek Latin", sans-serif;
+  --font-devanagari: "Anek Devanagari", "Anek Latin", sans-serif;
   --space-1: 4px;
   --space-2: 8px;
-  --space-3: 12px;
-  --space-4: 16px;
-  --space-5: 20px;
-  --space-6: 24px;
-  --space-8: 32px;
-  --space-10: 40px;
-  --space-12: 48px;
-  --space-16: 64px;
-  --radius-control: 6px;
-  --radius-card: 14px;
-  --radius-hero: 20px;
+  --space-3: 16px;
+  --space-4: 24px;
+  --space-5: 32px;
+  --space-6: 48px;
+  --space-7: 64px;
+  --space-8: 96px;
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 14px;
+  --radius-screen: 20px;
   --radius-pill: 999px;
   --line-width: 1px;
+}
+
+:root,
+[data-theme='light'] {
   --surface-0: #F4F5F0;
   --surface-1: #FBFBF8;
   --surface-2: #E7E9E2;
@@ -61,6 +48,7 @@
   --stop: #C2341B;
   --stop-soft: #FDE5DF;
   --focus: #0E121B;
+  --shadow-lift: 0 8px 24px rgba(14,16,19,0.12);
   color-scheme: light;
 }
 
@@ -85,11 +73,12 @@
     --stop: #FF6B4A;
     --stop-soft: #3A1710;
     --focus: #C8F54A;
+    --shadow-lift: 0 8px 24px rgba(0,0,0,0.45);
     color-scheme: dark;
   }
 }
 
-:root[data-theme='dark'] {
+[data-theme='dark'] {
   --surface-0: #0A0E17;
   --surface-1: #121723;
   --surface-2: #161B26;
@@ -109,5 +98,6 @@
   --stop: #FF6B4A;
   --stop-soft: #3A1710;
   --focus: #C8F54A;
+  --shadow-lift: 0 8px 24px rgba(0,0,0,0.45);
   color-scheme: dark;
 }
