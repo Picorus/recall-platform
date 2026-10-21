@@ -12,25 +12,27 @@ export function paise(amount: number): Paise {
 }
 
 export function addPaise(...amounts: Paise[]): Paise {
-  let total = 0;
+  let total = paise(0);
   for (const amount of amounts) {
-    total += amount;
+    total = paise(total + amount); // checked at every step, so nothing rounds mid-sum
   }
-  return paise(total);
+  return total;
 }
 
 export function subtractPaise(from: Paise, amount: Paise): Paise {
   return paise(from - amount);
 }
 
-const RUPEES_PATTERN = /^(-)?₹?(\d{1,3}(?:,\d{2,3})*|\d+)(?:\.(\d{1,2}))?$/;
+// Whole rupees: plain digits, Indian grouping (1,23,456) or Western grouping (123,456). No leading zeros.
+const WHOLE_RUPEES = String.raw`0|[1-9]\d*|[1-9]\d?(?:,\d{2})*,\d{3}|[1-9]\d{0,2}(?:,\d{3})+`;
+const RUPEES_PATTERN = new RegExp(String.raw`^(-)?(?:₹ ?)?(${WHOLE_RUPEES})(?:\.(\d{1,2}))?$`);
 
 /**
  * Reads a rupee amount typed by a person, e.g. "15000", "₹15,000.5", "-₹1,23,456.78".
  * Works on the text itself, so no float rounding ever happens.
  */
 export function parseRupees(text: string): Paise {
-  const match = RUPEES_PATTERN.exec(text.replace(/\s/g, ''));
+  const match = RUPEES_PATTERN.exec(text.trim());
   if (!match) {
     throw new RangeError(`Not a rupee amount: "${text}"`);
   }
@@ -44,6 +46,7 @@ export function parseRupees(text: string): Paise {
 
 /** Shows paise as rupees with Indian digit grouping: 12345678 → "₹1,23,456.78". */
 export function formatRupees(amount: Paise): string {
+  paise(amount); // refuses anything that slipped past the type, e.g. a cast 0.5
   const negative = amount < 0;
   const abs = Math.abs(amount);
   const whole = String(Math.trunc(abs / 100));

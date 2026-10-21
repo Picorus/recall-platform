@@ -10,7 +10,8 @@ permissions:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # Only pull requests: a cancelled push to main would leave its commits unchecked.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   TURBO_TELEMETRY_DISABLED: 1
@@ -78,5 +79,9 @@ jobs:
           if [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
             echo "New branch: nothing to compare."
             exit 0
+          fi
+          if ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            echo "Previous commit $BASE is gone (force-push); checking only the newest commit."
+            BASE="$HEAD~1"
           fi
           node tools/repo-checks/src/check-commit-messages.ts "$BASE" "$HEAD"

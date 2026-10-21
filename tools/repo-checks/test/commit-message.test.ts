@@ -6,11 +6,17 @@ describe('commit subjects', () => {
     'P0.2: repository set-up',
     'P1.1.2: version areas',
     'P7: launch',
-    "Merge branch 'main' into claude/festive-meitner-kb0teg",
-    'Merge pull request #4 from picorus/claude/x',
     'Revert "P1.1.2: version areas"',
   ])('accepts %s', (subject) => {
     expect(isValidCommitSubject(subject)).toBe(true);
+  });
+
+  it.each([
+    "Merge branch 'main' into claude/festive-meitner-kb0teg",
+    'Merge pull request #4 from picorus/claude/x',
+  ])('accepts git merge wording only on a real merge: %s', (subject) => {
+    expect(isValidCommitSubject(subject, 2)).toBe(true);
+    expect(isValidCommitSubject(subject, 1)).toBe(false);
   });
 
   it.each([

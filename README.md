@@ -6,7 +6,7 @@ This repository holds everything: the screen player (Android), the cloud service
 
 ## Run it on a laptop
 
-Needs Node 22, pnpm 10 and Docker. No keys.
+Needs Node 22.18+, pnpm 10 and Docker. No keys.
 
 ```sh
 pnpm install

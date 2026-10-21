@@ -1,6 +1,13 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { addPaise, formatRupees, paise, parseRupees, subtractPaise } from '../src/money.js';
+import {
+  addPaise,
+  formatRupees,
+  paise,
+  parseRupees,
+  subtractPaise,
+  type Paise,
+} from '../src/money.js';
 
 const safePaise = fc.integer({ min: -1e13, max: 1e13 }).map(paise);
 
@@ -27,8 +34,10 @@ describe('paise', () => {
     );
   });
 
-  it('refuses sums that would lose precision', () => {
-    expect(() => addPaise(paise(Number.MAX_SAFE_INTEGER), paise(1))).toThrow(RangeError);
+  it('refuses sums that would lose precision, even if a later amount brings them back', () => {
+    const max = paise(Number.MAX_SAFE_INTEGER);
+    expect(() => addPaise(max, paise(1))).toThrow(RangeError);
+    expect(() => addPaise(max, paise(2), paise(-2))).toThrow(RangeError);
   });
 });
 
@@ -43,11 +52,29 @@ describe('rupee text', () => {
     ['-0', 0],
     ['-₹0.01', -1],
     [' ₹ 1,500 ', 150_000],
+    ['123,456', 12_345_600],
+    ['1,234', 123_400],
+    ['0.5', 50],
   ])('reads %s as %i paise', (text, expected) => {
     expect(parseRupees(text)).toBe(expected);
   });
 
-  it.each(['', 'abc', '1.234', '1e5', '12.', '.5', '--5'])('rejects "%s"', (text) => {
+  it.each([
+    '',
+    'abc',
+    '1.234',
+    '1e5',
+    '12.',
+    '.5',
+    '--5',
+    '1,50,00',
+    '1,234,56',
+    '12,34',
+    '1,00,000,00',
+    '1 5 0 0',
+    '007',
+    '₹-5',
+  ])('rejects "%s"', (text) => {
     expect(() => parseRupees(text)).toThrow(RangeError);
   });
 
@@ -56,6 +83,10 @@ describe('rupee text', () => {
     expect(formatRupees(paise(1_500_000))).toBe('₹15,000.00');
     expect(formatRupees(paise(5))).toBe('₹0.05');
     expect(formatRupees(paise(-25_000))).toBe('-₹250.00');
+  });
+
+  it('refuses to show a fraction of a paisa', () => {
+    expect(() => formatRupees(0.5 as Paise)).toThrow(RangeError);
   });
 
   it('reading what we show gives back the same paise', () => {

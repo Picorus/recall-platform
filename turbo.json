@@ -6,6 +6,9 @@
     },
     "test": {
       "dependsOn": ["^typecheck"]
+    },
+    "@recall/repo-checks#test": {
+      "cache": false
     }
   }
 }

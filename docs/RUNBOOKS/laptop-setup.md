@@ -1,6 +1,6 @@
 # Run RECALL on a laptop
 
-Needs: Node 22 (see `.nvmrc`), pnpm 10 (`corepack enable` sets it up from `package.json`), Docker with Compose. No keys needed (hard rule 4: every outside service has a fake).
+Needs: Node 22.18 or newer (see `.nvmrc`), pnpm 10 (`corepack enable` sets it up from `package.json`), Docker with Compose. No keys needed (hard rule 4: every outside service has a fake).
 
 ```sh
 pnpm install            # once
