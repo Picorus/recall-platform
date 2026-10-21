@@ -1,0 +1,63 @@
+# Background services for a laptop. Start: pnpm services:up · Stop: pnpm services:down
+# Laptop only. Passwords here are throwaway; real ones live in the secret store (hard rule 6).
+name: recall
+
+services:
+  db:
+    # PostgreSQL 16 + PostGIS + TimescaleDB + H3 in one image.
+    image: timescale/timescaledb-ha:pg16.15-ts2.31.0
+    environment:
+      POSTGRES_USER: recall
+      POSTGRES_PASSWORD: ${LOCAL_POSTGRES_PASSWORD:-recall}
+      POSTGRES_DB: recall
+    ports:
+      - '5432:5432'
+    volumes:
+      - db-data:/home/postgres/pgdata
+      - ./db/init.sql:/docker-entrypoint-initdb.d/001-extensions.sql:ro
+    healthcheck:
+      test: ['CMD', 'pg_isready', '-U', 'recall', '-d', 'recall']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    # Job queue (BullMQ).
+    image: redis:7.4.11-alpine
+    ports:
+      - '6379:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  mqtt:
+    # The line to every screen. Dashboard: http://localhost:18083 (admin / public on first start).
+    image: emqx/emqx:5.8.6
+    ports:
+      - '1883:1883'
+      - '18083:18083'
+    healthcheck:
+      test: ['CMD', '/opt/emqx/bin/emqx', 'ctl', 'status']
+      interval: 10s
+      timeout: 10s
+      retries: 20
+
+  s3:
+    # S3-compatible file storage for ad files (SeaweedFS; see DECISIONS 22 Oct 2026).
+    image: chrislusf/seaweedfs:4.48
+    command: server -dir=/data -s3 -s3.port=8333
+    ports:
+      - '8333:8333'
+    volumes:
+      - s3-data:/data
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:8333/healthz || exit 1']
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+volumes:
+  db-data:
+  s3-data:

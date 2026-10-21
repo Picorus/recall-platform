@@ -12,7 +12,10 @@
     "format:check": "prettier --check .",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
-    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test"
+    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test",
+    "services:up": "docker compose -f infra/docker-compose.yml up -d --wait",
+    "services:check": "sh infra/check-services.sh",
+    "services:down": "docker compose -f infra/docker-compose.yml down"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
