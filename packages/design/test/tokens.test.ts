@@ -2,80 +2,116 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { contrastRatio } from '../src/contrast.ts';
 import { tokensCss } from '../src/css.ts';
-import { core, fonts, googleFontsUrl, radius, space, themes, type Theme } from '../src/tokens.ts';
+import {
+  coreColors,
+  fontFamilies,
+  googleFontsUrl,
+  px,
+  radii,
+  shadows,
+  spacing,
+  textStyles,
+  themedColors,
+  themeNames,
+  themes,
+  type ThemedColorName,
+  type ThemeName,
+} from '../src/tokens.ts';
 
 const HEX = /^#[0-9A-F]{6}$/;
+const core = Object.fromEntries(coreColors.map((t) => [t.name, t.value])) as Record<string, string>;
 
 describe('colours', () => {
   it('are all #RRGGBB', () => {
-    for (const value of [
-      ...Object.values(core),
-      ...Object.values(themes.light),
-      ...Object.values(themes.dark),
-    ]) {
-      expect(value).toMatch(HEX);
+    for (const token of coreColors) expect(token.value).toMatch(HEX);
+    for (const token of themedColors) {
+      for (const theme of themeNames) expect(token.value[theme]).toMatch(HEX);
     }
   });
 
-  it('light and dark define the same tokens', () => {
-    expect(Object.keys(themes.dark).sort()).toEqual(Object.keys(themes.light).sort());
+  it('every token has a usage note', () => {
+    for (const token of [...coreColors, ...themedColors, ...spacing, ...radii, ...shadows]) {
+      expect(token.usage.length, token.name).toBeGreaterThan(10);
+    }
   });
 
   it('brand fills are volt and text on them is midnight in both themes', () => {
-    for (const theme of Object.values(themes)) {
-      expect(theme.brand).toBe(core.volt);
-      expect(theme.onBrand).toBe(core.midnight);
+    for (const theme of themeNames) {
+      expect(themes[theme].brand).toBe(core.volt);
+      expect(themes[theme]['on-brand']).toBe(core.midnight);
+    }
+  });
+
+  it('an alias always equals the core colour it names', () => {
+    for (const token of themedColors as readonly {
+      alias?: string;
+      value: Record<string, string>;
+    }[]) {
+      if (!token.alias) continue;
+      for (const theme of themeNames) expect(token.value[theme]).toBe(core[token.alias]);
     }
   });
 
   it('dark page ground is midnight; light page ground is paper', () => {
-    expect(themes.dark.surface0).toBe(core.midnight);
-    expect(themes.light.surface0).toBe(core.paper);
+    expect(themes.dark['surface-0']).toBe(core.midnight);
+    expect(themes.light['surface-0']).toBe(core.paper);
   });
 });
 
-// Contrast promises from docs/NIGHT_SIGNAL.md (and WCAG minimums where it gives none).
-type Pair = [fg: keyof Theme, bg: keyof Theme, min: number];
-const PROMISES: Record<'light' | 'dark', Pair[]> = {
+// Contrast promises from docs/NIGHT_SIGNAL.md and the brand book's usage notes.
+type Pair = [fg: ThemedColorName, bg: ThemedColorName, min: number];
+const PROMISES: Record<ThemeName, Pair[]> = {
   light: [
-    ['ink', 'surface0', 17],
-    ['ink', 'surface1', 7],
-    ['inkMuted', 'surface0', 7],
-    ['inkMuted', 'surface1', 7],
-    ['inkSubtle', 'surface0', 5.6],
-    ['inkSubtle', 'surface1', 5.6],
-    ['lineStrong', 'surface0', 3],
-    ['lineStrong', 'surface1', 3],
-    ['lineStrong', 'surface2', 3],
-    ['onBrand', 'brand', 15.3],
-    ['brandInk', 'surface0', 5.6],
-    ['data', 'surface0', 4.5],
-    ['go', 'surface0', 4.5],
-    ['stop', 'surface0', 4.5],
-    ['focus', 'surface0', 3],
+    ['ink', 'surface-0', 17],
+    ['ink', 'surface-1', 7],
+    ['ink-muted', 'surface-0', 7],
+    ['ink-muted', 'surface-1', 7],
+    ['ink-muted', 'surface-2', 7],
+    ['ink-subtle', 'surface-0', 5.6],
+    ['ink-subtle', 'surface-1', 5.6],
+    ['ink-subtle', 'surface-2', 4.5],
+    ['line-strong', 'surface-0', 3],
+    ['line-strong', 'surface-1', 3],
+    ['line-strong', 'surface-2', 3],
+    ['on-brand', 'brand', 15.3],
+    ['brand-ink', 'surface-0', 5.6],
+    ['brand-ink', 'brand-soft', 4.5],
+    ['ink', 'brand-soft', 7],
+    ['data', 'surface-0', 4.5],
+    ['go', 'surface-0', 4.5],
+    ['go', 'surface-1', 4.5],
+    ['stop', 'surface-0', 4.5],
+    ['stop', 'surface-1', 4.5],
+    ['focus', 'surface-0', 3],
   ],
   dark: [
-    ['ink', 'surface0', 17],
-    ['ink', 'surface1', 7],
-    ['inkMuted', 'surface0', 7],
-    ['inkMuted', 'surface1', 7],
-    ['inkSubtle', 'surface0', 5.6],
-    ['inkSubtle', 'surface1', 5.6],
-    ['lineStrong', 'surface0', 3],
-    ['lineStrong', 'surface1', 3],
-    ['lineStrong', 'surface2', 3],
-    ['onBrand', 'brand', 15.3],
-    ['brandInk', 'surface0', 4.5],
-    ['data', 'surface0', 5.5],
-    ['go', 'surface0', 4.5],
-    ['stop', 'surface0', 4.5],
-    ['focus', 'surface0', 3],
+    ['ink', 'surface-0', 17],
+    ['ink', 'surface-1', 7],
+    ['ink-muted', 'surface-0', 7],
+    ['ink-muted', 'surface-1', 7],
+    ['ink-muted', 'surface-2', 7],
+    ['ink-subtle', 'surface-0', 5.6],
+    ['ink-subtle', 'surface-1', 5.6],
+    ['ink-subtle', 'surface-2', 4.5],
+    ['line-strong', 'surface-0', 3],
+    ['line-strong', 'surface-1', 3],
+    ['line-strong', 'surface-2', 3],
+    ['on-brand', 'brand', 15.3],
+    ['brand-ink', 'surface-0', 4.5],
+    ['brand-ink', 'brand-soft', 4.5],
+    ['ink', 'brand-soft', 7],
+    ['data', 'surface-0', 5.5],
+    ['go', 'surface-0', 4.5],
+    ['go', 'surface-1', 4.5],
+    ['stop', 'surface-0', 4.5],
+    ['stop', 'surface-1', 4.5],
+    ['focus', 'surface-0', 3],
   ],
 };
 
-describe.each(['light', 'dark'] as const)('%s theme contrast', (name) => {
-  it.each(PROMISES[name])('%s on %s is at least %d : 1', (fg, bg, min) => {
-    const ratio = contrastRatio(themes[name][fg], themes[name][bg]);
+describe.each(themeNames)('%s theme contrast', (theme) => {
+  it.each(PROMISES[theme])('%s on %s is at least %d : 1', (fg, bg, min) => {
+    const ratio = contrastRatio(themes[theme][fg], themes[theme][bg]);
     expect(Math.round(ratio * 10) / 10).toBeGreaterThanOrEqual(min);
   });
 });
@@ -89,10 +125,11 @@ describe('contrast maths', () => {
 
 describe('type', () => {
   it('uses Anek and IBM Plex Mono, never Inter or Space Grotesk', () => {
-    const all = [...Object.values(fonts), googleFontsUrl].join(' ');
+    const all = [...Object.values(fontFamilies), googleFontsUrl].join(' ');
     expect(all).not.toMatch(/Inter\b|Space Grotesk|Space\+Grotesk/);
-    expect(fonts.sans).toMatch(/^'Anek Latin'/);
-    expect(fonts.mono).toMatch(/^'IBM Plex Mono'/);
+    expect(fontFamilies.display).toMatch(/^"Anek Latin"/);
+    expect(fontFamilies.body).toMatch(/^"Anek Latin"/);
+    expect(fontFamilies.mono).toMatch(/^"IBM Plex Mono"/);
   });
 
   it('loads every family it names', () => {
@@ -100,17 +137,36 @@ describe('type', () => {
       expect(googleFontsUrl).toContain(`family=${family}`);
     }
   });
+
+  it('every style has a unique name, a px size and a sample', () => {
+    const styles = textStyles.flatMap((group) => group.styles);
+    expect(new Set(styles.map((s) => s.name)).size).toBe(styles.length);
+    for (const style of styles) {
+      expect(style.fontSize).toMatch(/^\d+px$/);
+      expect(style.sample.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('display styles use Anek at width 110, text at 100', () => {
+    for (const group of textStyles) {
+      if (group.family === 'mono') continue;
+      for (const style of group.styles) {
+        expect(style.width).toBe(style.fontWeight >= 700 ? 110 : 100);
+      }
+    }
+  });
 });
 
 describe('shape', () => {
-  it('corners are 6 / 14 / 20 / pill', () => {
-    expect(radius).toEqual({ control: 6, card: 14, hero: 20, pill: 999 });
+  it('corners are 4 / 6 / 14 / 20 / pill', () => {
+    expect(radii.map((r) => r.value)).toEqual([4, 6, 14, 20, 999]);
+    expect(px('radius-sm')).toBe(6);
+    expect(px('radius-md')).toBe(14);
   });
 
-  it('spacing sits on the 4 px grid', () => {
-    for (const [step, px] of Object.entries(space)) {
-      expect(px).toBe(Number(step) * 4);
-    }
+  it('spacing is the 8-point grid with a 4 px half step', () => {
+    expect(spacing.map((s) => s.value)).toEqual([4, 8, 16, 24, 32, 48, 64, 96]);
+    for (const step of spacing) expect(step.value % 4).toBe(0);
   });
 });
 
@@ -124,7 +180,15 @@ describe('tokens.css', () => {
     const css = tokensCss();
     expect(css).toContain('@media (prefers-color-scheme: dark)');
     expect(css).toContain(":root:not([data-theme='light'])");
-    expect(css).toContain(":root[data-theme='dark']");
+    expect(css).toContain("[data-theme='dark']");
     expect(css.match(/--surface-0:/g)).toHaveLength(3);
+    expect(css.match(/--shadow-lift:/g)).toHaveLength(3);
+  });
+
+  it('declares every variable components.css uses', () => {
+    const css = tokensCss();
+    const components = readFileSync(new URL('../components.css', import.meta.url), 'utf8');
+    const used = new Set([...components.matchAll(/var\((--[a-z0-9-]+)\)/g)].map((m) => m[1]));
+    for (const name of used) expect(css, name).toContain(`${name}:`);
   });
 });

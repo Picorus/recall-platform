@@ -1,0 +1,22 @@
+<!-- @dsCard group="Interface" height=300 -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anek+Latin:wdth,wght@75..125,100..800&family=Anek+Telugu:wdth,wght@75..125,100..800&family=Anek+Devanagari:wdth,wght@75..125,100..800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:var(--surface-0);color:var(--ink);font-family:var(--font-body);-webkit-font-smoothing:antialiased}
+.wrap{padding:24px;display:flex;flex-direction:column;gap:16px}
+.row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+</style>
+<style>.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:24px}</style>
+<div class="wrap"><div class="grid">
+<label class="rc-field"><span class="rc-field__label">Business name</span>
+<input class="rc-input" placeholder="As on your GST certificate">
+<span class="rc-field__help">Shown on your invoice.</span></label>
+<label class="rc-field"><span class="rc-field__label">Bikes</span>
+<input class="rc-input rc-input--number" inputmode="numeric" value="3" aria-invalid="true" aria-describedby="bikes-error">
+<span class="rc-field__error" id="bikes-error">Error: book at least 5 bikes.</span></label>
+<label class="rc-field"><span class="rc-field__label">Area</span>
+<select class="rc-input"><option>Madhapur</option><option>Gachibowli</option></select></label>
+<label class="rc-field"><span class="rc-field__label">GSTIN</span>
+<input class="rc-input" value="36ABCDE1234F1Z5" disabled>
+<span class="rc-field__help">Locked after the first invoice.</span></label>
+</div></div>

@@ -2,3 +2,4 @@ pnpm-lock.yaml
 # Hand-written documents are not reformatted.
 *.md
 packages/design/tokens.css
+packages/design/design-system/

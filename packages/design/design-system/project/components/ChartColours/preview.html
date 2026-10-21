@@ -1,0 +1,26 @@
+<!-- @dsCard group="Data" height=300 -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anek+Latin:wdth,wght@75..125,100..800&family=Anek+Telugu:wdth,wght@75..125,100..800&family=Anek+Devanagari:wdth,wght@75..125,100..800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:var(--surface-0);color:var(--ink);font-family:var(--font-body)}
+.wrap{padding:24px;display:flex;flex-direction:column;gap:12px}
+.lbl{font:600 12px/16px var(--font-body);letter-spacing:.12em;text-transform:uppercase;color:var(--ink-subtle)}
+.bars{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;align-items:end;height:150px;border-bottom:1px solid var(--line-strong)}
+.week{display:flex;gap:4px;align-items:end;height:100%}
+.week i{flex:1;display:block}
+.s1{background:var(--brand-ink)}.s2{background:var(--data)}.s3{background:var(--ink-muted)}
+.x{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;font:500 13px/18px var(--font-mono);color:var(--ink-subtle)}
+.key{display:flex;gap:16px;flex-wrap:wrap;font:600 13px/18px var(--font-body);color:var(--ink-muted)}
+.key span{display:inline-flex;gap:6px;align-items:center}.key i{width:12px;height:12px;display:inline-block}
+</style>
+<div class="wrap">
+<p class="lbl">Bike-hours by week</p>
+<div class="bars" role="img" aria-label="Bike-hours by week: sold, made up, spare">
+<div class="week"><i class="s1" style="height:70%"></i><i class="s2" style="height:12%"></i><i class="s3" style="height:30%"></i></div>
+<div class="week"><i class="s1" style="height:82%"></i><i class="s2" style="height:8%"></i><i class="s3" style="height:20%"></i></div>
+<div class="week"><i class="s1" style="height:64%"></i><i class="s2" style="height:15%"></i><i class="s3" style="height:34%"></i></div>
+<div class="week"><i class="s1" style="height:90%"></i><i class="s2" style="height:6%"></i><i class="s3" style="height:12%"></i></div>
+</div>
+<div class="x"><span>W1</span><span>W2</span><span>W3</span><span>W4</span></div>
+<div class="key"><span><i class="s1"></i>1 · Sold</span><span><i class="s2"></i>2 · Made up</span><span><i class="s3"></i>3 · Spare</span></div>
+</div>
