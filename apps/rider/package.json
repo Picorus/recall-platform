@@ -1,0 +1,14 @@
+{
+  "name": "@recall/rider",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Rider app (React Native, Expo). Built in P4.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run --passWithNoTests"
+  }
+}

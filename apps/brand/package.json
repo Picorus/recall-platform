@@ -1,0 +1,14 @@
+{
+  "name": "@recall/brand",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Brand portal (Next.js). Built in P5.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run --passWithNoTests"
+  }
+}

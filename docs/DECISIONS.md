@@ -4,6 +4,11 @@ Newest first. Each: date · decision · why · who.
 
 | Date | Decision | Why | Who |
 |---|---|---|---|
+| 22 Oct 2026 | Laptop file storage is SeaweedFS (S3-compatible), not MinIO | MinIO no longer publishes a free container image; SeaweedFS is open source (Apache 2.0) and speaks the same S3 API, so code moves to AWS S3 unchanged | Claude (P0.2), for Prateek to confirm |
+| 22 Oct 2026 | Tooling: Node 22 LTS, pnpm 10, TypeScript 6.0 (strict), ESLint + Prettier, Vitest + fast-check for property tests | Current long-term-support versions; TypeScript 7 not yet supported by the lint tools | Claude (P0.2) |
+| 22 Oct 2026 | App folders hold placeholders until their phase; Next.js, Expo and Gradle projects are created in P3/P4/P5/P2 | Don't build what can't be tested yet; framework versions chosen when work starts | Claude (P0.2) |
+| 22 Oct 2026 | CI on GitHub Actions: format, lint, types, tests, laptop services start, gitleaks secret scan, commit messages start with a step id | Nothing merges without passing checks (plan: Testing section; CLAUDE.md) | Claude (P0.2) |
+| 22 Oct 2026 | Business hours (08:00–02:00) are a parameter in `packages/domain` for now; move to versioned settings in P1 | Hard rule 8: such values are settings, but the settings store doesn't exist yet | Claude (P0.2) |
 | 22 Oct 2026 | Brand colours "Night Signal" (midnight, paper, one volt-lime accent, ion for data); type Anek Latin + IBM Plex Mono; keep the Afterimage logo, recoloured | Old amber was too close to Rapido yellow; modern, high-tech, not template-made | Prateek |
 | 22 Oct 2026 | Build order: P0 foundations → P1 core engine + fleet simulator → P2 screen player → P3 admin → P4 rider app → P5 brand portal; P6 integrations behind adapters with fakes; P7 hardening | Engine is the heart; apps are windows onto it; POC (Aug 2027) needs P1–P4 | Prateek + Claude |
 | 22 Oct 2026 | Code is built in Claude Code on this GitHub repository; the plan lives in docs/BUILD_PLAN.md | Real repo, long builds and tests, persistent files | Prateek |

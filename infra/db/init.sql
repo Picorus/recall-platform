@@ -1,0 +1,5 @@
+-- Runs once, when the laptop database is first created.
+CREATE EXTENSION IF NOT EXISTS postgis;
+CREATE EXTENSION IF NOT EXISTS timescaledb;
+CREATE EXTENSION IF NOT EXISTS h3;
+CREATE EXTENSION IF NOT EXISTS h3_postgis CASCADE;

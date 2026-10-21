@@ -1,0 +1,14 @@
+{
+  "name": "@recall/ledger",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Double-entry money ledger, billing, GST invoices, rider earnings, payouts.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run --passWithNoTests"
+  }
+}

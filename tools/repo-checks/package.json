@@ -1,0 +1,11 @@
+{
+  "name": "@recall/repo-checks",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Checks on the repository itself: no secrets committed, .env.example holds names only.",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  }
+}
