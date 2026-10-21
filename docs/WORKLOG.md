@@ -5,8 +5,9 @@ Newest first. Each entry: date · step id · what changed · tests · open issue
 ## 22 Oct 2026 · P0.3.1 · Night Signal tokens as code
 - P0.2 merged to `main` (PR #1, all checks green). SeaweedFS confirmed by Prateek.
 - `packages/design`: core colours, light/dark theme tokens exactly as `docs/NIGHT_SIGNAL.md`, fonts (Anek Latin/Telugu/Devanagari, IBM Plex Mono) and Google Fonts link, font roles, text sizes, 4 px spacing, corners 6/14/20/pill, 1 px lines. `tokens.css` generated for the web portals (`pnpm --filter @recall/design build`); light by default, dark from the system setting or `data-theme="dark"`.
-- Tests: 39 — every contrast promise in NIGHT_SIGNAL.md, same tokens in both themes, no Inter/Space Grotesk, corners, 4 px grid, `tokens.css` up to date.
-- Open: **dark control borders** (#5B6272) are 2.9 : 1 on cards and 2.8 : 1 on table bands, under the promised 3 : 1; #606777 passes on all dark surfaces. Waiting on Prateek; tracked as a known-gap test. Spacing/text-size scale to confirm. Merge policy question (Prateek merges vs Claude merges on green) pending.
+- Tests: 41 — every contrast promise in NIGHT_SIGNAL.md, same tokens in both themes, no Inter/Space Grotesk, corners, 4 px grid, `tokens.css` up to date.
+- Prateek's answers: dark control border changed #5B6272 → #606777 (now ≥3 : 1 on every surface, both themes; also in NIGHT_SIGNAL.md); spacing and text sizes confirmed; Claude merges its own PRs once checks are green.
+- Open: none.
 - **Next: P0.3.2** — RECALL design system (buttons, inputs, chips, tables, cards, map styles, chart colours).
 
 ## 22 Oct 2026 · P0.2 · Repository, automatic checks, record files (Claude Code)

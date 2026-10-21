@@ -46,6 +46,7 @@ const PROMISES: Record<'light' | 'dark', Pair[]> = {
     ['inkSubtle', 'surface1', 5.6],
     ['lineStrong', 'surface0', 3],
     ['lineStrong', 'surface1', 3],
+    ['lineStrong', 'surface2', 3],
     ['onBrand', 'brand', 15.3],
     ['brandInk', 'surface0', 5.6],
     ['data', 'surface0', 4.5],
@@ -61,6 +62,8 @@ const PROMISES: Record<'light' | 'dark', Pair[]> = {
     ['inkSubtle', 'surface0', 5.6],
     ['inkSubtle', 'surface1', 5.6],
     ['lineStrong', 'surface0', 3],
+    ['lineStrong', 'surface1', 3],
+    ['lineStrong', 'surface2', 3],
     ['onBrand', 'brand', 15.3],
     ['brandInk', 'surface0', 4.5],
     ['data', 'surface0', 5.5],
@@ -74,21 +77,6 @@ describe.each(['light', 'dark'] as const)('%s theme contrast', (name) => {
   it.each(PROMISES[name])('%s on %s is at least %d : 1', (fg, bg, min) => {
     const ratio = contrastRatio(themes[name][fg], themes[name][bg]);
     expect(Math.round(ratio * 10) / 10).toBeGreaterThanOrEqual(min);
-  });
-});
-
-// Known gaps waiting on Prateek (WORKLOG 22 Oct 2026, P0.3.1). Dark control borders (#5B6272) are
-// 2.9 : 1 on cards and 2.8 : 1 on table bands, under the 3 : 1 NIGHT_SIGNAL.md promises; #606777
-// would pass on all three dark surfaces. This test fails once the colour is fixed, so the list
-// cannot go stale: then move the pairs above and delete them here.
-const KNOWN_GAPS: [name: 'light' | 'dark', fg: keyof Theme, bg: keyof Theme, min: number][] = [
-  ['dark', 'lineStrong', 'surface1', 3],
-  ['dark', 'lineStrong', 'surface2', 3],
-];
-
-describe('known contrast gaps', () => {
-  it.each(KNOWN_GAPS)('%s %s on %s is still under %d : 1', (name, fg, bg, min) => {
-    expect(contrastRatio(themes[name][fg], themes[name][bg])).toBeLessThan(min);
   });
 });
 

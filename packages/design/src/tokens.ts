@@ -77,7 +77,7 @@ export const themes: Readonly<Record<ThemeName, Theme>> = {
     surface1: '#121723',
     surface2: '#161B26',
     line: '#262D3B',
-    lineStrong: '#5B6272',
+    lineStrong: '#606777',
     ink: '#F4F5F0',
     inkMuted: '#A3AAB8',
     inkSubtle: '#8A909C',
