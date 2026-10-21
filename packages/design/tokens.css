@@ -1,0 +1,113 @@
+/* Generated from packages/design/src/tokens.ts by `pnpm --filter @recall/design build`. Do not edit. */
+
+:root {
+  --volt: #C8F54A;
+  --midnight: #0A0E17;
+  --paper: #F4F5F0;
+  --graphite: #161B26;
+  --ion: #6E7BFF;
+  --font-sans: 'Anek Latin', system-ui, sans-serif;
+  --font-telugu: 'Anek Telugu', 'Anek Latin', system-ui, sans-serif;
+  --font-devanagari: 'Anek Devanagari', 'Anek Latin', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --text-caption: 12px;
+  --leading-caption: 16px;
+  --text-small: 14px;
+  --leading-small: 20px;
+  --text-body: 16px;
+  --leading-body: 24px;
+  --text-lead: 18px;
+  --leading-lead: 28px;
+  --text-title: 22px;
+  --leading-title: 28px;
+  --text-heading: 28px;
+  --leading-heading: 34px;
+  --text-display: 40px;
+  --leading-display: 44px;
+  --text-hero: 56px;
+  --leading-hero: 60px;
+  --space-0: 0px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --radius-control: 6px;
+  --radius-card: 14px;
+  --radius-hero: 20px;
+  --radius-pill: 999px;
+  --line-width: 1px;
+  --surface-0: #F4F5F0;
+  --surface-1: #FBFBF8;
+  --surface-2: #E7E9E2;
+  --line: #DADDD4;
+  --line-strong: #767C88;
+  --ink: #0E121B;
+  --ink-muted: #3D4350;
+  --ink-subtle: #5B6272;
+  --brand: #C8F54A;
+  --on-brand: #0A0E17;
+  --brand-ink: #4F6B00;
+  --brand-soft: #EEFBC9;
+  --data: #3B47D9;
+  --data-soft: #E6E8FF;
+  --go: #137A4E;
+  --go-soft: #DDF5E9;
+  --stop: #C2341B;
+  --stop-soft: #FDE5DF;
+  --focus: #0E121B;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --surface-0: #0A0E17;
+    --surface-1: #121723;
+    --surface-2: #161B26;
+    --line: #262D3B;
+    --line-strong: #606777;
+    --ink: #F4F5F0;
+    --ink-muted: #A3AAB8;
+    --ink-subtle: #8A909C;
+    --brand: #C8F54A;
+    --on-brand: #0A0E17;
+    --brand-ink: #C8F54A;
+    --brand-soft: #26310D;
+    --data: #6E7BFF;
+    --data-soft: #1B2150;
+    --go: #3DDC97;
+    --go-soft: #0F2E22;
+    --stop: #FF6B4A;
+    --stop-soft: #3A1710;
+    --focus: #C8F54A;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme='dark'] {
+  --surface-0: #0A0E17;
+  --surface-1: #121723;
+  --surface-2: #161B26;
+  --line: #262D3B;
+  --line-strong: #606777;
+  --ink: #F4F5F0;
+  --ink-muted: #A3AAB8;
+  --ink-subtle: #8A909C;
+  --brand: #C8F54A;
+  --on-brand: #0A0E17;
+  --brand-ink: #C8F54A;
+  --brand-soft: #26310D;
+  --data: #6E7BFF;
+  --data-soft: #1B2150;
+  --go: #3DDC97;
+  --go-soft: #0F2E22;
+  --stop: #FF6B4A;
+  --stop-soft: #3A1710;
+  --focus: #C8F54A;
+  color-scheme: dark;
+}

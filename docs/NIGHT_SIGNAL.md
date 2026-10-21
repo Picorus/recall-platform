@@ -18,7 +18,7 @@ Replaces the amber/tarmac/chalk palette (amber was too close to Rapido yellow). 
 | surface-1 | #FBFBF8 | #121723 | Cards |
 | surface-2 | #E7E9E2 | #161B26 | Wells, table bands |
 | line | #DADDD4 | #262D3B | Hairlines |
-| line-strong | #767C88 | #5B6272 | Control borders (3:1+) |
+| line-strong | #767C88 | #606777 | Control borders (3:1+ on surface-0, -1 and -2) |
 | ink | #0E121B | #F4F5F0 | Main text (17:1) |
 | ink-muted | #3D4350 | #A3AAB8 | Secondary text (7:1+) |
 | ink-subtle | #5B6272 | #8A909C | Captions on surface-0/1 (5.6:1+) |

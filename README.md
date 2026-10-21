@@ -25,4 +25,4 @@ Details and troubleshooting: `docs/RUNBOOKS/laptop-setup.md`.
 - Decisions: `docs/DECISIONS.md`
 - How-to guides: `docs/RUNBOOKS/`
 
-Status: P0.2 (repository set-up) done. Next: P0.3.1 design tokens.
+Status: P0.2 done; P0.3.1 design tokens in review. Next: P0.3.2 design system.
