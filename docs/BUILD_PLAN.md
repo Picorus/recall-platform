@@ -148,7 +148,7 @@ The scheduler answers one question every minute: which booking does each bike in
 3. **P1.7.3 Revenue earned hour by hour.** At each hour close, the delivered part moves from held to earned.
 4. **P1.7.4 Cuts.** Agency 10% on bookings made by an agency; aggregator 2% on brands referred by a delivery or ride app. Both are recorded as payable and paid monthly with a statement.
 5. **P1.7.5 Rider earnings (after the POC).** ₹25 for each moving hour + 25% of what his hours sold (the booking's bike-hour price × the share of plays his screen delivered). Paid hours capped at 260 a month.
-6. **P1.7.6 Rider earnings (POC).** Flat ₹8,000 / ₹10,000 / ₹12,000 (base + ₹6,000 founding bonus). Bonus in full at 150+ verified moving hours, pro rata at 100–150, none below 100. Day-90 bonus of ₹3,000 paid towards the screen loan.
+6. **P1.7.6 Rider earnings (POC).** Flat ₹8,000 / ₹10,000 / ₹12,000 (base + ₹6,000 founding bonus). Bonus in full at 150+ verified moving hours inside the allowed area (POC: Hyderabad), none below 150; moving hours as RECALL calculates them from the screen, never app-open time (Prateek, 22 Oct 2026). Day-90 bonus of ₹3,000 paid towards the screen loan.
 7. **P1.7.7 Payouts.** Weekly run every Monday: system prepares, finance approves in admin, the payout provider pays each rider's bank or UPI. Failed payouts retry and show in admin.
 8. **P1.7.8 Screen loan.** The bank lends to the rider; RECALL only records loan status and EMI dates shown in the rider app. Loans and EMIs are never on RECALL's books.
 9. **P1.7.9 GST and books.** Monthly GST summary, invoice and credit-note registers, export for the accountant. E-invoicing switched on before turnover crosses the legal limit.
@@ -418,6 +418,7 @@ A new engineer should be able to read four files and start work the same day. Th
 
 | Date | Version | Change |
 | --- | --- | --- |
+| 22 Oct 2026 | 1.4 | P1.7.6: founding bonus only at 150+ moving hours, no part bonus (Prateek's decision of 22 Oct, already in DECISIONS; the plan line had been missed). |
 | 22 Oct 2026 | 1.3 | P3: super admin, admins with permission areas and a read-only role; super admin sign-off for refunds and discounts; client holds; admin bookings for any start date (portal brands 15 days); short-notice ad approval (Prateek). |
 | 22 Oct 2026 | 1.2 | P5.5: brands upload their own video or a picture carousel as the main path; templates optional; colour and legibility advice is best practice, not enforced (Prateek). P0.2, P0.3.1–P0.3.3 done. |
 | 22 Oct 2026 | 1.1 | P0.3 started: Night Signal applied to the RECALL design system (colours, Anek type, recoloured Afterimage logo, all previews), the investor deck (Google Slides and the PowerPoint in Recall Final), and all 12 screens on the design canvas. Price band name fixed to "Lite". |

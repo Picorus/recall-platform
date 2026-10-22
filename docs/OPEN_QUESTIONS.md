@@ -24,6 +24,12 @@ Newest at the bottom of each group. "Needed by" is the plan step that cannot fin
 | 7 | Charging steps for the screen (from the screen maker) | Rider Your screen | P4.8 |
 | 8 | Rules for returning a loan-bought screen when a rider leaves | Rider Profile → Leave RECALL; Screen loan | P4.7, P4.11 |
 
+## Tax and pay timing
+| # | Question | Where it shows | Needed by |
+|---|---|---|---|
+| 10 | Rider pay: is TDS taken, at what rate, and is there a gig-worker levy? (The plan keeps these as settings, "confirm with CA".) | Admin Payouts; rider Payouts | P1.7.7 |
+| 11 | Founding pay in the POC (base + bonus): paid once a month after the month ends, or split across the Monday payouts? | Admin Payouts; rider Founding pay | P1.7.6–P1.7.7 |
+
 ## Design (low priority)
 | # | Question | Where it shows | Needed by |
 |---|---|---|---|
