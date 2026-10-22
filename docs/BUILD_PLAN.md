@@ -386,8 +386,8 @@ Phases overlap on purpose: each starts once the part it depends on is stable, no
 | P0.2 | Repository, automatic checks, record files | Done | Oct 2026 |
 | P0.3 | Night Signal design system, logo, screens redrawn | Done | Oct 2026 |
 | P1.10 | Fleet simulator (built alongside the engine) | Doing | Nov 2026 onward |
-| P1.1–P1.2 | Areas and GPS | Doing | Nov 2026 |
-| P1.3 | Inventory, prices, bookings | To do | Dec 2026 |
+| P1.1–P1.2 | Areas and GPS | Done | Nov 2026 |
+| P1.3 | Inventory, prices, bookings | Doing | Dec 2026 |
 | P1.4 | Ad scheduler | To do | Dec 2026 – Jan 2027 |
 | P1.5–P1.6 | Play counting, make-ups, refunds | To do | Jan 2027 |
 | P1.7 | Ledger, GST, rider earnings, payouts | To do | Jan – Feb 2027 |

@@ -2,6 +2,14 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 22 Oct 2026 · P1.3 (part 1) · Prices, quotes, booking steps, holds, free trial
+- Database work merged (PR #15). P1.1–P1.2 marked Done.
+- `packages/domain`: `price-book.ts` (Peak ₹300 / Normal ₹250 / Lite ₹220, 200 plays a bike-hour, GST 18%, 5 bikes, ₹15,000, 6/12-month offers 8%/12% with the ₹220 floor, 15-day portal lead, ads due 7 days before, trial 7 days / 20 bike-hours — all one versioned setting); `bookings.ts` (lines, area and date checks, India hour → UTC, quote in whole paise, GST, ads-due time); `booking-flow.ts` (steps Draft → … → Report sent with Cancelled and Ads missing; holds against manual limits; free-trial check).
+- Check: the admin sample Biryani Hub prices to ₹54,000 + ₹9,720 = ₹63,720 exactly.
+- Tests: 134 in `packages/domain` (property test: 500 random bookings, money always adds up in paise, never below the floor or the minimum).
+- New open question 12: refund when a brand cancels a paid booking before it starts.
+- **Next: P1.3 part 2** — database tables for price books, bookings, lines, holds and booking events (append-only), with tests on real PostgreSQL.
+
 ## 22 Oct 2026 · P1.1–P1.2 storage · Areas and screen reports in the database
 - Prateek's answers merged (PR #14).
 - New `packages/db`: numbered SQL migrations and a small runner (each once, in a transaction, edited files refused, no BEGIN/COMMIT inside); `area_versions` (PostGIS, append-only, next-version and later-start enforced by the database; `saveAreaVersion` runs the domain overlap check under a lock); `screen_inboxes`, `screen_reports` (each report once by its number), `minute_summaries` (TimescaleDB), `screen_inbox_changes` (who moved an inbox, when). New CI job runs the database tests on a real PostgreSQL and the migrations twice. Runbook: `laptop-setup.md`.
