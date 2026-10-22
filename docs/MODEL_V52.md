@@ -29,6 +29,7 @@ Moving LED screens (28-inch, P2.5) on delivery and bike-taxi two-wheelers in Hyd
 
 ## Riders (unchanged)
 - POC flat ₹8,000 / ₹10,000 / ₹12,000 (base ₹2,000/₹4,000/₹6,000 + ₹6,000 founding bonus; bonus in full only for 150+ verified moving hours, pro rata 100–150, nothing below 100). Day-90 bonus ₹3,000 into the screen loan.
+  - **Changed 22 Oct 2026 (Prateek):** the bonus needs 150 moving hours minimum; no part bonus below 150. Only moving hours as RECALL calculates them count, inside Hyderabad during the POC (radius to be confirmed). See DECISIONS.
 - After POC: ₹25 a moving hour + 25% of what his hours sell ≈ ₹13,350 a month; ≈ ₹12,000 in hand during the 36-month EMI (≈ ₹1,370) after a 3-month holiday.
 - Screens: RECALL buys (₹31,000 + GST), sells to rider; partner bank lends to the rider and pays RECALL as seller; loans/EMIs never on RECALL's books; 5% first-loss deposit ₹1,830 per new bike; ₹46.5 L back for ~150 POC screens in Nov 2027; ~2 months of screen stock held.
 - Rider pay ≈ 37% of every ₹100 billed. Total rider pay: 2028 ₹19 Cr, 2029 ₹67 Cr, 2030 ₹161 Cr, 2031 ₹233 Cr.
