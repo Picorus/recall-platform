@@ -2,6 +2,21 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 22 Oct 2026 · P1.3 (part 2) · Bookings in the database, and review fixes
+- `packages/db` migration 0004: `price_books` (versioned), `bookings` (with the hold they came from), `booking_lines` (area version and price kept), `booking_events` (each step a new row), `trials_used`, `holds`, `hold_lines`, `area_hour_limits` (versioned). Append-only; `recall_app` insert/read only. Bookings and holds are checked one at a time; limits are checked again when a draft becomes a sale (a test caught two drafts both taking the last limited bikes).
+- Second review found 6 issues, all fixed with tests: another brand's hold could be used (now only the hold's brand, while it lasts); a hold that became a booking was counted twice; 6/12-month offers on a one-day booking (now every month must have hours); short-notice ad approval (after the deadline only staff, with a reason; a late payment is always recorded); trial loopholes (blank phone, GST with spaces: now must be valid); no upper limit on bikes. Also: areas checked on each line's own day; forfeited bookings (ads missing) free their bikes; a draft from before a price change, or a portal draft now inside 15 days, cannot go to payment.
+- Tests: 140 domain, 34 database.
+- Open: how long a payment link (awaiting payment) may hold limited bikes — to set with the payments step (P1.7); open question 12 (refund on cancellation).
+- **Next: P1.4** the ad scheduler (hour plan, live assignment every 60 s, offline fallback, one brand per bike per hour, the 240 spots, priority order, simulation proof).
+
+## 22 Oct 2026 · P1.3 (part 1) · Prices, quotes, booking steps, holds, free trial
+- Database work merged (PR #15). P1.1–P1.2 marked Done.
+- `packages/domain`: `price-book.ts` (Peak ₹300 / Normal ₹250 / Lite ₹220, 200 plays a bike-hour, GST 18%, 5 bikes, ₹15,000, 6/12-month offers 8%/12% with the ₹220 floor, 15-day portal lead, ads due 7 days before, trial 7 days / 20 bike-hours — all one versioned setting); `bookings.ts` (lines, area and date checks, India hour → UTC, quote in whole paise, GST, ads-due time); `booking-flow.ts` (steps Draft → … → Report sent with Cancelled and Ads missing; holds against manual limits; free-trial check).
+- Check: the admin sample Biryani Hub prices to ₹54,000 + ₹9,720 = ₹63,720 exactly.
+- Tests: 134 in `packages/domain` (property test: 500 random bookings, money always adds up in paise, never below the floor or the minimum).
+- New open question 12: refund when a brand cancels a paid booking before it starts.
+- **Next: P1.3 part 2** — database tables for price books, bookings, lines, holds and booking events (append-only), with tests on real PostgreSQL.
+
 ## 22 Oct 2026 · P1.1–P1.2 storage · Areas and screen reports in the database
 - Prateek's answers merged (PR #14).
 - New `packages/db`: numbered SQL migrations and a small runner (each once, in a transaction, edited files refused, no BEGIN/COMMIT inside); `area_versions` (PostGIS, append-only, next-version and later-start enforced by the database; `saveAreaVersion` runs the domain overlap check under a lock); `screen_inboxes`, `screen_reports` (each report once by its number), `minute_summaries` (TimescaleDB), `screen_inbox_changes` (who moved an inbox, when). New CI job runs the database tests on a real PostgreSQL and the migrations twice. Runbook: `laptop-setup.md`.

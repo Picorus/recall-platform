@@ -2,3 +2,4 @@
 export * from './areas.js';
 export * from './migrate.js';
 export * from './screen-reports.js';
+export * from './bookings.js';

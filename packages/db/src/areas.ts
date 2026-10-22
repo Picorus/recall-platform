@@ -110,12 +110,18 @@ export async function areaHistory(pool: Pool, areaId: string): Promise<AreaVersi
 }
 
 /** The version of every area in force at `instant` (UTC ISO), on or off. */
-export async function areasAt(pool: Pool, instant: string): Promise<AreaVersion[]> {
+export async function areasAt(pool: Pick<Pool, 'query'>, instant: string): Promise<AreaVersion[]> {
   if (Number.isNaN(parseUtcIso(instant))) throw new RangeError(`Not a UTC time: ${instant}`);
   const r = await pool.query<Row>(
     `SELECT DISTINCT ON (area_id) ${COLUMNS} FROM area_versions
       WHERE valid_from <= $1 ORDER BY area_id, version DESC`,
     [instant],
   );
+  return r.rows.map(toArea);
+}
+
+/** Every version of every area (a small table), for checking each booking line on its own day. */
+export async function allAreaVersions(pool: Pick<Pool, 'query'>): Promise<AreaVersion[]> {
+  const r = await pool.query<Row>(`SELECT ${COLUMNS} FROM area_versions ORDER BY area_id, version`);
   return r.rows.map(toArea);
 }
