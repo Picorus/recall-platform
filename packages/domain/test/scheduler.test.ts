@@ -7,6 +7,7 @@ import {
   DEFAULT_SPOT_RULES as RULES,
   fallbackPick,
   fnv1a32,
+  hash32,
   isRecallSpot,
   playsLeft,
   recallSpotsPerHour,
@@ -46,6 +47,9 @@ const bikesIn = (n: number, prefix = 'scr'): BikeNow[] =>
 const count = (m: Map<string, Carry>, lineId: string | undefined) =>
   [...m.values()].filter((c) => c.lineId === lineId).length;
 const NONE = new Map<string, Progress>();
+const SPOTS = new Map<string, number>();
+/** hash32 of '', 'a' and a real key: copy these into the Kotlin player's tests. */
+const HASH_VECTORS = [2872998923, 444641715, 1673192015];
 /** Count on every bike for all its remaining plays (to see the plain split). */
 const FULL: AssignRules = { expectStayBp: 10_000 };
 
@@ -137,7 +141,7 @@ describe('live assignment (P1.4.2)', () => {
       paid: [paid('L1', 20), paid('L2', 10)],
       trials: [paid('T1', 20)],
     });
-    const m = assign(plan, bikesIn(40), NONE, START, RULES, FULL);
+    const m = assign(plan, bikesIn(40), NONE, SPOTS, START, RULES, FULL);
     expect([count(m, 'L1'), count(m, 'L2'), count(m, 'T1')]).toEqual([20, 10, 10]);
   });
 
@@ -147,7 +151,7 @@ describe('live assignment (P1.4.2)', () => {
       paid: [paid('L1', 20), paid('L2', 10)],
       trials: [paid('T1', 20)],
     });
-    const m = assign(plan, bikesIn(40), NONE, START);
+    const m = assign(plan, bikesIn(40), NONE, SPOTS, START);
     // 4,000 plays ÷ 180 a bike = 23 bikes; 2,000 ÷ 180 = 12; the trial gets the 5 left.
     expect([count(m, 'L1'), count(m, 'L2'), count(m, 'T1')]).toEqual([23, 12, 5]);
   });
@@ -158,28 +162,28 @@ describe('live assignment (P1.4.2)', () => {
       paid: [paid('L1', 30), paid('L2', 10)],
       trials: [paid('T1', 50)],
     });
-    const m = assign(plan, bikesIn(20), NONE, START);
+    const m = assign(plan, bikesIn(20), NONE, SPOTS, START);
     expect(count(m, 'T1') + count(m, undefined)).toBe(0);
     expect(count(m, 'L1')).toBeGreaterThan(count(m, 'L2'));
   });
 
-  it('a bike keeps its line while the line still needs plays (no flicker), and is freed when it is done', () => {
+  it('a bike keeps its line while the line has a gap (no flicker); extra bikes and a finished line free bikes', () => {
     const plan = buildHourPlan({ ...base, paid: [paid('L1', 5), paid('L2', 5)] });
     const bikes = bikesIn(10).map((b, i) => ({
       ...b,
       carrying: { lineId: i < 8 ? 'L1' : 'L2', spotId: undefined },
       carried: [i < 8 ? 'L1' : 'L2'],
     }));
-    const kept = assign(plan, bikes, NONE, START + 600);
-    expect(count(kept, 'L1')).toBe(8);
+    const kept = assign(plan, bikes, NONE, SPOTS, START + 600);
+    // L1 needs 1,000 plays; each bike is counted on for 150 from here: 7 keep it, the 8th goes to L2.
+    expect(count(kept, 'L1')).toBe(7);
+    expect(count(kept, 'L2')).toBe(3);
+    for (const b of bikes.slice(0, 7)) expect(kept.get(b.screenId)?.lineId).toBe('L1');
     const done = new Map([['L1', { plays: 1000, bikes: 8 }]]);
-    const after = assign(plan, bikes, done, START + 600);
+    const after = assign(plan, bikes, done, SPOTS, START + 600);
     expect(count(after, 'L1')).toBe(0);
-    // L2 gets enough bikes for its 1,000 plays (about 167 each from here); the rest play RECALL's.
-    const each = playsLeft(plan, START + 600).brand;
-    expect(count(after, 'L2') * each).toBeGreaterThanOrEqual(1000);
-    expect((count(after, 'L2') - 1) * each).toBeLessThan(1000);
-    expect(count(after, undefined)).toBe(10 - count(after, 'L2'));
+    // L1 is done: every bike goes to L2 (the spare ones top it up rather than play RECALL's ads).
+    expect(count(after, 'L2')).toBe(10);
   });
 
   it('a line still short of different bikes is given bikes that have not carried it', () => {
@@ -190,6 +194,7 @@ describe('live assignment (P1.4.2)', () => {
       plan,
       [...old, ...bikesIn(3, 'new')],
       new Map([['L1', { plays: 400, bikes: 2 }]]),
+      SPOTS,
       START + 1200,
     );
     for (const b of bikesIn(3, 'new')) expect(m.get(b.screenId)?.lineId).toBe('L1');
@@ -203,13 +208,14 @@ describe('live assignment (P1.4.2)', () => {
       makeUps: [{ lineId: 'OLD', brandId: 'b', ads: ['old'], plays: 600 }],
       aggregator: [{ id: 'AGG', ads: ['agg'], plays: 500 }],
     });
-    const m = assign(plan, bikesIn(10), NONE, START, RULES, FULL);
+    const m = assign(plan, bikesIn(10), NONE, SPOTS, START, RULES, FULL);
     expect([...m.values()].every((c) => c.spotId === 'OLD')).toBe(true);
-    expect(count(m, 'L1')).toBe(5);
+    // L1 first (5 bikes), then 1 bike for what the spots cannot cover; the spare 4 top up L1.
     expect(count(m, 'OLD')).toBe(1);
+    expect(count(m, 'L1')).toBe(9);
     // Nothing owed: the aggregator gets the spots.
     const none = buildHourPlan({ ...base, aggregator: [{ id: 'AGG', ads: ['agg'], plays: 80 }] });
-    const n = assign(none, bikesIn(4), NONE, START, RULES, FULL);
+    const n = assign(none, bikesIn(4), NONE, SPOTS, START, RULES, FULL);
     expect([...n.values()].map((c) => c.spotId)).toEqual(['AGG', 'AGG', undefined, undefined]);
   });
 
@@ -223,8 +229,109 @@ describe('live assignment (P1.4.2)', () => {
       ...b,
       carrying: { lineId: undefined, spotId: 'AGG' },
     }));
-    const m = assign(plan, bikes, NONE, START, RULES, FULL);
+    const m = assign(plan, bikes, NONE, SPOTS, START, RULES, FULL);
     expect([...m.values()].map((c) => c.spotId).sort()).toEqual(['AGG', 'OLD']);
+  });
+
+  it('a make-up or trial never keeps a bike a paid line needs', () => {
+    const plan = buildHourPlan({
+      ...base,
+      paid: [paid('L1', 5)],
+      makeUps: [{ lineId: 'OLD', brandId: 'b', ads: ['old'], plays: 600 }],
+      trials: [paid('T1', 5)],
+    });
+    const bikes = bikesIn(6).map((b, i) => ({
+      ...b,
+      carrying: { lineId: i < 3 ? 'OLD' : 'T1', spotId: undefined },
+      carried: [i < 3 ? 'OLD' : 'T1'],
+    }));
+    const m = assign(plan, bikes, NONE, SPOTS, START + 60);
+    expect(count(m, 'L1')).toBe(6);
+  });
+
+  it('a make-up already delivered in RECALL spots frees its bikes', () => {
+    const plan = buildHourPlan({
+      ...base,
+      makeUps: [{ lineId: 'OLD', brandId: 'b', ads: ['old'], plays: 600 }],
+    });
+    const bikes = bikesIn(6).map((b) => ({
+      ...b,
+      carrying: { lineId: 'OLD', spotId: 'OLD' },
+      carried: ['OLD'],
+    }));
+    const m = assign(plan, bikes, NONE, new Map([['OLD', 600]]), START + 60);
+    expect(count(m, 'OLD')).toBe(0);
+    expect([...m.values()].every((c) => c.spotId === undefined)).toBe(true);
+  });
+
+  it('over-covered lines give bikes back: 11 bikes all on L1 at first, both lines delivered', () => {
+    const plan = buildHourPlan({ ...base, paid: [paid('L1', 5), paid('L2', 5)] });
+    let carry = new Map<string, Carry>(
+      bikesIn(11).map((b) => [b.screenId, { lineId: 'L1', spotId: undefined }]),
+    );
+    const plays = new Map<string, number>();
+    const seen = new Map<string, Set<string>>();
+    for (let s = 0; s < 3600; s += 15) {
+      if (s % 60 === 0) {
+        const progress = new Map(
+          [...plays].map(([id, n]) => [id, { plays: n, bikes: seen.get(id)?.size ?? 0 }]),
+        );
+        const bikes = bikesIn(11).map((b) => ({
+          ...b,
+          carrying: carry.get(b.screenId),
+          carried: [...seen].filter(([, set]) => set.has(b.screenId)).map(([id]) => id),
+        }));
+        carry = assign(plan, bikes, progress, SPOTS, START + s);
+      }
+      if (isRecallSpot(s / 15, RULES)) continue;
+      for (const [screen, c] of carry) {
+        if (c.lineId === undefined) continue;
+        plays.set(c.lineId, (plays.get(c.lineId) ?? 0) + 1);
+        seen.set(c.lineId, (seen.get(c.lineId) ?? new Set()).add(screen));
+      }
+    }
+    expect(plays.get('L1')).toBeGreaterThanOrEqual(1000);
+    expect(plays.get('L2')).toBeGreaterThanOrEqual(1000);
+    expect(seen.get('L2')?.size).toBeGreaterThanOrEqual(5);
+  });
+
+  it('a line short of different bikes gets new bikes even when its plays are covered', () => {
+    const plan = buildHourPlan({ ...base, paid: [paid('L1', 5)] });
+    const old = bikesIn(2, 'old').map((b) => ({
+      ...b,
+      carrying: { lineId: 'L1', spotId: undefined },
+      carried: ['L1'],
+    }));
+    const m = assign(
+      plan,
+      [...old, ...bikesIn(3, 'new')],
+      new Map([['L1', { plays: 700, bikes: 2 }]]),
+      SPOTS,
+      START + 1800,
+    );
+    for (const b of bikesIn(3, 'new')) expect(m.get(b.screenId)?.lineId).toBe('L1');
+  });
+
+  it('at the last brand spot, free bikes still spread over the lines that need a play', () => {
+    const plan = buildHourPlan({ ...base, paid: [paid('L1', 5), paid('L2', 5)] });
+    const m = assign(
+      plan,
+      bikesIn(11),
+      new Map([
+        ['L1', { plays: 990, bikes: 5 }],
+        ['L2', { plays: 999, bikes: 5 }],
+      ]),
+      SPOTS,
+      START + 3570,
+    );
+    expect([count(m, 'L1'), count(m, 'L2')]).toEqual([10, 1]);
+  });
+
+  it('a screen listed twice is refused', () => {
+    const plan = buildHourPlan({ ...base, paid: [paid('L1', 5)] });
+    expect(() => assign(plan, [...bikesIn(1), ...bikesIn(1)], NONE, SPOTS, START)).toThrow(
+      /listed twice/,
+    );
   });
 
   it('property: every bike gets exactly one answer, only from the plan, the same whatever the order', () => {
@@ -249,28 +356,24 @@ describe('live assignment (P1.4.2)', () => {
               carried: was ? [was] : [],
             };
           });
-          const m = assign(plan, bikes, NONE, START + at);
-          const r = assign(plan, [...bikes].reverse(), NONE, START + at);
+          const m = assign(plan, bikes, NONE, SPOTS, START + at);
+          const r = assign(plan, [...bikes].reverse(), NONE, SPOTS, START + at);
           expect(m.size).toBe(n);
           expect([...m.entries()].sort()).toEqual([...r.entries()].sort());
           for (const c of m.values()) {
             if (c.lineId !== undefined) expect(ids).toContain(c.lineId);
             if (c.spotId !== undefined) expect(c.spotId).toBe('OLD');
           }
-          // Paid lines are never left short while a bike plays RECALL's own ads or a make-up.
-          const left = playsLeft(plan, START + at).brand;
+          // While a paid line still has a gap, no bike plays RECALL's own ads or a make-up.
+          const full = playsLeft(plan, START + at).brand;
+          const each = full === 0 ? 0 : Math.max(1, Math.floor(full * 0.9));
           const shortPaid = plan.lines.some(
-            (l) => l.kind === 'paid' && l.plays > count(m, l.lineId) * left,
+            (l) => l.kind === 'paid' && l.plays > count(m, l.lineId) * each,
           );
-          if (shortPaid && left > 0) {
-            const idle = [...m.entries()].filter(
-              ([s, c]) =>
-                c.lineId === undefined ||
-                (c.lineId === 'OLD' &&
-                  bikes.find((b) => b.screenId === s)?.carrying?.lineId !== 'OLD'),
-            );
-            expect(idle).toEqual([]);
-          }
+          if (shortPaid && full > 0)
+            expect(
+              [...m.values()].filter((c) => c.lineId === undefined || c.lineId === 'OLD'),
+            ).toEqual([]);
         },
       ),
       { numRuns: 300 },
@@ -285,15 +388,42 @@ describe('offline fallback (P1.4.3)', () => {
     expect(fnv1a32('foobar')).toBe(0xbf9cf968);
   });
 
-  it('10,000 screens with no network split across lines in proportion to bikes sold', () => {
-    const plan = buildHourPlan({ ...base, paid: [paid('L1', 30), paid('L2', 10)] });
-    const picks = new Map<string, number>();
-    for (const b of bikesIn(10_000)) {
-      const id = fallbackPick(plan, b.screenId).lineId ?? '-';
-      picks.set(id, (picks.get(id) ?? 0) + 1);
+  it('the mixed hash is pinned (the Kotlin player must give the same)', () => {
+    expect([hash32(''), hash32('a'), hash32('sim-1|L1|hyd-madhapur|2028-04-11|18')]).toEqual(
+      HASH_VECTORS,
+    );
+  });
+
+  it('20,000 screens with no network split across lines in proportion to bikes sold (within 1%)', () => {
+    for (const sizes of [
+      [30, 10],
+      [20, 20, 7],
+    ]) {
+      const plan = buildHourPlan({ ...base, paid: sizes.map((n, i) => paid(`L${i}`, n)) });
+      const picks = new Map<string, number>();
+      for (const b of bikesIn(20_000, 'sim')) {
+        const id = fallbackPick(plan, b.screenId).lineId ?? '-';
+        picks.set(id, (picks.get(id) ?? 0) + 1);
+      }
+      const total = sizes.reduce((a, b) => a + b, 0);
+      sizes.forEach((n, i) =>
+        expect(Math.abs((picks.get(`L${i}`) ?? 0) / 20_000 - n / total)).toBeLessThan(0.01),
+      );
     }
-    expect((picks.get('L1') ?? 0) / 10_000).toBeCloseTo(0.75, 1);
-    expect((picks.get('L2') ?? 0) / 10_000).toBeCloseTo(0.25, 1);
+  });
+
+  it('offline RECALL spots: make-ups owed first, aggregator ads only when none is owed', () => {
+    const plan = buildHourPlan({
+      ...base,
+      makeUps: [{ lineId: 'OLD', brandId: 'b', ads: ['old'], plays: 40 }],
+      aggregator: [{ id: 'AGG', ads: ['agg'], plays: 2000 }],
+    });
+    for (const b of bikesIn(100)) expect(fallbackPick(plan, b.screenId).spotId).toBe('OLD');
+    const none = buildHourPlan({
+      ...base,
+      aggregator: plan.spotDemands.filter((d) => d.kind === 'aggregator'),
+    });
+    expect(fallbackPick(none, 'scr-1').spotId).toBe('AGG');
   });
 
   it('the same screen picks the same line all hour; trials only when nothing is paid', () => {

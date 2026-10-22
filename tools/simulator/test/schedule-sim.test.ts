@@ -18,11 +18,31 @@ describe('the scheduler delivers (P1.4.7)', () => {
     expect(a).toEqual(b);
   }, 60_000);
 
-  it('2,000 bikes: every line fully delivered; with no network all hour, still 97%+ of plays', () => {
-    const live = simulateSchedule({ bikes: 2000, seed: 7, mode: 'live', sellShare: 0.9 });
+  it('2,000 bikes: every line fully delivered, with make-ups owed and an aggregator in RECALL spots; with no network all hour, still 97%+ of plays', () => {
+    const live = simulateSchedule({
+      bikes: 2000,
+      seed: 7,
+      mode: 'live',
+      sellShare: 0.9,
+      makeUpShare: 0.05,
+      aggregatorSpots: 2000,
+    });
     expect(live.lines.length).toBeGreaterThan(10);
     expect(live.linesMet).toBe(live.lines.length);
+    expect(live.makeUpsDelivered).toBe(live.makeUpsOwed);
+    expect(live.aggregatorPlayed).toBeGreaterThan(0);
     const offline = simulateSchedule({ bikes: 2000, seed: 7, mode: 'offline', sellShare: 0.9 });
     expect(offline.playsDelivered / offline.playsSold).toBeGreaterThan(0.97);
+  }, 300_000);
+
+  it('sold from a different day (as the real forecast is): 99.5%+ of plays, the rest left for make-ups', () => {
+    const r = simulateSchedule({
+      bikes: 2000,
+      seed: 7,
+      forecastSeed: 99,
+      mode: 'live',
+      sellShare: 0.9,
+    });
+    expect(r.playsDelivered / r.playsSold).toBeGreaterThan(0.995);
   }, 300_000);
 });

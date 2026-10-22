@@ -1,5 +1,5 @@
 // The scheduler proof from the command line (P1.4.7), e.g.
-//   pnpm --filter @recall/simulator schedule -- --bikes 15500 --sell 0.9 --seed 7
+//   pnpm --filter @recall/simulator schedule -- --bikes 15500 --sell 0.9 --seed 7 --forecast-seed 99
 import { parseArgs } from 'node:util';
 import { simulateSchedule } from './schedule-sim.js';
 
@@ -9,6 +9,9 @@ const { values } = parseArgs({
     bikes: { type: 'string', default: '2000' },
     sell: { type: 'string', default: '0.9' },
     seed: { type: 'string', default: '7' },
+    'forecast-seed': { type: 'string' },
+    'make-ups': { type: 'string', default: '0.05' },
+    aggregator: { type: 'string', default: '2000' },
   },
 });
 for (const mode of ['live', 'offline'] as const) {
@@ -18,6 +21,11 @@ for (const mode of ['live', 'offline'] as const) {
     seed: Number(values.seed),
     mode,
     sellShare: Number(values.sell),
+    ...(values['forecast-seed'] === undefined
+      ? {}
+      : { forecastSeed: Number(values['forecast-seed']) }),
+    makeUpShare: Number(values['make-ups']),
+    aggregatorSpots: Number(values.aggregator),
   });
   const pct = (a: number, b: number) => (b === 0 ? '—' : `${((100 * a) / b).toFixed(2)}%`);
   console.log(

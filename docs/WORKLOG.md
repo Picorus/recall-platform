@@ -2,6 +2,35 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 22 Oct 2026 · P1.4 · The ad scheduler
+- P1.3.7 merged (PR #17). P1.3 done.
+- `packages/domain/src/scheduler.ts`:
+  - Hour plan (P1.4.1): paid → make-ups → trials for whole bikes; make-ups → aggregator ads for RECALL spots; RECALL's own ads last. 2–5 ads a booking (settings).
+  - 240-spot pattern (P1.4.5): 200 brand plays, plus a RECALL spot after every 5. Only the carried brand's ads, in turn (P1.4.4).
+  - Live assignment every minute (P1.4.2): tier by tier, a bike keeps its line while that line has a gap. Over-covered lines give bikes back. New bikes are preferred while a line is short of different bikes. A bike is counted on for 90% of its remaining plays (bikes leave), and spare bikes top up unfinished lines before playing RECALL ads.
+  - Offline fallback (P1.4.3): weighted rendezvous hashing, FNV-1a plus a final mix. Test numbers are pinned for the Kotlin player. Make-ups come before aggregator ads here too.
+- `tools/simulator`, scheduler proof (P1.4.7): a first pass measures what each area carried, a share is sold, then the hour is replayed with the scheduler, make-ups and an aggregator. Command: `pnpm --filter @recall/simulator schedule -- --bikes 15500`.
+- Results at 2,000 bikes, seed 7:
+  - 90% sold, cloud assigning: 19 of 19 lines fully delivered; make-ups owed 3,260, delivered 3,260.
+  - 100% sold: 21 of 21.
+  - Sold from a different day's numbers (as the real forecast does): 99.9% of plays; 3 lines about 1% short, which make-ups cover.
+  - No network all hour: 98.6%.
+- At 15,500 bikes, 90% sold, first version: 133 of 133 lines fully delivered (521,200 plays). Re-run on the final version: see the PR.
+- Second review found 8 issues, all fixed with tests:
+  - make-ups and trials could keep bikes a paid line needed;
+  - a make-up delivered in spots kept its bikes;
+  - over-covered lines never gave bikes back;
+  - the "different bikes" promise was dropped once plays were covered;
+  - the offline split was 10–20% off its weights (hash fixed: now within 1%);
+  - at the last spot, all free bikes piled onto one line;
+  - offline spots ignored "make-ups first";
+  - the simulator was too kind (perfect forecast, no make-ups, re-entering bikes changed brand).
+- Tests: 181 domain (26 scheduler, including a property test), 13 simulator.
+- Open:
+  - In the simulator the cloud sees counted plays at once. Real counting (P1.5) arrives with delay.
+  - With no network all hour and make-ups owed, aggregator ads get no spots that hour.
+- **Next: P1.5** play counting and proof.
+
 ## 22 Oct 2026 · P1.3.7 · Selling only what an area can carry (after the POC); 6-month deals
 - Bookings merged (PR #16). Prateek's rules recorded: drafts reserve nothing; RECALL's 40 spots go make-ups → aggregator ads (free) → RECALL ads; drafts always paid at current prices; POC needs no forecast.
 - 6/12-month deals reworked: lines at list price; one discount on the bill on Peak and Normal hours only; hours spread about equally over the months (±20%). Migration 0005 stores the discount.

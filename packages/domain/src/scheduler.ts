@@ -16,9 +16,17 @@ export interface SpotRules {
   readonly spotSeconds: number;
   /** Brand plays before each RECALL spot (5 → 200 brand plays and 40 RECALL spots an hour). */
   readonly brandPlaysPerRecallSpot: number;
+  /** A booking's ads take turns: at least this many, at most `maxAds` (make-ups and aggregator ads: 1 or more). */
+  readonly minAds: number;
+  readonly maxAds: number;
 }
 
-export const DEFAULT_SPOT_RULES: SpotRules = { spotSeconds: 15, brandPlaysPerRecallSpot: 5 };
+export const DEFAULT_SPOT_RULES: SpotRules = {
+  spotSeconds: 15,
+  brandPlaysPerRecallSpot: 5,
+  minAds: 2,
+  maxAds: 5,
+};
 
 /** Live assignment settings. */
 export interface AssignRules {
@@ -123,7 +131,8 @@ export function buildHourPlan(input: PlanInput, rules: SpotRules = DEFAULT_SPOT_
   const perBike = brandPlaysPerHour(rules);
   const ids = new Set<string>();
   const checkAds = (id: string, ads: readonly string[], min: number) => {
-    if (ads.length < min || ads.length > 5) problems.push(`${id}: needs ${min} to 5 ads`);
+    if (ads.length < min || ads.length > rules.maxAds)
+      problems.push(`${id}: needs ${min} to ${rules.maxAds} ads`);
   };
   const whole = (id: string, n: number) => {
     if (!Number.isSafeInteger(n) || n < 0) problems.push(`${id}: must be a whole number`);
@@ -134,7 +143,7 @@ export function buildHourPlan(input: PlanInput, rules: SpotRules = DEFAULT_SPOT_
   };
   for (const l of [...input.paid, ...input.trials]) {
     unique(l.lineId);
-    checkAds(l.lineId, l.ads, 2);
+    checkAds(l.lineId, l.ads, rules.minAds);
     whole(l.lineId, l.bikes);
   }
   for (const m of input.makeUps) {
@@ -253,110 +262,162 @@ export function playsLeft(
   return { brand: total - done - recall, recall };
 }
 
-const TIER: Readonly<Record<PlanLine['kind'], number>> = { paid: 0, 'make-up': 1, trial: 2 };
-
 /**
  * Every minute, for one area: which line each bike inside carries, and what fills its RECALL
- * spots. A bike keeps what it carries while that is still wanted (no flicker for the brand). Each
- * other bike goes to the line with the biggest gap (need − counted − expected from bikes already
- * carrying it), paid lines first; a line still short of different bikes is offered bikes that have
- * not carried it yet. RECALL spots go to make-ups, then aggregator ads; anything left plays
- * RECALL's own ads.
+ * spots (P1.4.2).
+ *
+ * Lines are served in tiers: paid, then make-ups, then trials. Within a tier, a bike already on a
+ * line keeps it while the line still has a gap (need − counted − expected from bikes already on
+ * it), so a brand does not flicker and an over-covered line gives bikes back. Then the tier takes
+ * more bikes: first bikes carrying nothing, only then bikes from lower tiers (a make-up or trial
+ * never keeps a bike a paid line needs). A line short of different bikes is offered bikes that
+ * have not carried it, even when its plays are covered. Bikes still spare top up lines not yet
+ * fully counted. RECALL spots go to make-ups, then aggregator ads; the rest is RECALL's own ads.
+ *
+ * `progress`: plays and different bikes counted so far for each line in this area-hour.
+ * `spotPlays`: RECALL spots counted so far for each make-up or aggregator id.
  */
 export function assign(
   plan: HourPlan,
   bikes: readonly BikeNow[],
   progress: ReadonlyMap<string, Progress>,
+  spotPlays: ReadonlyMap<string, number>,
   now: number,
   rules: SpotRules = DEFAULT_SPOT_RULES,
   assignRules: AssignRules = DEFAULT_ASSIGN_RULES,
 ): Map<string, Carry> {
   const full = playsLeft(plan, now, rules);
-  const stay = (n: number) => Math.floor((n * assignRules.expectStayBp) / 10_000);
-  // Expected from one bike from now on; "nothing left" stays nothing.
-  const left = { brand: stay(full.brand), recall: stay(full.recall), any: full.brand > 0 };
-  const out = new Map<string, Carry>();
+  // Counted on from one bike from now on: a share of what it will give, at least 1 while any is left.
+  const stay = (n: number) =>
+    n === 0 ? 0 : Math.max(1, Math.floor((n * assignRules.expectStayBp) / 10_000));
+  const left = { brand: stay(full.brand), recall: stay(full.recall) };
   const sorted = [...bikes].sort((a, b) => (a.screenId < b.screenId ? -1 : 1));
+  sorted.forEach((b, i) => {
+    if (i > 0 && sorted[i - 1]?.screenId === b.screenId)
+      throw new RangeError(`Screen ${b.screenId} listed twice`);
+  });
 
-  // RECALL spots first: make-ups owed, then aggregator ads. A make-up counts its plays in RECALL
-  // spots and on whole bikes together.
+  // RECALL spots: make-ups owed, then aggregator ads. A make-up counts its plays in RECALL spots
+  // and on whole bikes together.
+  const lineById = new Map(plan.lines.map((l) => [l.lineId, l]));
   const spotGap = new Map(
     plan.spotDemands.map((d) => [
       d.id,
       d.plays -
-        (progress.get(`spot:${d.id}`)?.plays ?? 0) -
+        (spotPlays.get(d.id) ?? 0) -
         (d.kind === 'make-up' ? (progress.get(d.id)?.plays ?? 0) : 0),
     ]),
   );
-  const spotOf = new Map<string, string | undefined>();
+  const spotOf = new Map<string, string>();
+  const onSpot = new Map<string, number>();
   const takeSpot = (b: BikeNow, id: string) => {
     spotOf.set(b.screenId, id);
+    onSpot.set(id, (onSpot.get(id) ?? 0) + 1);
     spotGap.set(id, (spotGap.get(id) ?? 0) - left.recall);
   };
   const free: BikeNow[] = [];
-  // Bikes already on a make-up keep it while it is owed.
+  const demandById = new Map(plan.spotDemands.map((d) => [d.id, d]));
   for (const b of sorted) {
-    const id = b.carrying?.spotId;
-    const d = plan.spotDemands.find((x) => x.id === id);
+    const d = b.carrying?.spotId === undefined ? undefined : demandById.get(b.carrying.spotId);
     if (d?.kind === 'make-up' && (spotGap.get(d.id) ?? 0) > 0) takeSpot(b, d.id);
     else free.push(b);
   }
-  for (const b of free) {
-    if (left.recall === 0) break;
-    const open = plan.spotDemands.filter((x) => (spotGap.get(x.id) ?? 0) > 0);
-    const first = open[0];
-    if (!first) break;
-    // Keep what it had if that is of the kind now being filled; otherwise the first in order.
-    const had = open.find((x) => x.id === b.carrying?.spotId && x.kind === first.kind);
-    takeSpot(b, (had ?? first).id);
-  }
+  if (left.recall > 0)
+    for (const b of free) {
+      const open = plan.spotDemands.filter((x) => (spotGap.get(x.id) ?? 0) > 0);
+      const first = open[0];
+      if (!first) break;
+      // Keep what it had if that is of the kind now being filled; otherwise the first in order.
+      const had = open.find((x) => x.id === b.carrying?.spotId && x.kind === first.kind);
+      takeSpot(b, (had ?? first).id);
+    }
 
   // Whole bikes. A make-up's need is what its RECALL spots will not cover.
   const gap = new Map<string, number>();
   const short = new Map<string, number>();
   for (const l of plan.lines) {
-    const p = progress.get(l.lineId) ?? { plays: 0, bikes: 0 };
     const viaSpots =
       l.kind === 'make-up'
-        ? (progress.get(`spot:${l.lineId}`)?.plays ?? 0) +
-          [...spotOf.values()].filter((x) => x === l.lineId).length * left.recall
+        ? (spotPlays.get(l.lineId) ?? 0) + (onSpot.get(l.lineId) ?? 0) * left.recall
         : 0;
-    gap.set(l.lineId, l.plays - p.plays - viaSpots);
-    short.set(l.lineId, l.bikes - p.bikes);
+    gap.set(l.lineId, l.plays - (progress.get(l.lineId)?.plays ?? 0) - viaSpots);
+    short.set(l.lineId, l.bikes - (progress.get(l.lineId)?.bikes ?? 0));
   }
+  const out = new Map<string, Carry>();
   const take = (b: BikeNow, l: PlanLine) => {
     out.set(b.screenId, { lineId: l.lineId, spotId: spotOf.get(b.screenId) });
     gap.set(l.lineId, (gap.get(l.lineId) ?? 0) - left.brand);
     if (!b.carried.includes(l.lineId)) short.set(l.lineId, (short.get(l.lineId) ?? 0) - 1);
   };
-  const byId = new Map(plan.lines.map((l) => [l.lineId, l]));
-  const rest: BikeNow[] = [];
-  for (const b of sorted) {
-    const l = b.carrying?.lineId === undefined ? undefined : byId.get(b.carrying.lineId);
-    // Kept until the line has all its plays counted.
-    if (l && (progress.get(l.lineId)?.plays ?? 0) < l.plays) take(b, l);
-    else rest.push(b);
-  }
-  // New bikes go first, so they reach the lines still short of different bikes.
-  rest.sort((a, b) => a.carried.length - b.carried.length);
-  for (const b of rest) {
+  /** The line this bike should take in this tier, or undefined. */
+  const bestFor = (b: BikeNow, kind: PlanLine['kind']): PlanLine | undefined => {
     let best: PlanLine | undefined;
     let bestKey: readonly number[] = [];
     for (const l of plan.lines) {
-      const g = gap.get(l.lineId) ?? 0;
-      if (g <= 0 || !left.any) continue;
+      if (l.kind !== kind) continue;
       const fresh = !b.carried.includes(l.lineId) && (short.get(l.lineId) ?? 0) > 0 ? 1 : 0;
-      const key = [-TIER[l.kind], fresh, g];
+      const g = gap.get(l.lineId) ?? 0;
+      if (g <= 0 && fresh === 0) continue;
+      // Lines short of plays first; then, among them, bikes new to the line; then the biggest gap.
+      const key = [g > 0 ? 1 : 0, fresh, g];
       if (!best || compareKeys(key, bestKey) > 0) {
         best = l;
         bestKey = key;
       }
     }
-    if (best) take(b, best);
-    else out.set(b.screenId, { lineId: undefined, spotId: spotOf.get(b.screenId) });
+    return best;
+  };
+  let pool = sorted;
+  if (full.brand > 0)
+    for (const kind of ['paid', 'make-up', 'trial'] as const) {
+      // Bikes already on a line of this tier keep it while it has a gap.
+      const rest: BikeNow[] = [];
+      for (const b of pool) {
+        const l = b.carrying?.lineId === undefined ? undefined : lineById.get(b.carrying.lineId);
+        if (l?.kind === kind && (gap.get(l.lineId) ?? 0) > 0) take(b, l);
+        else rest.push(b);
+      }
+      // Then the rest: bikes carrying nothing first, new bikes before ones that carried lines.
+      const tier = TIER[kind];
+      const rank = (b: BikeNow) => {
+        const l = b.carrying?.lineId === undefined ? undefined : lineById.get(b.carrying.lineId);
+        return l && TIER[l.kind] > tier ? 1 : 0;
+      };
+      rest.sort((a, b) => rank(a) - rank(b) || a.carried.length - b.carried.length);
+      pool = [];
+      for (const b of rest) {
+        const l = bestFor(b, kind);
+        if (l) take(b, l);
+        else pool.push(b);
+      }
+      pool.sort((a, b) => (a.screenId < b.screenId ? -1 : 1));
+    }
+  // Bikes still spare top up lines not yet fully counted (bikes leave; better a few plays extra
+  // than short), in tier order, keeping their own line if it is one of them. Else RECALL's own ads.
+  const unfinished = (l: PlanLine) =>
+    (progress.get(l.lineId)?.plays ?? 0) +
+      (l.kind === 'make-up' ? (spotPlays.get(l.lineId) ?? 0) : 0) <
+    l.plays;
+  for (const b of full.brand > 0 ? pool : []) {
+    const open = plan.lines.filter(unfinished);
+    const tier = Math.min(...open.map((l) => TIER[l.kind]));
+    const own = open.find((l) => l.lineId === b.carrying?.lineId && TIER[l.kind] === tier);
+    const top = open
+      .filter((l) => TIER[l.kind] === tier)
+      .reduce<PlanLine | undefined>(
+        (best, l) => (best && (gap.get(best.lineId) ?? 0) >= (gap.get(l.lineId) ?? 0) ? best : l),
+        undefined,
+      );
+    const l = own ?? top;
+    if (l) take(b, l);
   }
+  for (const b of pool)
+    if (!out.has(b.screenId))
+      out.set(b.screenId, { lineId: undefined, spotId: spotOf.get(b.screenId) });
   return out;
 }
+
+const TIER: Readonly<Record<PlanLine['kind'], number>> = { paid: 0, 'make-up': 1, trial: 2 };
 
 function compareKeys(a: readonly number[], b: readonly number[]): number {
   for (let i = 0; i < Math.max(a.length, b.length); i++) {
@@ -379,6 +440,20 @@ export function fnv1a32(s: string): number {
 }
 
 /**
+ * FNV-1a followed by MurmurHash3's final mix, so similar ids ("sim-1", "sim-2") spread evenly.
+ * Unsigned 32-bit integer maths only (Kotlin: UInt).
+ */
+export function hash32(s: string): number {
+  let h = fnv1a32(s);
+  h ^= h >>> 16;
+  h = Math.imul(h, 0x85ebca6b) >>> 0;
+  h ^= h >>> 13;
+  h = Math.imul(h, 0xc2b2ae35) >>> 0;
+  h ^= h >>> 16;
+  return h >>> 0;
+}
+
+/**
  * Weighted rendezvous hashing: each choice gets a score from a hash of (screen, choice, hour), and
  * the screen takes the choice with the smallest −ln(u) / weight. Every screen picks independently,
  * yet over many screens each choice is picked in proportion to its weight. Ties go to the smaller id.
@@ -392,7 +467,7 @@ export function rendezvous(
   let bestScore = Number.POSITIVE_INFINITY;
   for (const c of [...choices].sort((a, b) => (a.id < b.id ? -1 : 1))) {
     if (!(c.weight > 0)) continue;
-    const u = (fnv1a32(`${screenId}|${c.id}|${hourKey}`) + 0.5) / 4_294_967_296;
+    const u = (hash32(`${screenId}|${c.id}|${hourKey}`) + 0.5) / 4_294_967_296;
     const score = -Math.log(u) / c.weight;
     if (score < bestScore) {
       best = c.id;
@@ -405,7 +480,7 @@ export function rendezvous(
 /**
  * What a screen carries when no assignment has come from the cloud (P1.4.3). Paid lines, weighted
  * by the bikes sold; make-ups and trials only when there are no paid lines. RECALL spots: make-ups
- * and aggregator ads weighted by the spots they want.
+ * owed (weighted by plays owed); aggregator ads only when no make-up is owed.
  */
 export function fallbackPick(plan: HourPlan, screenId: string): Carry {
   const hourKey = `${plan.areaId}|${plan.date}|${plan.startHour}`;
@@ -413,14 +488,20 @@ export function fallbackPick(plan: HourPlan, screenId: string): Carry {
     plan.lines
       .filter((l) => l.kind === kind)
       .map((l) => ({ id: l.lineId, weight: kind === 'make-up' ? l.plays : l.bikes }));
-  const tiers = [weighted('paid'), weighted('make-up'), weighted('trial')];
-  const lines = tiers.find((t) => t.some((c) => c.weight > 0)) ?? [];
+  const firstWith = <T extends { weight: number }>(tiers: readonly (readonly T[])[]) =>
+    tiers.find((t) => t.some((c) => c.weight > 0)) ?? [];
+  const spots = (kind: SpotDemand['kind']) =>
+    plan.spotDemands.filter((d) => d.kind === kind).map((d) => ({ id: d.id, weight: d.plays }));
   return {
-    lineId: rendezvous(screenId, hourKey, lines),
+    lineId: rendezvous(
+      screenId,
+      hourKey,
+      firstWith([weighted('paid'), weighted('make-up'), weighted('trial')]),
+    ),
     spotId: rendezvous(
       screenId,
       `${hourKey}|spot`,
-      plan.spotDemands.map((d) => ({ id: d.id, weight: d.plays })),
+      firstWith([spots('make-up'), spots('aggregator')]),
     ),
   };
 }
