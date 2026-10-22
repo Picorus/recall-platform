@@ -2,7 +2,6 @@
 // The rules live in @recall/domain; this file stores and loads, and makes sure bookings and holds are
 // checked one at a time so two people can never take the same limited bikes.
 import {
-  BookingError,
   capacityProblems,
   checkPriceBook,
   isoAt,
@@ -17,6 +16,7 @@ import {
   areaHourKey,
   type BookingLine,
   type BookingRequest,
+  type Actor,
   type BookingState,
   type Business,
   type Hold,
@@ -24,7 +24,7 @@ import {
   type Quote,
 } from '@recall/domain';
 import type { Pool, PoolClient } from 'pg';
-import { areasAt } from './areas.js';
+import { allAreaVersions } from './areas.js';
 
 async function inTransaction<T>(pool: Pool, work: (c: PoolClient) => Promise<T>): Promise<T> {
   const c = await pool.connect();
@@ -95,7 +95,7 @@ async function inventoryFor(c: PoolClient, lines: readonly BookingLine[], now: n
        FROM booking_lines bl JOIN (${wanted}) w USING (area_id, day, start_hour)
        JOIN LATERAL (SELECT state FROM booking_events e WHERE e.booking_id = bl.booking_id
                       ORDER BY seq DESC LIMIT 1) s ON true
-      WHERE s.state NOT IN ('draft', 'cancelled')
+      WHERE s.state NOT IN ('draft', 'cancelled', 'ads-missing')
       GROUP BY bl.area_id, bl.day, bl.start_hour`,
     [areaIds, days, hours],
   );
@@ -109,7 +109,13 @@ async function inventoryFor(c: PoolClient, lines: readonly BookingLine[], now: n
   }>(
     `SELECT h.hold_id, h.until, hl.area_id, hl.day::text, hl.start_hour, hl.bikes
        FROM holds h JOIN hold_lines hl USING (hold_id) JOIN (${wanted}) w USING (area_id, day, start_hour)
-      WHERE h.until > to_timestamp($4)`,
+      WHERE h.until > to_timestamp($4)
+        -- A hold that already became a live booking is counted as that booking, not twice.
+        AND NOT EXISTS (
+          SELECT 1 FROM bookings b
+            JOIN LATERAL (SELECT state FROM booking_events e WHERE e.booking_id = b.booking_id
+                           ORDER BY seq DESC LIMIT 1) s ON true
+           WHERE b.hold_id = h.hold_id AND s.state NOT IN ('draft', 'cancelled', 'ads-missing'))`,
     [areaIds, days, hours, now],
   );
   const key = (r: { area_id: string; day: string; start_hour: number }) =>
@@ -216,26 +222,30 @@ export interface NewBooking {
 
 /**
  * Checks, prices and saves a booking as a draft, using the price book in force now and the areas in
- * force at its first hour. Throws BookingError, CapacityError or an Error naming the problem.
+ * force at each line's hour. Throws BookingError, CapacityError or an Error naming the problem.
  */
 export async function createBooking(pool: Pool, b: NewBooking, now: number): Promise<Quote> {
   return inTransaction(pool, async (c) => {
     await lockInventory(c);
     const book = priceBookAt(await priceBooks(c), isoAt(now));
     if (!book) throw new Error('No price book in force');
-    const starts = b.request.lines.flatMap((l) => {
-      try {
-        return [lineStartsAt(l)];
-      } catch {
-        return [];
-      }
-    });
-    const areas = await areasAt(c, isoAt(starts.length > 0 ? Math.min(...starts) : now));
+    const areas = await allAreaVersions(c);
+    if (b.holdId !== undefined) {
+      // Only the hold's own brand can book against it, and only while it lasts.
+      const h = await c.query<{ brand_id: string; until: Date }>(
+        'SELECT brand_id, until FROM holds WHERE hold_id = $1',
+        [b.holdId],
+      );
+      const hold = h.rows[0];
+      if (!hold) throw new Error(`No hold ${b.holdId}`);
+      if (hold.brand_id !== b.brandId) throw new Error('This hold belongs to another brand');
+      if (hold.until.getTime() / 1000 <= now) throw new Error('This hold has ended');
+    }
     let q: Quote;
     if (b.trialFor) {
       const used = await c.query<{ identity: string }>(
         'SELECT identity FROM trials_used WHERE identity = ANY($1)',
-        [trialKeys(b.trialFor)],
+        [trialKeys(b.trialFor) ?? []],
       );
       const problem = trialProblem(
         b.request.lines,
@@ -269,7 +279,7 @@ export async function createBooking(pool: Pool, b: NewBooking, now: number): Pro
       b.holdId,
     );
     if (short.length > 0) throw new CapacityError(short);
-    const t = timingOf(b.request.lines);
+    const t = timingOf(b.request.lines, book.adsDueDays);
     await c.query(
       `INSERT INTO bookings (booking_id, brand_id, channel, trial, repeat_months, price_book_version,
          subtotal_paise, gst_paise, total_paise, first_hour_at, last_hour_ends_at, ads_due_at, created_by, hold_id)
@@ -292,15 +302,13 @@ export async function createBooking(pool: Pool, b: NewBooking, now: number): Pro
       ],
     );
     for (const l of q.lines) {
-      const area = areas.find((a) => a.areaId === l.areaId);
-      if (!area) throw new BookingError([{ kind: 'area', line: 0, detail: 'no such area' }]);
       await c.query(
         `INSERT INTO booking_lines (booking_id, area_id, area_version, day, start_hour, bikes, paise_per_bike_hour, plays, paise)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
         [
           b.bookingId,
           l.areaId,
-          area.version,
+          l.areaVersion,
           l.date,
           l.startHour,
           l.bikes,
@@ -312,7 +320,7 @@ export async function createBooking(pool: Pool, b: NewBooking, now: number): Pro
     }
     if (b.trialFor) {
       // The key makes a second trial impossible even if two requests arrive at once.
-      for (const identity of trialKeys(b.trialFor)) {
+      for (const identity of trialKeys(b.trialFor) ?? []) {
         await c.query('INSERT INTO trials_used (identity, booking_id) VALUES ($1, $2)', [
           identity,
           b.bookingId,
@@ -338,14 +346,20 @@ export async function bookingState(
   return r.rows[0]?.state;
 }
 
+/** Who asks for a step, and why (a reason is needed for short-notice ad approvals). */
+export interface StepBy {
+  readonly by: string;
+  readonly actor: Actor;
+  readonly reason?: string;
+}
+
 /** Moves a booking to its next step, if the rules allow it now; logs who and why. */
 export async function moveBooking(
   pool: Pool,
   bookingId: string,
   to: BookingState,
-  by: string,
+  who: StepBy,
   now: number,
-  reason?: string,
 ): Promise<void> {
   await inTransaction(pool, async (c) => {
     await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`booking:${bookingId}`]);
@@ -354,19 +368,35 @@ export async function moveBooking(
       state: BookingState;
       first_hour_at: Date;
       last_hour_ends_at: Date;
+      ads_due_at: Date;
+      channel: 'portal' | 'admin';
+      price_book_version: number;
+      trial: boolean;
     }>(
-      `SELECT e.seq, e.state, b.first_hour_at, b.last_hour_ends_at
+      `SELECT e.seq, e.state, b.first_hour_at, b.last_hour_ends_at, b.ads_due_at, b.channel,
+              b.price_book_version, b.trial
          FROM booking_events e JOIN bookings b USING (booking_id)
         WHERE e.booking_id = $1 ORDER BY e.seq DESC LIMIT 1`,
       [bookingId],
     );
     const last = r.rows[0];
     if (!last) throw new Error(`No booking ${bookingId}`);
-    const problem = stepProblem(last.state, to, now, {
+    const timing = {
       firstHourAt: last.first_hour_at.getTime() / 1000,
       lastHourEndsAt: last.last_hour_ends_at.getTime() / 1000,
-    });
+      adsDueAt: last.ads_due_at.getTime() / 1000,
+    };
+    const problem = stepProblem(last.state, to, now, timing, who.actor, who.reason);
     if (problem) throw new Error(problem);
+    if (last.state === 'draft' && to === 'awaiting-payment' && !last.trial) {
+      // The draft's prices must still be the ones in force, and portal brands still need the lead time.
+      const book = priceBookAt(await priceBooks(c), isoAt(now));
+      if (book?.version !== last.price_book_version)
+        throw new Error('Prices changed since this draft; make a new quote');
+      if (last.channel === 'portal' && timing.firstHourAt < now + book.portalLeadDays * 86_400) {
+        throw new Error(`Brands need to book ${book.portalLeadDays} days ahead`);
+      }
+    }
     if (last.state === 'draft' && to === 'awaiting-payment') {
       // Drafts hold no bikes; the moment a draft becomes a sale, check the limits again.
       await lockInventory(c);
@@ -397,7 +427,7 @@ export async function moveBooking(
     }
     await c.query(
       'INSERT INTO booking_events (booking_id, seq, state, at, by_who, reason) VALUES ($1, $2, $3, to_timestamp($4), $5, $6)',
-      [bookingId, last.seq + 1, to, now, by, reason ?? null],
+      [bookingId, last.seq + 1, to, now, who.by, who.reason ?? null],
     );
   });
 }

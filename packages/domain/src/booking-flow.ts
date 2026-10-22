@@ -33,7 +33,12 @@ export interface Timing {
   /** First hour starts and last hour ends (UTC seconds). */
   readonly firstHourAt: number;
   readonly lastHourEndsAt: number;
+  /** Ads are due by then (7 days before the first hour, a setting). */
+  readonly adsDueAt: number;
 }
+
+/** Who asks for a step: a brand in its portal, RECALL staff, or the system (payments, the clock). */
+export type Actor = 'brand' | 'admin' | 'system';
 
 /** Why a step is not allowed now, or undefined when it is. */
 export function stepProblem(
@@ -41,15 +46,28 @@ export function stepProblem(
   to: BookingState,
   now: number,
   t: Timing,
+  actor: Actor,
+  reason?: string,
 ): string | undefined {
   if (!NEXT[from].includes(to)) return `cannot go from ${from} to ${to}`;
   switch (to) {
     case 'cancelled':
       return now < t.firstHourAt ? undefined : 'can only be cancelled before the first hour';
-    case 'ads-approved':
     case 'awaiting-payment':
-    case 'paid':
       return now < t.firstHourAt ? undefined : 'the first hour has already started';
+    case 'paid':
+      // Money that arrives is always recorded, even late; what happens next is ads-missing or a refund.
+      return undefined;
+    case 'ads-approved':
+      if (now >= t.firstHourAt) return 'the first hour has already started';
+      // After the deadline only staff may approve, with a reason (DECISIONS, 22 Oct 2026).
+      if (now >= t.adsDueAt) {
+        if (actor !== 'admin')
+          return 'ads are past their deadline: only RECALL staff can approve them now';
+        if ((reason ?? '').trim().length < 10)
+          return 'a short-notice approval needs a reason (10 letters or more)';
+      }
+      return undefined;
     case 'ads-missing':
     case 'running':
       return now >= t.firstHourAt ? undefined : 'the first hour has not started yet';
@@ -60,9 +78,14 @@ export function stepProblem(
   }
 }
 
-export function timingOf(lines: readonly BookingLine[]): Timing {
+export function timingOf(lines: readonly BookingLine[], adsDueDays: number): Timing {
   const starts = lines.map(lineStartsAt);
-  return { firstHourAt: Math.min(...starts), lastHourEndsAt: Math.max(...starts) + 3600 };
+  const firstHourAt = Math.min(...starts);
+  return {
+    firstHourAt,
+    lastHourEndsAt: Math.max(...starts) + 3600,
+    adsDueAt: firstHourAt - adsDueDays * 86_400,
+  };
 }
 
 // ---------------------------------------------------------------- holds and limits (P1.3.4)
@@ -127,9 +150,21 @@ export interface Business {
 }
 
 /** Identities a trial is counted against: the GST number and the phone, each on its own. */
-export function trialKeys(b: Business): string[] {
-  const keys = [`phone:${b.phone.replace(/\D/g, '').slice(-10)}`];
-  if (b.gstin) keys.push(`gstin:${b.gstin.trim().toUpperCase()}`);
+/**
+ * Identities a trial is counted against: the phone (10-digit Indian mobile, with or without +91 or 0)
+ * and the GST number (15 characters, spaces ignored). Undefined when either is not valid.
+ */
+export function trialKeys(b: Business): string[] | undefined {
+  let digits = b.phone.replace(/\D/g, '');
+  if (digits.length === 12 && digits.startsWith('91')) digits = digits.slice(2);
+  else if (digits.length === 11 && digits.startsWith('0')) digits = digits.slice(1);
+  if (!/^[6-9]\d{9}$/.test(digits)) return undefined;
+  const keys = [`phone:${digits}`];
+  if (b.gstin !== undefined) {
+    const gstin = b.gstin.replace(/\s/g, '').toUpperCase();
+    if (!/^\d{2}[A-Z0-9]{13}$/.test(gstin)) return undefined;
+    keys.push(`gstin:${gstin}`);
+  }
   return keys;
 }
 
@@ -144,8 +179,9 @@ export function trialProblem(
   usedKeys: ReadonlySet<string>,
   book: PriceBook,
 ): string | undefined {
-  if (trialKeys(business).some((k) => usedKeys.has(k)))
-    return 'this business has already had its free trial';
+  const keys = trialKeys(business);
+  if (!keys) return 'a valid mobile number (and GST number, if given) is needed for a free trial';
+  if (keys.some((k) => usedKeys.has(k))) return 'this business has already had its free trial';
   if (lines.length === 0) return 'no hours chosen';
   if (new Set(lines.map((l) => l.areaId)).size !== 1) return 'a trial is in one area only';
   const days = lines.map((l) => Date.parse(`${l.date}T00:00:00Z`) / 86_400_000);

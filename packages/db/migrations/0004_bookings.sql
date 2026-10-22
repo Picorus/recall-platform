@@ -31,6 +31,14 @@ END
 $$;
 CREATE TRIGGER price_books_next BEFORE INSERT ON price_books FOR EACH ROW EXECUTE FUNCTION price_books_next();
 
+-- Sales holds (no money; end at `until`).
+CREATE TABLE holds (
+  hold_id    text        PRIMARY KEY CHECK (hold_id ~ '^[A-Za-z0-9-]{4,40}$'),
+  brand_id   text        NOT NULL,
+  until      timestamptz NOT NULL,
+  held_by    text        NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
 CREATE TABLE bookings (
   booking_id         text        PRIMARY KEY CHECK (booking_id ~ '^[A-Za-z0-9-]{4,40}$'),
   brand_id           text        NOT NULL CHECK (length(brand_id) BETWEEN 1 AND 64),
@@ -38,7 +46,7 @@ CREATE TABLE bookings (
   trial              boolean     NOT NULL,
   repeat_months      integer     NOT NULL CHECK (repeat_months >= 1),
   -- The sales hold this booking turns into, if any (its bikes are not counted against it).
-  hold_id            text,
+  hold_id            text REFERENCES holds (hold_id),
   price_book_version integer     NOT NULL REFERENCES price_books (version),
   subtotal_paise     bigint      NOT NULL CHECK (subtotal_paise >= 0),
   gst_paise          bigint      NOT NULL CHECK (gst_paise >= 0),
@@ -83,14 +91,7 @@ CREATE TABLE trials_used (
   booking_id text NOT NULL REFERENCES bookings (booking_id)
 );
 
--- Sales holds (no money; end at `until`), and manual limits a super admin sets on area-hours.
-CREATE TABLE holds (
-  hold_id    text        PRIMARY KEY CHECK (hold_id ~ '^[A-Za-z0-9-]{4,40}$'),
-  brand_id   text        NOT NULL,
-  until      timestamptz NOT NULL,
-  held_by    text        NOT NULL,
-  created_at timestamptz NOT NULL DEFAULT now()
-);
+-- Lines of sales holds, and manual limits a super admin sets on area-hours.
 CREATE TABLE hold_lines (
   hold_id    text    NOT NULL REFERENCES holds (hold_id),
   area_id    text    NOT NULL,

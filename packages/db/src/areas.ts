@@ -119,3 +119,9 @@ export async function areasAt(pool: Pick<Pool, 'query'>, instant: string): Promi
   );
   return r.rows.map(toArea);
 }
+
+/** Every version of every area (a small table), for checking each booking line on its own day. */
+export async function allAreaVersions(pool: Pick<Pool, 'query'>): Promise<AreaVersion[]> {
+  const r = await pool.query<Row>(`SELECT ${COLUMNS} FROM area_versions ORDER BY area_id, version`);
+  return r.rows.map(toArea);
+}

@@ -93,11 +93,11 @@ describe('bookings', () => {
     );
     expect(r.rows[0]).toEqual({ total_paise: '2124000', price_book_version: 1 });
     expect(await bookingState(pool, 'BK-0001')).toBe('draft');
-    await moveBooking(pool, 'BK-0001', 'awaiting-payment', 'priya', NOW);
-    await moveBooking(pool, 'BK-0001', 'paid', 'system', NOW + 100);
-    await expect(moveBooking(pool, 'BK-0001', 'running', 'system', NOW + 200)).rejects.toThrow(
-      /cannot go from paid/,
-    );
+    await moveBooking(pool, 'BK-0001', 'awaiting-payment', { by: 'priya', actor: 'admin' }, NOW);
+    await moveBooking(pool, 'BK-0001', 'paid', { by: 'system', actor: 'system' }, NOW + 100);
+    await expect(
+      moveBooking(pool, 'BK-0001', 'running', { by: 'system', actor: 'system' }, NOW + 200),
+    ).rejects.toThrow(/cannot go from paid/);
     expect(await bookingState(pool, 'BK-0001')).toBe('paid');
   });
 
@@ -162,7 +162,7 @@ describe('holds and manual limits', () => {
       },
       NOW,
     );
-    await moveBooking(pool, 'BK-0011', 'awaiting-payment', 'priya', NOW);
+    await moveBooking(pool, 'BK-0011', 'awaiting-payment', { by: 'priya', actor: 'admin' }, NOW);
     // Now 50 of 50 are sold: nothing fits, even after the hold ends.
     await expect(
       createBooking(
@@ -210,7 +210,9 @@ describe('holds and manual limits', () => {
     }
     // …but when both try to become sales at the same moment, only one fits under the limit.
     const results = await Promise.allSettled(
-      ['BK-0020', 'BK-0021'].map((id) => moveBooking(pool, id, 'awaiting-payment', 'x', NOW)),
+      ['BK-0020', 'BK-0021'].map((id) =>
+        moveBooking(pool, id, 'awaiting-payment', { by: 'x', actor: 'admin' }, NOW),
+      ),
     );
     expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
     const failed = results.find((r) => r.status === 'rejected');
@@ -250,5 +252,115 @@ describe('free trial', () => {
         NOW,
       ),
     ).rejects.toThrow(/already had its free trial/);
+  });
+});
+
+describe('review fixes', () => {
+  it("one brand cannot book against another brand's hold, or an ended hold", async () => {
+    const h = line('2027-09-15', 18, 60);
+    await setAreaHourLimit(pool, h, 60, 'prateek');
+    await placeHold(
+      pool,
+      { holdId: 'HD-Y', brandId: 'brand-y', lines: [h], until: NOW + HOUR, by: 'priya' },
+      NOW,
+    );
+    const r = request([h]);
+    await expect(
+      createBooking(
+        pool,
+        { bookingId: 'BK-X1', brandId: 'brand-x', request: r, by: 'x', holdId: 'HD-Y' },
+        NOW,
+      ),
+    ).rejects.toThrow(/another brand/);
+    await expect(
+      createBooking(
+        pool,
+        { bookingId: 'BK-Y0', brandId: 'brand-y', request: r, by: 'y', holdId: 'HD-Y' },
+        NOW + 2 * HOUR,
+      ),
+    ).rejects.toThrow(/has ended/);
+    await createBooking(
+      pool,
+      { bookingId: 'BK-Y1', brandId: 'brand-y', request: r, by: 'y', holdId: 'HD-Y' },
+      NOW,
+    );
+  });
+
+  it('a hold that became a live booking is not counted twice for everyone else', async () => {
+    const h = line('2027-09-16', 18, 60);
+    await setAreaHourLimit(pool, h, 110, 'prateek');
+    await placeHold(
+      pool,
+      { holdId: 'HD-H', brandId: 'brand-h', lines: [h], until: NOW + 5 * HOUR, by: 'priya' },
+      NOW,
+    );
+    await createBooking(
+      pool,
+      { bookingId: 'BK-H1', brandId: 'brand-h', request: request([h]), by: 'h', holdId: 'HD-H' },
+      NOW,
+    );
+    await moveBooking(pool, 'BK-H1', 'awaiting-payment', { by: 'h', actor: 'admin' }, NOW);
+    // 110 − 60 sold = 50 really free, even though the hold has not ended yet.
+    await createBooking(
+      pool,
+      { bookingId: 'BK-H2', brandId: 'other', request: request([{ ...h, bikes: 50 }]), by: 'o' },
+      NOW,
+    );
+    await moveBooking(pool, 'BK-H2', 'awaiting-payment', { by: 'o', actor: 'admin' }, NOW);
+  });
+
+  it('after the ads deadline a brand cannot approve; staff can, with a reason', async () => {
+    const lines = [line('2027-08-27', 19, 30), line('2027-08-27', 20, 30)];
+    await createBooking(
+      pool,
+      { bookingId: 'BK-AD', brandId: 'late', request: request(lines), by: 'priya' },
+      NOW,
+    );
+    await moveBooking(pool, 'BK-AD', 'awaiting-payment', { by: 'priya', actor: 'admin' }, NOW);
+    await moveBooking(pool, 'BK-AD', 'paid', { by: 'gateway', actor: 'system' }, NOW);
+    await expect(
+      moveBooking(pool, 'BK-AD', 'ads-approved', { by: 'late', actor: 'brand' }, NOW),
+    ).rejects.toThrow(/only RECALL staff/);
+    await expect(
+      moveBooking(pool, 'BK-AD', 'ads-approved', { by: 'arjun', actor: 'admin' }, NOW),
+    ).rejects.toThrow(/reason/);
+    await moveBooking(
+      pool,
+      'BK-AD',
+      'ads-approved',
+      { by: 'arjun', actor: 'admin', reason: 'Festival offer, brand sent late' },
+      NOW,
+    );
+    const r = await pool.query<{ reason: string }>(
+      "SELECT reason FROM booking_events WHERE booking_id = 'BK-AD' AND state = 'ads-approved'",
+    );
+    expect(r.rows[0]?.reason).toBe('Festival offer, brand sent late');
+  });
+
+  it('a draft made before a price change cannot go to payment at the old prices', async () => {
+    await createBooking(
+      pool,
+      {
+        bookingId: 'BK-PR',
+        brandId: 'p',
+        request: request([line('2027-10-20', 18, 60)]),
+        by: 'priya',
+      },
+      NOW,
+    );
+    await savePriceBook(
+      pool,
+      { ...PRICE_BOOK_V1, version: 2, validFrom: '2027-08-23T05:00:00.000Z' },
+      'prateek',
+    );
+    await expect(
+      moveBooking(
+        pool,
+        'BK-PR',
+        'awaiting-payment',
+        { by: 'priya', actor: 'admin' },
+        NOW + 2 * HOUR,
+      ),
+    ).rejects.toThrow(/Prices changed/);
   });
 });

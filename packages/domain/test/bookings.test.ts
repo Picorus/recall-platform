@@ -189,7 +189,8 @@ describe('quotes (P1.3.1–P1.3.3)', () => {
           try {
             q = quote({ lines, repeatMonths, channel }, BOOK, AREAS, NOW);
           } catch (e) {
-            expect((e as BookingError).problems.map((p) => p.kind)).toEqual(['below-minimum']);
+            for (const p of (e as BookingError).problems)
+              expect(['below-minimum', 'repeat-not-covered']).toContain(p.kind);
             return;
           }
           expect(q.subtotal).toBe(q.lines.reduce((n, l) => n + l.bikes * l.paisePerBikeHour, 0));
@@ -209,11 +210,11 @@ describe('quotes (P1.3.1–P1.3.3)', () => {
 });
 
 describe('booking steps (P1.3.5)', () => {
-  const t = timingOf([
-    line('hyd-madhapur', '2027-09-30', 18, 10),
-    line('hyd-madhapur', '2027-09-30', 19, 10),
-  ]);
-  const before = t.firstHourAt - 60;
+  const t = timingOf(
+    [line('hyd-madhapur', '2027-09-30', 18, 10), line('hyd-madhapur', '2027-09-30', 19, 10)],
+    7,
+  );
+  const before = t.adsDueAt - 60;
   const during = t.firstHourAt + 60;
   const after = t.lastHourEndsAt + 60;
 
@@ -227,21 +228,21 @@ describe('booking steps (P1.3.5)', () => {
       ['done', 'report-sent', after],
     ];
     for (const [from, to, now] of path)
-      expect(stepProblem(from, to, now, t), `${from}→${to}`).toBeUndefined();
+      expect(stepProblem(from, to, now, t, 'admin'), `${from}→${to}`).toBeUndefined();
   });
 
   it('refused: cancelling or approving ads after the start, running early, done early, skipping steps', () => {
-    expect(stepProblem('paid', 'cancelled', during, t)).toBeDefined();
-    expect(stepProblem('paid', 'ads-approved', during, t)).toBeDefined();
-    expect(stepProblem('ads-approved', 'running', before, t)).toBeDefined();
-    expect(stepProblem('running', 'done', during, t)).toBeDefined();
-    expect(stepProblem('draft', 'paid', before, t)).toBeDefined();
-    expect(stepProblem('cancelled', 'paid', before, t)).toBeDefined();
+    expect(stepProblem('paid', 'cancelled', during, t, 'admin')).toBeDefined();
+    expect(stepProblem('paid', 'ads-approved', during, t, 'admin')).toBeDefined();
+    expect(stepProblem('ads-approved', 'running', before, t, 'admin')).toBeDefined();
+    expect(stepProblem('running', 'done', during, t, 'admin')).toBeDefined();
+    expect(stepProblem('draft', 'paid', before, t, 'admin')).toBeDefined();
+    expect(stepProblem('cancelled', 'paid', before, t, 'admin')).toBeDefined();
   });
 
   it('no ads by the first hour: ads missing (no refund, rulebook v5.4)', () => {
-    expect(stepProblem('paid', 'ads-missing', during, t)).toBeUndefined();
-    expect(stepProblem('paid', 'ads-missing', before, t)).toBeDefined();
+    expect(stepProblem('paid', 'ads-missing', during, t, 'admin')).toBeUndefined();
+    expect(stepProblem('paid', 'ads-missing', before, t, 'admin')).toBeDefined();
   });
 });
 
@@ -294,5 +295,85 @@ describe('free trial (P1.3.6)', () => {
     expect(
       trialProblem([...week, line('hyd-gachibowli', '2027-09-05', 18, 1)], biz, new Set(), BOOK),
     ).toMatch(/20 bike-hours/);
+  });
+});
+
+describe('review fixes', () => {
+  const t = timingOf([line('hyd-madhapur', '2027-09-30', 18, 10)], 7);
+
+  it('after the ads deadline only staff can approve, and only with a reason', () => {
+    const late = t.adsDueAt + 3600;
+    expect(stepProblem('paid', 'ads-approved', late, t, 'brand')).toMatch(/only RECALL staff/);
+    expect(stepProblem('paid', 'ads-approved', late, t, 'admin')).toMatch(/reason/);
+    expect(
+      stepProblem('paid', 'ads-approved', late, t, 'admin', 'Festival offer, brand sent late'),
+    ).toBeUndefined();
+    expect(stepProblem('paid', 'ads-approved', t.adsDueAt - 1, t, 'brand')).toBeUndefined();
+  });
+
+  it('a payment that arrives after the start is still recorded', () => {
+    expect(
+      stepProblem('awaiting-payment', 'paid', t.firstHourAt + 60, t, 'system'),
+    ).toBeUndefined();
+  });
+
+  it('a 6- or 12-month offer needs hours in every month of it', () => {
+    const oneDay = [line('hyd-madhapur', '2027-10-05', 18, 60)];
+    expect(problems(() => quote(req(oneDay, { repeatMonths: 12 }), BOOK, AREAS, NOW))).toEqual([
+      'repeat-not-covered',
+    ]);
+    const sixMonths = [
+      '2027-10-05',
+      '2027-11-05',
+      '2027-12-05',
+      '2028-01-05',
+      '2028-02-05',
+      '2028-03-05',
+    ].map((d) => line('hyd-madhapur', d, 18, 20));
+    expect(
+      quote(req(sixMonths, { repeatMonths: 6 }), BOOK, AREAS, NOW).lines[0]?.paisePerBikeHour,
+    ).toBe(27_600);
+  });
+
+  it('each line is checked against the area as it stands on that day', () => {
+    const off = {
+      ...(AREAS.find((a) => a.areaId === 'hyd-madhapur') as (typeof AREAS)[number]),
+      version: 2,
+      active: false,
+      validFrom: '2027-10-01T00:00:00.000Z',
+    };
+    const lines = [
+      line('hyd-madhapur', '2027-09-20', 18, 60),
+      line('hyd-madhapur', '2027-10-05', 18, 60),
+    ];
+    expect(problems(() => quote(req(lines), BOOK, [...AREAS, off], NOW))).toEqual(['area']);
+    expect(
+      quote(req([lines[0] as BookingLine]), BOOK, [...AREAS, off], NOW).lines[0]?.areaVersion,
+    ).toBe(1);
+  });
+
+  it('a silly number of bikes is a clear refusal', () => {
+    expect(
+      problems(() =>
+        quote(req([line('hyd-madhapur', '2027-09-30', 18, 11_000_000)]), BOOK, AREAS, NOW),
+      ),
+    ).toEqual(['bad-line']);
+  });
+
+  it('a trial needs a real mobile number; a GST number with spaces is the same number', () => {
+    const wk = [line('hyd-gachibowli', '2027-09-01', 18, 5)];
+    expect(trialProblem(wk, { phone: '' }, new Set(), BOOK)).toMatch(/valid mobile/);
+    expect(trialProblem(wk, { phone: 'n/a' }, new Set(), BOOK)).toMatch(/valid mobile/);
+    expect(trialProblem(wk, { phone: '09849011111' }, new Set(['phone:9849011111']), BOOK)).toMatch(
+      /already/,
+    );
+    expect(
+      trialProblem(
+        wk,
+        { phone: '9000000000', gstin: '36 aaaaa0000a1z5' },
+        new Set(['gstin:36AAAAA0000A1Z5']),
+        BOOK,
+      ),
+    ).toMatch(/already/);
   });
 });
