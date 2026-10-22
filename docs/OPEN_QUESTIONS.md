@@ -24,4 +24,6 @@ Answer whenever you like; each answer moves to `docs/DECISIONS.md` and the row i
 | ~~8~~ | The screen is the rider's, paid by EMIs to the bank; defaults are the bank's matter; RECALL may buy equipment back if it wants |
 | ~~9~~ | Chart colours stay |
 | ~~10~~ | TDS is deducted from rider pay (rate: 10b) |
+| ~~13~~ | 6/12-month deals: no discount on Lite; hours spread about equally over the months; discount on the bill |
+| ~~14~~ | Aggregator ads are free |
 | ~~11~~ | POC pay once a month, after the month ends |

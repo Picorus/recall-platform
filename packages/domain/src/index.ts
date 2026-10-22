@@ -12,3 +12,4 @@ export * from './pay-zone.js';
 export * from './price-book.js';
 export * from './bookings.js';
 export * from './booking-flow.js';
+export * from './supply.js';

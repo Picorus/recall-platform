@@ -2,6 +2,17 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 22 Oct 2026 · P1.3.7 · Selling only what an area can carry (after the POC); 6-month deals
+- Bookings merged (PR #16). Prateek's rules recorded: drafts reserve nothing; RECALL's 40 spots go make-ups → aggregator ads (free) → RECALL ads; drafts always paid at current prices; POC needs no forecast.
+- 6/12-month deals reworked: lines at list price; one discount on the bill on Peak and Normal hours only; hours spread about equally over the months (±20%). Migration 0005 stores the discount.
+- `supply.ts` (domain): sellable bikes = level reached in 4 of the last 5 same weekdays (smaller of different bikes and bike-hours), less 10% for make-ups; starting estimate before 4 weeks of history; nothing sold blind. Offers: what fits now + suggestions (nearby areas, next hours, other days). Mode `poc` (manual limits only) or `forecast` in the price book.
+- Database: migration 0006 (`area_supply_estimates`), history read from the screens' minute summaries (India time, 23:00–02:00 on the right business day), `forecastLimits`, `offerForRequest`; bookings, holds and the move to payment use the forecast after the POC.
+- Prateek's example tested end to end: Madhapur 6–7 pm carries 150, A pays for 100, B asking 100 gets 50 there and Hitech City 6–7 pm (50) / Madhapur 7–8 pm (50) suggested.
+- Second review found 5 issues, all fixed with tests: weeks when no bike came were read as "no history" (so the starting estimate oversold; now they count as 0, and history starts when the fleet first reported and the area was on); a minute stored twice counted twice (now at most 60 s per bike, minute and area); a deal offer could take a band below the ₹220 floor (price book now refused); suggestions offered the same free bikes twice (now each suggestion uses up what it offers, and never the request's own hours); history read the whole city for 6 weeks on every sale (now only the hours asked for). Also: a deal's months count from its first day (25 Jan → 24 Feb …), and today never counts as a past week.
+- Tests: 155 domain, 42 database.
+- Open (small, later): suggestions use areas as they are today and do not check the 15-day lead time (the booking itself still checks both).
+- **Next: P1.4** the ad scheduler (with the 40-spot order).
+
 ## 22 Oct 2026 · P1.3 (part 2) · Bookings in the database, and review fixes
 - `packages/db` migration 0004: `price_books` (versioned), `bookings` (with the hold they came from), `booking_lines` (area version and price kept), `booking_events` (each step a new row), `trials_used`, `holds`, `hold_lines`, `area_hour_limits` (versioned). Append-only; `recall_app` insert/read only. Bookings and holds are checked one at a time; limits are checked again when a draft becomes a sale (a test caught two drafts both taking the last limited bikes).
 - Second review found 6 issues, all fixed with tests: another brand's hold could be used (now only the hold's brand, while it lasts); a hold that became a booking was counted twice; 6/12-month offers on a one-day booking (now every month must have hours); short-notice ad approval (after the deadline only staff, with a reason; a late payment is always recorded); trial loopholes (blank phone, GST with spaces: now must be valid); no upper limit on bikes. Also: areas checked on each line's own day; forfeited bookings (ads missing) free their bikes; a draft from before a price change, or a portal draft now inside 15 days, cannot go to payment.

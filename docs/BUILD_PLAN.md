@@ -111,7 +111,8 @@ Six engines carry the business: areas, GPS, the scheduler, play counting, make-u
 1. **P1.3.1** The unit of sale is a **bike-hour in an area-hour**: area × date × start hour (08:00 to 01:00 starts). One bike-hour = 200 plays of the brand's ads; the other 40 of the 240 15-second spots are RECALL's.
 2. **P1.3.2** Price bands: Peak ₹300 (08–11, 17–23), Normal ₹250 (11–17), Lite ₹220 (23–02). Offers only for monthly repeats: 6 months 8%, 12 months 12%. Floor ₹220 a bike-hour, enforced in code. All prices + 18% GST, set in admin, versioned.
 3. **P1.3.3** A booking = lines of (area, date, hour, bikes). Minimum 5 bikes a line, ₹15,000 a booking before GST. Ads due 7 days before the first hour (setting).
-4. **P1.3.4** No sell cap (decision of 21 Oct 2026). Admin can set a manual limit on any area-hour if ever needed. The system tracks the weekly refund total as the early warning of overselling.
+4. **P1.3.4** Sell only what the area can deliver (Prateek, 22 Oct 2026; replaces "no sell cap" of 21 Oct). Each area-hour has a sellable number of bikes from the supply forecast (P1.3.7); a super admin's manual limit overrides it. Paid bookings and live holds use it up; saved selections (drafts) reserve nothing: if another brand pays first, those bikes are gone. When a request does not fit, the brand is offered what fits there and suggestions for the rest (nearby areas at the same hour, next hours in the same area, the same hour on other days), or picks again. The weekly refund total stays the early warning.
+7. **P1.3.7 Supply forecast** (after the POC; in the POC all 200 bikes run and only manual limits apply — Prateek, 22 Oct 2026). For every area × weekday × start hour: how many different bikes were really there and how many bike-hours they gave, from the screens' minute summaries over the last weeks; sellable = the level reached in most past weeks, less a margin kept for make-ups. Before there is history (before and early in the POC), a super admin's starting estimate per area is used. Every number is a setting.
 5. **P1.3.5** Booking states: Draft → Awaiting payment → Paid → Ads approved → Running → Done → Report sent; side exits: Cancelled before start, Ads missing (no refund).
 6. **P1.3.6** Free trial: one per business (GST number or phone), 1 week, 1 area, about 20 bike-hours, lowest priority, from unsold time only.
 
@@ -123,7 +124,7 @@ The scheduler answers one question every minute: which booking does each bike in
 2. **P1.4.2 Live assignment (every 60 seconds).** For each area, take the bikes inside it now. For each booking line, need = plays required − plays counted − plays expected from bikes already carrying it. Give each free bike to the line with the biggest gap, preferring bikes that have not yet carried that line (the "at least N different bikes" promise). Send the change to the screen.
 3. **P1.4.3 Offline fallback on the screen.** If no assignment arrives, the screen picks a line from the hour plan by itself, using a fixed formula on its own id and the hour (weighted rendezvous hashing). Every screen picks the same way, so the fleet spreads across bookings correctly with no network at all.
 4. **P1.4.4 One brand per bike per hour.** While a bike is inside an area, it carries one booking line and plays only that brand's 2 to 5 ads in turn. If it crosses into another area, it switches to that area's booking.
-5. **P1.4.5 The 240 spots.** 200 brand plays and 40 RECALL spots an hour, spread evenly (one RECALL spot after every five brand plays). RECALL spots carry our own ads and give room to catch up.
+5. **P1.4.5 The 240 spots.** 200 brand plays and 40 RECALL spots an hour, spread evenly (one RECALL spot after every five brand plays). The 40 RECALL spots are filled in this order (Prateek, 22 Oct 2026): make-ups owed to brands first, then aggregator ads, then RECALL's own ads (the default). Admins choose the aggregator and RECALL ads.
 6. **P1.4.6 Priority order:** make-ups due now → paid bookings → free trials → RECALL's own ads.
 7. **P1.4.7 Proof by simulation.** With 200, 2,000 and 15,500 simulated bikes on real roads, the scheduler must deliver every booking that the area's bikes can carry, and the run must be repeatable from a seed.
 
@@ -419,6 +420,8 @@ A new engineer should be able to read four files and start work the same day. Th
 
 | Date | Version | Change |
 | --- | --- | --- |
+| 22 Oct 2026 | 1.9 | Prateek: forecast only after the POC (a price-book setting, POC mode first); 6/12-month deals: no discount on Lite hours, hours spread about equally over the months (±20%, a setting), discount on the bill; aggregator ads are free. |
+| 22 Oct 2026 | 1.8 | Prateek: sell only what an area can deliver (supply forecast, P1.3.7; replaces "no sell cap"); drafts reserve nothing, offers and suggestions when a request doesn't fit; the 40 RECALL spots: make-ups → aggregator ads → RECALL ads; 6-month deals priced on total hours with the discount on the bill; drafts are always paid at the prices in force. |
 | 22 Oct 2026 | 1.7 | Prateek's answers: POC pay zone 15 km around Hitech City; after the POC, the areas that are on (plus exceptions); POC pay once a month after it ends; TDS on rider pay; settings for fitting centres, support numbers and hours (10 am–7 pm), the loan bank (Dhanlaxmi Bank). |
 | 22 Oct 2026 | 1.6 | P1.1.6 and P3.5: a super admin adds areas and turns them on or off (Prateek). |
 | 22 Oct 2026 | 1.5 | P0.3 done: all screens approved (brand 9, rider 12, admin 16). P1.7.4: cuts on delivered value (Prateek). P1.1, P1.2 and P1.10 started. |
