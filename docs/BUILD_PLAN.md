@@ -255,7 +255,7 @@ The brand portal is the 9-screen simple product from rulebook v5.4: pick, pay, u
    3. **P5.4.3** Days and number of weeks; 5 to 100 bikes.
    4. **P5.4.4** Optional monthly repeat: 6 months 8% off, 12 months 12% off.
    5. **P5.4.5** Live summary: bike-hours, plays promised, price, GST, total; blocks the next step under ₹15,000.
-5. **P5.5 Your ads.** Template (logo, headline up to 30 characters, offer line up to 40, optional code and QR, 3 colour themes) or own file (15 s, 1280 × 640, no sound, up to 30 MB). 2 to 5 ads; "make another version for me" button; best-practice tips; automatic rule check (no flashing, size, length).
+5. **P5.5 Your ads.** Template (logo, headline up to 30 characters, offer line up to 40, optional code and QR, 3 colour themes) or own file (a 15 s video, or a carousel of 2–5 pictures shown in turn for 15 s; 1280 × 640, no sound, up to 30 MB). Own files are the main path; templates are for brands with no ad. 2 to 5 ads; "make another version for me" button; best-practice tips; automatic rule check (no flashing, size, length).
 6. **P5.6 Review and pay.** Line-by-line summary, the five plain rules (promise, edge, make-ups, late ads, report) with one tick box, pay in full by UPI, card or net banking; GST invoice at once.
 7. **P5.7 Final report.** Plays delivered, different bikes, heat map, busiest streets, made-up plays, people (approximate); PDF and WhatsApp share; "Book again".
 8. **P5.8 Invoices.** Invoices and credit notes, download one or all for the year.
@@ -418,5 +418,6 @@ A new engineer should be able to read four files and start work the same day. Th
 
 | Date | Version | Change |
 | --- | --- | --- |
+| 22 Oct 2026 | 1.2 | P5.5: brands upload their own video or a picture carousel as the main path; templates optional; colour and legibility advice is best practice, not enforced (Prateek). P0.2, P0.3.1–P0.3.3 done. |
 | 22 Oct 2026 | 1.1 | P0.3 started: Night Signal applied to the RECALL design system (colours, Anek type, recoloured Afterimage logo, all previews), the investor deck (Google Slides and the PowerPoint in Recall Final), and all 12 screens on the design canvas. Price band name fixed to "Lite". |
 | 22 Oct 2026 | 1.0 | First full build plan: build order, architecture, the six engines, screen, rider app, brand portal, admin portal, Night Signal colours, outside services, testing, constraints, roadmap, records. Based on rulebook v5.4 and model v5.3. |
