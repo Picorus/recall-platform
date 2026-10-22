@@ -2,6 +2,15 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 22 Oct 2026 · P1.10 · Fleet simulator, version 1
+- P1.1–P1.2 merged (PR #12, all checks green). Prateek confirmed: moving hours only in business hours.
+- `tools/simulator`: fake delivery bikes on a 250 m street grid over west Hyderabad (trips, signal waits, pick-up stops, long breaks, messy GPS, signal loss, battery drain), each running the real screen tracker, minute summaries and the store-and-forward path into the cloud inbox. Scenarios: normal, rain, cricket (stadium crowding), 30-minute network outage. Command: see `docs/RUNBOOKS/simulator.md`.
+- Results (seed runs): clock 96–99.5% of the true time and never above (cautious by ~10 s per start); area agreement ~97%; every report stored exactly once, none lost, including through the outage; 1,000 bikes × 30 min in ~20 s.
+- Tests: 9 in the simulator (repeatable from a seed; each scenario: all reports once, clock within 5% and never over, areas > 95%).
+- Decision (Claude): version 1 roads are a grid; real OSM roads in version 2.
+- Open: the clock under-counts by 1–3% (the 10 s it takes to be sure a bike started). Fine for now; tune with real rides in the POC.
+- **Next:** database tables for areas, versions and minute summaries (PostGIS, TimescaleDB), with a migration runner tested against the laptop services in CI.
+
 ## 22 Oct 2026 · P1.1 + P1.2 · Areas and GPS in code (shared logic)
 - **P1.1 Areas** (`packages/domain`): shapes checked on save (3+ corners, no self-crossing, no overlap or touching, edge zone 0–2,000 m, default 300 m); versions (a change builds on the newest; `versionAt` finds the one in force; strict UTC times); **on/off by super admin** (Prateek: off = not sold, not counted, a new version, never a delete); H3 size-9 lookup that always equals the exact check; six launch areas as drafts. Admin Areas screen (canvas v53) shows the on/off list; it also had a drawing with a shape overlapping Madhapur, now fixed.
 - **P1.2 Screen tracker** (reference for the Kotlin player): GPS clean-up, 15 s area hold, moving clock with the 10-minute stop rule, live position every 30 s, one-minute summaries, numbered store-and-forward (7 days) with a cloud inbox that takes each report once; daily and monthly moving hours, 260 active-hour cap (Prateek), odd-minute check.

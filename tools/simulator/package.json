@@ -3,12 +3,19 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Fleet simulator: fake bikes on Hyderabad roads. Built in P1.10.",
+  "description": "Fleet simulator: fake bikes riding Hyderabad roads, running the real screen logic (P1.10).",
   "exports": {
     ".": "./src/index.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run",
+    "start": "tsx src/cli.ts"
+  },
+  "dependencies": {
+    "@recall/domain": "workspace:*"
+  },
+  "devDependencies": {
+    "tsx": "4.23.15"
   }
 }
