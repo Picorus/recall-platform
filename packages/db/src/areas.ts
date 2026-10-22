@@ -110,7 +110,7 @@ export async function areaHistory(pool: Pool, areaId: string): Promise<AreaVersi
 }
 
 /** The version of every area in force at `instant` (UTC ISO), on or off. */
-export async function areasAt(pool: Pool, instant: string): Promise<AreaVersion[]> {
+export async function areasAt(pool: Pick<Pool, 'query'>, instant: string): Promise<AreaVersion[]> {
   if (Number.isNaN(parseUtcIso(instant))) throw new RangeError(`Not a UTC time: ${instant}`);
   const r = await pool.query<Row>(
     `SELECT DISTINCT ON (area_id) ${COLUMNS} FROM area_versions
