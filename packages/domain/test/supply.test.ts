@@ -7,6 +7,7 @@ import {
   DEFAULT_CAPACITY_RULES as RULES,
   nearbyAreas,
   offerFor,
+  pastWeekDates,
   sellableBikes,
   type WeekSupply,
 } from '../src/supply.js';
@@ -87,6 +88,37 @@ describe('sellable bikes after the POC (P1.3.7)', () => {
   });
 });
 
+describe('which past weeks count', () => {
+  it('the same weekday, before today, from the day history starts', () => {
+    // Today is Monday 3 Apr 2028; the line is on Tuesday 11 Apr.
+    expect(pastWeekDates('2028-04-11', '2028-04-03', 5, '2020-01-01')).toEqual([
+      '2028-03-28',
+      '2028-03-21',
+      '2028-03-14',
+      '2028-03-07',
+      '2028-02-29',
+    ]);
+    // A line today: today's hour may not be over, so the latest week is last week.
+    expect(pastWeekDates('2028-04-03', '2028-04-03', 2, '2020-01-01')).toEqual([
+      '2028-03-27',
+      '2028-03-20',
+    ]);
+    // History started on 10 Mar: only the weeks since then count.
+    expect(pastWeekDates('2028-04-11', '2028-04-03', 5, '2028-03-10')).toEqual([
+      '2028-03-28',
+      '2028-03-21',
+      '2028-03-14',
+    ]);
+  });
+
+  it('weeks with no bikes count as 0, so they pull the level down (no estimate used)', () => {
+    const weeks = ['2028-03-28', '2028-03-21', '2028-03-14', '2028-03-07', '2028-02-29'].map(
+      (d, i) => week(d, i < 3 ? 20 : 0),
+    );
+    expect(sellableBikes(weeks, RULES, 150)).toBe(0);
+  });
+});
+
 describe('offers and suggestions', () => {
   const areas = launchAreas().map((a) => ({ ...a, draft: false }));
   const nearby = nearbyAreas(areas, RULES.nearbyMeters);
@@ -132,6 +164,40 @@ describe('offers and suggestions', () => {
     const offer = offerFor([madhapur(30), madhapur(30, 18, '2028-04-11')], () => 33, nearby, 5);
     expect(offer.fits).toEqual([madhapur(30)]);
     expect(offer.short[0]?.missing).toBe(30);
+  });
+
+  it('a suggestion never offers bikes another line of the request takes, or another suggestion offers', () => {
+    // 6 pm: 50 free, 100 wanted. 7 pm: 60 free, 60 wanted (fits fully). Nothing else free.
+    const free = (at: Pick<BookingLine, 'areaId' | 'date' | 'startHour'>) =>
+      at.areaId !== 'hyd-madhapur' || at.date !== '2028-04-11'
+        ? 0
+        : at.startHour === 18
+          ? 50
+          : at.startHour === 19
+            ? 60
+            : 0;
+    const offer = offerFor([madhapur(100, 18), madhapur(60, 19)], free, nearby, 5);
+    expect(offer.fits).toEqual([madhapur(50, 18), madhapur(60, 19)]);
+    expect(offer.short[0]?.suggestions).toEqual([]);
+    // Two short lines in different areas share one nearby area with 50 free: offered once.
+    const shared = (at: Pick<BookingLine, 'areaId' | 'date' | 'startHour'>) =>
+      at.areaId === 'hyd-hitech-city' && at.startHour === 18 ? 50 : 0;
+    const two = offerFor(
+      [madhapur(40), { ...madhapur(40), areaId: 'hyd-kondapur' }],
+      shared,
+      nearby,
+      5,
+    );
+    const offered = two.short
+      .flatMap((x) => x.suggestions)
+      .filter(
+        (x) =>
+          x.line.areaId === 'hyd-hitech-city' &&
+          x.line.startHour === 18 &&
+          x.line.date === '2028-04-11',
+      )
+      .reduce((n, x) => n + x.line.bikes, 0);
+    expect(offered).toBeLessThanOrEqual(50);
   });
 
   it('nearby areas are the nearest ones that are on, within 5 km', () => {

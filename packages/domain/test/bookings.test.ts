@@ -356,6 +356,36 @@ describe('review fixes', () => {
     ]);
   });
 
+  it("a deal's months count from its first day, not from the calendar month (25 Jan start)", () => {
+    const starts = [
+      '2028-01-25',
+      '2028-02-25',
+      '2028-03-25',
+      '2028-04-25',
+      '2028-05-25',
+      '2028-06-25',
+    ];
+    const even = starts.map((d) => line('hyd-madhapur', d, 18, 20));
+    expect(quote(req(even, { repeatMonths: 6 }), BOOK, AREAS, NOW).discount).toBe(
+      6 * 20 * 30_000 * 0.08,
+    );
+    // The last week (to 24 Jul) is still inside the 6 months; 25 Jul is not.
+    const lastWeek = [...even.slice(0, 5), line('hyd-madhapur', '2028-07-20', 18, 20)];
+    expect(quote(req(lastWeek, { repeatMonths: 6 }), BOOK, AREAS, NOW).bikeHours).toBe(120);
+    const after = [...even.slice(0, 5), line('hyd-madhapur', '2028-07-25', 18, 20)];
+    expect(problems(() => quote(req(after, { repeatMonths: 6 }), BOOK, AREAS, NOW))).toEqual([
+      'repeat-not-spread',
+    ]);
+  });
+
+  it('a deal offer may not take a discounted band below the ₹220 floor', () => {
+    expect(checkPriceBook({ ...BOOK, repeatOffersBp: { 6: 800, 12: 1500 } })).toEqual([
+      '12-month offer takes Normal below the floor',
+    ]);
+    // ₹250 less 12% is exactly ₹220: allowed.
+    expect(checkPriceBook(BOOK)).toEqual([]);
+  });
+
   it('each line is checked against the area as it stands on that day', () => {
     const off = {
       ...(AREAS.find((a) => a.areaId === 'hyd-madhapur') as (typeof AREAS)[number]),

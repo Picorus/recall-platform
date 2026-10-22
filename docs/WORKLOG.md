@@ -8,8 +8,10 @@ Newest first. Each entry: date · step id · what changed · tests · open issue
 - `supply.ts` (domain): sellable bikes = level reached in 4 of the last 5 same weekdays (smaller of different bikes and bike-hours), less 10% for make-ups; starting estimate before 4 weeks of history; nothing sold blind. Offers: what fits now + suggestions (nearby areas, next hours, other days). Mode `poc` (manual limits only) or `forecast` in the price book.
 - Database: migration 0006 (`area_supply_estimates`), history read from the screens' minute summaries (India time, 23:00–02:00 on the right business day), `forecastLimits`, `offerForRequest`; bookings, holds and the move to payment use the forecast after the POC.
 - Prateek's example tested end to end: Madhapur 6–7 pm carries 150, A pays for 100, B asking 100 gets 50 there and Hitech City 6–7 pm (50) / Madhapur 7–8 pm (50) suggested.
-- Tests: 150 domain, 40 database.
-- **Next:** second review of this money/capacity code, then P1.4 the ad scheduler (with the 40-spot order).
+- Second review found 5 issues, all fixed with tests: weeks when no bike came were read as "no history" (so the starting estimate oversold; now they count as 0, and history starts when the fleet first reported and the area was on); a minute stored twice counted twice (now at most 60 s per bike, minute and area); a deal offer could take a band below the ₹220 floor (price book now refused); suggestions offered the same free bikes twice (now each suggestion uses up what it offers, and never the request's own hours); history read the whole city for 6 weeks on every sale (now only the hours asked for). Also: a deal's months count from its first day (25 Jan → 24 Feb …), and today never counts as a past week.
+- Tests: 155 domain, 42 database.
+- Open (small, later): suggestions use areas as they are today and do not check the 15-day lead time (the booking itself still checks both).
+- **Next: P1.4** the ad scheduler (with the 40-spot order).
 
 ## 22 Oct 2026 · P1.3 (part 2) · Bookings in the database, and review fixes
 - `packages/db` migration 0004: `price_books` (versioned), `bookings` (with the hold they came from), `booking_lines` (area version and price kept), `booking_events` (each step a new row), `trials_used`, `holds`, `hold_lines`, `area_hour_limits` (versioned). Append-only; `recall_app` insert/read only. Bookings and holds are checked one at a time; limits are checked again when a draft becomes a sale (a test caught two drafts both taking the last limited bikes).

@@ -33,6 +33,42 @@ const line = (areaId: string, date: string, startHour: number, bikes: number): B
   startHour,
   bikes,
 });
+/** `bikes` screens inside an area for `minutes` minutes from 18:00 India time on each date. */
+async function ride(
+  area: string,
+  dates: readonly string[],
+  bikes: number,
+  minutes: number,
+  prefix: string,
+  copies = 1,
+) {
+  for (let s = 0; s < bikes; s++) {
+    const batch: Numbered[] = [];
+    for (const d of dates) {
+      const six = Date.parse(`${d}T12:30:00Z`) / 1000;
+      for (let m = 0; m < minutes; m++)
+        for (let k = 0; k < copies; k++)
+          batch.push({
+            seq: batch.length + 1,
+            at: six + m * 60 + 60,
+            report: {
+              kind: 'minute',
+              minute: six + m * 60,
+              secondsAt: { [`inside:${area}@1`]: 60 },
+              clockSeconds: 60,
+              clockAt: { [`inside:${area}@1`]: 60 },
+              payClockSeconds: 60,
+              movingSeconds: 60,
+              distanceM: 300,
+              plays: 0,
+              people: 0,
+            },
+          });
+    }
+    await storeUpload(pool, `${prefix}-${s}`, batch, 1);
+  }
+}
+
 const book = (id: string, lines: BookingLine[], now = NOW) =>
   createBooking(
     pool,
@@ -72,6 +108,24 @@ describe('after the POC: sell what the area can carry', () => {
       book('BK-F2', [line('hyd-kondapur', '2028-04-11', 18, 81)]),
     ).rejects.toBeInstanceOf(CapacityError);
     await book('BK-F3', [line('hyd-kondapur', '2028-04-11', 18, 80)]);
+  });
+
+  it("Prateek's example: Madhapur 6–7 pm carries 150; A pays for 100; B asks for 100 → 50 there + suggestions", async () => {
+    await setSupplyEstimate(pool, 'hyd-madhapur', 18, 150, 'prateek');
+    await setSupplyEstimate(pool, 'hyd-hitech-city', 18, 70, 'prateek');
+    await setSupplyEstimate(pool, 'hyd-madhapur', 19, 90, 'prateek');
+    await book('BK-A', [line('hyd-madhapur', '2028-04-11', 18, 100)]);
+    await moveBooking(pool, 'BK-A', 'awaiting-payment', { by: 'a', actor: 'brand' }, NOW);
+    const offer = await offerForRequest(pool, [line('hyd-madhapur', '2028-04-11', 18, 100)], NOW);
+    expect(offer.fits).toEqual([line('hyd-madhapur', '2028-04-11', 18, 50)]);
+    const sugg = (offer.short[0]?.suggestions ?? []).map((x) => [
+      x.line.areaId,
+      x.line.startHour,
+      x.line.bikes,
+    ]);
+    // Nearby areas come first (Hitech City has 70 free), then other hours (Madhapur 7–8 pm has 90).
+    expect(sugg[0]).toEqual(['hyd-hitech-city', 18, 50]);
+    expect(sugg).toContainEqual(['hyd-madhapur', 19, 50]);
   });
 
   it('five past Tuesdays with 20 bikes riding Gachibowli 6–7 pm: 18 can be sold (10% kept for make-ups)', async () => {
@@ -119,21 +173,28 @@ describe('after the POC: sell what the area can carry', () => {
     expect(wed.get('hyd-gachibowli|2028-04-12|18')).toBe(0);
   }, 60_000);
 
-  it("Prateek's example: Madhapur 6–7 pm carries 150; A pays for 100; B asks for 100 → 50 there + suggestions", async () => {
-    await setSupplyEstimate(pool, 'hyd-madhapur', 18, 150, 'prateek');
-    await setSupplyEstimate(pool, 'hyd-hitech-city', 18, 70, 'prateek');
-    await setSupplyEstimate(pool, 'hyd-madhapur', 19, 90, 'prateek');
-    await book('BK-A', [line('hyd-madhapur', '2028-04-11', 18, 100)]);
-    await moveBooking(pool, 'BK-A', 'awaiting-payment', { by: 'a', actor: 'brand' }, NOW);
-    const offer = await offerForRequest(pool, [line('hyd-madhapur', '2028-04-11', 18, 100)], NOW);
-    expect(offer.fits).toEqual([line('hyd-madhapur', '2028-04-11', 18, 50)]);
-    const sugg = (offer.short[0]?.suggestions ?? []).map((x) => [
-      x.line.areaId,
-      x.line.startHour,
-      x.line.bikes,
-    ]);
-    // Nearby areas come first (Hitech City has 70 free), then other hours (Madhapur 7–8 pm has 90).
-    expect(sugg[0]).toEqual(['hyd-hitech-city', 18, 50]);
-    expect(sugg).toContainEqual(['hyd-madhapur', 19, 50]);
-  });
+  it('weeks when no bike came count as 0: 3 good Wednesdays of 5 do not reach the level', async () => {
+    await setSupplyEstimate(pool, 'hyd-hitech-city', 18, 150, 'prateek');
+    await ride('hyd-hitech-city', ['2028-03-29', '2028-03-22', '2028-03-15'], 20, 60, 'hw');
+    const limits = await forecastLimits(
+      pool,
+      [line('hyd-hitech-city', '2028-04-12', 18, 1)],
+      FORECAST.capacity,
+      NOW,
+    );
+    expect(limits.get('hyd-hitech-city|2028-04-12|18')).toBe(0);
+  }, 60_000);
+
+  it('a minute stored twice is counted once', async () => {
+    const thursdays = ['2028-03-30', '2028-03-23', '2028-03-16', '2028-03-09', '2028-03-02'];
+    await ride('hyd-jubilee-hills', thursdays, 10, 35, 'jh', 2);
+    const limits = await forecastLimits(
+      pool,
+      [line('hyd-jubilee-hills', '2028-04-13', 18, 1)],
+      FORECAST.capacity,
+      NOW,
+    );
+    // 10 bikes × 35 minutes = 5.8 bike-hours → 5 a week, less 10% → 4 (not 9 from doubled minutes).
+    expect(limits.get('hyd-jubilee-hills|2028-04-13|18')).toBe(4);
+  }, 60_000);
 });

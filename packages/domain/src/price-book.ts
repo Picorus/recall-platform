@@ -90,6 +90,10 @@ export function checkPriceBook(b: PriceBook): PriceBookProblem[] {
       problems.push('offer months must be 2 or more');
     if (!Number.isSafeInteger(bp) || bp < 0 || bp >= 10_000)
       problems.push('offer must be 0–99.99%');
+    // A deal's discount must not take any discounted band below the floor.
+    for (const band of b.bands.filter((x) => b.repeatOfferBands.includes(x.name)))
+      if (band.paisePerBikeHour * (10_000 - bp) < b.floorPaisePerBikeHour * 10_000)
+        problems.push(`${months}-month offer takes ${band.name} below the floor`);
   }
   for (const [name, v] of [
     ['playsPerBikeHour', b.playsPerBikeHour],

@@ -159,14 +159,19 @@ export function quote(
   // A deal's hours must be spread about equally over its months, starting with the first.
   const offerBp = req.repeatMonths > 1 ? book.repeatOffersBp[req.repeatMonths] : undefined;
   if (offerBp !== undefined && priced.length > 0) {
-    const byMonth = new Map<string, number>();
+    // Month k of the deal runs from the first line's date plus k months (a deal starting 25 Jan has
+    // months 25 Jan–24 Feb, 25 Feb–24 Mar, …), not calendar months.
+    const first = priced.map((l) => l.date).sort()[0] ?? '';
+    const ymd = (d: string) => d.split('-').map(Number) as [number, number, number];
+    const [y0, m0, d0] = ymd(first);
+    const monthOf = (d: string) => {
+      const [y, m, dd] = ymd(d);
+      return (y - y0) * 12 + (m - m0) - (dd < d0 ? 1 : 0);
+    };
+    const byMonth = new Map<number, number>();
     for (const l of priced)
-      byMonth.set(l.date.slice(0, 7), (byMonth.get(l.date.slice(0, 7)) ?? 0) + l.bikes);
-    const first = [...byMonth.keys()].sort()[0] ?? '';
-    const [y, m] = first.split('-').map(Number) as [number, number];
-    const window = Array.from({ length: req.repeatMonths }, (_, k) =>
-      new Date(Date.UTC(y, m - 1 + k, 1)).toISOString().slice(0, 7),
-    );
+      byMonth.set(monthOf(l.date), (byMonth.get(monthOf(l.date)) ?? 0) + l.bikes);
+    const window = Array.from({ length: req.repeatMonths }, (_, k) => k);
     const total = priced.reduce((n, l) => n + l.bikes, 0);
     const fair = total / req.repeatMonths;
     const slack = (fair * book.repeatSpreadBp) / 10_000;

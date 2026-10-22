@@ -5,8 +5,10 @@ import {
   areaHourKey,
   candidateSlots,
   isoAt,
+  lineStartsAt,
   nearbyAreas,
   offerFor,
+  pastWeekDates,
   priceBookAt,
   sellableBikes,
   versionAt,
@@ -20,9 +22,6 @@ import { allAreaVersions } from './areas.js';
 import { inventoryFor, priceBooks } from './bookings.js';
 
 type Slot = Pick<BookingLine, 'areaId' | 'date' | 'startHour'>;
-
-/** Weekday (0 = Sunday) of a business date. */
-const weekday = (date: string) => new Date(`${date}T00:00:00Z`).getUTCDay();
 
 /** A super admin's starting estimate for an area at a start hour (a new version; nothing is replaced). */
 export async function setSupplyEstimate(
@@ -52,49 +51,61 @@ export async function setSupplyEstimate(
 }
 
 /**
- * Past weeks for these areas and start hours: per business date, how many different bikes spent at
- * least `minSecondsInside` inside each area in that hour, and all their moving-clock seconds there.
+ * For each past hour asked for (a business date and start hour), per area: how many different bikes
+ * spent at least `minSecondsInside` inside the area in that hour, and all their moving-clock seconds
+ * there. Only those hours are read (the table is split by time), never the whole city's history. A
+ * minute stored twice, or split over two reports, counts at most 60 seconds per bike and area.
  */
 async function history(
   c: Pick<PoolClient, 'query'>,
   areaIds: readonly string[],
-  sinceSeconds: number,
-  untilSeconds: number,
+  hours: readonly Slot[],
   minSecondsInside: number,
-) {
+): Promise<Map<string, { distinctBikes: number; bikeSeconds: number }>> {
+  const out = new Map<string, { distinctBikes: number; bikeSeconds: number }>();
+  if (hours.length === 0 || areaIds.length === 0) return out;
   const r = await c.query<{
+    slot: string;
     area_id: string;
-    day: string;
-    start_hour: number;
     distinct_bikes: string;
     bike_seconds: string;
   }>(
-    `WITH m AS (
-       SELECT ms.screen_id, ms.minute AT TIME ZONE 'Asia/Kolkata' AS local,
+    `WITH w AS (SELECT * FROM unnest($1::text[], $2::bigint[]) AS w(slot, s)),
+     m AS (
+       SELECT w.slot, ms.screen_id, ms.minute,
               split_part(split_part(k.key, ':', 2), '@', 1) AS area_id, k.value::int AS secs
-         FROM minute_summaries ms, jsonb_each_text(ms.clock_at) k
-        WHERE ms.minute >= to_timestamp($2) AND ms.minute < to_timestamp($3) AND k.key LIKE 'inside:%'
-     ), h AS (
-       SELECT screen_id, area_id,
-              (CASE WHEN extract(hour FROM local) < 2 THEN local::date - 1 ELSE local::date END)::text AS day,
-              (CASE WHEN extract(hour FROM local) < 2 THEN extract(hour FROM local) + 24
-                    ELSE extract(hour FROM local) END)::int AS start_hour,
-              sum(secs) AS secs
-         FROM m WHERE area_id = ANY($1) GROUP BY 1, 2, 3, 4
+         FROM w
+         JOIN minute_summaries ms
+           ON ms.minute >= to_timestamp(w.s) AND ms.minute < to_timestamp(w.s + 3600)
+         CROSS JOIN LATERAL jsonb_each_text(ms.clock_at) k
+        WHERE k.key LIKE 'inside:%'
+     ), per_minute AS (
+       SELECT slot, area_id, screen_id, minute, least(60, sum(secs)) AS secs
+         FROM m WHERE area_id = ANY($3) GROUP BY 1, 2, 3, 4
+     ), per_bike AS (
+       SELECT slot, area_id, screen_id, sum(secs) AS secs FROM per_minute GROUP BY 1, 2, 3
      )
-     SELECT area_id, day, start_hour,
-            count(*) FILTER (WHERE secs >= $4) AS distinct_bikes, sum(secs) AS bike_seconds
-       FROM h GROUP BY 1, 2, 3`,
-    [areaIds, sinceSeconds, untilSeconds, minSecondsInside],
+     SELECT slot, area_id, count(*) FILTER (WHERE secs >= $4) AS distinct_bikes,
+            sum(secs) AS bike_seconds
+       FROM per_bike GROUP BY 1, 2`,
+    [
+      hours.map((h) => `${h.date}|${h.startHour}`),
+      hours.map((h) => lineStartsAt(h)),
+      areaIds,
+      minSecondsInside,
+    ],
   );
-  return r.rows.map((x) => ({
-    areaId: x.area_id,
-    date: x.day,
-    startHour: x.start_hour,
-    distinctBikes: Number(x.distinct_bikes),
-    bikeSeconds: Number(x.bike_seconds),
-  }));
+  for (const x of r.rows)
+    out.set(`${x.area_id}|${x.slot}`, {
+      distinctBikes: Number(x.distinct_bikes),
+      bikeSeconds: Number(x.bike_seconds),
+    });
+  return out;
 }
+
+/** India business date of a moment (01:30 belongs to the day before). */
+const businessDate = (at: number) =>
+  new Date((at + 330 * 60 - 2 * 3600) * 1000).toISOString().slice(0, 10);
 
 /** Sellable bikes for each area-hour, from past weeks on the same weekday and hour (or the estimate). */
 export async function forecastLimits(
@@ -106,22 +117,42 @@ export async function forecastLimits(
   const out = new Map<string, number>();
   if (slots.length === 0) return out;
   const areaIds = [...new Set(slots.map((s) => s.areaId))];
-  const since = now - (rules.lookbackWeeks + 1) * 7 * 86_400;
-  const past = await history(c, areaIds, since, now, rules.minSecondsInside);
+  // History starts when the fleet first reported and the area was first on; weeks from then on
+  // with no bikes count as 0. Before that, the super admin's starting estimate is used.
+  const fleet = await c.query<{ first: number | null }>(
+    'SELECT extract(epoch FROM min(minute))::bigint AS first FROM minute_summaries',
+  );
+  const fleetFirst = fleet.rows[0]?.first;
+  const areaFirst = new Map<string, string>();
+  for (const v of await allAreaVersions(c)) {
+    if (v.draft || !v.active || !areaIds.includes(v.areaId)) continue;
+    const d = businessDate(Date.parse(v.validFrom) / 1000);
+    const was = areaFirst.get(v.areaId);
+    if (was === undefined || d < was) areaFirst.set(v.areaId, d);
+  }
+  const today = businessDate(now);
+  const weeksOf = new Map<string, string[]>();
+  const hours = new Map<string, Slot>();
+  for (const s of slots) {
+    const first = [
+      fleetFirst == null ? '9999-12-31' : businessDate(Number(fleetFirst)),
+      areaFirst.get(s.areaId) ?? '9999-12-31',
+    ].sort()[1] as string;
+    const dates = pastWeekDates(s.date, today, rules.lookbackWeeks, first);
+    weeksOf.set(areaHourKey(s), dates);
+    for (const date of dates) hours.set(`${date}|${s.startHour}`, { ...s, date });
+  }
+  const past = await history(c, areaIds, [...hours.values()], rules.minSecondsInside);
   const est = await c.query<{ area_id: string; start_hour: number; bikes: number }>(
     `SELECT DISTINCT ON (area_id, start_hour) area_id, start_hour, bikes FROM area_supply_estimates
       WHERE area_id = ANY($1) ORDER BY area_id, start_hour, version DESC`,
     [areaIds],
   );
   for (const s of slots) {
-    const weeks: WeekSupply[] = past
-      .filter(
-        (p) =>
-          p.areaId === s.areaId &&
-          p.startHour === s.startHour &&
-          weekday(p.date) === weekday(s.date),
-      )
-      .map((p) => ({ date: p.date, distinctBikes: p.distinctBikes, bikeSeconds: p.bikeSeconds }));
+    const weeks: WeekSupply[] = (weeksOf.get(areaHourKey(s)) ?? []).map((date) => {
+      const p = past.get(`${s.areaId}|${date}|${s.startHour}`);
+      return { date, distinctBikes: p?.distinctBikes ?? 0, bikeSeconds: p?.bikeSeconds ?? 0 };
+    });
     const estimate = est.rows.find(
       (e) => e.area_id === s.areaId && e.start_hour === s.startHour,
     )?.bikes;

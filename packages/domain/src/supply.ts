@@ -64,6 +64,27 @@ export function sellableBikes(
   return Math.floor((level * (10_000 - rules.makeUpMarginBp)) / 10_000);
 }
 
+const addDays = (date: string, days: number) =>
+  new Date(Date.parse(`${date}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
+
+/**
+ * The past weeks to look at for a business date: the same weekday, newest first, all before `today`
+ * (today's hour may not be over yet), none before `firstDate` (when the fleet was reporting and the
+ * area was on). A week in this list with no bikes in it counts as 0 bikes, not as "no history".
+ */
+export function pastWeekDates(
+  date: string,
+  today: string,
+  lookbackWeeks: number,
+  firstDate: string,
+): string[] {
+  const days = (d: string) => Date.parse(`${d}T00:00:00Z`) / 86_400_000;
+  const k = Math.max(0, Math.floor((days(date) - days(today)) / 7) + 1);
+  return Array.from({ length: lookbackWeeks }, (_, i) => addDays(date, -7 * (k + i))).filter(
+    (d) => d >= firstDate,
+  );
+}
+
 // ---------------------------------------------------------------- offers and suggestions
 
 /** Rough centre of an area, for "nearby". */
@@ -114,9 +135,6 @@ export interface Offer {
   }[];
 }
 
-const addDays = (date: string, days: number) =>
-  new Date(Date.parse(`${date}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
-
 /** Other places for a line's missing bikes, in the order they are offered. */
 export function candidateSlots(
   l: Pick<BookingLine, 'areaId' | 'date' | 'startHour'>,
@@ -159,26 +177,33 @@ export function offerFor(
     const f = free(l);
     return f === undefined ? Number.POSITIVE_INFINITY : Math.max(0, f - (used.get(key(l)) ?? 0));
   };
-  for (const l of lines) {
+  // First what fits, for every line; only then suggestions, so a suggestion never offers bikes a
+  // later line of the same request already takes, and two suggestions never offer the same bikes.
+  const committed = lines.map((l) => {
     const take = Math.min(l.bikes, left(l));
-    if (take >= minBikes) {
-      fits.push({ ...l, bikes: take });
-      used.set(key(l), (used.get(key(l)) ?? 0) + take);
-    }
-    const committed = take >= minBikes ? take : 0;
-    if (committed === l.bikes) continue;
-    const missing = l.bikes - committed;
+    if (take < minBikes) return 0;
+    fits.push({ ...l, bikes: take });
+    used.set(key(l), (used.get(key(l)) ?? 0) + take);
+    return take;
+  });
+  const asked = new Set(lines.map(key));
+  lines.forEach((l, i) => {
+    const missing = l.bikes - (committed[i] ?? 0);
+    if (missing === 0) return;
     const suggestions: Suggestion[] = [];
     for (const { at, why } of candidateSlots(l, nearby)) {
       if (suggestions.length >= maxSuggestions) break;
+      // A slot the request already has would be a second line on the same hour: not offered.
+      if (asked.has(key(at))) continue;
       const room = Math.min(missing, left(at));
-      if (room >= minBikes)
-        suggestions.push({
-          line: { areaId: at.areaId, date: at.date, startHour: at.startHour, bikes: room },
-          why,
-        });
+      if (room < minBikes) continue;
+      suggestions.push({
+        line: { areaId: at.areaId, date: at.date, startHour: at.startHour, bikes: room },
+        why,
+      });
+      used.set(key(at), (used.get(key(at)) ?? 0) + room);
     }
     short.push({ line: l, missing, suggestions });
-  }
+  });
   return { fits, short };
 }
