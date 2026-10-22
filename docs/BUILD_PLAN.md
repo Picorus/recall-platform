@@ -95,6 +95,7 @@ Six engines carry the business: areas, GPS, the scheduler, play counting, make-u
 3. **P1.1.3** Pre-compute each area as H3 hexagons (size 9, about 0.1 km²) for fast "which area is this point in" checks on the server and on the screen.
 4. **P1.1.4** Rules: areas may not overlap; a point in two edge zones belongs to the nearer area. Checked automatically when an area is saved.
 5. **P1.1.5** Seed data: the six launch areas (Madhapur, Kondapur, Gachibowli, Hitech City, Jubilee Hills, Banjara Hills) as draft shapes for ops to correct on the map.
+6. **P1.1.6** A super admin adds areas and turns them on or off (Prateek, 22 Oct 2026). Off = not offered to brands, and plays and moving hours there do not count. On/off is a new version from a chosen date, never a delete. An area with bookings still to run cannot be turned off until they are moved or refunded. Operations admins correct shapes. Shapes may not overlap or touch; the edge zones cover any gap.
 
 ### P1.2 GPS and moving hours
 
@@ -146,8 +147,8 @@ The scheduler answers one question every minute: which booking does each bike in
 1. **P1.7.1 Ledger.** Double-entry accounts: payment clearing, money held for campaigns not yet delivered, revenue earned, GST payable, agency payable, aggregator payable, rider earnings payable, refunds payable, TDS payable, gateway fees. Every booking, delivery, refund and payout is a balanced entry.
 2. **P1.7.2 Brand pays in advance.** Full amount + GST, then a GST tax invoice is issued at once. The money sits as "held" until plays are delivered.
 3. **P1.7.3 Revenue earned hour by hour.** At each hour close, the delivered part moves from held to earned.
-4. **P1.7.4 Cuts.** Agency 10% on bookings made by an agency; aggregator 2% on brands referred by a delivery or ride app. Both are recorded as payable and paid monthly with a statement.
-5. **P1.7.5 Rider earnings (after the POC).** ₹25 for each moving hour + 25% of what his hours sold (the booking's bike-hour price × the share of plays his screen delivered). Paid hours capped at 260 a month.
+4. **P1.7.4 Cuts.** Agency 10% on bookings made by an agency; aggregator 2% on brands referred by a delivery or ride app. Both are worked out on what was delivered (not invoiced), recorded as payable and paid monthly with a statement.
+5. **P1.7.5 Rider earnings (after the POC).** ₹25 for each moving hour + 25% of what his hours sold (the booking's bike-hour price × the share of plays his screen delivered). Paid hours capped at 260 active hours a month (moving hours as RECALL counts them; Prateek, 22 Oct 2026).
 6. **P1.7.6 Rider earnings (POC).** Flat ₹8,000 / ₹10,000 / ₹12,000 (base + ₹6,000 founding bonus). Bonus in full at 150+ verified moving hours inside the allowed area (POC: Hyderabad), none below 150; moving hours as RECALL calculates them from the screen, never app-open time (Prateek, 22 Oct 2026). Day-90 bonus of ₹3,000 paid towards the screen loan.
 7. **P1.7.7 Payouts.** Weekly run every Monday: system prepares, finance approves in admin, the payout provider pays each rider's bank or UPI. Failed payouts retry and show in admin.
 8. **P1.7.8 Screen loan.** The bank lends to the rider; RECALL only records loan status and EMI dates shown in the rider app. Loans and EMIs are never on RECALL's books.
@@ -275,7 +276,7 @@ The admin portal is where RECALL runs the business: fleet, areas, sales, ads, mo
 | P3.2 | Today | Bikes online and moving now, hours sold vs delivered today, make-ups due, refunds this week, alerts | Founder, ops |
 | P3.3 | Fleet map | Every screen live on the map, filter by area and status; click a bike for its history, health and commands | Ops, tech |
 | P3.4 | Screens | Stock, fitting, linked bike and rider, version, health, repairs, swaps, updates rollout | Ops, tech |
-| P3.5 | Areas | Draw and edit area shapes on the map, edge zone, version history, check for overlaps | Ops |
+| P3.5 | Areas | Draw and edit area shapes on the map, edge zone, version history, check for overlaps; add areas and turn them on or off (super admin only) | Ops, founder |
 | P3.6 | Prices and rules | Price bands, offers, floor, minimums, ad deadline, trial rules; every change versioned | Founder, finance |
 | P3.7 | Inventory calendar | Area × hour grid: bike-hours sold, usual bikes seen, delivered; optional manual limit; holds for a client (hours, days, bikes; no money; end at a set time; turn into a booking) | Sales, ops |
 | P3.8 | Brands and bookings | Brand accounts, agencies, book on a brand's behalf with a payment link for any start date including last-minute (portal brands need 15 days), booking timeline, cancel, notes | Sales |
@@ -383,9 +384,9 @@ Phases overlap on purpose: each starts once the part it depends on is stable, no
 | --- | --- | --- | --- |
 | P0.1 | This build plan | Done | Oct 2026 |
 | P0.2 | Repository, automatic checks, record files | Done | Oct 2026 |
-| P0.3 | Night Signal design system, logo, screens redrawn | Doing | Nov 2026 |
-| P1.10 | Fleet simulator (built alongside the engine) | To do | Nov 2026 onward |
-| P1.1–P1.2 | Areas and GPS | To do | Nov 2026 |
+| P0.3 | Night Signal design system, logo, screens redrawn | Done | Oct 2026 |
+| P1.10 | Fleet simulator (built alongside the engine) | Doing | Nov 2026 onward |
+| P1.1–P1.2 | Areas and GPS | Doing | Nov 2026 |
 | P1.3 | Inventory, prices, bookings | To do | Dec 2026 |
 | P1.4 | Ad scheduler | To do | Dec 2026 – Jan 2027 |
 | P1.5–P1.6 | Play counting, make-ups, refunds | To do | Jan 2027 |
@@ -418,6 +419,8 @@ A new engineer should be able to read four files and start work the same day. Th
 
 | Date | Version | Change |
 | --- | --- | --- |
+| 22 Oct 2026 | 1.6 | P1.1.6 and P3.5: a super admin adds areas and turns them on or off (Prateek). |
+| 22 Oct 2026 | 1.5 | P0.3 done: all screens approved (brand 9, rider 12, admin 16). P1.7.4: cuts on delivered value (Prateek). P1.1, P1.2 and P1.10 started. |
 | 22 Oct 2026 | 1.4 | P1.7.6: founding bonus only at 150+ moving hours, no part bonus (Prateek's decision of 22 Oct, already in DECISIONS; the plan line had been missed). |
 | 22 Oct 2026 | 1.3 | P3: super admin, admins with permission areas and a read-only role; super admin sign-off for refunds and discounts; client holds; admin bookings for any start date (portal brands 15 days); short-notice ad approval (Prateek). |
 | 22 Oct 2026 | 1.2 | P5.5: brands upload their own video or a picture carousel as the main path; templates optional; colour and legibility advice is best practice, not enforced (Prateek). P0.2, P0.3.1–P0.3.3 done. |

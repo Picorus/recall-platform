@@ -74,3 +74,19 @@ export function businessDayOf(
   }
   return null;
 }
+
+const UTC_ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z$/;
+
+/**
+ * Milliseconds for a strict UTC time such as `2026-11-01T00:00:00Z` (or with `.000`), else NaN.
+ * Refuses times without `Z` (they would be read in the server's own time zone) and impossible
+ * dates such as 30 February.
+ */
+export function parseUtcIso(text: string): number {
+  if (!UTC_ISO.test(text)) return Number.NaN;
+  const ms = Date.parse(text);
+  if (Number.isNaN(ms) || new Date(ms).toISOString().slice(0, 19) !== text.slice(0, 19)) {
+    return Number.NaN;
+  }
+  return ms;
+}
