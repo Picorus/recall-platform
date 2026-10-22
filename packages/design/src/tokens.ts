@@ -285,7 +285,7 @@ export const textStyles: readonly TextStyleGroup[] = [
         lineHeight: '24px',
         fontWeight: 400,
         width: 100,
-        sample: 'The clock pauses after 5 minutes stopped.',
+        sample: 'The clock pauses after 10 minutes standing still.',
         usage:
           'Default UI and document text. Anek Latin 400/500, wdth 100. Measure 60–72 characters.',
       },
