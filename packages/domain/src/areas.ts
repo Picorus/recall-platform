@@ -209,6 +209,11 @@ export type Place =
     }
   | { readonly kind: 'outside' };
 
+/** "inside:hyd-madhapur@3", "edge:hyd-madhapur@3" or "outside": a stable key for a place. */
+export function placeKey(place: Place): string {
+  return place.kind === 'outside' ? 'outside' : `${place.kind}:${place.areaId}@${place.version}`;
+}
+
 function byId(a: AreaVersion, b: AreaVersion): number {
   return a.areaId < b.areaId ? -1 : a.areaId > b.areaId ? 1 : 0;
 }
