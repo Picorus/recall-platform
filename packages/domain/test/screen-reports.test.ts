@@ -10,6 +10,7 @@ import {
 import {
   acknowledge,
   addSecond,
+  checkReport,
   EMPTY_INBOX,
   EMPTY_MINUTE,
   EMPTY_OUTBOX,
@@ -350,5 +351,33 @@ describe('pay zone (Prateek, 22 Oct 2026)', () => {
       false,
     );
     expect(inPayZone(zone, undefined, { kind: 'outside' })).toBe(false);
+  });
+});
+
+describe('checking reports before they are stored', () => {
+  const good = minutesOf(feed(Array.from({ length: 60 }, (_, i) => sec(T + i))))[0];
+
+  it('real reports pass', () => {
+    expect(good && checkReport(good)).toBeUndefined();
+    const live = feed([sec(T)]).find((r) => r.kind === 'live');
+    expect(checkReport(live)).toBeUndefined();
+  });
+
+  it.each([
+    ['a minute not on a whole minute', { minute: T + 1 }],
+    ['61 clock seconds', { clockSeconds: 61 }],
+    ['more pay seconds than clock seconds', { payClockSeconds: 61 }],
+    ['an impossible distance', { distanceM: 50_000 }],
+    ['places adding up to more than a minute', { secondsAt: { a: 40, b: 40 } }],
+    ['clock per place not matching the total', { clockAt: { a: 10 } }],
+    ['a null character', { secondsAt: { 'a\u0000': 60 } }],
+  ])('refuses %s', (_, change) => {
+    expect(checkReport({ ...good, ...change })).toBeDefined();
+  });
+
+  it('refuses things that are not reports', () => {
+    for (const bad of [null, 5, 'x', { kind: 'foo' }, { kind: 'live', t: Number.NaN }]) {
+      expect(checkReport(bad)).toBeDefined();
+    }
   });
 });

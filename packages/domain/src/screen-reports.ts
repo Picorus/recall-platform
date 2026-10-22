@@ -249,3 +249,66 @@ export function receive(
   }
   return { inbox: { upTo, ahead, lost }, accepted, ack: upTo };
 }
+
+// ---------------------------------------------------------------- checking what arrives
+
+/** Most metres a bike can cover in a minute at the jump limit (150 km/h), with room to spare. */
+export const MAX_MINUTE_DISTANCE_M = 3_000;
+const MAX_PLACE_KEY = 80;
+
+const isInt = (v: unknown, min: number, max: number): v is number =>
+  typeof v === 'number' && Number.isInteger(v) && v >= min && v <= max;
+
+function secondsMap(v: unknown): string | undefined {
+  if (typeof v !== 'object' || v === null || Array.isArray(v)) return 'not a map of places';
+  let total = 0;
+  for (const [k, s] of Object.entries(v)) {
+    if (k.length === 0 || k.length > MAX_PLACE_KEY || k.includes('\u0000')) return 'bad place key';
+    if (!isInt(s, 0, 60)) return 'seconds out of range';
+    total += s;
+  }
+  return total > 60 ? 'more than 60 seconds in a minute' : undefined;
+}
+
+/**
+ * Checks a report from a screen before anything is stored or counted. Returns what is wrong, or
+ * undefined when it is fine. A report that fails is kept aside with its reason and never counted,
+ * so one bad report cannot block a screen's uploads.
+ */
+export function checkReport(r: unknown): string | undefined {
+  if (typeof r !== 'object' || r === null) return 'not a report';
+  const x = r as Record<string, unknown>;
+  if (x.kind === 'live') {
+    if (!isInt(x.t, 0, 2 ** 32)) return 'bad time';
+    if (typeof x.lat !== 'number' || !(Math.abs(x.lat) <= 90)) return 'bad latitude';
+    if (typeof x.lng !== 'number' || !(Math.abs(x.lng) <= 180)) return 'bad longitude';
+    if (
+      typeof x.place !== 'string' ||
+      x.place.length > MAX_PLACE_KEY ||
+      x.place.includes('\u0000')
+    ) {
+      return 'bad place';
+    }
+    return typeof x.moving === 'boolean' ? undefined : 'bad moving flag';
+  }
+  if (x.kind === 'minute') {
+    if (!isInt(x.minute, 0, 2 ** 32) || x.minute % 60 !== 0)
+      return 'minute must start on a whole minute';
+    if (!isInt(x.clockSeconds, 0, 60)) return 'clock seconds out of range';
+    if (!isInt(x.payClockSeconds, 0, x.clockSeconds)) return 'pay seconds out of range';
+    if (!isInt(x.movingSeconds, 0, 60)) return 'moving seconds out of range';
+    if (!isInt(x.distanceM, 0, MAX_MINUTE_DISTANCE_M)) return 'distance out of range';
+    if (!isInt(x.plays, 0, 60) || !isInt(x.people, 0, 100_000))
+      return 'plays or people out of range';
+    const at = secondsMap(x.secondsAt);
+    if (at) return `secondsAt: ${at}`;
+    const clockAt = secondsMap(x.clockAt);
+    if (clockAt) return `clockAt: ${clockAt}`;
+    const clockTotal = Object.values(x.clockAt as Record<string, number>).reduce(
+      (a, b) => a + b,
+      0,
+    );
+    return clockTotal === x.clockSeconds ? undefined : 'clockAt does not add up to clock seconds';
+  }
+  return 'unknown kind';
+}
