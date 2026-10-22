@@ -252,7 +252,7 @@ The brand portal is the 9-screen simple product from rulebook v5.4: pick, pay, u
 4. **P5.4 Book.**
    1. **P5.4.1** Areas picked on our map (RECALL-drawn shapes only).
    2. **P5.4.2** Hours as single hours or ready-made picks (morning rush, lunch, evening rush, dinner, late night), price band shown on each.
-   3. **P5.4.3** Days and number of weeks; 5 to 100 bikes.
+   3. **P5.4.3** Days and number of weeks (start at least 15 days after booking; sooner only through RECALL's team); 5 to 100 bikes.
    4. **P5.4.4** Optional monthly repeat: 6 months 8% off, 12 months 12% off.
    5. **P5.4.5** Live summary: bike-hours, plays promised, price, GST, total; blocks the next step under ₹15,000.
 5. **P5.5 Your ads.** Template (logo, headline up to 30 characters, offer line up to 40, optional code and QR, 3 colour themes) or own file (a 15 s video, or a carousel of 2–5 pictures shown in turn for 15 s; 1280 × 640, no sound, up to 30 MB). Own files are the main path; templates are for brands with no ad. 2 to 5 ads; "make another version for me" button; best-practice tips; automatic rule check (no flashing, size, length).
@@ -271,15 +271,15 @@ The admin portal is where RECALL runs the business: fleet, areas, sales, ads, mo
 
 | Step | Screen | What it does | Main users |
 | --- | --- | --- | --- |
-| P3.1 | Sign-in and roles | Staff sign-in with two-step check; roles: founder, ops, sales, ad review, finance, support, tech, read-only | All |
+| P3.1 | Sign-in and roles | Staff sign-in with two-step check; super admin (everything, sets permissions, prices and rules, payout approval, full audit log) and admins with permission areas: Sales, Ad review, Operations, Finance, Support (Prateek, 22 Oct 2026) | All |
 | P3.2 | Today | Bikes online and moving now, hours sold vs delivered today, make-ups due, refunds this week, alerts | Founder, ops |
 | P3.3 | Fleet map | Every screen live on the map, filter by area and status; click a bike for its history, health and commands | Ops, tech |
 | P3.4 | Screens | Stock, fitting, linked bike and rider, version, health, repairs, swaps, updates rollout | Ops, tech |
 | P3.5 | Areas | Draw and edit area shapes on the map, edge zone, version history, check for overlaps | Ops |
 | P3.6 | Prices and rules | Price bands, offers, floor, minimums, ad deadline, trial rules; every change versioned | Founder, finance |
-| P3.7 | Inventory calendar | Area × hour grid: bike-hours sold, usual bikes seen, delivered; optional manual limit | Sales, ops |
-| P3.8 | Brands and bookings | Brand accounts, agencies, book on a brand's behalf (POC), booking timeline, cancel, notes | Sales |
-| P3.9 | Ad review | Queue of uploaded ads with the automatic checks; approve or reject with a reason | Ad review |
+| P3.7 | Inventory calendar | Area × hour grid: bike-hours sold, usual bikes seen, delivered; optional manual limit; holds for a client (hours, days, bikes; no money; end at a set time; turn into a booking) | Sales, ops |
+| P3.8 | Brands and bookings | Brand accounts, agencies, book on a brand's behalf with a payment link for any start date including last-minute (portal brands need 15 days), booking timeline, cancel, notes | Sales |
+| P3.9 | Ad review | Queue of uploaded ads with the automatic checks; approve or reject with a reason; approve on short notice (after the 7-day deadline) with a logged reason | Ad review |
 | P3.10 | Delivery and make-ups | Each booking line live: plays, bikes, shortfall, make-ups booked, refunds due | Ops, sales |
 | P3.11 | Riders | Applications, KYC, documents, agreement, fitting slots, status, earnings, notes, leaving | Ops, support |
 | P3.12 | Payouts | Weekly payout run: review, hold, approve, send; failures and retries | Finance |
@@ -418,6 +418,7 @@ A new engineer should be able to read four files and start work the same day. Th
 
 | Date | Version | Change |
 | --- | --- | --- |
+| 22 Oct 2026 | 1.3 | P3: super admin and admins with permission areas; client holds; admin bookings for any start date (portal brands 15 days); short-notice ad approval (Prateek). |
 | 22 Oct 2026 | 1.2 | P5.5: brands upload their own video or a picture carousel as the main path; templates optional; colour and legibility advice is best practice, not enforced (Prateek). P0.2, P0.3.1–P0.3.3 done. |
 | 22 Oct 2026 | 1.1 | P0.3 started: Night Signal applied to the RECALL design system (colours, Anek type, recoloured Afterimage logo, all previews), the investor deck (Google Slides and the PowerPoint in Recall Final), and all 12 screens on the design canvas. Price band name fixed to "Lite". |
 | 22 Oct 2026 | 1.0 | First full build plan: build order, architecture, the six engines, screen, rider app, brand portal, admin portal, Night Signal colours, outside services, testing, constraints, roadmap, records. Based on rulebook v5.4 and model v5.3. |
