@@ -2,6 +2,14 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 22 Oct 2026 · P0.3.4 · Batch 3a: admin (for approval)
+- Batch 2b approved with Prateek's bonus rule.
+- Canvas version 47, admin row: Today (P3.2, replaces the pre-v5.4 Live operations board, kept and marked OLD), Inventory and holds (P3.7), Brands and bookings (P3.8), Ad review (P3.9), Team and roles (P3.1/P3.17).
+- Prateek's admin rules built in and recorded (DECISIONS; BUILD_PLAN P3.1, P3.7–P3.9, P5.4.3, change log 1.3): super admin + admins with permission areas; client holds; admin bookings for any start date (portal brands need 15 days, now shown on the brand Book screen); short-notice ad approval with a logged reason.
+- Caught and fixed my own sample error before publishing: Fri–Sun 27 Aug – 5 Sep is 6 days, not 9 (180 bike-hours, 36,000 plays, ₹54,000 + GST = ₹63,720).
+- Open: approval of batch 3a; which permission areas exist beyond the five (e.g. read-only, tech) and whether any action needs a super admin's second approval (large refunds, price changes).
+- **Next: batch 3b** — Delivery and make-ups, Fleet map, Screens, Areas, Prices and rules, Riders; then 3c — Payouts, Money, Reports, Support, Audit log.
+
 ## 22 Oct 2026 · P0.3.4 · Batch 2b: rider app complete (for approval)
 - Batch 2a approved by Prateek.
 - Canvas version 45: five more rider screens (top row, right): R06 Founding rider pay (POC; model v5.2: ₹2,000/₹4,000/₹6,000 base + ₹6,000 bonus, full at 150+ verified hours inside Hyderabad, part at 100–150, none under 100; day-90 ₹3,000 into the loan), R07 Your screen (status, care, report a problem with photo, repair or swap), R08 Help (WhatsApp, call, requests, plain answers), R09 Alerts (silent while moving), R10 Profile and settings (language, documents, bank re-check with ₹1, leave RECALL).
