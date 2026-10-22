@@ -6,7 +6,8 @@ Newest first. Each entry: date · step id · what changed · tests · open issue
 - Batch 2a approved by Prateek.
 - Canvas version 45: five more rider screens (top row, right): R06 Founding rider pay (POC; model v5.2: ₹2,000/₹4,000/₹6,000 base + ₹6,000 bonus, full at 150+ verified hours inside Hyderabad, part at 100–150, none under 100; day-90 ₹3,000 into the loan), R07 Your screen (status, care, report a problem with photo, repair or swap), R08 Help (WhatsApp, call, requests, plain answers), R09 Alerts (silent while moving), R10 Profile and settings (language, documents, bank re-check with ₹1, leave RECALL).
 - Navigation wired: Device and Help tabs, alerts bell and profile from Today, founding pay from Earnings. All 11 plan screens (P4.1–P4.11) now drawn.
-- Open question for Prateek: POC bonus "pro rata 100–150" — (a) 0 at 100 h rising to ₹6,000 at 150 h, or (b) hours ÷ 150 × ₹6,000? No part amount shown until decided.
+- Prateek decided (canvas version 46): the founding bonus needs 150 moving hours minimum, no part bonus; only moving hours as RECALL calculates them count (never app-open time); POC hours only inside Hyderabad (radius to be confirmed); after the POC, counted hours depend on allowed areas with exceptions (to be set). Founding pay and Help screens updated; DECISIONS and MODEL_V52 amended.
+- Open: POC radius; post-POC area rules and exceptions (needed by P1.2 GPS counting).
 - Placeholders: charging steps (screen maker), support hours and number, rules for returning a loan-bought screen.
 - **Next: batch 3** — admin screens, starting with "Live operations" (still uses pre-v5.4 plays-per-brand), for approval.
 
