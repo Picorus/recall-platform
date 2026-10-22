@@ -31,6 +31,7 @@ No change to model numbers. v5.3 already assumes one bike-hour = 240 spots of 15
 
 ## Ads (creatives)
 - RECALL does not make ads. Fixed templates with limits (logo, headline with character limit, offer line, optional QR / coupon code, colour themes) so upload is easy.
+- **Changed 22 Oct 2026 (Prateek):** brands mostly upload their own 15 s video or a carousel of 2–5 pictures; we run it if it passes the rule check. Templates are optional, for brands with no ad. See DECISIONS.
 - Minimum 2, maximum 5 ads per booking; they take turns so people at a signal are not bored. One tap auto-creates a second version (colour or offer line swapped) for brands with one ad.
 - We show best practices; we only suggest, it is their choice.
 - Coupon codes and QR allowed on the ad. RECALL does not track them.
@@ -53,4 +54,4 @@ No change to model numbers. v5.3 already assumes one bike-hour = 240 spots of 15
 - 80% sell cap (not used; the 40 RECALL spots per bike-hour are the buffer). Watch weekly refunds as the warning sign of overselling.
 
 ## Portal (brand sees 9 screens)
-1 Sign in · 2 Your business (name, GST, contact) · 3 My campaigns (Scheduled / Running / Done) · 4 Book (area, hours, days, bikes, price) · 5 Your ads (templates, 2–5 ads, best practices) · 6 Review and pay (full advance, disclaimers) · 7 Final report · 8 Invoices · 9 Help and account.
+1 Sign in · 2 Your business (name, GST, contact) · 3 My campaigns (Scheduled / Running / Done) · 4 Book (area, hours, days, bikes, price) · 5 Your ads (upload video or carousel, or a template; 2–5 ads; best practices) · 6 Review and pay (full advance, disclaimers) · 7 Final report · 8 Invoices · 9 Help and account.
