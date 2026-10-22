@@ -2,6 +2,25 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 22 Oct 2026 · P0.3.4 · Batch 3c: admin money, reports, support, audit (for approval)
+- Canvas version 51, admin row end: Payouts (P3.12), Money (P3.13), Reports (P3.14), Support (P3.15), Audit log (P3.16). All 16 admin side menus now link; Delivery's "Open Money" opens Money. Riders now shows Arjun Rao (Operations) as the signed-in admin, since Priya has Sales and Support only.
+- Payouts: system prepares the Monday run, Finance (Meena Iyer) checks, only a super admin approves; holds with a reason; failed payments retry. Sample Mon 13 Mar 2028 matches Ravi's rider app (52 h × ₹25 + 25% of ₹8,008 = ₹3,302).
+- Money: ledger at 31 Aug 2027 in paise, debits = credits (₹1,35,00,934.50); held ₹6,40,000 + earned ₹91,99,775 = invoiced ₹98,40,000 − refund ₹225; GST CGST + SGST ₹17,71,159.50; credit note CN-2027-0001 for Brand 31's ₹225 + GST; agency and aggregator statements; exports. Discounts wait for a super admin.
+- Reports: final reports 24 h after the last hour, re-send; weekly fill, earnings, refunds, moving hours for POC weeks 1–5 (fill 53% → 63%).
+- Support: one inbox, WhatsApp history, actions logged. Audit log: searchable, who/what/when/before/after, cannot be edited.
+- For Prateek to check (my choices): agency/aggregator cuts on delivered value; no discount below ₹220 a bike-hour.
+- Records: `docs/OPEN_QUESTIONS.md` (new) lists every open question in one place (11 so far). BUILD_PLAN P1.7.6 corrected to Prateek's 150-hour bonus rule (change log 1.4).
+- Open: approval of batches 3b and 3c.
+- **Next:** once approved, P0.3 is done. Then P1.10 fleet simulator and P1.1–P1.2 areas and GPS (the roadmap order).
+
+## 22 Oct 2026 · P0.3.4 · Batch 3b: admin operations (for approval)
+- Batch 3a approved with Prateek's answers (read-only role; super admin sign-off for refunds and discounts).
+- Canvas version 50, admin row continued: Delivery and make-ups (P3.10; refunds need super admin sign-off), Fleet map (P3.3; positions only from screens), Screens (P3.4; stock 210 = 200 + 5% spares; staged updates 1% → 10% → all with pause and roll-back), Areas (P3.5; versions, edge zone, overlap check; bookings keep their version), Prices and rules (P3.6; super admin only; versioned from a date; current values from rulebook v5.4, model v5.2/5.3 and today's decisions), Riders (P3.11; funnel, list, rider detail and notes). All 11 admin side menus now link to each other.
+- Same sample day as Today (Mon 23 Aug 2027, POC day 23): lines, make-ups (refund ₹225 = 150 plays × ₹1.50 at peak), bikes (142 moving / 31 stopped / 18 at hub / 9 offline = 200).
+- Placeholder: [edge width] of an area's edge zone (P1.1).
+- Open: approval of batch 3b.
+- **Next: batch 3c** — Payouts (P3.12), Money (P3.13), Reports (P3.14), Support (P3.15), Audit log (P3.16). That completes P0.3.4.
+
 ## 22 Oct 2026 · P0.3.4 · Batch 3a: admin (for approval)
 - Batch 2b approved with Prateek's bonus rule.
 - Canvas version 47, admin row: Today (P3.2, replaces the pre-v5.4 Live operations board, kept and marked OLD), Inventory and holds (P3.7), Brands and bookings (P3.8), Ad review (P3.9), Team and roles (P3.1/P3.17).
