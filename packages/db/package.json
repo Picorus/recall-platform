@@ -1,0 +1,24 @@
+{
+  "name": "@recall/db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The database: migrations (plain SQL) and the code that reads and writes RECALL's tables.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run --passWithNoTests test/unit",
+    "test:db": "vitest run test/db",
+    "migrate": "tsx src/cli-migrate.ts"
+  },
+  "dependencies": {
+    "@recall/domain": "workspace:*",
+    "pg": "8.23.1"
+  },
+  "devDependencies": {
+    "@types/pg": "8.23.1",
+    "tsx": "4.23.15"
+  }
+}

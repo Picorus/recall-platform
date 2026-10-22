@@ -4,6 +4,7 @@ Newest first. Each: date · decision · why · who.
 
 | Date | Decision | Why | Who |
 |---|---|---|---|
+| 22 Oct 2026 | Database code lives in a new package `packages/db` (used by the API, the gateway and workers). Migrations are plain numbered SQL files run by a small runner of our own (each once, in a transaction, an edited migration is refused). Tables are append-only, enforced by database triggers, not only by code (hard rule 3). Library: node-postgres (`pg`) | Several services share one database; plain SQL keeps PostGIS/TimescaleDB features first-class and readable; the database itself refuses edits and deletes | Claude (P1.1–P1.2 storage), for Prateek's information |
 | 22 Oct 2026 | Rider pay zone: POC = within 15 km of Hitech City (centre: Cyber Towers); after the POC = the areas that are on (Hitech City, Madhapur, Kondapur, Gachibowli, Jubilee Hills, …; more added as needed) plus exceptions. A setting, versioned | Answers open questions 1 and 2 | Prateek |
 | 22 Oct 2026 | Screen-loan bank: Dhanlaxmi Bank (a setting; can change later) | Answers open question 4 | Prateek |
 | 22 Oct 2026 | Fitting centres: address to be added; any number of centres can be added later (setting). Support hours 10 am – 7 pm for now; phone and WhatsApp numbers added later (settings) | Answers open questions 5 and 6 | Prateek |
