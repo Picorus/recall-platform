@@ -11,6 +11,13 @@ import {
   type TrackerState,
 } from '../src/screen-tracker.js';
 
+/** Item `i`, failing the test clearly if it is missing. */
+function nth<T>(items: readonly T[], i: number): T {
+  const item = items.at(i);
+  if (item === undefined) throw new Error(`no item ${i}`);
+  return item;
+}
+
 const box = (s: number, w: number, n: number, e: number): Ring => [
   { lat: s, lng: w },
   { lat: s, lng: e },
@@ -56,16 +63,16 @@ function parked(seconds: number, atM: number, t0: number, noiseM = 4): GpsFix[] 
 describe('cleaning GPS (P1.2.1)', () => {
   it('drops poor fixes and jumps; smooths the rest over 3 fixes', () => {
     const fixes: GpsFix[] = ride(20, 10);
-    fixes[3] = { ...fixes[3]!, accuracyM: 80 };
-    fixes[6] = { ...fixes[6]!, lat: fixes[6]!.lat + 0.01 }; // 1.1 km in a second
+    fixes[3] = { ...nth(fixes, 3), accuracyM: 80 };
+    fixes[6] = { ...nth(fixes, 6), lat: nth(fixes, 6).lat + 0.01 }; // 1.1 km in a second
     const out = run(fixes);
-    expect(out[3]!.fix).toBe('poor-accuracy');
-    expect(out[3]!.position).toBeUndefined();
-    expect(out[6]!.fix).toBe('jump');
+    expect(nth(out, 3).fix).toBe('poor-accuracy');
+    expect(nth(out, 3).position).toBeUndefined();
+    expect(nth(out, 6).fix).toBe('jump');
     expect(out.filter((s) => s.fix === 'used')).toHaveLength(8);
     // Second 9: average of the good fixes at 7, 8 and 9.
-    const avg = (fixes[7]!.lng + fixes[8]!.lng + fixes[9]!.lng) / 3;
-    expect(out[9]!.position!.lng).toBeCloseTo(avg, 9);
+    const avg = (nth(fixes, 7).lng + nth(fixes, 8).lng + nth(fixes, 9).lng) / 3;
+    expect(nth(out, 9).position?.lng).toBeCloseTo(avg, 9);
   });
 
   it('after 5 jumps in a row it trusts the new place (the old fix was the bad one)', () => {
@@ -73,8 +80,8 @@ describe('cleaning GPS (P1.2.1)', () => {
     const real = ride(20, 10, 0, 1);
     const out = run([bad, ...real]);
     expect(out.slice(1, 5).map((s) => s.fix)).toEqual(['jump', 'jump', 'jump', 'jump']);
-    expect(out[5]!.fix).toBe('used');
-    expect(out[5]!.position!.lat).toBeCloseTo(17.4, 6); // not averaged with the bad fix
+    expect(nth(out, 5).fix).toBe('used');
+    expect(nth(out, 5).position?.lat).toBeCloseTo(17.4, 6); // not averaged with the bad fix
     expect(out.slice(6).every((s) => s.fix === 'used')).toBe(true);
   });
 
@@ -82,7 +89,7 @@ describe('cleaning GPS (P1.2.1)', () => {
     const fixes: (GpsFix | null)[] = ride(40, 60);
     for (let i = 20; i < 50; i++) fixes[i] = null;
     const out = run(fixes);
-    expect(out[50]!.fix).toBe('used');
+    expect(nth(out, 50).fix).toBe('used');
   });
 });
 
@@ -114,10 +121,10 @@ describe('which area, with a 15-second hold (P1.2.2)', () => {
     // The smoothed position enters B (border ≈ 552 m east) around second 16.
     const entered = out.findIndex((s) => (s.position?.lng ?? 0) >= 78.4052);
     const switched = out.findIndex((s) => s.place.kind !== 'inside' || s.place.areaId !== 'hyd-a');
-    expect(out[0]!.place).toMatchObject({ kind: 'inside', areaId: 'hyd-a' });
+    expect(nth(out, 0).place).toMatchObject({ kind: 'inside', areaId: 'hyd-a' });
     expect(entered).toBeGreaterThan(14);
     expect(switched - entered).toBe(DEFAULT_TRACKER_RULES.areaHoldSeconds - 1);
-    expect(out[switched]!.place).toMatchObject({ kind: 'inside', areaId: 'hyd-b' });
+    expect(nth(out, switched).place).toMatchObject({ kind: 'inside', areaId: 'hyd-b' });
   });
 
   it('a bike riding along the border never flickers', () => {
@@ -131,7 +138,7 @@ describe('which area, with a 15-second hold (P1.2.2)', () => {
     }));
     const out = run(fixes, [a, b]);
     const changes = out.filter(
-      (s, i) => i > 0 && JSON.stringify(s.place) !== JSON.stringify(out[i - 1]!.place),
+      (s, i) => i > 0 && JSON.stringify(s.place) !== JSON.stringify(nth(out, i - 1).place),
     );
     expect(changes).toHaveLength(0);
   });
@@ -140,13 +147,13 @@ describe('which area, with a 15-second hold (P1.2.2)', () => {
 describe('moving and the 10-minute stop rule (P1.2.3)', () => {
   it('a parked bike with wandering GPS is not moving; a bike at 20 km/h is', () => {
     expect(run(parked(120, 0, 0)).some((s) => s.moving)).toBe(false);
-    expect(run(ride(20, 60)).at(-1)!.moving).toBe(true);
+    expect(nth(run(ride(20, 60)), -1).moving).toBe(true);
     expect(run(ride(4, 60)).some((s) => s.moving)).toBe(false);
   });
 
   it('a screen starts asleep and wakes within 10 seconds of riding', () => {
     const out = run(ride(20, 30));
-    expect(out[0]!.clockRuns).toBe(false);
+    expect(nth(out, 0).clockRuns).toBe(false);
     const woke = out.findIndex((s) => s.clockRuns);
     expect(woke).toBeGreaterThan(0);
     expect(woke).toBeLessThanOrEqual(10);
