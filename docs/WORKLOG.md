@@ -2,6 +2,13 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 22 Oct 2026 · P0.3.4 done · All screens approved
+- Prateek approved batches 3b and 3c with my two choices: agency and aggregator cuts on delivered value (BUILD_PLAN P1.7.4); no discount below ₹220 a bike-hour. DECISIONS updated; canvas version 52 marks every batch approved.
+- Edge width answered by the plan itself (P1.1.1: 300 m default, a setting): open question 3 closed, Areas screen updated.
+- P0.3 marked Done. P1.10, P1.1 and P1.2 started (BUILD_PLAN change log 1.5).
+- Decision (Claude): screen logic is written first in TypeScript (`packages/domain`) as the reference, with shared JSON test cases the Kotlin player must also pass.
+- **Next: P1.1** areas in code (shapes, versions, H3 cells, edge zone, overlap check, the six launch areas as drafts).
+
 ## 22 Oct 2026 · P0.3.4 · Batch 3c: admin money, reports, support, audit (for approval)
 - Canvas version 51, admin row end: Payouts (P3.12), Money (P3.13), Reports (P3.14), Support (P3.15), Audit log (P3.16). All 16 admin side menus now link; Delivery's "Open Money" opens Money. Riders now shows Arjun Rao (Operations) as the signed-in admin, since Priya has Sales and Support only.
 - Payouts: system prepares the Monday run, Finance (Meena Iyer) checks, only a super admin approves; holds with a reason; failed payments retry. Sample Mon 13 Mar 2028 matches Ravi's rider app (52 h × ₹25 + 25% of ₹8,008 = ₹3,302).

@@ -9,7 +9,7 @@ Newest at the bottom of each group. "Needed by" is the plan step that cannot fin
 |---|---|---|---|
 | 1 | POC radius: how far from the centre of Hyderabad do moving hours count? | Rider founding pay; admin Areas | P1.2 GPS counting |
 | 2 | After the POC: which areas count for rider hours, and which exceptions? | Admin Areas; rider pay | P1.2, P4.5 |
-| 3 | Edge width: how wide is the edge zone around an area (where a bike counts as "just outside")? | Admin Areas | P1.1 |
+| ~~3~~ | ~~Edge width~~ — answered by the plan (P1.1.1): 300 m by default, a setting per area; change it any time | Admin Areas | — |
 
 ## Partners and addresses
 | # | Question | Where it shows | Needed by |
@@ -36,4 +36,4 @@ Newest at the bottom of each group. "Needed by" is the plan step that cannot fin
 | 9 | Light theme chart colours 1 (olive) and 2 (blue) look alike in brightness. Keep (series are always named) or change a colour? | Charts | P1.9 reports |
 
 ## Waiting for approval
-- Admin batch 3b (Delivery, Fleet, Screens, Areas, Prices, Riders) and batch 3c on the design canvas.
+- Nothing. All screens approved 22 Oct 2026.
