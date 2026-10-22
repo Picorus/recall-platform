@@ -2,6 +2,14 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 22 Oct 2026 · P1.1–P1.2 storage · Areas and screen reports in the database
+- Prateek's answers merged (PR #14).
+- New `packages/db`: numbered SQL migrations and a small runner (each once, in a transaction, edited files refused, no BEGIN/COMMIT inside); `area_versions` (PostGIS, append-only, next-version and later-start enforced by the database; `saveAreaVersion` runs the domain overlap check under a lock); `screen_inboxes`, `screen_reports` (each report once by its number), `minute_summaries` (TimescaleDB), `screen_inbox_changes` (who moved an inbox, when). New CI job runs the database tests on a real PostgreSQL and the migrations twice. Runbook: `laptop-setup.md`.
+- Second review found 5 issues, all fixed with tests: one bad report could block a screen forever (now checked first and kept aside with its reason; the queue moves on); the minute table could be emptied (TRUNCATE trigger; app role can't drop chunks); the app connected as a superuser (now works through `recall_app`, which owns nothing); a minute could be claimed several times a second apart (must start on a whole minute); inbox moves weren't logged (now logged).
+- Tests: 21 database tests, 118 domain tests.
+- Open: app login roles on the real servers (P7).
+- **Next:** P1.3 inventory, prices and bookings (bike-hours in area-hours, price bands as versioned settings, minimums, booking states, free trial).
+
 ## 22 Oct 2026 · P1.2 · Prateek's answers to the open questions
 - P1.10 merged (PR #13, all checks green).
 - Answers recorded in DECISIONS, the plan (P1.7.6, P1.7.7, P3.17, change log 1.7) and `docs/OPEN_QUESTIONS.md`: POC pay zone 15 km around Hitech City; after the POC, the areas that are on (+ exceptions); loan bank Dhanlaxmi Bank; fitting centres and support numbers as settings (support 10 am – 7 pm); the loan screen is the rider's (bank handles defaults; RECALL may buy back); TDS on rider pay (rate with the CA); POC pay once a month after it ends; chart colours stay.

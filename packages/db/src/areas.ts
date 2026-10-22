@@ -69,6 +69,7 @@ export async function saveAreaVersion(
     throw new AreaError([{ kind: 'bad-date', detail: 'validFrom must be a UTC time' }]);
   }
   await inTransaction(pool, async (c) => {
+    await c.query('SET LOCAL ROLE recall_app');
     await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', ['area_versions']);
     const others = await c.query<Row>(
       `SELECT ${COLUMNS} FROM area_versions a

@@ -2,6 +2,7 @@
 // report is stored exactly once and minute summaries are counted in order, however often a batch is
 // sent and in whatever order batches arrive.
 import {
+  checkReport,
   receive,
   type Inbox,
   type MinuteSummary,
@@ -10,11 +11,30 @@ import {
 } from '@recall/domain';
 import type { Pool } from 'pg';
 
+/** Why a numbered report was set aside instead of stored, or undefined when it is fine. */
+function problemWith(n: Numbered): string | undefined {
+  if (!Number.isSafeInteger(n.at) || n.at < 0 || n.at >= 2 ** 32) return 'bad time made';
+  return checkReport(n.report);
+}
+
+/** A short, storable copy of a report that failed its checks, for a person to look at. */
+function rawCopy(report: unknown): string {
+  let text: string;
+  try {
+    text = JSON.stringify(report) ?? String(report);
+  } catch {
+    text = '(could not be read)';
+  }
+  return text.replaceAll('\\u0000', '').slice(0, 4000);
+}
+
 export interface Stored {
   /** Number to send back to the screen: everything up to here is safe. */
   readonly ack: number;
   /** Minute summaries newly counted by this batch. */
   readonly minutesCounted: number;
+  /** Reports in this batch set aside because they failed the checks (they keep their number). */
+  readonly rejected: number;
 }
 
 /**
@@ -30,6 +50,8 @@ export async function storeUpload(
   const c = await pool.connect();
   try {
     await c.query('BEGIN');
+    // Work through the limited app role: it can add rows, never edit, delete or switch checks off.
+    await c.query('SET LOCAL ROLE recall_app');
     await c.query('INSERT INTO screen_inboxes (screen_id) VALUES ($1) ON CONFLICT DO NOTHING', [
       screenId,
     ]);
@@ -40,9 +62,12 @@ export async function storeUpload(
     const upTo = Number(box.rows[0]?.up_to ?? 0);
     const lost = Number(box.rows[0]?.lost ?? 0);
     // Reports already stored that arrived ahead of a gap.
-    const waiting = await c.query<{ seq: string; made_at: Date; body: Report }>(
-      'SELECT seq, made_at, body FROM screen_reports WHERE screen_id = $1 AND seq > $2',
+    const waiting = await c.query<{ seq: string; kind: string; made_at: Date; body: Report }>(
+      'SELECT seq, kind, made_at, body FROM screen_reports WHERE screen_id = $1 AND seq > $2',
       [screenId, upTo],
+    );
+    const setAside = new Set(
+      waiting.rows.filter((w) => w.kind === 'rejected').map((w) => Number(w.seq)),
     );
     const ahead = new Map<number, Numbered>(
       waiting.rows.map((r) => [
@@ -53,9 +78,22 @@ export async function storeUpload(
     const inbox: Inbox = { upTo, ahead, lost };
     const result = receive(inbox, batch, oldestHeld);
 
-    // Keep every new valid report as received (the key ignores repeats).
+    // Keep every new report as received (the key ignores repeats). One that fails its checks is
+    // kept aside with the reason: it takes its number, so the queue moves on, but it never counts.
+    let rejected = 0;
     for (const n of batch) {
       if (!Number.isSafeInteger(n.seq) || n.seq <= upTo || ahead.has(n.seq)) continue;
+      const problem = problemWith(n);
+      if (problem) {
+        rejected += 1;
+        setAside.add(n.seq);
+        await c.query(
+          `INSERT INTO screen_reports (screen_id, seq, kind, made_at, body, reject_reason)
+           VALUES ($1, $2, 'rejected', now(), $3, $4) ON CONFLICT DO NOTHING`,
+          [screenId, n.seq, JSON.stringify({ raw: rawCopy(n.report) }), problem],
+        );
+        continue;
+      }
       await c.query(
         `INSERT INTO screen_reports (screen_id, seq, kind, made_at, body)
          VALUES ($1, $2, $3, to_timestamp($4), $5) ON CONFLICT DO NOTHING`,
@@ -64,7 +102,7 @@ export async function storeUpload(
     }
     let minutesCounted = 0;
     for (const n of result.accepted) {
-      if (n.report.kind !== 'minute') continue;
+      if (setAside.has(n.seq) || n.report.kind !== 'minute') continue;
       const m: MinuteSummary = n.report;
       await c.query(
         `INSERT INTO minute_summaries
@@ -91,7 +129,7 @@ export async function storeUpload(
       [screenId, result.inbox.upTo, result.inbox.lost],
     );
     await c.query('COMMIT');
-    return { ack: result.ack, minutesCounted };
+    return { ack: result.ack, minutesCounted, rejected };
   } catch (e) {
     await c.query('ROLLBACK');
     throw e;

@@ -124,3 +124,95 @@ describe('screen uploads in the database', () => {
     ).rejects.toThrow(/forward/);
   });
 });
+
+describe('review fixes', () => {
+  const good = (seq: number, minute: number): Numbered => ({
+    seq,
+    at: minute + 60,
+    report: {
+      kind: 'minute',
+      minute,
+      secondsAt: { 'inside:hyd-madhapur@1': 60 },
+      clockSeconds: 60,
+      clockAt: { 'inside:hyd-madhapur@1': 60 },
+      payClockSeconds: 60,
+      movingSeconds: 60,
+      distanceM: 300,
+      plays: 0,
+      people: 0,
+    },
+  });
+
+  it('one bad report is set aside with its reason and never blocks the screen', async () => {
+    const bad = {
+      ...good(3, T + 120),
+      report: { ...good(3, T + 120).report, clockSeconds: 61 },
+    } as Numbered;
+    const first = await storeUpload(pool, 'scr-bad', [good(1, T), bad], 1);
+    expect(first).toMatchObject({ ack: 1, minutesCounted: 1, rejected: 1 });
+    // Seq 2 arrives later: the queue moves past the bad one and later minutes still count.
+    const second = await storeUpload(pool, 'scr-bad', [good(2, T + 60), good(4, T + 180)], 2);
+    expect(second).toMatchObject({ ack: 4, minutesCounted: 2 });
+    const r = await pool.query<{ reject_reason: string }>(
+      "SELECT reject_reason FROM screen_reports WHERE screen_id = 'scr-bad' AND kind = 'rejected'",
+    );
+    expect(r.rows.map((x) => x.reject_reason)).toEqual(['clock seconds out of range']);
+  });
+
+  it('nonsense in the same batch (unknown kind, bad time, null characters) is set aside too', async () => {
+    const batch = [
+      { seq: 1, at: T, report: { kind: 'foo' } },
+      { seq: 2, at: Number.NaN, report: good(2, T).report },
+      { seq: 3, at: T, report: { ...good(3, T).report, secondsAt: { 'a\u0000': 60 } } },
+      good(4, T + 60),
+    ] as unknown as Numbered[];
+    expect(await storeUpload(pool, 'scr-junk', batch, 1)).toMatchObject({
+      ack: 4,
+      minutesCounted: 1,
+      rejected: 3,
+    });
+  });
+
+  it('three summaries claiming the same minute a second apart: only a whole minute counts', async () => {
+    const batch = [
+      good(1, T),
+      { ...good(2, T), report: { ...good(2, T).report, minute: T + 1 } },
+    ] as Numbered[];
+    expect(await storeUpload(pool, 'scr-dup', batch, 1)).toMatchObject({
+      minutesCounted: 1,
+      rejected: 1,
+    });
+  });
+
+  it('every move of an inbox is logged with who and when', async () => {
+    const r = await pool.query<{ up_to_from: string; up_to_to: string; changed_by: string }>(
+      "SELECT up_to_from, up_to_to, changed_by FROM screen_inbox_changes WHERE screen_id = 'scr-bad' ORDER BY changed_at",
+    );
+    expect(r.rows.map((x) => [Number(x.up_to_from), Number(x.up_to_to), x.changed_by])).toEqual([
+      [0, 1, 'recall_app'],
+      [1, 4, 'recall_app'],
+    ]);
+  });
+
+  it('through the app role nothing can be wiped or switched off', async () => {
+    const c = await pool.connect();
+    try {
+      await c.query('SET ROLE recall_app');
+      for (const sql of [
+        'TRUNCATE minute_summaries',
+        "SELECT drop_chunks('minute_summaries', now() + interval '1 year')",
+        'ALTER TABLE minute_summaries DISABLE TRIGGER USER',
+        'DROP TABLE screen_reports',
+        "DELETE FROM screen_reports WHERE screen_id = 'scr-1'",
+        "UPDATE screen_reports SET body = '{}' WHERE screen_id = 'scr-1'",
+      ]) {
+        await expect(c.query(sql), sql).rejects.toThrow();
+      }
+    } finally {
+      await c.query('RESET ROLE');
+      c.release();
+    }
+    // Even the owner cannot empty the minute table.
+    await expect(pool.query('TRUNCATE minute_summaries')).rejects.toThrow(/append-only/);
+  });
+});

@@ -23,6 +23,10 @@ export function readMigrations(dir: URL = MIGRATIONS_DIR): Migration[] {
   }
   return names.map((name) => {
     const sql = readFileSync(new URL(name, dir), 'utf8');
+    // The runner wraps each file in one transaction; a file that ends it itself could half-apply.
+    if (/^\s*(BEGIN|COMMIT|ROLLBACK)\s*;/im.test(sql)) {
+      throw new Error(`Migration ${name} must not contain BEGIN, COMMIT or ROLLBACK`);
+    }
     return { name, sql, sha256: createHash('sha256').update(sql).digest('hex') };
   });
 }
@@ -72,9 +76,13 @@ export async function migrate(pool: Pool, migrations = readMigrations()): Promis
     }
     return applied;
   } finally {
-    await client
+    // If the lock cannot be released, throw the connection away rather than pool it still locked.
+    const unlockError = await client
       .query('SELECT pg_advisory_unlock(hashtext($1))', ['recall-migrations'])
-      .catch(() => {});
-    client.release();
+      .then(
+        () => undefined,
+        (e: unknown) => (e instanceof Error ? e : new Error(String(e))),
+      );
+    client.release(unlockError);
   }
 }
