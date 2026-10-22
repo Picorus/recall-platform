@@ -8,3 +8,4 @@ export * from './launch-areas.js';
 export * from './screen-tracker.js';
 export * from './screen-reports.js';
 export * from './moving-hours.js';
+export * from './pay-zone.js';

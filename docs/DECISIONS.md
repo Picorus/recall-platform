@@ -4,6 +4,13 @@ Newest first. Each: date · decision · why · who.
 
 | Date | Decision | Why | Who |
 |---|---|---|---|
+| 22 Oct 2026 | Rider pay zone: POC = within 15 km of Hitech City (centre: Cyber Towers); after the POC = the areas that are on (Hitech City, Madhapur, Kondapur, Gachibowli, Jubilee Hills, …; more added as needed) plus exceptions. A setting, versioned | Answers open questions 1 and 2 | Prateek |
+| 22 Oct 2026 | Screen-loan bank: Dhanlaxmi Bank (a setting; can change later) | Answers open question 4 | Prateek |
+| 22 Oct 2026 | Fitting centres: address to be added; any number of centres can be added later (setting). Support hours 10 am – 7 pm for now; phone and WhatsApp numbers added later (settings) | Answers open questions 5 and 6 | Prateek |
+| 22 Oct 2026 | A loan-bought screen belongs to the rider, paid by EMIs to the bank; if the rider defaults, the bank deals with it. RECALL has no obligation and may choose to buy the equipment back | Answers open question 8 | Prateek |
+| 22 Oct 2026 | TDS is deducted from rider pay; the rate (and any gig-worker levy) is a setting confirmed with the CA. The model already budgets for them | Answers open question 10 | Prateek |
+| 22 Oct 2026 | POC founding pay (base + bonus) is paid once a month, after the month ends; weekly Monday payouts start after the POC | Answers open question 11 | Prateek |
+| 22 Oct 2026 | Light-theme chart colours stay as they are (every series is named on the chart) | Answers open question 9 | Prateek |
 | 22 Oct 2026 | Fleet simulator version 1 uses a regular street grid (250 m) over west Hyderabad; real OpenStreetMap roads come in version 2 as a committed extract, so tests never need the internet | Tests run on a laptop with no network; the logic under test doesn't depend on road shapes | Claude (P1.10), for Prateek's information |
 | 22 Oct 2026 | Moving hours count only inside the business day (08:00–02:00 India time); clock time outside it is shown but never paid or counted | Screens sell nothing outside business hours | Prateek (confirmed) |
 | 22 Oct 2026 | The rider's 260-hour monthly cap is on active hours as RECALL counts them (moving-clock hours from the screen, at places that count), never app-open time | Same counting as pay and the bonus; hard to game | Prateek |

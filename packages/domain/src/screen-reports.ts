@@ -4,6 +4,7 @@
 //  - everything numbered and kept on the screen until the cloud confirms it (up to 7 days).
 import type { Place } from './areas.js';
 import { distanceMeters, type LatLng } from './geo.js';
+import { inPayZone, POC_PAY_ZONE, type PayZone } from './pay-zone.js';
 import type { Second } from './screen-tracker.js';
 
 export const LIVE_EVERY_SECONDS = 30;
@@ -33,8 +34,10 @@ export interface MinuteSummary {
   readonly secondsAt: Readonly<Record<string, number>>;
   /** Seconds the moving-hour clock ran. */
   readonly clockSeconds: number;
-  /** Of those, seconds at each place (rider pay only counts some places). */
+  /** Of those, seconds at each place. */
   readonly clockAt: Readonly<Record<string, number>>;
+  /** Of those, seconds inside the pay zone in force (what rider pay counts). */
+  readonly payClockSeconds: number;
   /** Seconds the bike counted as moving. */
   readonly movingSeconds: number;
   /** Distance between cleaned positions, whole metres. */
@@ -51,6 +54,7 @@ export interface MinuteBuilder {
   readonly secondsAt: Readonly<Record<string, number>>;
   readonly clockSeconds: number;
   readonly clockAt: Readonly<Record<string, number>>;
+  readonly payClockSeconds: number;
   readonly movingSeconds: number;
   readonly distance: number;
   /** Last cleaned position and its second, to measure distance from. */
@@ -64,6 +68,7 @@ export const EMPTY_MINUTE: MinuteBuilder = {
   secondsAt: {},
   clockSeconds: 0,
   clockAt: {},
+  payClockSeconds: 0,
   movingSeconds: 0,
   distance: 0,
   last: undefined,
@@ -79,6 +84,7 @@ function close(b: MinuteBuilder): MinuteSummary | undefined {
     secondsAt: b.secondsAt,
     clockSeconds: b.clockSeconds,
     clockAt: b.clockAt,
+    payClockSeconds: b.payClockSeconds,
     movingSeconds: b.movingSeconds,
     distanceM: Math.round(b.distance),
     plays: b.plays,
@@ -95,6 +101,7 @@ export function addSecond(
   s: Second,
   plays = 0,
   people = 0,
+  zone: PayZone = POC_PAY_ZONE,
 ): { builder: MinuteBuilder; reports: Report[] } {
   const reports: Report[] = [];
   const minute = s.t - (s.t % 60);
@@ -118,6 +125,9 @@ export function addSecond(
     secondsAt: { ...cur.secondsAt, [key]: (cur.secondsAt[key] ?? 0) + 1 },
     clockSeconds: cur.clockSeconds + (s.clockRuns ? 1 : 0),
     clockAt: s.clockRuns ? { ...cur.clockAt, [key]: (cur.clockAt[key] ?? 0) + 1 } : cur.clockAt,
+    // Without a fix this second, the last known position decides (a short GPS gap).
+    payClockSeconds:
+      cur.payClockSeconds + (s.clockRuns && inPayZone(zone, s.position ?? last, s.place) ? 1 : 0),
     movingSeconds: cur.movingSeconds + (s.moving ? 1 : 0),
     distance,
     last,
