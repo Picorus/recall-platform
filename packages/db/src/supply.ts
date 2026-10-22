@@ -11,7 +11,7 @@ import {
   pastWeekDates,
   priceBookAt,
   sellableBikes,
-  versionAt,
+  publishedAt,
   type BookingLine,
   type CapacityRules,
   type Offer,
@@ -176,7 +176,7 @@ export async function offerForRequest(
     if (!book) throw new Error('No price book in force');
     const versions = await allAreaVersions(c);
     const inForce = [...new Set(versions.map((v) => v.areaId))].flatMap((id) => {
-      const v = versionAt(
+      const v = publishedAt(
         versions.filter((x) => x.areaId === id),
         isoAt(now),
       );

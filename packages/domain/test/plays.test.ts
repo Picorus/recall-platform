@@ -87,8 +87,6 @@ describe("the cloud's checks (P1.5.2)", () => {
   it('refused: unknown key, bad signature, starting in the future, closer than 15 s to another play', () => {
     expect(verdict(play(), ctx({ signature: 'unknown key' }))).toBe('unknown key');
     expect(verdict(play(), ctx({ signature: 'bad' }))).toBe('bad signature');
-    expect(verdict(play({ startAt: HOUR + 700 + 121 }))).toBe('starts in the future');
-    expect(verdict(play({ startAt: HOUR + 700 + 120 }))).toBe('inside');
     expect(verdict(play(), ctx({ neighbours: [HOUR + 600 - 14] }))).toBe('overlaps another play');
     expect(verdict(play(), ctx({ neighbours: [HOUR + 600 - 15, HOUR + 615] }))).toBe('inside');
   });
@@ -98,6 +96,35 @@ describe("the cloud's checks (P1.5.2)", () => {
     expect(verdict(play({ latE6: 17_467_000, lngE6: 78_357_000 }))).toBe("outside the line's area");
     // Just outside Madhapur's border: the edge zone.
     expect(verdict(play({ latE6: 17_458_300, place: 'inside:hyd-madhapur@1' }))).toBe('edge');
+  });
+
+  it('a screen clock running ahead: the play is kept but not counted', () => {
+    expect(verdict(play({ startAt: HOUR + 700 + 121 }))).toBe('screen clock ahead');
+    expect(verdict(play({ startAt: HOUR + 700 + 120 }))).toBe('inside');
+  });
+
+  it('a draft correction of an area never hides the published area', () => {
+    const draft = AREAS.filter((a) => a.areaId === 'hyd-madhapur').map((a) => ({
+      ...a,
+      version: 2,
+      draft: true,
+      validFrom: '2027-08-01T00:00:00.000Z',
+    }));
+    expect(verdict(play(), ctx({ areas: [...AREAS, ...draft] }))).toBe('inside');
+  });
+
+  it("an edge play counts for the line's area even where that edge lies inside a neighbouring area", () => {
+    // Just west of Madhapur's border (78.387) is the gap to Hitech City (ends 78.385); put Hitech
+    // City's border right at Madhapur's edge to make them overlap.
+    const near = AREAS.map((a) =>
+      a.areaId === 'hyd-hitech-city'
+        ? { ...a, ring: a.ring.map((q) => ({ ...q, lng: q.lng > 78.38 ? 78.3875 : q.lng })) }
+        : a,
+    );
+    const p = play({ lngE6: 78_386_900 });
+    expect(verdict(p, ctx({ areas: near }))).toBe('edge');
+    const r = judgePlay(p, ctx({ areas: near }));
+    expect(r.refused ?? r.cloudPlace).toBe('inside:hyd-hitech-city@1');
   });
 
   it('kept but not counted: cut short, poor GPS, another hour, not a sold line, late, not a brand spot', () => {
@@ -162,7 +189,7 @@ describe('counting per line (P1.5.3–4)', () => {
       edge: 1,
       edgeCounted: 1,
       bikes: 2,
-      minutes: 3,
+      minutes: 2,
       people: 17,
     });
   });

@@ -1,7 +1,7 @@
 // P1.5: play counting and proof. Hard rule 1: the screen is the truth for plays; each play is signed
 // on the screen with its own key, and the cloud never invents one. The cloud checks every play,
 // re-checks where it happened against the real area shape, and counts what the promise allows.
-import { locate, placeKey, versionAt, type AreaVersion } from './areas.js';
+import { locate, placeKey, publishedAt, type AreaVersion } from './areas.js';
 
 /** Settings for checking and counting plays (in the price book, versioned). */
 export interface PlayRules {
@@ -152,32 +152,36 @@ export function judgePlay(
 ): { refused: PlayRefusal } | { refused?: undefined; count: PlayCount; cloudPlace: string } {
   if (ctx.signature === 'unknown key') return { refused: 'unknown key' };
   if (ctx.signature === 'bad') return { refused: 'bad signature' };
-  if (p.startAt > ctx.receivedAt + rules.maxAheadSeconds)
-    return { refused: 'starts in the future' };
   if (ctx.neighbours.some((t) => Math.abs(t - p.startAt) < rules.spotSeconds))
     return { refused: 'overlaps another play' };
 
+  // Where the cloud finds it, against the published areas in force then (kept for the record).
   const at = new Date(p.startAt * 1000).toISOString();
-  const inForce = [...new Set(ctx.areas.map((a) => a.areaId))].flatMap((id) => {
-    const v = versionAt(
+  const published = (id: string) =>
+    publishedAt(
       ctx.areas.filter((a) => a.areaId === id),
       at,
     );
-    return v && v.active && !v.draft ? [v] : [];
+  const inForce = [...new Set(ctx.areas.map((a) => a.areaId))].flatMap((id) => {
+    const v = published(id);
+    return v?.active ? [v] : [];
   });
-  const place = locate({ lat: p.latE6 / 1e6, lng: p.lngE6 / 1e6 }, inForce);
-  const cloudPlace = placeKey(place);
+  const point = { lat: p.latE6 / 1e6, lng: p.lngE6 / 1e6 };
+  const cloudPlace = placeKey(locate(point, inForce));
   const no = (reason: string) => ({ count: { counts: 'no' as const, reason }, cloudPlace });
 
   if (p.slot !== 'brand') return no(`${p.slot} spot`);
+  if (p.startAt > ctx.receivedAt + rules.maxAheadSeconds) return no('screen clock ahead');
   if (p.startAt < ctx.receivedAt - rules.maxAgeSeconds) return no('arrived too late');
   if (p.lengthS < rules.minPlaySeconds) return no('cut short');
   if (p.accuracyM > rules.maxAccuracyM) return no('position not accurate enough');
   const line = ctx.line;
   if (!line || line.lineId !== p.ref) return no('not a sold booking line');
   if (p.startAt < line.startsAt || p.startAt >= line.startsAt + 3600) return no('outside its hour');
-  if (place.kind === 'outside' || place.areaId !== line.areaId)
-    return no("outside the line's area");
+  // Inside or in the edge zone of the line's own area (even where that edge overlaps a neighbour).
+  const area = published(line.areaId);
+  const place = area?.active ? locate(point, [area]) : ({ kind: 'outside' } as const);
+  if (place.kind === 'outside') return no("outside the line's area");
   return { count: { counts: place.kind, lineId: line.lineId }, cloudPlace };
 }
 
@@ -200,7 +204,7 @@ export interface LineTotals {
   readonly edgeCounted: number;
   /** Different bikes (screens) with at least one counted play. */
   readonly bikes: number;
-  /** Different screen-minutes with a counted play. */
+  /** Different screen-minutes with a counted play inside the area. */
   readonly minutes: number;
   /** People counted during counted plays: an estimate, never billed. */
   readonly people: number;
@@ -235,7 +239,11 @@ export function lineTotals(
     edge: sorted.filter((p) => p.counts === 'edge').length,
     edgeCounted,
     bikes: new Set(counted.map((p) => p.screenId)).size,
-    minutes: new Set(counted.map((p) => `${p.screenId}|${Math.floor(p.startAt / 60)}`)).size,
+    minutes: new Set(
+      counted
+        .filter((p) => p.counts === 'inside')
+        .map((p) => `${p.screenId}|${Math.floor(p.startAt / 60)}`),
+    ).size,
     people: counted.reduce((n, p) => n + p.people, 0),
   };
 }

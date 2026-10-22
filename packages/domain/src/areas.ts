@@ -199,6 +199,17 @@ export function versionAt(
   return found;
 }
 
+/** The published version in force at `instant`. A draft is a proposal, never in force. */
+export function publishedAt(
+  history: readonly AreaVersion[],
+  instant: string,
+): AreaVersion | undefined {
+  return versionAt(
+    history.filter((v) => !v.draft),
+    instant,
+  );
+}
+
 export type Place =
   | { readonly kind: 'inside'; readonly areaId: string; readonly version: number }
   | {

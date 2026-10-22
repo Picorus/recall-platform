@@ -1,7 +1,7 @@
 // P1.3: what a brand buys. The unit of sale is a bike-hour in an area-hour: an area, a business date
 // and a start hour (08:00 to 01:00). A booking is a list of lines; each line is so many bikes in one
 // area-hour. Prices come from the price book in force when the booking is made, and stay with it.
-import { versionAt, type AreaVersion } from './areas.js';
+import { publishedAt, type AreaVersion } from './areas.js';
 import { paise, type Paise } from './money.js';
 import { bandOf, bikeHourPaise, bpOf, type PriceBand, type PriceBook } from './price-book.js';
 import { INDIA_OFFSET_MINUTES, parseUtcIso } from './time.js';
@@ -131,13 +131,16 @@ export function quote(
       problems.push({ kind: 'too-few-bikes', line: i, minimum: book.minBikesPerLine });
     if (seen.has(lineKey(l))) problems.push({ kind: 'duplicate-line', line: i });
     seen.add(lineKey(l));
-    const area = versionAt(
-      areas.filter((a) => a.areaId === l.areaId),
-      isoAt(startsAt),
-    );
-    if (!area) problems.push({ kind: 'area', line: i, detail: 'no such area' });
+    // A draft (a new area, or a correction not yet published) is never in force.
+    const history = areas.filter((a) => a.areaId === l.areaId);
+    const area = publishedAt(history, isoAt(startsAt));
+    if (!area)
+      problems.push({
+        kind: 'area',
+        line: i,
+        detail: history.length > 0 ? 'area is still a draft' : 'no such area',
+      });
     else if (!area.active) problems.push({ kind: 'area', line: i, detail: 'area is off' });
-    else if (area.draft) problems.push({ kind: 'area', line: i, detail: 'area is still a draft' });
     starts.push(startsAt);
     const each = bikeHourPaise(book, l.startHour);
     priced.push({

@@ -2,7 +2,8 @@
 -- keeps it with whether it counts. Append-only (hard rule 3).
 
 -- Each screen's public keys (ECDSA P-256, SubjectPublicKeyInfo DER, base64). A key is never deleted;
--- revoking it adds a row below.
+-- revoking it adds a row below: plays it signed from `plays_until` on are refused (and, if already
+-- stored, not counted); plays before then still count.
 CREATE TABLE screen_keys (
   screen_id  text        NOT NULL CHECK (length(screen_id) BETWEEN 1 AND 64),
   key_id     text        NOT NULL CHECK (key_id ~ '^[\x20-\x7e]{1,120}$'),
@@ -16,6 +17,7 @@ CREATE TABLE screen_key_revocations (
   key_id     text        NOT NULL,
   revoked_by text        NOT NULL,
   reason     text        NOT NULL CHECK (length(reason) >= 5),
+  plays_until timestamptz NOT NULL,
   revoked_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (screen_id, key_id),
   FOREIGN KEY (screen_id, key_id) REFERENCES screen_keys (screen_id, key_id)
@@ -55,7 +57,23 @@ CREATE TABLE plays (
   FOREIGN KEY (screen_id, key_id) REFERENCES screen_keys (screen_id, key_id)
 );
 SELECT create_hypertable('plays', by_range('start_at', INTERVAL '1 day'));
-CREATE INDEX plays_screen_time ON plays (screen_id, start_at);
+-- Backstops for "no play counted twice": one play per screen per start time, one per report number.
+CREATE UNIQUE INDEX plays_screen_time ON plays (screen_id, start_at);
+CREATE INDEX plays_screen_seq ON plays (screen_id, seq);
+CREATE FUNCTION plays_one_per_report() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM plays WHERE screen_id = NEW.screen_id AND seq = NEW.seq) THEN
+    RAISE EXCEPTION 'play %/% already stored', NEW.screen_id, NEW.seq;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM screen_reports
+                  WHERE screen_id = NEW.screen_id AND seq = NEW.seq AND kind = 'play') THEN
+    RAISE EXCEPTION 'play %/% has no play report', NEW.screen_id, NEW.seq;
+  END IF;
+  RETURN NEW;
+END
+$$;
+CREATE TRIGGER plays_one_per_report BEFORE INSERT ON plays
+  FOR EACH ROW EXECUTE FUNCTION plays_one_per_report();
 CREATE INDEX plays_line ON plays (line_id, start_at) WHERE line_id IS NOT NULL;
 
 CREATE TRIGGER screen_keys_no_change BEFORE UPDATE OR DELETE ON screen_keys

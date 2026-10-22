@@ -64,7 +64,7 @@ function signed(
 }
 const upload = (screenId: string, batch: Numbered[], now = HOUR + 3700) =>
   storeUpload(pool, screenId, batch, 1, now);
-const totals = () => lineTotalsFor(pool, LINE, HOUR + 3700);
+const totals = () => lineTotalsFor(pool, LINE);
 
 beforeAll(async () => {
   db = await freshDatabase();
@@ -88,6 +88,7 @@ beforeAll(async () => {
   );
   await moveBooking(pool, 'BK-P1', 'awaiting-payment', { by: 'priya', actor: 'admin' }, BOOKED);
   await moveBooking(pool, 'BK-P1', 'paid', { by: 'gateway', actor: 'system' }, BOOKED + 60);
+  await moveBooking(pool, 'BK-P1', 'ads-approved', { by: 'priya', actor: 'admin' }, BOOKED + 120);
   for (const s of ['scr-a', 'scr-b', 'scr-c', 'scr-d', 'scr-e']) {
     keys.set(s, newKey());
     await addScreenKey(pool, s, 'k1', keys.get(s)?.publicKey ?? '', 'fitter');
@@ -123,12 +124,43 @@ describe('plays in the database (P1.5)', () => {
     expect((await totals()).bikes).toBe(2);
   });
 
-  it('an unknown or revoked key is refused', async () => {
+  it('an unknown key is refused; a revoked key still covers plays from before it was given up', async () => {
     const r1 = await upload('scr-c', [signed('scr-c', 1, { keyId: 'k9' })]);
     expect(r1.rejected).toBe(1);
-    await revokeScreenKey(pool, 'scr-c', 'k1', 'prateek', 'screen stolen from bike');
-    const r2 = await upload('scr-c', [signed('scr-c', 2)]);
+    // The screen was lost at HOUR + 40: its play at HOUR + 30 still counts, the one at HOUR + 45 not.
+    await revokeScreenKey(pool, 'scr-c', 'k1', 'prateek', 'screen stolen from bike', HOUR + 40);
+    const r2 = await upload('scr-c', [signed('scr-c', 2), signed('scr-c', 3)]);
     expect(r2.rejected).toBe(1);
+    const stored = await pool.query<{ seq: string }>(
+      `SELECT seq FROM plays WHERE screen_id = 'scr-c'`,
+    );
+    expect(stored.rows.map((x) => Number(x.seq))).toEqual([2]);
+  });
+
+  it('plays already stored from a key later given up stop counting from that moment', async () => {
+    keys.set('scr-g', newKey());
+    await addScreenKey(pool, 'scr-g', 'k1', keys.get('scr-g')?.publicKey ?? '', 'fitter');
+    const before = (await totals()).plays;
+    await upload(
+      'scr-g',
+      Array.from({ length: 10 }, (_, i) => signed('scr-g', i + 1)),
+    );
+    expect((await totals()).plays).toBe(before + 10);
+    // Stolen at HOUR + 76: plays from seq 5 (HOUR + 75) count, seq 6 on do not.
+    await revokeScreenKey(pool, 'scr-g', 'k1', 'prateek', 'screen stolen from bike', HOUR + 76);
+    expect((await totals()).plays).toBe(before + 5);
+  });
+
+  it('a line is named one way only: "…/08" for the 8 am line is not counted', async () => {
+    keys.set('scr-h', newKey());
+    await addScreenKey(pool, 'scr-h', 'k1', keys.get('scr-h')?.publicKey ?? '', 'fitter');
+    const before = (await totals()).plays;
+    await upload('scr-h', [signed('scr-h', 1, { ref: LINE.replace(/\/18$/, '/018') })]);
+    expect((await totals()).plays).toBe(before);
+    const kept = await pool.query<{ reason: string }>(
+      `SELECT reason FROM plays WHERE screen_id = 'scr-h'`,
+    );
+    expect(kept.rows[0]?.reason).toBe('not a sold booking line');
   });
 
   it('a screen cannot play twice within 15 seconds, in one upload or across uploads', async () => {
@@ -197,6 +229,60 @@ describe('plays in the database (P1.5)', () => {
       { numRuns: 15 },
     );
   }, 120_000);
+
+  it('plays for a booking whose ads are not approved yet do not count', async () => {
+    await createBooking(
+      pool,
+      {
+        bookingId: 'BK-P2',
+        brandId: 'brand-2',
+        request: {
+          lines: [{ areaId: 'hyd-madhapur', date: '2027-08-24', startHour: 18, bikes: 50 }],
+          repeatMonths: 1,
+          channel: 'admin',
+        },
+        by: 'priya',
+      },
+      BOOKED,
+    );
+    await moveBooking(pool, 'BK-P2', 'awaiting-payment', { by: 'priya', actor: 'admin' }, BOOKED);
+    await moveBooking(pool, 'BK-P2', 'paid', { by: 'gateway', actor: 'system' }, BOOKED + 60);
+    keys.set('scr-i', newKey());
+    await addScreenKey(pool, 'scr-i', 'k1', keys.get('scr-i')?.publicKey ?? '', 'fitter');
+    const line2 = lineIdOf('BK-P2', 'hyd-madhapur', '2027-08-24', 18);
+    await upload('scr-i', [signed('scr-i', 1, { ref: line2 })]);
+    expect((await lineTotalsFor(pool, line2)).plays).toBe(0);
+  });
+
+  it("a line's totals never change when a later price book changes the rules", async () => {
+    const before = await totals();
+    expect(before.edgeCounted).toBeGreaterThan(0);
+    await savePriceBook(
+      pool,
+      {
+        ...PRICE_BOOK_V1,
+        version: 2,
+        validFrom: '2027-09-01T00:00:00.000Z',
+        plays: { ...PRICE_BOOK_V1.plays, edgeShareBp: 0 },
+      },
+      'prateek',
+    );
+    expect(await totals()).toEqual(before);
+  });
+
+  it('the database itself refuses a second play at the same time or under the same number', async () => {
+    const dup = (seq: number, at: number) =>
+      pool.query(
+        `INSERT INTO plays (screen_id, seq, start_at, key_id, slot, ref, ad_id, length_s, lat_e6,
+           lng_e6, accuracy_m, screen_place, cloud_place, counts, line_id, reason, people)
+         VALUES ('scr-a', $1, to_timestamp($2), 'k1', 'brand', $3, 'ad-1', 15, 17448000, 78395000,
+           8, 'x', 'x', 'inside', $3, NULL, 0)`,
+        [seq, at, LINE],
+      );
+    // Same start time as seq 1, under another number; and seq 1 again at another time.
+    await expect(dup(2, HOUR + 15)).rejects.toThrow();
+    await expect(dup(1, HOUR + 2000)).rejects.toThrow(/already stored/);
+  });
 
   it('a play cannot be edited or deleted', async () => {
     await expect(

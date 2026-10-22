@@ -2,6 +2,29 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 22 Oct 2026 · P1.5 · Play counting and proof
+- P1.4 merged (PR #18).
+- Domain (`plays.ts`):
+  - A play record travels as a screen report (numbered, resent until confirmed). Its id is screen + number. The screen signs fixed bytes (one field a line, whole numbers) with ECDSA P-256.
+  - `judgePlay`: refusals (bad signature, unknown or given-up key, overlap within 15 s); otherwise kept, with whether it counts and why not. The place is re-checked against the line's own published area.
+  - `lineTotals`: inside plays, plus edge plays up to 10% of the promise; different bikes, minutes inside, people (estimate).
+  - Play settings live in the price book. `publishedAt`: drafts are never in force (also fixed for bookings and suggestions).
+- Database: migration 0007 (`screen_keys`, `screen_key_revocations` with `plays_until`, `plays` hypertable, unique per screen and start time, one play per report number, append-only). `storeUpload` judges plays on arrival. `addScreenKey` accepts P-256 only. `lineTotalsFor` uses the line's own price book.
+- Second review found 6 issues, all fixed with tests:
+  - totals changed when a later price book came in;
+  - plays counted before ads were approved;
+  - a draft correction of an area made plays count as outside, for good;
+  - "…/08" and "…/8" split a line;
+  - revoking a key lost the plays signed before the screen was lost;
+  - no database backstop against a repeated play.
+  Also fixed: an edge play inside a neighbouring area now counts for its line; a screen clock running ahead gives "kept, not counted" instead of losing the play; "minutes inside" counts inside plays only.
+- Tests: 194 domain, 55 database (including a property test: uploads repeated, split and reordered store each play exactly once).
+- Open:
+  - The ad id is not yet checked against the booking's approved ads (comes with ad upload, P3).
+  - Area versions and price books are re-read on every upload; cache them before the full fleet (P5 load tests).
+  - Plays arriving after the final report still change the totals. Day close (P1.6.5) will freeze what is billed.
+- **Next: P1.6** make-ups and refunds.
+
 ## 22 Oct 2026 · P1.4 · The ad scheduler
 - P1.3.7 merged (PR #17). P1.3 done.
 - `packages/domain/src/scheduler.ts`:
