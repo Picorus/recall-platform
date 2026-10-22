@@ -10,6 +10,8 @@ import {
   type Report,
 } from '@recall/domain';
 import type { Pool } from 'pg';
+import { allAreaVersions } from './areas.js';
+import { judgePlays, type PlayJudgement } from './plays.js';
 
 /** Why a numbered report was set aside instead of stored, or undefined when it is fine. */
 function problemWith(n: Numbered): string | undefined {
@@ -46,6 +48,7 @@ export async function storeUpload(
   screenId: string,
   batch: readonly Numbered[],
   oldestHeld: number,
+  now: number = Math.floor(Date.now() / 1000),
 ): Promise<Stored> {
   const c = await pool.connect();
   try {
@@ -80,10 +83,32 @@ export async function storeUpload(
 
     // Keep every new report as received (the key ignores repeats). One that fails its checks is
     // kept aside with the reason: it takes its number, so the queue moves on, but it never counts.
+    // New plays are judged first (signature, time, overlap, place, line): P1.5.2.
+    const isNew = (n: Numbered) => Number.isSafeInteger(n.seq) && n.seq > upTo && !ahead.has(n.seq);
+    // The first copy of a number in a batch is the one kept.
+    const firstCopies = [
+      ...new Map(
+        batch
+          .filter(isNew)
+          .reverse()
+          .map((n) => [n.seq, n]),
+      ).values(),
+    ];
+    const newPlays = firstCopies.flatMap((n) =>
+      !problemWith(n) && n.report.kind === 'play' ? [{ seq: n.seq, play: n.report }] : [],
+    );
+    const judged =
+      newPlays.length === 0
+        ? new Map<number, PlayJudgement>()
+        : await judgePlays(c, screenId, newPlays, await allAreaVersions(c), now);
+
     let rejected = 0;
+    const seen = new Set<number>();
     for (const n of batch) {
-      if (!Number.isSafeInteger(n.seq) || n.seq <= upTo || ahead.has(n.seq)) continue;
-      const problem = problemWith(n);
+      if (!isNew(n) || seen.has(n.seq)) continue;
+      seen.add(n.seq);
+      const j = judged.get(n.seq);
+      const problem = problemWith(n) ?? j?.refused;
       if (problem) {
         rejected += 1;
         setAside.add(n.seq);
@@ -99,6 +124,33 @@ export async function storeUpload(
          VALUES ($1, $2, $3, to_timestamp($4), $5) ON CONFLICT DO NOTHING`,
         [screenId, n.seq, n.report.kind, n.at, JSON.stringify(n.report)],
       );
+      if (n.report.kind === 'play' && j && !j.refused) {
+        const p = n.report;
+        await c.query(
+          `INSERT INTO plays (screen_id, seq, start_at, key_id, slot, ref, ad_id, length_s, lat_e6,
+             lng_e6, accuracy_m, screen_place, cloud_place, counts, line_id, reason, people)
+           VALUES ($1, $2, to_timestamp($3), $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
+          [
+            screenId,
+            n.seq,
+            p.startAt,
+            p.keyId,
+            p.slot,
+            p.ref,
+            p.adId,
+            p.lengthS,
+            p.latE6,
+            p.lngE6,
+            p.accuracyM,
+            p.place,
+            j.cloudPlace,
+            j.count.counts,
+            j.count.counts === 'no' ? null : j.count.lineId,
+            j.count.counts === 'no' ? j.count.reason : null,
+            p.people,
+          ],
+        );
+      }
     }
     let minutesCounted = 0;
     for (const n of result.accepted) {

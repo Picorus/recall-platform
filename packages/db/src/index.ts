@@ -4,3 +4,4 @@ export * from './migrate.js';
 export * from './screen-reports.js';
 export * from './bookings.js';
 export * from './supply.js';
+export * from './plays.js';
