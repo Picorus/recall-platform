@@ -1,7 +1,7 @@
 // P1.2.6: moving hours per bike per business day and month, the rider's monthly paid-hour cap, and
 // a daily check for odd patterns. Works from the one-minute summaries the screens send (P1.2.4).
 import type { MinuteSummary } from './screen-reports.js';
-import { businessDayOf } from './time.js';
+import { businessDayOf, DEFAULT_BUSINESS_HOURS, toIndiaTime, type BusinessHours } from './time.js';
 
 /** Settings (versioned in admin → Prices and rules). */
 export interface MovingHourRules {
@@ -41,37 +41,75 @@ const ZERO: Totals = {
   outsideHoursSeconds: 0,
 };
 
+/** Business day for a minute outside business hours: the day that ended just before it. */
+function dayBefore(minute: number): string {
+  return toIndiaTime(new Date((minute - 24 * 3600) * 1000)).date;
+}
+
+/**
+ * Several summaries for the same minute (e.g. a screen restarted inside a minute) are added up; a
+ * minute can never hold more than 60 clock seconds.
+ */
+function mergeMinutes(minutes: readonly MinuteSummary[]): MinuteSummary[] {
+  const byMinute = new Map<number, MinuteSummary>();
+  for (const m of minutes) {
+    const prev = byMinute.get(m.minute);
+    if (!prev) {
+      byMinute.set(m.minute, m);
+      continue;
+    }
+    const clockAt: Record<string, number> = { ...prev.clockAt };
+    for (const [k, v] of Object.entries(m.clockAt)) clockAt[k] = (clockAt[k] ?? 0) + v;
+    const secondsAt: Record<string, number> = { ...prev.secondsAt };
+    for (const [k, v] of Object.entries(m.secondsAt)) secondsAt[k] = (secondsAt[k] ?? 0) + v;
+    byMinute.set(m.minute, {
+      ...prev,
+      secondsAt,
+      clockAt,
+      clockSeconds: prev.clockSeconds + m.clockSeconds,
+      movingSeconds: prev.movingSeconds + m.movingSeconds,
+      distanceM: prev.distanceM + m.distanceM,
+      plays: prev.plays + m.plays,
+      people: prev.people + m.people,
+    });
+  }
+  return [...byMinute.values()];
+}
+
 /**
  * Totals per business day ("YYYY-MM-DD", India time). `counts` says which places count for pay:
- * in the POC, inside Hyderabad; after it, the allowed areas (DECISIONS, 22 Oct 2026).
+ * in the POC, inside Hyderabad; after it, the allowed areas (DECISIONS, 22 Oct 2026). Only clock
+ * seconds inside business hours count (Prateek, 22 Oct 2026); the rest are reported on the
+ * business day that ended just before them.
  */
 export function dailyTotals(
   minutes: readonly MinuteSummary[],
   counts: (placeKey: string) => boolean = () => true,
+  hours: BusinessHours = DEFAULT_BUSINESS_HOURS,
 ): Map<string, Totals> {
   const days = new Map<string, Totals>();
-  const seen = new Set<number>();
-  for (const m of minutes) {
-    if (seen.has(m.minute)) throw new RangeError(`Minute ${m.minute} given twice`);
-    seen.add(m.minute);
-    const day = businessDayOf(new Date(m.minute * 1000));
-    if (day === null) continue;
+  for (const m of mergeMinutes(minutes)) {
+    const clock = Math.min(60, m.clockSeconds);
+    const day = businessDayOf(new Date(m.minute * 1000), hours);
+    if (day === null) {
+      if (clock === 0) continue;
+      const before = dayBefore(m.minute);
+      const t = days.get(before) ?? ZERO;
+      days.set(before, { ...t, outsideHoursSeconds: t.outsideHoursSeconds + clock });
+      continue;
+    }
     const t = days.get(day) ?? ZERO;
-    const counted = Object.entries(m.clockAt).reduce((sum, [k, v]) => sum + (counts(k) ? v : 0), 0);
+    const rawCounted = Object.entries(m.clockAt).reduce(
+      (sum, [k, v]) => sum + (counts(k) ? v : 0),
+      0,
+    );
     days.set(day, {
-      clockSeconds: t.clockSeconds + m.clockSeconds,
-      countedSeconds: t.countedSeconds + counted,
-      movingSeconds: t.movingSeconds + m.movingSeconds,
+      clockSeconds: t.clockSeconds + clock,
+      countedSeconds: t.countedSeconds + Math.min(clock, rawCounted),
+      movingSeconds: t.movingSeconds + Math.min(60, m.movingSeconds),
       distanceM: t.distanceM + m.distanceM,
       outsideHoursSeconds: t.outsideHoursSeconds,
     });
-  }
-  // Clock seconds outside business hours are reported on the day they follow.
-  for (const m of minutes) {
-    if (businessDayOf(new Date(m.minute * 1000)) !== null || m.clockSeconds === 0) continue;
-    const day = businessDayOf(new Date((m.minute + 6 * 3600) * 1000)) ?? 'unknown';
-    const t = days.get(day) ?? ZERO;
-    days.set(day, { ...t, outsideHoursSeconds: t.outsideHoursSeconds + m.clockSeconds });
   }
   return days;
 }
@@ -84,6 +122,10 @@ export interface MonthHours {
   readonly paidSeconds: number;
 }
 
+/**
+ * Monthly counted and paid seconds. The cap is the rider's: pass the days of one rider (all the
+ * bikes they rode that month), not of one bike.
+ */
 export function monthlyHours(
   days: ReadonlyMap<string, Totals>,
   rules: MovingHourRules = DEFAULT_MOVING_HOUR_RULES,

@@ -8,6 +8,8 @@ import type { Second } from './screen-tracker.js';
 
 export const LIVE_EVERY_SECONDS = 30;
 export const KEEP_UNSENT_SECONDS = 7 * 24 * 3600;
+/** Distance is only added between positions at most this many seconds apart. */
+export const MAX_DISTANCE_GAP_SECONDS = 10;
 
 /** "inside:hyd-madhapur@3", "edge:hyd-madhapur@3" or "outside": a stable key for a place. */
 export function placeKey(place: Place): string {
@@ -51,7 +53,8 @@ export interface MinuteBuilder {
   readonly clockAt: Readonly<Record<string, number>>;
   readonly movingSeconds: number;
   readonly distance: number;
-  readonly last: LatLng | undefined;
+  /** Last cleaned position and its second, to measure distance from. */
+  readonly last: (LatLng & { readonly t: number }) | undefined;
   readonly plays: number;
   readonly people: number;
 }
@@ -105,8 +108,10 @@ export function addSecond(
   let distance = cur.distance;
   let last = cur.last;
   if (s.position) {
-    if (last) distance += distanceMeters(last, s.position);
-    last = s.position;
+    // No distance across a GPS gap or a reset: the straight line between would be a guess.
+    const joined = last && s.t - last.t <= MAX_DISTANCE_GAP_SECONDS && s.fix !== 'reset';
+    if (last && joined) distance += distanceMeters(last, s.position);
+    last = { ...s.position, t: s.t };
   }
   const builder: MinuteBuilder = {
     minute,
@@ -120,7 +125,8 @@ export function addSecond(
     people: cur.people + people,
   };
   if (s.t % LIVE_EVERY_SECONDS === 0 && s.position) {
-    reports.push({ kind: 'live', t: s.t, ...s.position, place: key, moving: s.moving });
+    const { lat, lng } = s.position;
+    reports.push({ kind: 'live', t: s.t, lat, lng, place: key, moving: s.moving });
   }
   return { builder, reports };
 }
@@ -140,7 +146,10 @@ export interface Numbered {
   readonly at: number;
 }
 
-/** Reports waiting on the screen until the cloud confirms them. */
+/**
+ * Reports waiting on the screen until the cloud confirms them. The screen must keep this (with
+ * `nextSeq`) in storage that survives a restart: numbers must never start again from 1.
+ */
 export interface Outbox {
   readonly nextSeq: number;
   readonly waiting: readonly Numbered[];
@@ -173,6 +182,9 @@ export function oldestHeld(box: Outbox): number {
 
 /** The cloud confirmed everything up to and including `seq`: forget it. */
 export function acknowledge(box: Outbox, seq: number): Outbox {
+  // Never forget more than was actually sent: a wrong or forged ack cannot empty the outbox.
+  const highestSent = box.waiting.at(-1)?.seq ?? 0;
+  if (!Number.isInteger(seq) || seq > highestSent) return box;
   return { ...box, waiting: box.waiting.filter((n) => n.seq > seq) };
 }
 
@@ -190,8 +202,10 @@ export const EMPTY_INBOX: Inbox = { upTo: 0, ahead: new Map(), lost: 0 };
 
 /**
  * Takes a batch. `oldestHeld` is the smallest number the screen still keeps; anything older that
- * never arrived is lost and the cloud stops waiting for it. Returns the reports that are new and now
- * in order (to store and count) and the number to acknowledge. Repeats and old numbers are ignored.
+ * never arrived is lost and the cloud stops waiting for it. The claim is only believed up to the
+ * smallest number in this batch (the screen proves it holds that one), so a wrong or forged value
+ * can never skip reports the screen still has. Returns the reports that are new and now in order
+ * (to store and count) and the number to acknowledge. Repeats and old numbers are ignored.
  */
 export function receive(
   inbox: Inbox,
@@ -199,9 +213,15 @@ export function receive(
   oldestHeld?: number,
 ): { inbox: Inbox; accepted: Numbered[]; ack: number } {
   const ahead = new Map(inbox.ahead);
-  for (const n of batch) {
-    if (Number.isInteger(n.seq) && n.seq > inbox.upTo && !ahead.has(n.seq)) ahead.set(n.seq, n);
+  const valid = batch.filter((n) => Number.isSafeInteger(n.seq) && n.seq > 0);
+  for (const n of valid) {
+    if (n.seq > inbox.upTo && !ahead.has(n.seq)) ahead.set(n.seq, n);
   }
+  const proven = Math.min(...valid.map((n) => n.seq));
+  const skipBelow =
+    oldestHeld !== undefined && Number.isSafeInteger(oldestHeld) && Number.isFinite(proven)
+      ? Math.min(oldestHeld, proven)
+      : 0;
   const accepted: Numbered[] = [];
   let { upTo, lost } = inbox;
   for (;;) {
@@ -210,10 +230,11 @@ export function receive(
       accepted.push(next);
       ahead.delete(next.seq);
       upTo = next.seq;
-    } else if (oldestHeld !== undefined && upTo + 1 < oldestHeld) {
-      // The screen no longer has this one: count it lost and move on.
-      lost += 1;
-      upTo += 1;
+    } else if (upTo + 1 < skipBelow) {
+      // The screen no longer has these: count them lost and move on to the next one we hold.
+      const nextHeld = Math.min(skipBelow, ...[...ahead.keys()].filter((k) => k > upTo));
+      lost += nextHeld - upTo - 1;
+      upTo = nextHeld - 1;
     } else break;
   }
   return { inbox: { upTo, ahead, lost }, accepted, ack: upTo };

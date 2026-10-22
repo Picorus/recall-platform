@@ -49,7 +49,11 @@ export interface GpsFix {
   readonly accuracyM: number;
 }
 
-export type FixVerdict = 'used' | 'no-fix' | 'poor-accuracy' | 'jump';
+/**
+ * `used`: a normal good fix. `reset`: a run of jumps long and steady enough to trust (the earlier
+ * position was the bad one); distance is not counted across it. The rest are dropped.
+ */
+export type FixVerdict = 'used' | 'reset' | 'no-fix' | 'poor-accuracy' | 'jump';
 
 interface TimedPoint extends LatLng {
   readonly t: number;
@@ -59,15 +63,16 @@ export interface TrackerState {
   readonly t: number | undefined;
   /** Last fix accepted as real (not smoothed). */
   readonly lastGood: TimedPoint | undefined;
-  readonly jumpsInARow: number;
+  /** Fixes dropped as jumps in a row, oldest first, while they agree with each other. */
+  readonly jumps: readonly TimedPoint[];
   /** Last `smoothOver` good fixes, oldest first. */
   readonly recent: readonly TimedPoint[];
   /** Smoothed positions over the moving window, oldest first. */
   readonly track: readonly TimedPoint[];
   /** The area the screen is acting on. */
   readonly place: Place;
-  /** A different area seen, and since when, while it waits out the hold. */
-  readonly pending: { readonly place: Place; readonly since: number } | undefined;
+  /** A different area seen, and on how many seconds with GPS, while it waits out the hold. */
+  readonly pending: { readonly place: Place; readonly seen: number } | undefined;
   readonly moving: boolean;
   /** First second of the current stop (undefined while moving). */
   readonly stillSince: number | undefined;
@@ -77,7 +82,7 @@ export interface TrackerState {
 export const START: TrackerState = {
   t: undefined,
   lastGood: undefined,
-  jumpsInARow: 0,
+  jumps: [],
   recent: [],
   track: [],
   place: { kind: 'outside' },
@@ -109,13 +114,26 @@ function kmhBetween(a: TimedPoint, b: TimedPoint): number {
   return (distanceMeters(a, b) / Math.max(1, b.t - a.t)) * 3.6;
 }
 
-function judge(fix: GpsFix | undefined, s: TrackerState, rules: TrackerRules): FixVerdict {
-  if (!fix) return 'no-fix';
-  if (!(fix.accuracyM <= rules.maxAccuracyM)) return 'poor-accuracy';
-  if (!s.lastGood) return 'used';
-  if (kmhBetween(s.lastGood, fix) > rules.maxSpeedKmh && s.jumpsInARow + 1 < rules.jumpResetAfter)
-    return 'jump';
-  return 'used';
+/** Decides what to do with this second's fix, and the run of jumps that follows from it. */
+function judge(
+  fix: GpsFix | undefined,
+  t: number,
+  s: TrackerState,
+  rules: TrackerRules,
+): { verdict: FixVerdict; jumps: readonly TimedPoint[] } {
+  if (!fix) return { verdict: 'no-fix', jumps: s.jumps };
+  if (fix.t !== t) throw new RangeError(`Fix time ${fix.t} is not this second ${t}`);
+  if (!(fix.accuracyM <= rules.maxAccuracyM)) return { verdict: 'poor-accuracy', jumps: s.jumps };
+  const p = { t, lat: fix.lat, lng: fix.lng };
+  if (!s.lastGood || kmhBetween(s.lastGood, p) <= rules.maxSpeedKmh) {
+    return { verdict: 'used', jumps: [] };
+  }
+  // A jump. Keep a run only while its fixes agree with each other; a scattered run starts again.
+  const last = s.jumps.at(-1);
+  const run = last && kmhBetween(last, p) <= rules.maxSpeedKmh ? [...s.jumps, p] : [p];
+  return run.length >= rules.jumpResetAfter
+    ? { verdict: 'reset', jumps: [] }
+    : { verdict: 'jump', jumps: run };
 }
 
 /** Start-to-end speed over the last `windowSeconds`, or undefined without enough track. */
@@ -143,16 +161,13 @@ export function step(
   rules: TrackerRules = DEFAULT_TRACKER_RULES,
 ): { state: TrackerState; second: Second } {
   if (s.t !== undefined && t <= s.t) throw new RangeError(`Time went backwards: ${t} after ${s.t}`);
-  const verdict = judge(fix, s, rules);
+  const { verdict, jumps } = judge(fix, t, s, rules);
 
-  let { lastGood, recent, track, jumpsInARow } = s;
-  if (verdict === 'used' && fix) {
+  let { lastGood, recent, track } = s;
+  if ((verdict === 'used' || verdict === 'reset') && fix) {
     const p = { t, lat: fix.lat, lng: fix.lng };
-    // Accepted although it is a jump: the run of jumps was long enough to trust the new place.
-    const reset =
-      jumpsInARow > 0 && lastGood !== undefined && kmhBetween(lastGood, p) > rules.maxSpeedKmh;
+    const reset = verdict === 'reset';
     lastGood = p;
-    jumpsInARow = 0;
     // After a reset the old positions were the bad ones: start the average and the track afresh.
     recent = reset ? [p] : [...recent, p].slice(-rules.smoothOver);
     const smooth = {
@@ -161,22 +176,23 @@ export function step(
       lng: recent.reduce((sum, q) => sum + q.lng, 0) / recent.length,
     };
     track = reset ? [smooth] : [...track, smooth];
-  } else if (verdict === 'jump') {
-    jumpsInARow += 1;
   }
   const keepFrom = t - Math.max(rules.movingWindowSeconds, rules.wakeWindowSeconds);
   track = track.filter((p) => p.t >= keepFrom);
   const position = track.at(-1);
   const fresh = position !== undefined && position.t === t;
 
-  // P1.2.2: the area, with a hold so a bike riding along a border does not flicker.
+  // P1.2.2: the area, with a hold so a bike riding along a border does not flicker. The new area
+  // must be seen on `areaHoldSeconds` seconds with GPS; seconds without GPS do not count.
   let { place, pending } = s;
   if (fresh) {
     const seen = locate(position, areas);
     if (samePlace(seen, place)) pending = undefined;
     else if (s.lastGood === undefined) place = seen;
-    else if (!pending || !samePlace(pending.place, seen)) pending = { place: seen, since: t };
-    if (pending && t - pending.since + 1 >= rules.areaHoldSeconds) {
+    else if (pending && samePlace(pending.place, seen))
+      pending = { place: seen, seen: pending.seen + 1 };
+    else pending = { place: seen, seen: 1 };
+    if (pending && pending.seen >= rules.areaHoldSeconds) {
       place = pending.place;
       pending = undefined;
     }
@@ -185,17 +201,22 @@ export function step(
   // P1.2.3: moving, and the 10-minute stop rule. The clock keeps running through short stops
   // (signals, pick-ups); after `standbyAfterSeconds` standing still the screen sleeps until the bike
   // moves again. A screen starts asleep.
-  const window = s.standby ? rules.wakeWindowSeconds : rules.movingWindowSeconds;
-  const kmh = windowKmh(track, t, window);
-  const moving = kmh !== undefined && kmh > rules.movingKmh;
-  const stillSince = moving ? undefined : (s.stillSince ?? t);
+  //  - Riding is confirmed by the full 30 s window; only that ends a stop.
+  //  - The short 10 s window wakes the screen at once, but a push that is not confirmed does not
+  //    restart the 10 minutes: the stop goes on from where it began.
   // Without GPS the bike cannot be shown to move, so a long signal loss also ends in standby.
+  const confirmed = (windowKmh(track, t, rules.movingWindowSeconds) ?? 0) > rules.movingKmh;
+  const waking = (windowKmh(track, t, rules.wakeWindowSeconds) ?? 0) > rules.movingKmh;
+  const moving = confirmed || waking;
+  const stillSince = confirmed ? undefined : (s.stillSince ?? t);
   const standby =
-    stillSince === undefined ? false : s.standby || t - stillSince + 1 > rules.standbyAfterSeconds;
+    moving || stillSince === undefined
+      ? false
+      : s.standby || t - stillSince + 1 > rules.standbyAfterSeconds;
   const state: TrackerState = {
     t,
     lastGood,
-    jumpsInARow,
+    jumps,
     recent,
     track,
     place,

@@ -80,7 +80,7 @@ describe('cleaning GPS (P1.2.1)', () => {
     const real = ride(20, 10, 0, 1);
     const out = run([bad, ...real]);
     expect(out.slice(1, 5).map((s) => s.fix)).toEqual(['jump', 'jump', 'jump', 'jump']);
-    expect(nth(out, 5).fix).toBe('used');
+    expect(nth(out, 5).fix).toBe('reset');
     expect(nth(out, 5).position?.lat).toBeCloseTo(17.4, 6); // not averaged with the bad fix
     expect(out.slice(6).every((s) => s.fix === 'used')).toBe(true);
   });
@@ -200,6 +200,61 @@ describe('properties', () => {
         for (const s of one) if (s.moving) expect(s.standby).toBe(false);
       }),
       { numRuns: 200 },
+    );
+  });
+});
+
+describe('review fixes: clock and GPS', () => {
+  it('pushing a parked bike a few metres now and then does not restart the 10 minutes', () => {
+    // Parked 2 hours; every 10 minutes pushed 20 m over 8 seconds.
+    const fixes: GpsFix[] = [];
+    let at = 0;
+    for (let i = 0; i < 7200; i++) {
+      const k = i % 600;
+      if (i > 0 && k < 8) at += 2.5;
+      fixes.push({ t: T + i, lat: 17.4, lng: 78.4 + at * LNG_PER_M, accuracyM: 5 });
+    }
+    const out = run([...ride(20, 60), ...fixes.map((f) => ({ ...f, t: f.t + 60 }))]);
+    const clock = out.filter((s) => s.clockRuns).length;
+    // About 60 s riding + the first 600 s stopped, plus at most a few seconds per push.
+    expect(clock).toBeLessThan(60 + 600 + 12 * 15);
+  });
+
+  it('a steady run of 5 bad fixes is trusted as a reset; a scattered run never is', () => {
+    const good = ride(20, 10);
+    const scattered: GpsFix[] = Array.from({ length: 8 }, (_, i) => ({
+      t: T + 10 + i,
+      lat: 17.4 + (i % 2 === 0 ? 0.05 : -0.05),
+      lng: 78.4,
+      accuracyM: 5,
+    }));
+    const out = run([...good, ...scattered]);
+    expect(out.slice(10).every((s) => s.fix === 'jump')).toBe(true);
+  });
+
+  it('seconds without GPS do not count towards the 15-second area hold', () => {
+    const a = createArea(
+      {
+        areaId: 'hyd-a',
+        name: 'A',
+        city: 'Hyderabad',
+        ring: box(17.39, 78.39, 17.41, 78.405),
+        validFrom: '2026-11-01T00:00:00Z',
+      },
+      [],
+    );
+    // Start outside A (east of it), ride in, then lose GPS for 20 s, then one fix inside A.
+    const start = ride(0.001, 3, 800).map((f) => ({ ...f }));
+    const inside = { t: T + 3, lat: 17.4, lng: 78.4, accuracyM: 5 };
+    const gap: (GpsFix | null)[] = Array.from({ length: 20 }, () => null);
+    const after = { t: T + 24, lat: 17.4, lng: 78.4, accuracyM: 5 };
+    const out = run([...start, inside, ...gap, after], [a]);
+    expect(nth(out, -1).place.kind).not.toBe('inside');
+  });
+
+  it('a fix must belong to the second it is given in', () => {
+    expect(() => step(START, T, { t: T + 100, lat: 17.4, lng: 78.4, accuracyM: 5 }, [])).toThrow(
+      RangeError,
     );
   });
 });

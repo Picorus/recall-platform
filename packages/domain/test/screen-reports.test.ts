@@ -193,8 +193,8 @@ describe('moving hours (P1.2.6)', () => {
     const three = Date.UTC(2027, 7, 23, 21, 30) / 1000; // 03:00 on 24 Aug, India
     const days = dailyTotals([minute(nine), minute(onethirty), minute(three)]);
     expect(days.get('2027-08-23')?.clockSeconds).toBe(120);
-    expect(days.get('2027-08-24')?.clockSeconds ?? 0).toBe(0);
-    expect(days.get('2027-08-24')?.outsideHoursSeconds).toBe(60);
+    expect(days.get('2027-08-23')?.outsideHoursSeconds).toBe(60);
+    expect(days.has('2027-08-24')).toBe(false);
   });
 
   it('only the places that count are counted (e.g. inside Hyderabad in the POC)', () => {
@@ -204,8 +204,13 @@ describe('moving hours (P1.2.6)', () => {
     expect(days.get('2027-08-23')?.clockSeconds).toBe(60);
   });
 
-  it('the same minute twice is refused (never counted twice)', () => {
-    expect(() => dailyTotals([minute(nine), minute(nine)])).toThrow(RangeError);
+  it('two parts of one minute (a restart) add up, but a minute never holds more than 60 s', () => {
+    const half = { clockSeconds: 30, clockAt: { 'inside:hyd-madhapur@3': 30 }, movingSeconds: 30 };
+    const days = dailyTotals([minute(nine, half), minute(nine, half)]);
+    expect(days.get('2027-08-23')?.clockSeconds).toBe(60);
+    const doubled = dailyTotals([minute(nine), minute(nine)]);
+    expect(doubled.get('2027-08-23')?.clockSeconds).toBe(60);
+    expect(doubled.get('2027-08-23')?.countedSeconds).toBe(60);
   });
 
   it('paid hours stop at 260 counted (active) hours a month', () => {
@@ -237,5 +242,49 @@ describe('moving hours (P1.2.6)', () => {
       { minute: nine + 60, kind: 'moving-but-still' },
       { minute: nine + 120, kind: 'still-but-moved' },
     ]);
+  });
+});
+
+describe('review fixes: uploads', () => {
+  const live = (t: number): Report => ({
+    kind: 'live',
+    t,
+    lat: 17.44,
+    lng: 78.39,
+    place: 'outside',
+    moving: false,
+  });
+
+  it('a wrong or forged "oldest held" cannot skip reports the screen still has', () => {
+    const box = enqueue(EMPTY_OUTBOX, [live(1), live(2), live(3)], T);
+    // Claims it only holds from 1,000,000 but sends 1–3: nothing is lost.
+    const r = receive(EMPTY_INBOX, nextBatch(box, 10), 1_000_000);
+    expect(r.accepted.map((n) => n.seq)).toEqual([1, 2, 3]);
+    expect(r.inbox.lost).toBe(0);
+    // With an empty batch the claim proves nothing.
+    expect(receive(EMPTY_INBOX, [], 1_000_000).inbox.upTo).toBe(0);
+    expect(receive(EMPTY_INBOX, [], Number.POSITIVE_INFINITY).inbox.upTo).toBe(0);
+    // A huge real gap is skipped in one step, not one number at a time.
+    const far = receive(EMPTY_INBOX, [{ seq: 50_000_000, report: live(9), at: T }], 50_000_000);
+    expect(far.inbox.lost).toBe(49_999_999);
+    expect(far.ack).toBe(50_000_000);
+  });
+
+  it('an ack above what was sent is ignored, so the outbox is never emptied by mistake', () => {
+    const box = enqueue(EMPTY_OUTBOX, [live(1), live(2)], T);
+    expect(acknowledge(box, 999_999).waiting).toHaveLength(2);
+    expect(acknowledge(box, 1.5).waiting).toHaveLength(2);
+    expect(acknowledge(box, 1).waiting.map((n) => n.seq)).toEqual([2]);
+  });
+});
+
+describe('review fixes: distance', () => {
+  it('no distance across a long GPS gap or a reset', () => {
+    const a = sec(T, {});
+    const far = sec(T + 8 * 3600, { position: { lat: 17.48, lng: 78.39 } });
+    const m = minutesOf(feed([a, far]));
+    expect(m.reduce((n, x) => n + x.distanceM, 0)).toBe(0);
+    const reset = sec(T + 1, { fix: 'reset', position: { lat: 17.48, lng: 78.39 } });
+    expect(minutesOf(feed([a, reset]))[0]?.distanceM).toBe(0);
   });
 });

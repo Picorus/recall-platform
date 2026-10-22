@@ -9,6 +9,8 @@ Newest first. Each entry: date · step id · what changed · tests · open issue
 - Tests: 99 in `packages/domain` (property tests: fast lookup = exact check on 20,000 points; any GPS input never breaks the clock rules; any mix of lost/repeated/reordered uploads → each report once, in order).
 - Review: a second agent fuzzed ~1.2 million points against the lookup (no disagreement) and found 4 issues, all fixed with tests (time-zone-dependent dates, duplicate version numbers, slanted touching, undefined changes).
 - Decisions: 260 cap on active hours (Prateek); tracker numbers and edge cases (Claude, for information).
+- Second review (tracker and uploads) found 6 issues, all fixed with tests: a 20 m push could add 10 minutes to the clock (now only 30 s of riding ends a stop); a wrong "oldest held" number could skip reports (now only believed up to what the screen sends); bad-fix runs must agree to be trusted; no distance across gaps or resets; GPS-less seconds don't count to the area hold; a minute sent twice is merged (max 60 s) instead of stopping the day. Shared test cases now also pin clock, positions, minute summaries and the limits. 106 tests.
+- Prateek confirmed: moving hours only inside business hours.
 - Not yet: storing areas and reports in the database (PostGIS tables), the fleet simulator (P1.10).
 - **Next:** P1.10 fleet simulator v1 on these modules, then the database tables for areas and minute summaries.
 
