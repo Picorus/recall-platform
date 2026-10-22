@@ -1,6 +1,7 @@
 // P1.3.2: prices, offers, minimums and deadlines. All of them are settings (hard rule 8): a super
 // admin changes them in admin → Prices and rules, each change is a new version from a date, and a
 // booking keeps the version it was sold on.
+import { DEFAULT_CAPACITY_RULES, type CapacityRules } from './supply.js';
 import { parseUtcIso } from './time.js';
 
 /** A price band and the start hours it covers (India time; 24 = midnight, 25 = 01:00). */
@@ -23,8 +24,12 @@ export interface PriceBook {
   readonly minBikesPerLine: number;
   /** Minimum spend per booking, paise, before GST. */
   readonly minBookingPaise: number;
-  /** Offers for monthly repeats: months → discount in basis points. */
+  /** Offers for 6- and 12-month deals: months → discount on the bill, in basis points. */
   readonly repeatOffersBp: Readonly<Record<number, number>>;
+  /** Bands the deal discount applies to (not Lite: Prateek, 22 Oct 2026). */
+  readonly repeatOfferBands: readonly PriceBand['name'][];
+  /** Each month of a deal must hold its share of the hours within this, in basis points (2000 = ±20%). */
+  readonly repeatSpreadBp: number;
   /** No bike-hour is ever sold below this, paise (offers and discounts included). */
   readonly floorPaisePerBikeHour: number;
   /** Brands booking in their own portal must start at least this many days ahead (admins: any time). */
@@ -34,6 +39,8 @@ export interface PriceBook {
   /** Free trial: one per business, this long, this many bike-hours at most, one area. */
   readonly trialDays: number;
   readonly trialBikeHours: number;
+  /** How many bikes an area-hour can be sold for (POC: manual limits only; after: forecast). */
+  readonly capacity: CapacityRules;
 }
 
 /** The book in force from 22 Oct 2026: rulebook v5.4 and Prateek's decisions of 21–22 Oct. */
@@ -50,11 +57,14 @@ export const PRICE_BOOK_V1: PriceBook = {
   minBikesPerLine: 5,
   minBookingPaise: 1_500_000,
   repeatOffersBp: { 6: 800, 12: 1_200 },
+  repeatOfferBands: ['Peak', 'Normal'],
+  repeatSpreadBp: 2_000,
   floorPaisePerBikeHour: 22_000,
   portalLeadDays: 15,
   adsDueDays: 7,
   trialDays: 7,
   trialBikeHours: 20,
+  capacity: DEFAULT_CAPACITY_RULES,
 };
 
 export type PriceBookProblem = string;
@@ -91,11 +101,27 @@ export function checkPriceBook(b: PriceBook): PriceBookProblem[] {
     ['adsDueDays', b.adsDueDays],
     ['trialDays', b.trialDays],
     ['trialBikeHours', b.trialBikeHours],
+    ['repeatSpreadBp', b.repeatSpreadBp],
   ] as const) {
     if (!whole(v)) problems.push(`${name} must be a whole number`);
   }
   if (b.playsPerBikeHour < 1 || b.minBikesPerLine < 1)
     problems.push('plays and bikes must be at least 1');
+  const c = b.capacity;
+  if (c.mode !== 'poc' && c.mode !== 'forecast')
+    problems.push('capacity mode must be poc or forecast');
+  const counts = [
+    c.lookbackWeeks,
+    c.levelWeeks,
+    c.minWeeks,
+    c.minSecondsInside,
+    c.nearbyMeters,
+    c.makeUpMarginBp,
+  ];
+  if (!counts.every(whole)) problems.push('capacity settings must be whole numbers');
+  if (c.levelWeeks < 1 || c.levelWeeks > c.lookbackWeeks || c.makeUpMarginBp >= 10_000) {
+    problems.push('capacity: level weeks must be 1 to lookback weeks, margin under 100%');
+  }
   return problems;
 }
 
@@ -126,15 +152,7 @@ export function bpOf(paise: number, bp: number): number {
   return Math.floor((paise * bp + 5_000) / 10_000);
 }
 
-/**
- * Price of one bike-hour at this start hour, after a monthly-repeat offer (months 1 = none), never
- * below the floor.
- */
-export function bikeHourPaise(book: PriceBook, startHour: number, repeatMonths = 1): number {
-  const list = bandOf(book, startHour).paisePerBikeHour;
-  const offer = repeatMonths > 1 ? (book.repeatOffersBp[repeatMonths] ?? 0) : 0;
-  if (repeatMonths > 1 && book.repeatOffersBp[repeatMonths] === undefined) {
-    throw new RangeError(`No offer for ${repeatMonths} months`);
-  }
-  return Math.max(book.floorPaisePerBikeHour, lessBp(list, offer));
+/** List price of one bike-hour at this start hour (deal discounts go on the bill, not the hour). */
+export function bikeHourPaise(book: PriceBook, startHour: number): number {
+  return bandOf(book, startHour).paisePerBikeHour;
 }

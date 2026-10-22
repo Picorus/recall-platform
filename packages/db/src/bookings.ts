@@ -25,6 +25,7 @@ import {
 } from '@recall/domain';
 import type { Pool, PoolClient } from 'pg';
 import { allAreaVersions } from './areas.js';
+import { forecastLimits } from './supply.js';
 
 async function inTransaction<T>(pool: Pool, work: (c: PoolClient) => Promise<T>): Promise<T> {
   const c = await pool.connect();
@@ -73,7 +74,7 @@ export async function priceBooks(pool: Pick<Pool, 'query'>): Promise<PriceBook[]
 
 // ---------------------------------------------------------------- inventory
 
-async function inventoryFor(c: PoolClient, lines: readonly BookingLine[], now: number) {
+export async function inventoryFor(c: PoolClient, lines: readonly BookingLine[], now: number) {
   const keys = [...new Set(lines.map(areaHourKey))];
   const areaIds = keys.map((k) => k.split('|')[0]);
   const days = keys.map((k) => k.split('|')[1]);
@@ -136,10 +137,17 @@ async function inventoryFor(c: PoolClient, lines: readonly BookingLine[], now: n
       ],
     });
   }
+  const manual = new Map(
+    limits.rows.filter((r) => r.max_bikes !== null).map((r) => [key(r), r.max_bikes as number]),
+  );
+  // After the POC, area-hours without a manual limit are capped by the supply forecast (P1.3.7).
+  const book = priceBookAt(await priceBooks(c), isoAt(now));
+  if (book?.capacity.mode === 'forecast') {
+    const missing = lines.filter((l) => !manual.has(areaHourKey(l)));
+    for (const [k, v] of await forecastLimits(c, missing, book.capacity, now)) manual.set(k, v);
+  }
   return {
-    limits: new Map(
-      limits.rows.filter((r) => r.max_bikes !== null).map((r) => [key(r), r.max_bikes as number]),
-    ),
+    limits: manual,
     sold: new Map(sold.rows.map((r) => [key(r), Number(r.bikes)])),
     holds: [...byHold.values()],
   };
@@ -265,6 +273,8 @@ export async function createBooking(pool: Pool, b: NewBooking, now: number): Pro
       q = {
         ...priced,
         lines: priced.lines.map((l) => ({ ...l, paisePerBikeHour: 0, paise: free })),
+        listSubtotal: free,
+        discount: free,
         subtotal: free,
         gst: free,
         total: free,
@@ -282,8 +292,9 @@ export async function createBooking(pool: Pool, b: NewBooking, now: number): Pro
     const t = timingOf(b.request.lines, book.adsDueDays);
     await c.query(
       `INSERT INTO bookings (booking_id, brand_id, channel, trial, repeat_months, price_book_version,
-         subtotal_paise, gst_paise, total_paise, first_hour_at, last_hour_ends_at, ads_due_at, created_by, hold_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, to_timestamp($10), to_timestamp($11), to_timestamp($12), $13, $14)`,
+         subtotal_paise, gst_paise, total_paise, first_hour_at, last_hour_ends_at, ads_due_at, created_by, hold_id,
+         discount_paise)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, to_timestamp($10), to_timestamp($11), to_timestamp($12), $13, $14, $15)`,
       [
         b.bookingId,
         b.brandId,
@@ -299,6 +310,7 @@ export async function createBooking(pool: Pool, b: NewBooking, now: number): Pro
         q.adsDueAt,
         b.by,
         b.holdId ?? null,
+        q.discount,
       ],
     );
     for (const l of q.lines) {

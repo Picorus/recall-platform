@@ -58,10 +58,9 @@ describe('price book (settings, hard rule 8)', () => {
     expect([23, 24, 25].map((h) => bikeHourPaise(BOOK, h))).toEqual([22_000, 22_000, 22_000]);
   });
 
-  it('monthly repeat offers (6 months 8%, 12 months 12%) never go below ₹220', () => {
-    expect([8, 11, 23].map((h) => bikeHourPaise(BOOK, h, 6))).toEqual([27_600, 23_000, 22_000]);
-    expect([8, 11, 23].map((h) => bikeHourPaise(BOOK, h, 12))).toEqual([26_400, 22_000, 22_000]);
-    expect(() => bikeHourPaise(BOOK, 8, 3)).toThrow(RangeError);
+  it('6- and 12-month deals: 8% / 12% off the bill, on Peak and Normal hours only', () => {
+    expect(BOOK.repeatOffersBp).toEqual({ 6: 800, 12: 1_200 });
+    expect(BOOK.repeatOfferBands).toEqual(['Peak', 'Normal']);
   });
 
   it('a book with a gap in the hours or a price below the floor cannot be saved', () => {
@@ -190,10 +189,14 @@ describe('quotes (P1.3.1–P1.3.3)', () => {
             q = quote({ lines, repeatMonths, channel }, BOOK, AREAS, NOW);
           } catch (e) {
             for (const p of (e as BookingError).problems)
-              expect(['below-minimum', 'repeat-not-covered']).toContain(p.kind);
+              expect(['below-minimum', 'repeat-not-spread']).toContain(p.kind);
             return;
           }
-          expect(q.subtotal).toBe(q.lines.reduce((n, l) => n + l.bikes * l.paisePerBikeHour, 0));
+          expect(q.listSubtotal).toBe(
+            q.lines.reduce((n, l) => n + l.bikes * l.paisePerBikeHour, 0),
+          );
+          expect(q.subtotal).toBe(q.listSubtotal - q.discount);
+          expect(q.discount).toBeGreaterThanOrEqual(0);
           expect(q.total).toBe(q.subtotal + q.gst);
           expect(Math.abs(q.gst - (q.subtotal * 18) / 100)).toBeLessThanOrEqual(0.5);
           for (const l of q.lines) {
@@ -317,22 +320,40 @@ describe('review fixes', () => {
     ).toBeUndefined();
   });
 
-  it('a 6- or 12-month offer needs hours in every month of it', () => {
-    const oneDay = [line('hyd-madhapur', '2027-10-05', 18, 60)];
-    expect(problems(() => quote(req(oneDay, { repeatMonths: 12 }), BOOK, AREAS, NOW))).toEqual([
-      'repeat-not-covered',
-    ]);
-    const sixMonths = [
+  it('a deal: total hours spread about equally over the months; the discount goes on the bill', () => {
+    const months = [
       '2027-10-05',
       '2027-11-05',
       '2027-12-05',
       '2028-01-05',
       '2028-02-05',
       '2028-03-05',
-    ].map((d) => line('hyd-madhapur', d, 18, 20));
-    expect(
-      quote(req(sixMonths, { repeatMonths: 6 }), BOOK, AREAS, NOW).lines[0]?.paisePerBikeHour,
-    ).toBe(27_600);
+    ];
+    const oneDay = [line('hyd-madhapur', '2027-10-05', 18, 60)];
+    expect(problems(() => quote(req(oneDay, { repeatMonths: 12 }), BOOK, AREAS, NOW))).toEqual([
+      'repeat-not-spread',
+    ]);
+    // 20 Peak + 10 Lite bike-hours each month: Lite is not discounted.
+    const even = months.flatMap((d) => [
+      line('hyd-madhapur', d, 18, 20),
+      line('hyd-madhapur', d, 23, 10),
+    ]);
+    const q = quote(req(even, { repeatMonths: 6 }), BOOK, AREAS, NOW);
+    expect(q.listSubtotal).toBe(6 * (20 * 30_000 + 10 * 22_000));
+    expect(q.discount).toBe(6 * 20 * 30_000 * 0.08);
+    expect(q.subtotal).toBe(q.listSubtotal - q.discount);
+    expect(q.gst).toBe(Math.round(q.subtotal * 0.18));
+    expect(q.lines[0]?.paisePerBikeHour).toBe(30_000);
+    // One month with far more than its share (more than 20% over) is refused.
+    const lumpy = [...even, line('hyd-madhapur', '2027-10-06', 18, 20)];
+    expect(problems(() => quote(req(lumpy, { repeatMonths: 6 }), BOOK, AREAS, NOW))).toEqual([
+      'repeat-not-spread',
+    ]);
+    // Hours outside the 6 months are refused too.
+    const late = [...even, line('hyd-madhapur', '2028-04-05', 18, 5)];
+    expect(problems(() => quote(req(late, { repeatMonths: 6 }), BOOK, AREAS, NOW))).toEqual([
+      'repeat-not-spread',
+    ]);
   });
 
   it('each line is checked against the area as it stands on that day', () => {

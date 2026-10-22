@@ -3,7 +3,7 @@
 // area-hour. Prices come from the price book in force when the booking is made, and stay with it.
 import { versionAt, type AreaVersion } from './areas.js';
 import { paise, type Paise } from './money.js';
-import { bandOf, bikeHourPaise, bpOf, type PriceBook } from './price-book.js';
+import { bandOf, bikeHourPaise, bpOf, type PriceBand, type PriceBook } from './price-book.js';
 import { INDIA_OFFSET_MINUTES, parseUtcIso } from './time.js';
 
 export interface BookingLine {
@@ -19,7 +19,7 @@ export type Channel = 'portal' | 'admin';
 
 export interface BookingRequest {
   readonly lines: readonly BookingLine[];
-  /** 1 for a one-off; 6 or 12 for a monthly repeat with its offer. */
+  /** 1 for a one-off; 6 or 12 for a deal: total hours spread over the months, discount on the bill. */
   readonly repeatMonths: number;
   /** Brands in their own portal, or RECALL staff on a brand's behalf (no lead time; DECISIONS). */
   readonly channel: Channel;
@@ -39,6 +39,11 @@ export interface Quote {
   readonly lines: readonly PricedLine[];
   readonly bikeHours: number;
   readonly plays: number;
+  /** Lines at list price. */
+  readonly listSubtotal: Paise;
+  /** Deal discount on the bill (Peak and Normal hours only). */
+  readonly discount: Paise;
+  /** What GST is charged on: list subtotal less the discount. */
   readonly subtotal: Paise;
   readonly gst: Paise;
   readonly total: Paise;
@@ -57,7 +62,7 @@ export type BookingProblem =
   | { readonly kind: 'too-soon'; readonly earliest: number }
   | { readonly kind: 'in-the-past' }
   | { readonly kind: 'no-offer'; readonly months: number }
-  | { readonly kind: 'repeat-not-covered'; readonly months: number };
+  | { readonly kind: 'repeat-not-spread'; readonly months: number };
 
 export class BookingError extends Error {
   constructor(readonly problems: readonly BookingProblem[]) {
@@ -134,10 +139,7 @@ export function quote(
     else if (!area.active) problems.push({ kind: 'area', line: i, detail: 'area is off' });
     else if (area.draft) problems.push({ kind: 'area', line: i, detail: 'area is still a draft' });
     starts.push(startsAt);
-    const each =
-      req.repeatMonths === 1 || book.repeatOffersBp[req.repeatMonths] !== undefined
-        ? bikeHourPaise(book, l.startHour, req.repeatMonths)
-        : bandOf(book, l.startHour).paisePerBikeHour;
+    const each = bikeHourPaise(book, l.startHour);
     priced.push({
       ...l,
       areaVersion: area?.version ?? 0,
@@ -154,24 +156,30 @@ export function quote(
       problems.push({ kind: 'too-soon', earliest: now + book.portalLeadDays * DAY });
     }
   }
-  // A monthly-repeat offer needs hours in every one of its months, starting with the first.
-  if (
-    req.repeatMonths > 1 &&
-    book.repeatOffersBp[req.repeatMonths] !== undefined &&
-    priced.length > 0
-  ) {
-    const months = new Set(priced.map((l) => l.date.slice(0, 7)));
-    const first = [...months].sort()[0] ?? '';
+  // A deal's hours must be spread about equally over its months, starting with the first.
+  const offerBp = req.repeatMonths > 1 ? book.repeatOffersBp[req.repeatMonths] : undefined;
+  if (offerBp !== undefined && priced.length > 0) {
+    const byMonth = new Map<string, number>();
+    for (const l of priced)
+      byMonth.set(l.date.slice(0, 7), (byMonth.get(l.date.slice(0, 7)) ?? 0) + l.bikes);
+    const first = [...byMonth.keys()].sort()[0] ?? '';
     const [y, m] = first.split('-').map(Number) as [number, number];
-    for (let k = 0; k < req.repeatMonths; k++) {
-      const d = new Date(Date.UTC(y, m - 1 + k, 1));
-      if (!months.has(d.toISOString().slice(0, 7))) {
-        problems.push({ kind: 'repeat-not-covered', months: req.repeatMonths });
-        break;
-      }
-    }
+    const window = Array.from({ length: req.repeatMonths }, (_, k) =>
+      new Date(Date.UTC(y, m - 1 + k, 1)).toISOString().slice(0, 7),
+    );
+    const total = priced.reduce((n, l) => n + l.bikes, 0);
+    const fair = total / req.repeatMonths;
+    const slack = (fair * book.repeatSpreadBp) / 10_000;
+    const outside = [...byMonth.keys()].some((k) => !window.includes(k));
+    const uneven = window.some((k) => Math.abs((byMonth.get(k) ?? 0) - fair) > slack);
+    if (outside || uneven) problems.push({ kind: 'repeat-not-spread', months: req.repeatMonths });
   }
-  const subtotal = priced.reduce((sum, l) => sum + l.paise, 0);
+  const listSubtotal = priced.reduce((sum, l) => sum + l.paise, 0);
+  const discountable = priced
+    .filter((l) => book.repeatOfferBands.includes(l.band as PriceBand['name']))
+    .reduce((sum, l) => sum + l.paise, 0);
+  const discount = offerBp === undefined ? 0 : bpOf(discountable, offerBp);
+  const subtotal = listSubtotal - discount;
   if (priced.length === req.lines.length && subtotal < book.minBookingPaise) {
     problems.push({ kind: 'below-minimum', minimumPaise: book.minBookingPaise });
   }
@@ -182,6 +190,8 @@ export function quote(
     lines: priced,
     bikeHours: priced.reduce((n, l) => n + l.bikes, 0),
     plays: priced.reduce((n, l) => n + l.plays, 0),
+    listSubtotal: paise(listSubtotal),
+    discount: paise(discount),
     subtotal: paise(subtotal),
     gst: paise(gst),
     total: paise(subtotal + gst),

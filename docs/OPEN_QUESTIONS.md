@@ -12,8 +12,6 @@ Answer whenever you like; each answer moves to `docs/DECISIONS.md` and the row i
 | 6 | Support phone and WhatsApp numbers (hours: 10 am – 7 pm for now) | Rider Help; brand Help; admin Support | P3.15, P4.9 |
 | 7 | Charging steps for the screen, once the equipment is final (from the screen maker) | Rider Your screen | P4.8 |
 | 12 | A brand cancels a paid booking before it starts: full refund, refund minus a fee, or credit for a later booking? (Rulebook says only: no refund if ads are late) | Brand portal; admin Bookings; Money | P1.7 refunds, P5 |
-| 13 | 6- and 12-month deals, discount on the bill: does the ₹220 floor still apply (Lite with 8% off would be ₹202)? Must the hours be spread over every month, or only add up to the total within 6 months? | Book; Prices and rules | P1.3, P1.7 |
-| 14 | Aggregator ads in RECALL's spots: are they paid placements (what price?) or part of the aggregator deal (free)? | Admin RECALL spots; Money | P1.4.5, P1.7 |
 | 10b | TDS rate on rider pay and any gig-worker levy (ask your CA) | Admin Payouts; rider Payouts | P1.7.7 |
 
 ## Answered 22 Oct 2026 (now in DECISIONS)
@@ -26,4 +24,6 @@ Answer whenever you like; each answer moves to `docs/DECISIONS.md` and the row i
 | ~~8~~ | The screen is the rider's, paid by EMIs to the bank; defaults are the bank's matter; RECALL may buy equipment back if it wants |
 | ~~9~~ | Chart colours stay |
 | ~~10~~ | TDS is deducted from rider pay (rate: 10b) |
+| ~~13~~ | 6/12-month deals: no discount on Lite; hours spread about equally over the months; discount on the bill |
+| ~~14~~ | Aggregator ads are free |
 | ~~11~~ | POC pay once a month, after the month ends |
