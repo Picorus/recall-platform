@@ -2,6 +2,14 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 22 Oct 2026 · P0.3.4 · Batch 2b: rider app complete (for approval)
+- Batch 2a approved by Prateek.
+- Canvas version 45: five more rider screens (top row, right): R06 Founding rider pay (POC; model v5.2: ₹2,000/₹4,000/₹6,000 base + ₹6,000 bonus, full at 150+ verified hours inside Hyderabad, part at 100–150, none under 100; day-90 ₹3,000 into the loan), R07 Your screen (status, care, report a problem with photo, repair or swap), R08 Help (WhatsApp, call, requests, plain answers), R09 Alerts (silent while moving), R10 Profile and settings (language, documents, bank re-check with ₹1, leave RECALL).
+- Navigation wired: Device and Help tabs, alerts bell and profile from Today, founding pay from Earnings. All 11 plan screens (P4.1–P4.11) now drawn.
+- Open question for Prateek: POC bonus "pro rata 100–150" — (a) 0 at 100 h rising to ₹6,000 at 150 h, or (b) hours ÷ 150 × ₹6,000? No part amount shown until decided.
+- Placeholders: charging steps (screen maker), support hours and number, rules for returning a loan-bought screen.
+- **Next: batch 3** — admin screens, starting with "Live operations" (still uses pre-v5.4 plays-per-brand), for approval.
+
 ## 22 Oct 2026 · P0.3.4 · Batch 2a: rider app (for approval)
 - Canvas version 44 (https://claude.ai/artifact/MsppEXdv7UShL6FjJBvNBQ), rider rows at the top.
 - Fixed Today (P4.4) and Earnings (P4.5) against plan P4 and model v5.3: "this hour sold ₹210" (share-hour leftover) → a sold peak hour is ₹300, ₹264 after agency cuts, rider ₹25 + ₹66; unsold hours pay ₹25. Payouts every Monday (plan), not Friday. Weekly pay no longer subtracts the screen EMI (the bank takes it; RECALL never does, P4.7): payout ₹3,302. Removed an unverified tax threshold. Menu labels 4.3:1 → 5.6:1 (#8A909C). Sample dates moved to March 2028 (after the EMI holiday); loan figures recomputed (2 of 36 paid, ₹46,580 to go).
