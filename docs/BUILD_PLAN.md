@@ -125,7 +125,7 @@ The scheduler answers one question every minute: which booking does each bike in
 3. **P1.4.3 Offline fallback on the screen.** If no assignment arrives, the screen picks a line from the hour plan by itself, using a fixed formula on its own id and the hour (weighted rendezvous hashing). Every screen picks the same way, so the fleet spreads across bookings correctly with no network at all.
 4. **P1.4.4 One brand per bike per hour.** While a bike is inside an area, it carries one booking line and plays only that brand's 2 to 5 ads in turn. If it crosses into another area, it switches to that area's booking.
 5. **P1.4.5 The 240 spots.** 200 brand plays and 40 RECALL spots an hour, spread evenly (one RECALL spot after every five brand plays). The 40 RECALL spots are filled in this order (Prateek, 22 Oct 2026): make-ups owed to brands first, then aggregator ads, then RECALL's own ads (the default). Admins choose the aggregator and RECALL ads.
-6. **P1.4.6 Priority order:** make-ups due now → paid bookings → free trials → RECALL's own ads.
+6. **P1.4.6 Priority order:** make-ups due now are played first in RECALL's spots; whole bikes go to paid bookings → make-ups still short → free trials → RECALL's own ads (a make-up never takes a bike a paid line needs; Claude, 22 Oct 2026, see DECISIONS).
 7. **P1.4.7 Proof by simulation.** With 200, 2,000 and 15,500 simulated bikes on real roads, the scheduler must deliver every booking that the area's bikes can carry, and the run must be repeatable from a seed.
 
 ### P1.5 Play counting and proof
@@ -388,8 +388,8 @@ Phases overlap on purpose: each starts once the part it depends on is stable, no
 | P0.3 | Night Signal design system, logo, screens redrawn | Done | Oct 2026 |
 | P1.10 | Fleet simulator (built alongside the engine) | Doing | Nov 2026 onward |
 | P1.1–P1.2 | Areas and GPS | Done | Nov 2026 |
-| P1.3 | Inventory, prices, bookings | Doing | Dec 2026 |
-| P1.4 | Ad scheduler | To do | Dec 2026 – Jan 2027 |
+| P1.3 | Inventory, prices, bookings | Done | Dec 2026 |
+| P1.4 | Ad scheduler | Doing | Dec 2026 – Jan 2027 |
 | P1.5–P1.6 | Play counting, make-ups, refunds | To do | Jan 2027 |
 | P1.7 | Ledger, GST, rider earnings, payouts | To do | Jan – Feb 2027 |
 | P1.8–P1.9 | People counts, final report | To do | Feb 2027 |

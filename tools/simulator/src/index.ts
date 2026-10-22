@@ -2,4 +2,5 @@
 export * from './bike.js';
 export * from './rng.js';
 export * from './roads.js';
+export * from './schedule-sim.js';
 export * from './simulate.js';
