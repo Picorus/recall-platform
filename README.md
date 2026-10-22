@@ -25,4 +25,4 @@ Details and troubleshooting: `docs/RUNBOOKS/laptop-setup.md`.
 - Decisions: `docs/DECISIONS.md`
 - How-to guides: `docs/RUNBOOKS/`
 
-Status: P0.2, P0.3.1 and P0.3.2 done. Next: P0.3.3 logo mark and app icon.
+Status: P0.2 and P0.3.1–P0.3.3 done. Next: P0.3.4 screens redrawn for approval.
