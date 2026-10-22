@@ -24,6 +24,7 @@ import {
   type Numbered,
   type Report,
 } from '../src/screen-reports.js';
+import { HITECH_CITY, inPayZone, POC_PAY_ZONE } from '../src/pay-zone.js';
 import type { Second } from '../src/screen-tracker.js';
 
 const T = 1_800_000_000 - (1_800_000_000 % 60); // start of a minute
@@ -179,6 +180,7 @@ describe('moving hours (P1.2.6)', () => {
     secondsAt: { 'inside:hyd-madhapur@3': 60 },
     clockSeconds: 60,
     clockAt: { 'inside:hyd-madhapur@3': 60 },
+    payClockSeconds: 60,
     movingSeconds: 60,
     distanceM: 400,
     plays: 0,
@@ -197,15 +199,20 @@ describe('moving hours (P1.2.6)', () => {
     expect(days.has('2027-08-24')).toBe(false);
   });
 
-  it('only the places that count are counted (e.g. inside Hyderabad in the POC)', () => {
-    const m = minute(nine, { clockAt: { 'inside:hyd-madhapur@3': 40, outside: 20 } });
-    const days = dailyTotals([m], (k) => k !== 'outside');
+  it('only clock seconds inside the pay zone are counted', () => {
+    const m = minute(nine, { payClockSeconds: 40 });
+    const days = dailyTotals([m]);
     expect(days.get('2027-08-23')?.countedSeconds).toBe(40);
     expect(days.get('2027-08-23')?.clockSeconds).toBe(60);
   });
 
   it('two parts of one minute (a restart) add up, but a minute never holds more than 60 s', () => {
-    const half = { clockSeconds: 30, clockAt: { 'inside:hyd-madhapur@3': 30 }, movingSeconds: 30 };
+    const half = {
+      clockSeconds: 30,
+      clockAt: { 'inside:hyd-madhapur@3': 30 },
+      payClockSeconds: 30,
+      movingSeconds: 30,
+    };
     const days = dailyTotals([minute(nine, half), minute(nine, half)]);
     expect(days.get('2027-08-23')?.clockSeconds).toBe(60);
     const doubled = dailyTotals([minute(nine), minute(nine)]);
@@ -286,5 +293,62 @@ describe('review fixes: distance', () => {
     expect(m.reduce((n, x) => n + x.distanceM, 0)).toBe(0);
     const reset = sec(T + 1, { fix: 'reset', position: { lat: 17.48, lng: 78.39 } });
     expect(minutesOf(feed([a, reset]))[0]?.distanceM).toBe(0);
+  });
+});
+
+describe('pay zone (Prateek, 22 Oct 2026)', () => {
+  it('POC: clock seconds within 15 km of Hitech City count, further out do not', () => {
+    expect(POC_PAY_ZONE).toEqual({ kind: 'circle', centre: HITECH_CITY, radiusM: 15_000 });
+    const near = {
+      lat: 17.4504,
+      lng: 78.381 + 14_900 / (111_195 * Math.cos((17.45 * Math.PI) / 180)),
+    };
+    const far = {
+      lat: 17.4504,
+      lng: 78.381 + 15_100 / (111_195 * Math.cos((17.45 * Math.PI) / 180)),
+    };
+    const m = minutesOf(
+      feed([
+        ...Array.from({ length: 30 }, (_, i) => sec(T + i, { position: near })),
+        ...Array.from({ length: 30 }, (_, i) => sec(T + 30 + i, { position: far })),
+      ]),
+    );
+    expect(m[0]?.clockSeconds).toBe(60);
+    expect(m[0]?.payClockSeconds).toBe(30);
+  });
+
+  it('a short GPS gap keeps the last known position', () => {
+    const m = minutesOf(
+      feed([
+        sec(T, { position: HITECH_CITY }),
+        ...Array.from({ length: 10 }, (_, i) => sec(T + 1 + i, { position: undefined })),
+      ]),
+    );
+    expect(m[0]?.payClockSeconds).toBe(11);
+  });
+
+  it('after the POC: only the areas listed count; the edge zone only if chosen', () => {
+    const zone = { kind: 'areas', areaIds: ['hyd-madhapur'], withEdge: false } as const;
+    expect(inPayZone(zone, undefined, inside)).toBe(true);
+    expect(
+      inPayZone(zone, undefined, {
+        kind: 'edge',
+        areaId: 'hyd-madhapur',
+        version: 3,
+        metersOutside: 50,
+      }),
+    ).toBe(false);
+    expect(
+      inPayZone({ ...zone, withEdge: true }, undefined, {
+        kind: 'edge',
+        areaId: 'hyd-madhapur',
+        version: 3,
+        metersOutside: 50,
+      }),
+    ).toBe(true);
+    expect(inPayZone(zone, undefined, { kind: 'inside', areaId: 'hyd-kondapur', version: 1 })).toBe(
+      false,
+    );
+    expect(inPayZone(zone, undefined, { kind: 'outside' })).toBe(false);
   });
 });

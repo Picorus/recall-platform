@@ -25,7 +25,7 @@ export const DEFAULT_MOVING_HOUR_RULES: MovingHourRules = {
 export interface Totals {
   /** Seconds the clock ran, inside the business day (08:00–02:00 India time). */
   readonly clockSeconds: number;
-  /** Of those, the seconds at places that count (see `counts`). */
+  /** Of those, the seconds inside the pay zone (POC: 15 km of Hitech City; see pay-zone.ts). */
   readonly countedSeconds: number;
   readonly movingSeconds: number;
   readonly distanceM: number;
@@ -67,6 +67,7 @@ function mergeMinutes(minutes: readonly MinuteSummary[]): MinuteSummary[] {
       secondsAt,
       clockAt,
       clockSeconds: prev.clockSeconds + m.clockSeconds,
+      payClockSeconds: prev.payClockSeconds + m.payClockSeconds,
       movingSeconds: prev.movingSeconds + m.movingSeconds,
       distanceM: prev.distanceM + m.distanceM,
       plays: prev.plays + m.plays,
@@ -77,14 +78,13 @@ function mergeMinutes(minutes: readonly MinuteSummary[]): MinuteSummary[] {
 }
 
 /**
- * Totals per business day ("YYYY-MM-DD", India time). `counts` says which places count for pay:
- * in the POC, inside Hyderabad; after it, the allowed areas (DECISIONS, 22 Oct 2026). Only clock
+ * Totals per business day ("YYYY-MM-DD", India time). Counted seconds are the clock seconds the
+ * screen marked inside the pay zone (DECISIONS, 22 Oct 2026). Only clock
  * seconds inside business hours count (Prateek, 22 Oct 2026); the rest are reported on the
  * business day that ended just before them.
  */
 export function dailyTotals(
   minutes: readonly MinuteSummary[],
-  counts: (placeKey: string) => boolean = () => true,
   hours: BusinessHours = DEFAULT_BUSINESS_HOURS,
 ): Map<string, Totals> {
   const days = new Map<string, Totals>();
@@ -99,10 +99,7 @@ export function dailyTotals(
       continue;
     }
     const t = days.get(day) ?? ZERO;
-    const rawCounted = Object.entries(m.clockAt).reduce(
-      (sum, [k, v]) => sum + (counts(k) ? v : 0),
-      0,
-    );
+    const rawCounted = m.payClockSeconds;
     days.set(day, {
       clockSeconds: t.clockSeconds + clock,
       countedSeconds: t.countedSeconds + Math.min(clock, rawCounted),

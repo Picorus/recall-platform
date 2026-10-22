@@ -149,8 +149,8 @@ The scheduler answers one question every minute: which booking does each bike in
 3. **P1.7.3 Revenue earned hour by hour.** At each hour close, the delivered part moves from held to earned.
 4. **P1.7.4 Cuts.** Agency 10% on bookings made by an agency; aggregator 2% on brands referred by a delivery or ride app. Both are worked out on what was delivered (not invoiced), recorded as payable and paid monthly with a statement.
 5. **P1.7.5 Rider earnings (after the POC).** ₹25 for each moving hour + 25% of what his hours sold (the booking's bike-hour price × the share of plays his screen delivered). Paid hours capped at 260 active hours a month (moving hours as RECALL counts them; Prateek, 22 Oct 2026).
-6. **P1.7.6 Rider earnings (POC).** Flat ₹8,000 / ₹10,000 / ₹12,000 (base + ₹6,000 founding bonus). Bonus in full at 150+ verified moving hours inside the allowed area (POC: Hyderabad), none below 150; moving hours as RECALL calculates them from the screen, never app-open time (Prateek, 22 Oct 2026). Day-90 bonus of ₹3,000 paid towards the screen loan.
-7. **P1.7.7 Payouts.** Weekly run every Monday: system prepares, finance approves in admin, the payout provider pays each rider's bank or UPI. Failed payouts retry and show in admin.
+6. **P1.7.6 Rider earnings (POC).** Flat ₹8,000 / ₹10,000 / ₹12,000 (base + ₹6,000 founding bonus). Bonus in full at 150+ verified moving hours inside the pay zone (POC: within 15 km of Hitech City), none below 150; moving hours as RECALL calculates them from the screen, never app-open time (Prateek, 22 Oct 2026). Day-90 bonus of ₹3,000 paid towards the screen loan. POC pay is paid once a month, after the month ends (Prateek, 22 Oct 2026).
+7. **P1.7.7 Payouts.** Weekly run every Monday: system prepares, finance approves in admin, the payout provider pays each rider's bank or UPI. Failed payouts retry and show in admin. TDS is deducted from rider pay at the rate the CA confirms (a setting); a gig-worker levy, if any, is a setting too.
 8. **P1.7.8 Screen loan.** The bank lends to the rider; RECALL only records loan status and EMI dates shown in the rider app. Loans and EMIs are never on RECALL's books.
 9. **P1.7.9 GST and books.** Monthly GST summary, invoice and credit-note registers, export for the accountant. E-invoicing switched on before turnover crosses the legal limit.
 
@@ -288,7 +288,7 @@ The admin portal is where RECALL runs the business: fleet, areas, sales, ads, mo
 | P3.14 | Reports | Final reports for every campaign, re-send, business dashboards (fill, revenue, refunds, moving hours) | Founder, sales |
 | P3.15 | Support | Brand and rider requests in one inbox with WhatsApp history | Support |
 | P3.16 | Audit log | Who changed what and when, searchable, cannot be edited | Founder, tech |
-| P3.17 | Settings | Staff, roles, message templates, cities, connections to outside services | Founder, tech |
+| P3.17 | Settings | Staff, roles, message templates, cities, connections to outside services, fitting centres (any number), support numbers and hours, the rider pay zone, the screen-loan bank | Founder, tech |
 
 ## New brand colours and design system
 
@@ -419,6 +419,7 @@ A new engineer should be able to read four files and start work the same day. Th
 
 | Date | Version | Change |
 | --- | --- | --- |
+| 22 Oct 2026 | 1.7 | Prateek's answers: POC pay zone 15 km around Hitech City; after the POC, the areas that are on (plus exceptions); POC pay once a month after it ends; TDS on rider pay; settings for fitting centres, support numbers and hours (10 am–7 pm), the loan bank (Dhanlaxmi Bank). |
 | 22 Oct 2026 | 1.6 | P1.1.6 and P3.5: a super admin adds areas and turns them on or off (Prateek). |
 | 22 Oct 2026 | 1.5 | P0.3 done: all screens approved (brand 9, rider 12, admin 16). P1.7.4: cuts on delivered value (Prateek). P1.1, P1.2 and P1.10 started. |
 | 22 Oct 2026 | 1.4 | P1.7.6: founding bonus only at 150+ moving hours, no part bonus (Prateek's decision of 22 Oct, already in DECISIONS; the plan line had been missed). |

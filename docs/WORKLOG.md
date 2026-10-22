@@ -2,6 +2,14 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 22 Oct 2026 · P1.2 · Prateek's answers to the open questions
+- P1.10 merged (PR #13, all checks green).
+- Answers recorded in DECISIONS, the plan (P1.7.6, P1.7.7, P3.17, change log 1.7) and `docs/OPEN_QUESTIONS.md`: POC pay zone 15 km around Hitech City; after the POC, the areas that are on (+ exceptions); loan bank Dhanlaxmi Bank; fitting centres and support numbers as settings (support 10 am – 7 pm); the loan screen is the rider's (bank handles defaults; RECALL may buy back); TDS on rider pay (rate with the CA); POC pay once a month after it ends; chart colours stay.
+- Code: `pay-zone.ts` (circle for the POC, list of areas after); each minute summary now carries `payClockSeconds` (clock seconds inside the pay zone, last known position through short GPS gaps); daily counted hours use it. Shared test cases regenerated. 109 tests in `packages/domain`.
+- Canvas version 54: rider Founding pay (15 km of Hitech City, paid after each month), Fitting (fitting centre, address to come), Screen loan (Dhanlaxmi Bank), Help (10 am – 7 pm), Payouts (TDS), Profile (leaving: the screen stays the rider's); admin Today, Areas (pay zone), Prices, Payouts, Support.
+- Still open: post-POC exceptions, fitting centre address, support numbers, charging steps, TDS rate.
+- **Next:** database tables for areas, versions and minute summaries, with migrations tested in CI.
+
 ## 22 Oct 2026 · P1.10 · Fleet simulator, version 1
 - P1.1–P1.2 merged (PR #12, all checks green). Prateek confirmed: moving hours only in business hours.
 - `tools/simulator`: fake delivery bikes on a 250 m street grid over west Hyderabad (trips, signal waits, pick-up stops, long breaks, messy GPS, signal loss, battery drain), each running the real screen tracker, minute summaries and the store-and-forward path into the cloud inbox. Scenarios: normal, rain, cricket (stadium crowding), 30-minute network outage. Command: see `docs/RUNBOOKS/simulator.md`.
