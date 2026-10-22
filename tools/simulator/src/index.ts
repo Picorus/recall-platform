@@ -1,3 +1,5 @@
-// Fleet simulator: fake bikes on Hyderabad roads. Built in P1.10.
-// Placeholder until its build step; see docs/BUILD_PLAN.md.
-export {};
+// Fleet simulator (P1.10): fake bikes on Hyderabad roads running the real screen logic.
+export * from './bike.js';
+export * from './rng.js';
+export * from './roads.js';
+export * from './simulate.js';
