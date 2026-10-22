@@ -40,6 +40,9 @@ for (const mode of ['live', 'offline'] as const) {
       `  Worst line: ${worst.lineId} ${worst.delivered} of ${worst.plays} plays on ${worst.differentBikes} different bikes (${worst.bikes} sold)`,
     );
   console.log(
+    `  Make-ups: ${r.makeUpsDelivered} of ${r.makeUpsOwed} plays owed · aggregator: ${r.aggregatorPlayed} of ${r.aggregatorWanted} spots`,
+  );
+  console.log(
     `  Spare brand spots (RECALL's own ads): ${r.spareSpots} · took ${((Date.now() - started) / 1000).toFixed(0)} s`,
   );
 }

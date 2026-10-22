@@ -15,7 +15,7 @@ Newest first. Each entry: date · step id · what changed · tests · open issue
   - 100% sold: 21 of 21.
   - Sold from a different day's numbers (as the real forecast does): 99.9% of plays; 3 lines about 1% short, which make-ups cover.
   - No network all hour: 98.6%.
-- At 15,500 bikes, 90% sold, first version: 133 of 133 lines fully delivered (521,200 plays). Re-run on the final version: see the PR.
+- At 15,500 bikes, 90% sold, with make-ups owed (5%) and an aggregator, final version: cloud assigning, 133 of 133 lines fully delivered (521,200 of 521,200 plays); no network all hour, 98.9% of plays (104 of 133 lines in full; the rest go to make-ups). About 7.5 minutes per run on one laptop core.
 - Second review found 8 issues, all fixed with tests:
   - make-ups and trials could keep bikes a paid line needed;
   - a make-up delivered in spots kept its bikes;
