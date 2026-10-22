@@ -271,7 +271,7 @@ The admin portal is where RECALL runs the business: fleet, areas, sales, ads, mo
 
 | Step | Screen | What it does | Main users |
 | --- | --- | --- | --- |
-| P3.1 | Sign-in and roles | Staff sign-in with two-step check; super admin (everything, sets permissions, prices and rules, payout approval, full audit log) and admins with permission areas: Sales, Ad review, Operations, Finance, Support (Prateek, 22 Oct 2026) | All |
+| P3.1 | Sign-in and roles | Staff sign-in with two-step check; super admin (everything, sets permissions, prices and rules, payout approval, full audit log) and admins with permission areas: Sales, Ad review, Operations, Finance, Support; a read-only role; refunds and discounts need a super admin's sign-off (Prateek, 22 Oct 2026) | All |
 | P3.2 | Today | Bikes online and moving now, hours sold vs delivered today, make-ups due, refunds this week, alerts | Founder, ops |
 | P3.3 | Fleet map | Every screen live on the map, filter by area and status; click a bike for its history, health and commands | Ops, tech |
 | P3.4 | Screens | Stock, fitting, linked bike and rider, version, health, repairs, swaps, updates rollout | Ops, tech |
@@ -418,7 +418,7 @@ A new engineer should be able to read four files and start work the same day. Th
 
 | Date | Version | Change |
 | --- | --- | --- |
-| 22 Oct 2026 | 1.3 | P3: super admin and admins with permission areas; client holds; admin bookings for any start date (portal brands 15 days); short-notice ad approval (Prateek). |
+| 22 Oct 2026 | 1.3 | P3: super admin, admins with permission areas and a read-only role; super admin sign-off for refunds and discounts; client holds; admin bookings for any start date (portal brands 15 days); short-notice ad approval (Prateek). |
 | 22 Oct 2026 | 1.2 | P5.5: brands upload their own video or a picture carousel as the main path; templates optional; colour and legibility advice is best practice, not enforced (Prateek). P0.2, P0.3.1–P0.3.3 done. |
 | 22 Oct 2026 | 1.1 | P0.3 started: Night Signal applied to the RECALL design system (colours, Anek type, recoloured Afterimage logo, all previews), the investor deck (Google Slides and the PowerPoint in Recall Final), and all 12 screens on the design canvas. Price band name fixed to "Lite". |
 | 22 Oct 2026 | 1.0 | First full build plan: build order, architecture, the six engines, screen, rider app, brand portal, admin portal, Night Signal colours, outside services, testing, constraints, roadmap, records. Based on rulebook v5.4 and model v5.3. |
