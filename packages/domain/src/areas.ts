@@ -199,6 +199,17 @@ export function versionAt(
   return found;
 }
 
+/** The published version in force at `instant`. A draft is a proposal, never in force. */
+export function publishedAt(
+  history: readonly AreaVersion[],
+  instant: string,
+): AreaVersion | undefined {
+  return versionAt(
+    history.filter((v) => !v.draft),
+    instant,
+  );
+}
+
 export type Place =
   | { readonly kind: 'inside'; readonly areaId: string; readonly version: number }
   | {
@@ -208,6 +219,11 @@ export type Place =
       readonly metersOutside: number;
     }
   | { readonly kind: 'outside' };
+
+/** "inside:hyd-madhapur@3", "edge:hyd-madhapur@3" or "outside": a stable key for a place. */
+export function placeKey(place: Place): string {
+  return place.kind === 'outside' ? 'outside' : `${place.kind}:${place.areaId}@${place.version}`;
+}
 
 function byId(a: AreaVersion, b: AreaVersion): number {
   return a.areaId < b.areaId ? -1 : a.areaId > b.areaId ? 1 : 0;

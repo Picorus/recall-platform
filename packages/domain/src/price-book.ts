@@ -1,6 +1,7 @@
 // P1.3.2: prices, offers, minimums and deadlines. All of them are settings (hard rule 8): a super
 // admin changes them in admin → Prices and rules, each change is a new version from a date, and a
 // booking keeps the version it was sold on.
+import { DEFAULT_PLAY_RULES, type PlayRules } from './plays.js';
 import { DEFAULT_CAPACITY_RULES, type CapacityRules } from './supply.js';
 import { parseUtcIso } from './time.js';
 
@@ -41,6 +42,8 @@ export interface PriceBook {
   readonly trialBikeHours: number;
   /** How many bikes an area-hour can be sold for (POC: manual limits only; after: forecast). */
   readonly capacity: CapacityRules;
+  /** How plays are checked and counted (P1.5): edge share, time limits, GPS accuracy. */
+  readonly plays: PlayRules;
 }
 
 /** The book in force from 22 Oct 2026: rulebook v5.4 and Prateek's decisions of 21–22 Oct. */
@@ -65,6 +68,7 @@ export const PRICE_BOOK_V1: PriceBook = {
   trialDays: 7,
   trialBikeHours: 20,
   capacity: DEFAULT_CAPACITY_RULES,
+  plays: DEFAULT_PLAY_RULES,
 };
 
 export type PriceBookProblem = string;
@@ -126,6 +130,18 @@ export function checkPriceBook(b: PriceBook): PriceBookProblem[] {
   if (c.levelWeeks < 1 || c.levelWeeks > c.lookbackWeeks || c.makeUpMarginBp >= 10_000) {
     problems.push('capacity: level weeks must be 1 to lookback weeks, margin under 100%');
   }
+  const p = b.plays;
+  const playNumbers = [
+    p.maxAheadSeconds,
+    p.maxAgeSeconds,
+    p.spotSeconds,
+    p.minPlaySeconds,
+    p.maxAccuracyM,
+    p.edgeShareBp,
+  ];
+  if (!playNumbers.every(whole)) problems.push('play settings must be whole numbers');
+  if (p.spotSeconds < 1 || p.minPlaySeconds > p.spotSeconds || p.edgeShareBp > 10_000)
+    problems.push('plays: a play is at most one spot long; edge share at most 100%');
   return problems;
 }
 

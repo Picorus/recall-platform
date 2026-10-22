@@ -2,7 +2,8 @@
 //  - a live position every 30 seconds (for the fleet map),
 //  - a one-minute summary (area, seconds inside, seconds moving, distance, plays, people),
 //  - everything numbered and kept on the screen until the cloud confirms it (up to 7 days).
-import type { Place } from './areas.js';
+import { placeKey } from './areas.js';
+import { checkPlayShape, type PlayReport } from './plays.js';
 import { distanceMeters, type LatLng } from './geo.js';
 import { inPayZone, POC_PAY_ZONE, type PayZone } from './pay-zone.js';
 import type { Second } from './screen-tracker.js';
@@ -12,10 +13,7 @@ export const KEEP_UNSENT_SECONDS = 7 * 24 * 3600;
 /** Distance is only added between positions at most this many seconds apart. */
 export const MAX_DISTANCE_GAP_SECONDS = 10;
 
-/** "inside:hyd-madhapur@3", "edge:hyd-madhapur@3" or "outside": a stable key for a place. */
-export function placeKey(place: Place): string {
-  return place.kind === 'outside' ? 'outside' : `${place.kind}:${place.areaId}@${place.version}`;
-}
+export { placeKey };
 
 export interface LivePosition {
   readonly kind: 'live';
@@ -47,7 +45,8 @@ export interface MinuteSummary {
   readonly people: number;
 }
 
-export type Report = LivePosition | MinuteSummary;
+/** Plays (P1.5) travel the same way: numbered, kept until confirmed, never stored twice. */
+export type Report = LivePosition | MinuteSummary | PlayReport;
 
 export interface MinuteBuilder {
   readonly minute: number | undefined;
@@ -310,5 +309,6 @@ export function checkReport(r: unknown): string | undefined {
     );
     return clockTotal === x.clockSeconds ? undefined : 'clockAt does not add up to clock seconds';
   }
+  if (x.kind === 'play') return checkPlayShape(x);
   return 'unknown kind';
 }
