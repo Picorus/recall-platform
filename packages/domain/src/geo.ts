@@ -91,14 +91,8 @@ function orientation(a: Xy, b: Xy, c: Xy): number {
   return v > 0 ? 1 : v < 0 ? -1 : 0;
 }
 
-function onSegment(a: Xy, b: Xy, p: Xy): boolean {
-  return (
-    Math.min(a.x, b.x) <= p.x &&
-    p.x <= Math.max(a.x, b.x) &&
-    Math.min(a.y, b.y) <= p.y &&
-    p.y <= Math.max(a.y, b.y)
-  );
-}
+/** Borders closer than this count as touching (floating point cannot say "exactly on a line"). */
+const TOUCH_M = 0.01;
 
 /** True when the two segments share any point, touching included. */
 function segmentsMeet(a: Xy, b: Xy, c: Xy, d: Xy): boolean {
@@ -106,12 +100,12 @@ function segmentsMeet(a: Xy, b: Xy, c: Xy, d: Xy): boolean {
   const o2 = orientation(a, b, d);
   const o3 = orientation(c, d, a);
   const o4 = orientation(c, d, b);
-  if (o1 !== o2 && o3 !== o4) return true;
+  if (o1 !== 0 && o2 !== 0 && o3 !== 0 && o4 !== 0 && o1 !== o2 && o3 !== o4) return true;
   return (
-    (o1 === 0 && onSegment(a, b, c)) ||
-    (o2 === 0 && onSegment(a, b, d)) ||
-    (o3 === 0 && onSegment(c, d, a)) ||
-    (o4 === 0 && onSegment(c, d, b))
+    segmentDistance(c, a, b) < TOUCH_M ||
+    segmentDistance(d, a, b) < TOUCH_M ||
+    segmentDistance(a, c, d) < TOUCH_M ||
+    segmentDistance(b, c, d) < TOUCH_M
   );
 }
 
@@ -132,9 +126,12 @@ export function isSimpleRing(ring: Ring): boolean {
         const shared = j === i + 1 ? b : a;
         const far = j === i + 1 ? d : c;
         const near = j === i + 1 ? a : b;
-        const sameDirection =
-          (far.x - shared.x) * (near.x - shared.x) + (far.y - shared.y) * (near.y - shared.y) > 0;
-        if (orientation(near, shared, far) === 0 && sameDirection) return false;
+        if (
+          segmentDistance(far, shared, near) < TOUCH_M ||
+          segmentDistance(near, shared, far) < TOUCH_M
+        ) {
+          return false;
+        }
         continue;
       }
       if (segmentsMeet(a, b, c, d)) return false;

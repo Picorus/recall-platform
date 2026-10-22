@@ -8,6 +8,7 @@ import {
   type LatLng,
   type Ring,
 } from './geo.js';
+import { parseUtcIso } from './time.js';
 
 /** P1.1.1: the edge zone around an area, in metres. A default; each area version carries its own. */
 export const DEFAULT_EDGE_METERS = 300;
@@ -72,15 +73,19 @@ function shapeProblems(area: AreaVersion): AreaProblem[] {
       detail: `edge zone must be 0–${MAX_EDGE_METERS} whole metres`,
     });
   }
-  if (Number.isNaN(Date.parse(area.validFrom))) {
-    problems.push({ kind: 'bad-date', detail: 'validFrom is not a date' });
+  if (Number.isNaN(parseUtcIso(area.validFrom))) {
+    problems.push({
+      kind: 'bad-date',
+      detail: 'validFrom must be a UTC time like 2026-11-01T00:00:00Z',
+    });
   }
   return problems;
 }
 
 /**
- * P1.1.4: checks run when an area is saved. Shapes may not overlap or touch any other area's
- * current shape (leave a gap; the edge zones cover it). Returns no problems when it can be saved.
+ * P1.1.4: checks run when an area is saved. Shapes may not overlap or touch any other area (leave a
+ * gap; the edge zones cover it). Pass every version of the other areas that is in force at or after
+ * this version's `validFrom`. Returns no problems when it can be saved.
  */
 export function checkArea(area: AreaVersion, others: readonly AreaVersion[]): AreaProblem[] {
   const problems = shapeProblems(area);
@@ -132,20 +137,35 @@ export function createArea(input: NewArea, others: readonly AreaVersion[]): Area
   return area;
 }
 
-export type AreaChanges = Partial<
-  Pick<AreaVersion, 'name' | 'ring' | 'edgeMeters' | 'draft' | 'active'>
->;
+/** Fields to change; a field left out (or undefined) keeps its old value. */
+export type AreaChanges = {
+  readonly [K in 'name' | 'ring' | 'edgeMeters' | 'draft' | 'active']?: AreaVersion[K] | undefined;
+};
 
-/** P1.1.2: a change makes the next version; the previous one is kept, untouched. */
+/** The newest version in an area's history; refuses a mixed or empty history. */
+export function latestVersion(history: readonly AreaVersion[]): AreaVersion {
+  const first = history[0];
+  if (!first || history.some((v) => v.areaId !== first.areaId)) {
+    throw new RangeError('History must hold versions of one area');
+  }
+  return history.reduce((a, b) => (b.version > a.version ? b : a));
+}
+
+/**
+ * P1.1.2: a change makes the next version; earlier ones are kept, untouched. Takes the area's whole
+ * history so a change always builds on the newest version (two "version 2"s cannot happen).
+ */
 export function reviseArea(
-  current: AreaVersion,
+  history: readonly AreaVersion[],
   changes: AreaChanges,
   validFrom: string,
   others: readonly AreaVersion[],
 ): AreaVersion {
-  const next: AreaVersion = { ...current, ...changes, version: current.version + 1, validFrom };
+  const current = latestVersion(history);
+  const given = Object.fromEntries(Object.entries(changes).filter(([, v]) => v !== undefined));
+  const next: AreaVersion = { ...current, ...given, version: current.version + 1, validFrom };
   const problems = checkArea(next, others);
-  if (!(Date.parse(validFrom) > Date.parse(current.validFrom))) {
+  if (!(parseUtcIso(validFrom) > parseUtcIso(current.validFrom))) {
     problems.push({
       kind: 'bad-date',
       detail: 'a new version must start after the one it replaces',
@@ -157,12 +177,12 @@ export function reviseArea(
 
 /** Turn an area on or off from `validFrom`: a new version, checked like any other change. */
 export function setAreaActive(
-  current: AreaVersion,
+  history: readonly AreaVersion[],
   active: boolean,
   validFrom: string,
   others: readonly AreaVersion[],
 ): AreaVersion {
-  return reviseArea(current, { active }, validFrom, others);
+  return reviseArea(history, { active }, validFrom, others);
 }
 
 /** The version in force at `instant` (UTC ISO), or undefined before the first one. */
@@ -170,10 +190,11 @@ export function versionAt(
   history: readonly AreaVersion[],
   instant: string,
 ): AreaVersion | undefined {
-  const at = Date.parse(instant);
+  const at = parseUtcIso(instant);
+  if (Number.isNaN(at)) throw new RangeError(`Not a UTC time: ${instant}`);
   let found: AreaVersion | undefined;
   for (const v of history) {
-    if (Date.parse(v.validFrom) <= at && (!found || v.version > found.version)) found = v;
+    if (parseUtcIso(v.validFrom) <= at && (!found || v.version > found.version)) found = v;
   }
   return found;
 }

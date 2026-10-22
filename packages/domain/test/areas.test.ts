@@ -81,7 +81,7 @@ describe('saving an area', () => {
 
 describe('versions (P1.1.2)', () => {
   const v1 = createArea(new_('hyd-a', box(17.4, 78.4, 17.41, 78.41)), []);
-  const v2 = reviseArea(v1, { ring: box(17.4, 78.4, 17.42, 78.41), edgeMeters: 200 }, T1, []);
+  const v2 = reviseArea([v1], { ring: box(17.4, 78.4, 17.42, 78.41), edgeMeters: 200 }, T1, []);
 
   it('a change makes the next version and leaves the old one as it was', () => {
     expect(v2.version).toBe(2);
@@ -97,12 +97,12 @@ describe('versions (P1.1.2)', () => {
   });
 
   it('a new version must start after the one it replaces', () => {
-    expect(() => reviseArea(v1, { name: 'A' }, T0, [])).toThrow(AreaError);
+    expect(() => reviseArea([v1], { name: 'A' }, T0, [])).toThrow(AreaError);
   });
 
   it('a revision is checked against the other areas', () => {
     const other = createArea(new_('hyd-b', box(17.415, 78.4, 17.43, 78.41)), [v1]);
-    expect(() => reviseArea(v1, { ring: box(17.4, 78.4, 17.42, 78.41) }, T1, [other])).toThrow(
+    expect(() => reviseArea([v1], { ring: box(17.4, 78.4, 17.42, 78.41) }, T1, [other])).toThrow(
       AreaError,
     );
   });
@@ -201,7 +201,7 @@ describe('fast lookup by hexagons (P1.1.3)', () => {
 
 describe('turning areas on and off (super admin)', () => {
   const a = createArea(new_('hyd-a', box(17.4, 78.4, 17.41, 78.41)), []);
-  const off = setAreaActive(a, false, T1, []);
+  const off = setAreaActive([a], false, T1, []);
   const inside = { lat: 17.405, lng: 78.405 };
 
   it('a new area is on; turning it off is a new version and the old one stays', () => {
@@ -218,9 +218,53 @@ describe('turning areas on and off (super admin)', () => {
 
   it('an area that is off does not block a new one; turning it back on is checked again', () => {
     const b = createArea(new_('hyd-b', box(17.405, 78.405, 17.42, 78.42)), [off]);
-    expect(() => setAreaActive(off, true, '2027-01-01T00:00:00.000Z', [b])).toThrow(AreaError);
-    const back = setAreaActive(off, true, '2027-01-01T00:00:00.000Z', []);
+    expect(() => setAreaActive([a, off], true, '2027-01-01T00:00:00.000Z', [b])).toThrow(AreaError);
+    const back = setAreaActive([a, off], true, '2027-01-01T00:00:00.000Z', []);
     expect(back.active).toBe(true);
     expect(back.version).toBe(3);
+  });
+});
+
+describe('review fixes', () => {
+  const v1 = createArea(new_('hyd-a', box(17.4, 78.4, 17.41, 78.41)), []);
+
+  it('times must be exact UTC: no missing Z, no 30 February, no loose text', () => {
+    for (const bad of ['2026-11-01T05:30:00', '2026-02-30T00:00:00Z', '1', '2026-11-01']) {
+      expect(() =>
+        createArea({ ...new_('hyd-z', box(17.5, 78.5, 17.51, 78.51)), validFrom: bad }, []),
+      ).toThrow(AreaError);
+      expect(() => versionAt([v1], bad)).toThrow(RangeError);
+    }
+  });
+
+  it('a change always builds on the newest version, so no two versions share a number', () => {
+    const v2 = reviseArea([v1], { name: 'b' }, T1, []);
+    const v3 = reviseArea([v1, v2], { name: 'c' }, '2027-01-01T00:00:00.000Z', []);
+    expect(v3.version).toBe(3);
+    expect(() => reviseArea([v1, v2], { name: 'c' }, '2026-11-15T00:00:00.000Z', [])).toThrow(
+      AreaError,
+    );
+  });
+
+  it('a change that leaves a value out keeps the old value', () => {
+    const v2 = reviseArea([v1], { edgeMeters: undefined, name: 'b' }, T1, []);
+    expect(v2.edgeMeters).toBe(300);
+  });
+
+  it('shapes touching along a slanted border are caught', () => {
+    const a = createArea(
+      new_('hyd-a2', [
+        { lat: 17.4, lng: 78.4 },
+        { lat: 17.43, lng: 78.43 },
+        { lat: 17.4, lng: 78.43 },
+      ]),
+      [],
+    );
+    const b = new_('hyd-b2', [
+      { lat: 17.40195, lng: 78.40195 },
+      { lat: 17.41095, lng: 78.41095 },
+      { lat: 17.41645, lng: 78.39645 },
+    ]);
+    expect(() => createArea(b, [a])).toThrow(AreaError);
   });
 });

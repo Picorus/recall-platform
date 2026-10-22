@@ -4,3 +4,4 @@ pnpm-lock.yaml
 packages/design/tokens.css
 packages/design/design-system/
 packages/design/brand/
+packages/domain/test-vectors/
