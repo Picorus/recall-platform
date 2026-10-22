@@ -95,6 +95,7 @@ Six engines carry the business: areas, GPS, the scheduler, play counting, make-u
 3. **P1.1.3** Pre-compute each area as H3 hexagons (size 9, about 0.1 km²) for fast "which area is this point in" checks on the server and on the screen.
 4. **P1.1.4** Rules: areas may not overlap; a point in two edge zones belongs to the nearer area. Checked automatically when an area is saved.
 5. **P1.1.5** Seed data: the six launch areas (Madhapur, Kondapur, Gachibowli, Hitech City, Jubilee Hills, Banjara Hills) as draft shapes for ops to correct on the map.
+6. **P1.1.6** A super admin adds areas and turns them on or off (Prateek, 22 Oct 2026). Off = not offered to brands, and plays and moving hours there do not count. On/off is a new version from a chosen date, never a delete. An area with bookings still to run cannot be turned off until they are moved or refunded. Operations admins correct shapes. Shapes may not overlap or touch; the edge zones cover any gap.
 
 ### P1.2 GPS and moving hours
 
@@ -275,7 +276,7 @@ The admin portal is where RECALL runs the business: fleet, areas, sales, ads, mo
 | P3.2 | Today | Bikes online and moving now, hours sold vs delivered today, make-ups due, refunds this week, alerts | Founder, ops |
 | P3.3 | Fleet map | Every screen live on the map, filter by area and status; click a bike for its history, health and commands | Ops, tech |
 | P3.4 | Screens | Stock, fitting, linked bike and rider, version, health, repairs, swaps, updates rollout | Ops, tech |
-| P3.5 | Areas | Draw and edit area shapes on the map, edge zone, version history, check for overlaps | Ops |
+| P3.5 | Areas | Draw and edit area shapes on the map, edge zone, version history, check for overlaps; add areas and turn them on or off (super admin only) | Ops, founder |
 | P3.6 | Prices and rules | Price bands, offers, floor, minimums, ad deadline, trial rules; every change versioned | Founder, finance |
 | P3.7 | Inventory calendar | Area × hour grid: bike-hours sold, usual bikes seen, delivered; optional manual limit; holds for a client (hours, days, bikes; no money; end at a set time; turn into a booking) | Sales, ops |
 | P3.8 | Brands and bookings | Brand accounts, agencies, book on a brand's behalf with a payment link for any start date including last-minute (portal brands need 15 days), booking timeline, cancel, notes | Sales |
@@ -418,6 +419,7 @@ A new engineer should be able to read four files and start work the same day. Th
 
 | Date | Version | Change |
 | --- | --- | --- |
+| 22 Oct 2026 | 1.6 | P1.1.6 and P3.5: a super admin adds areas and turns them on or off (Prateek). |
 | 22 Oct 2026 | 1.5 | P0.3 done: all screens approved (brand 9, rider 12, admin 16). P1.7.4: cuts on delivered value (Prateek). P1.1, P1.2 and P1.10 started. |
 | 22 Oct 2026 | 1.4 | P1.7.6: founding bonus only at 150+ moving hours, no part bonus (Prateek's decision of 22 Oct, already in DECISIONS; the plan line had been missed). |
 | 22 Oct 2026 | 1.3 | P3: super admin, admins with permission areas and a read-only role; super admin sign-off for refunds and discounts; client holds; admin bookings for any start date (portal brands 15 days); short-notice ad approval (Prateek). |
