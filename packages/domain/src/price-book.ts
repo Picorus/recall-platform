@@ -47,6 +47,11 @@ export interface PriceBook {
   readonly plays: PlayRules;
   /** When shortfalls become make-ups and refunds (P1.6). */
   readonly makeUps: MakeUpRules;
+  /**
+   * A paid booking cancelled at least this many hours before its first hour may be refunded in full
+   * with a super admin's approval; cancelled later, nothing can be refunded (Prateek, 24 Oct 2026).
+   */
+  readonly cancelRefundHours: number;
 }
 
 /** The book in force from 22 Oct 2026: rulebook v5.4 and Prateek's decisions of 21–22 Oct. */
@@ -73,6 +78,7 @@ export const PRICE_BOOK_V1: PriceBook = {
   capacity: DEFAULT_CAPACITY_RULES,
   plays: DEFAULT_PLAY_RULES,
   makeUps: DEFAULT_MAKE_UP_RULES,
+  cancelRefundHours: 72,
 };
 
 export type PriceBookProblem = string;
@@ -114,6 +120,7 @@ export function checkPriceBook(b: PriceBook): PriceBookProblem[] {
     ['trialDays', b.trialDays],
     ['trialBikeHours', b.trialBikeHours],
     ['repeatSpreadBp', b.repeatSpreadBp],
+    ['cancelRefundHours', b.cancelRefundHours],
   ] as const) {
     if (!whole(v)) problems.push(`${name} must be a whole number`);
   }

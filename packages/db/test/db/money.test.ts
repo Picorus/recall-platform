@@ -249,7 +249,7 @@ describe('money through the ledger (P1.7.2–3)', () => {
     expect(await revenueFor(lineIdOf('BK-X', 'hyd-madhapur', DATE, 21))).toBe(150_000);
   });
 
-  it('cancelled after paying: a full refund is proposed; nothing is earned until a super admin decides', async () => {
+  it('cancelled more than 72 hours before: a full refund is proposed; nothing is earned until a super admin decides', async () => {
     await book('BK-Y', 'hyd-madhapur', 22, 5, false, 'paid');
     await moveBooking(
       pool,
@@ -272,6 +272,49 @@ describe('money through the ledger (P1.7.2–3)', () => {
     );
     expect(await held('brand-BK-Y')).toBe(0);
     expect(await revenueFor(line)).toBe(0);
+  });
+
+  it('cancelled less than 72 hours before the first hour: no refund is possible, the money is earned', async () => {
+    await book('BK-W', 'hyd-kondapur', 23, 5, false, 'paid');
+    const start = lineStartsAt({ date: DATE, startHour: 23 });
+    await moveBooking(
+      pool,
+      'BK-W',
+      'cancelled',
+      { by: 'priya', actor: 'admin', reason: 'brand pulled out' },
+      start - 71 * 3600,
+    );
+    await settleDue(pool, start - 70 * 3600);
+    await closeEarnings(pool, start - 70 * 3600);
+    const line = lineIdOf('BK-W', 'hyd-kondapur', DATE, 23);
+    const r = await pool.query(`SELECT 1 FROM refunds WHERE line_id = $1`, [line]);
+    expect(r.rows).toEqual([]);
+    expect(await held('brand-BK-W')).toBe(0);
+    expect(await revenueFor(line)).toBe(110_000); // 5 Lite bike-hours at ₹220
+  });
+
+  it('cancelled early, but the super admin says no: no refund, the money is earned', async () => {
+    await book('BK-V', 'hyd-kondapur', 22, 5, false, 'paid');
+    const start = lineStartsAt({ date: DATE, startHour: 22 });
+    await moveBooking(
+      pool,
+      'BK-V',
+      'cancelled',
+      { by: 'priya', actor: 'admin', reason: 'brand pulled out' },
+      start - 5 * 86_400,
+    );
+    await settleDue(pool, start - 5 * 86_400 + 60);
+    const line = lineIdOf('BK-V', 'hyd-kondapur', DATE, 22);
+    await decideRefund(
+      pool,
+      `${line}#refund`,
+      'rejected',
+      { id: 'prateek', role: 'super-admin' },
+      'no refund policy',
+      start - 4 * 86_400,
+    );
+    expect(await held('brand-BK-V')).toBe(0);
+    expect(await revenueFor(line)).toBe(150_000);
   });
 
   it('the whole ledger balances', async () => {

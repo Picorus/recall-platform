@@ -126,13 +126,16 @@ export async function settleDue(pool: Pool, now: number): Promise<Settled> {
         failed.push({ lineId, error: e instanceof Error ? e.message : String(e) });
       }
     }
-    // A booking cancelled after it was paid: a full refund of each line is proposed for a super admin
-    // to approve or reject (open question 12 decides the policy; every refund is signed off).
-    const cancelled = await c.query<OpenLine>(
+    // A booking cancelled after it was paid (Prateek, 24 Oct 2026): no refund by default. Cancelled at
+    // least `cancelRefundHours` before its first hour, a full refund of each line is proposed, which a
+    // super admin may approve; later than that, nothing can be refunded.
+    const cancelled = await c.query<OpenLine & { cancelled_at: string; first_hour_at: string }>(
       `SELECT bl.booking_id, bl.area_id, bl.day::text AS day, bl.start_hour, bl.plays, bl.paise,
-              b.trial, b.discount_paise, b.subtotal_paise, b.gst_paise, b.price_book_version
+              b.trial, b.discount_paise, b.subtotal_paise, b.gst_paise, b.price_book_version,
+              extract(epoch FROM s.at)::bigint AS cancelled_at,
+              extract(epoch FROM b.first_hour_at)::bigint AS first_hour_at
          FROM booking_lines bl JOIN bookings b USING (booking_id)
-         JOIN LATERAL (SELECT state FROM booking_events e WHERE e.booking_id = bl.booking_id
+         JOIN LATERAL (SELECT state, at FROM booking_events e WHERE e.booking_id = bl.booking_id
                         ORDER BY seq DESC LIMIT 1) s ON true
         WHERE s.state = 'cancelled' AND NOT b.trial
           AND EXISTS (SELECT 1 FROM booking_events p WHERE p.booking_id = bl.booking_id AND p.state = 'paid')
@@ -148,7 +151,15 @@ export async function settleDue(pool: Pool, now: number): Promise<Settled> {
       try {
         const book = books.find((b) => b.version === l.price_book_version);
         if (!book) throw new Error(`price book ${l.price_book_version} not found`);
-        await proposeRefund(c, l, lineId, book, l.plays);
+        // Early enough: a full refund is proposed (a super admin may approve it; otherwise no
+        // refund). Too late: nothing can be refunded, the money is earned.
+        if (Number(l.cancelled_at) <= Number(l.first_hour_at) - book.cancelRefundHours * 3600)
+          await proposeRefund(c, l, lineId, book, l.plays);
+        else
+          await c.query(
+            `INSERT INTO line_settlements (line_id, step, outcome, owed) VALUES ($1, 'refund', 'forfeited', 0)`,
+            [lineId],
+          );
         decisions += 1;
         await c.query('RELEASE SAVEPOINT line');
       } catch (e) {
