@@ -256,6 +256,35 @@ describe('money through the ledger (P1.7.2–3)', () => {
     expect(await revenueFor(lineIdOf('BK-Z', 'hyd-madhapur', DATE, 20))).toBe(30_000);
   }, 60_000);
 
+  it('plays found fake after a refund was proposed: the credit note is topped up at approval', async () => {
+    await book('BK-T', 'hyd-madhapur', 19, 5);
+    const line = lineIdOf('BK-T', 'hyd-madhapur', DATE, 19);
+    const start = lineStartsAt({ date: DATE, startHour: 19 });
+    for (const s of ['t1', 't2']) {
+      await screen(s);
+      await upload(s, plays(s, 200, start, { ref: line }), start + 3500);
+    }
+    const w = makeUpWindows({ lineId: line, areaId: 'hyd-madhapur', date: DATE, startHour: 19 });
+    const close = w.second.until + 86_400;
+    for (let i = 0; i < 3; i += 1) await settleDue(pool, close);
+    const r = await pool.query(`SELECT base_paise::int AS base FROM refunds WHERE line_id = $1`, [
+      line,
+    ]);
+    expect(r.rows).toEqual([{ base: 90_000 }]); // 600 of 1,000 missing
+    await revokeScreenKey(pool, 't2', 'k1', 'prateek', 'stolen, plays faked', start);
+    const out = await decideRefund(pool, `${line}#refund`, 'approved', SUPER, 'short', close + 60);
+    expect(out).toEqual({});
+    // Now 800 missing: ₹1,200 + 18% GST back to the brand; only the 200 delivered plays are earned.
+    const owed = await accountTotals(pool, 'refunds-payable', { party: 'brand-BK-T' });
+    expect(owed.credit - owed.debit).toBe(120_000 + 21_600);
+    expect(await held('brand-BK-T')).toBe(0);
+    expect(await deliveredFor('BK-T')).toBe(30_000);
+    expect(await revenueFor(line)).toBe(30_000);
+    await expect(
+      decideRefund(pool, `${line}#refund`, 'rejected', SUPER, 'changed mind', close + 120),
+    ).rejects.toThrow(/already approved by prateek/);
+  }, 60_000);
+
   it('ads never came: no refund, everything paid is earned and nothing stays held', async () => {
     await book('BK-X', 'hyd-madhapur', 21, 5, false, 'paid');
     const started = lineStartsAt({ date: DATE, startHour: 21 }) + 60;

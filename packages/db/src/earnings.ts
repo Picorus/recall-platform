@@ -3,11 +3,13 @@
 // rejected or approved, or the booking forfeited because its ads never came), whatever is left is
 // earned, so "held" ends at exactly 0, and the line is closed.
 import {
+  bpOf,
   earnedPaise,
   lineEarned,
   lineIdOf,
   lineStartsAt,
   refundApproved,
+  refundPaise,
   type PriceBook,
 } from '@recall/domain';
 import type { Pool, PoolClient } from 'pg';
@@ -65,6 +67,26 @@ async function earnedSoFar(c: Pick<PoolClient, 'query'>, lineId: string) {
   };
 }
 
+/** Plays counted for a line and its two make-ups. */
+async function playsFor(c: PoolClient, lineId: string, books: readonly PriceBook[]) {
+  return (
+    (await lineTotalsFor(c, lineId, books)).plays +
+    (await lineTotalsFor(c, `${lineId}#1`, books)).plays +
+    (await lineTotalsFor(c, `${lineId}#2`, books)).plays
+  );
+}
+
+/** What approved refunds of a line have given back from held (its credit notes, before GST). */
+async function refundedFor(c: PoolClient, lineId: string) {
+  const r = await c.query<{ n: string }>(
+    `SELECT coalesce(sum(p.debit - p.credit), 0) AS n
+       FROM ledger_postings p JOIN ledger_entries e USING (entry_id)
+      WHERE e.ref = $1 AND e.kind = 'refund-approved' AND p.account = 'campaign-held'`,
+    [lineId],
+  );
+  return Number(r.rows[0]?.n ?? 0);
+}
+
 /**
  * What a line should have earned by now, split into what its plays delivered and what is kept
  * without delivery, and whether that is its final figure.
@@ -76,13 +98,7 @@ async function targetFor(
   paid: number,
   books: readonly PriceBook[],
 ): Promise<{ delivered: number; kept: number; final: boolean }> {
-  const byPlays = async () => {
-    const plays =
-      (await lineTotalsFor(c, lineId, books)).plays +
-      (await lineTotalsFor(c, `${lineId}#1`, books)).plays +
-      (await lineTotalsFor(c, `${lineId}#2`, books)).plays;
-    return earnedPaise(paid, l.plays, plays);
-  };
+  const byPlays = async () => earnedPaise(paid, l.plays, await playsFor(c, lineId, books));
   /** Final: `total` is earned; the part its plays delivered is delivered, the rest is kept. */
   const settle = async (total: number) => {
     const delivered = Math.min(await byPlays(), total);
@@ -100,7 +116,8 @@ async function targetFor(
   );
   const refund = s.rows[0];
   if (refund && refund.outcome !== 'refund') return settle(paid);
-  if (refund?.decision === 'approved') return settle(paid - Number(refund.base ?? 0));
+  // What the credit notes gave back (the proposed refund, plus any top-up at approval).
+  if (refund?.decision === 'approved') return settle(paid - (await refundedFor(c, lineId)));
   if (refund?.decision === 'rejected') return settle(paid);
   // A cancelled booking earns nothing while its refund is decided (or until the decision step runs).
   if (l.state === 'cancelled') return { delivered: 0, kept: 0, final: false };
@@ -182,7 +199,8 @@ export async function closeEarnings(
     const paidCache = new Map<string, number>();
     let posted = 0;
     const failed: { lineId: string; error: string }[] = [];
-    // A cancellation refund left undecided past its deadline is taken as rejected: "not approved =
+    // A cancellation refund left undecided past its deadline (from the cancellation, or from when
+    // the refund was proposed if later) is taken as rejected: "not approved =
     // no refund" (Prateek, 24 Oct 2026). Recorded like any decision, by the system.
     await c.query(
       `INSERT INTO refund_decisions (refund_id, decision, decided_by, reason)
@@ -193,7 +211,8 @@ export async function closeEarnings(
                         ORDER BY seq DESC LIMIT 1) s ON true
         WHERE s.state = 'cancelled'
           AND NOT EXISTS (SELECT 1 FROM refund_decisions d WHERE d.refund_id = r.refund_id)
-          AND s.at + make_interval(hours => coalesce((pb.book ->> 'cancelRefundDecideHours')::int, 168))
+          AND greatest(s.at, r.proposed_at)
+                + make_interval(hours => coalesce((pb.book ->> 'cancelRefundDecideHours')::int, 168))
               <= to_timestamp($1)`,
       [now],
     );
@@ -233,6 +252,9 @@ export async function closeEarnings(
  * A super admin approves or rejects a proposed refund (Prateek, 22 Oct 2026). Decided once. In the
  * same step the line's earnings are settled: an approved refund's credit note (the undelivered part
  * and its GST) is owed back to the brand, and the rest is earned; a rejected one is earned in full.
+ * If more plays are missing at approval than when the refund was proposed (a stolen screen found
+ * meanwhile), the credit note is topped up: brands pay only for what was delivered.
+ * Returns the error if the line's cuts could not be brought in line (the next close retries).
  */
 export async function decideRefund(
   pool: Pool,
@@ -241,14 +263,20 @@ export async function decideRefund(
   by: { readonly id: string; readonly role: string },
   reason: string,
   now: number = Math.floor(Date.now() / 1000),
-): Promise<void> {
+): Promise<{ cutError?: string }> {
   if (by.role !== 'super-admin') throw new Error('Only a super admin can decide a refund');
-  await inTransaction(pool, async (c) => {
+  return inTransaction(pool, async (c) => {
     await c.query("SELECT pg_advisory_xact_lock(hashtext('close-earnings'))");
-    await c.query(
-      'INSERT INTO refund_decisions (refund_id, decision, decided_by, reason) VALUES ($1, $2, $3, $4)',
-      [refundId, decision, by.id, reason],
+    const before = await c.query<{ decision: string; decided_by: string; at: string }>(
+      `SELECT decision, decided_by, decided_at::text AS at FROM refund_decisions
+        WHERE refund_id = $1`,
+      [refundId],
     );
+    const done = before.rows[0];
+    if (done)
+      throw new Error(
+        `Refund ${refundId} was already ${done.decision} by ${done.decided_by} at ${done.at}`,
+      );
     const r = await c.query<{ line_id: string; brand_id: string; base: string; gst: string }>(
       `SELECT r.line_id, b.brand_id, r.base_paise AS base, r.gst_paise AS gst
          FROM refunds r JOIN bookings b USING (booking_id) WHERE r.refund_id = $1`,
@@ -256,28 +284,50 @@ export async function decideRefund(
     );
     const row = r.rows[0];
     if (!row) throw new Error(`No refund ${refundId}`);
-    if (decision === 'approved' && Number(row.base) + Number(row.gst) > 0)
-      await postEntry(
-        c,
-        refundApproved({
-          refundId,
-          lineId: row.line_id,
-          brandId: row.brand_id,
-          base: Number(row.base),
-          gst: Number(row.gst),
-          at: now,
-        }),
-        by.id,
-      );
+    await c.query(
+      'INSERT INTO refund_decisions (refund_id, decision, decided_by, reason) VALUES ($1, $2, $3, $4)',
+      [refundId, decision, by.id, reason],
+    );
+    const books = await priceBooks(c);
     const [line] = await openLines(c, '9999-12-31', row.line_id);
-    if (line) await closeLine(c, line, await priceBooks(c), new Map(), now, by.id);
+    if (decision === 'approved') {
+      const base = Number(row.base);
+      const gst = Number(row.gst);
+      const credit = (id: string, b: number, g: number) =>
+        postEntry(
+          c,
+          refundApproved({
+            refundId: id,
+            lineId: row.line_id,
+            brandId: row.brand_id,
+            base: b,
+            gst: g,
+            at: now,
+          }),
+          by.id,
+        );
+      if (base + gst > 0) await credit(refundId, base, gst);
+      const book = line && books.find((b) => b.version === line.price_book_version);
+      if (line && book) {
+        const paid = await paidForLine(c, line, book);
+        const missing = Math.max(
+          0,
+          line.plays - Math.min(line.plays, await playsFor(c, row.line_id, books)),
+        );
+        const more = Math.min(refundPaise(missing, line.plays, paid), paid) - base;
+        if (more > 0) await credit(`${refundId}+more`, more, bpOf(more, book.gstBp));
+      }
+    }
+    if (line) await closeLine(c, line, books, new Map(), now, by.id);
     // A cut that cannot be brought in line now never undoes the decision: the next close does it.
     await c.query('SAVEPOINT cut');
     try {
       await accrueCuts(c, row.line_id.split('/')[0] ?? '', now, by.id);
       await c.query('RELEASE SAVEPOINT cut');
-    } catch {
+      return {};
+    } catch (e) {
       await c.query('ROLLBACK TO SAVEPOINT cut');
+      return { cutError: e instanceof Error ? e.message : String(e) };
     }
   });
 }
