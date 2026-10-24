@@ -1,13 +1,15 @@
 // P1.7.4 in the database: giving a cut on a booking (only when RECALL decides) and keeping each cut
 // in line with what the booking has earned.
-import { CUT_MAX_BP, cutAccrued, type Cut } from '@recall/domain';
+import { CUT_MAX_BP, cutAccrued, isoAt, priceBookAt, type Cut } from '@recall/domain';
+import { priceBooks } from './bookings.js';
 import type { Pool, PoolClient } from 'pg';
 import { postEntry } from './ledger.js';
 import { inTransaction } from './makeups.js';
 
 /**
  * Records that RECALL gives a cut on a booking (Prateek, 24 Oct 2026: never automatic). Decided once
- * per kind per booking. The rate defaults to the price book's (agency 10%, aggregator 2%).
+ * per kind per booking. The rate defaults to the price book's in force (agency 10%, aggregator 2%),
+ * and the TDS rate is that book's too.
  */
 export async function giveCut(
   pool: Pool,
@@ -27,21 +29,14 @@ export async function giveCut(
   await inTransaction(pool, async (c) => {
     // Same lock as the hour close, so the cut is brought in line at once and never posted twice.
     await c.query("SELECT pg_advisory_xact_lock(hashtext('close-earnings'))");
-    const r = await c.query<{
-      rate: number | null;
-      tds: number | null;
-      trial: boolean;
-      paid: boolean;
-      state: string;
-    }>(
-      `SELECT (p.book -> 'cuts' ->> $2)::int AS rate, (p.book ->> 'cutTdsBp')::int AS tds, b.trial,
+    const r = await c.query<{ trial: boolean; paid: boolean; state: string }>(
+      `SELECT b.trial,
               EXISTS (SELECT 1 FROM booking_events e WHERE e.booking_id = b.booking_id
                        AND e.state = 'paid') AS paid,
               (SELECT state FROM booking_events e WHERE e.booking_id = b.booking_id
                 ORDER BY seq DESC LIMIT 1) AS state
-         FROM bookings b JOIN price_books p ON p.version = b.price_book_version
-        WHERE b.booking_id = $1`,
-      [cut.bookingId, cut.kind],
+         FROM bookings b WHERE b.booking_id = $1`,
+      [cut.bookingId],
     );
     const row = r.rows[0];
     if (!row) throw new Error(`No booking ${cut.bookingId}`);
@@ -50,12 +45,15 @@ export async function giveCut(
     if (!row.paid) throw new Error('A cut can only be given on a paid booking');
     if (row.state === 'cancelled' || row.state === 'ads-missing')
       throw new Error(`A ${row.state} booking delivers nothing, so it has no cut`);
-    const rate = cut.rateBp ?? row.rate ?? (cut.kind === 'agency' ? 1_000 : 200);
+    // The rates in force when the cut is given (not when the booking was sold).
+    const book = priceBookAt(await priceBooks(c), isoAt(now));
+    if (!book) throw new Error('No price book in force');
+    const rate = cut.rateBp ?? book.cuts[cut.kind];
     await c.query(
       `INSERT INTO booking_cuts
          (booking_id, kind, partner_id, rate_bp, gst_bp, tds_bp, decided_by, reason)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-      [cut.bookingId, cut.kind, cut.partnerId, rate, cut.gstBp, row.tds ?? 200, by.id, reason],
+      [cut.bookingId, cut.kind, cut.partnerId, rate, cut.gstBp, book.cutTdsBp, by.id, reason],
     );
     await accrueCuts(c, cut.bookingId, now, by.id);
   });

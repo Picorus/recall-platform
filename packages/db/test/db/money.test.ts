@@ -278,6 +278,14 @@ describe('money through the ledger (P1.7.2–3)', () => {
     const owed = await accountTotals(pool, 'refunds-payable', { party: 'brand-BK-T' });
     expect(owed.credit - owed.debit).toBe(120_000 + 21_600);
     expect(await held('brand-BK-T')).toBe(0);
+    const top = await pool.query(
+      `SELECT missing_plays, base_paise::int AS base, gst_paise::int AS gst, decided_by
+         FROM refund_topups WHERE refund_id = $1`,
+      [`${line}#refund`],
+    );
+    expect(top.rows).toEqual([
+      { missing_plays: 800, base: 30_000, gst: 5_400, decided_by: 'prateek' },
+    ]);
     expect(await deliveredFor('BK-T')).toBe(30_000);
     expect(await revenueFor(line)).toBe(30_000);
     await expect(
@@ -452,7 +460,7 @@ describe('money through the ledger (P1.7.2–3)', () => {
     await settleDue(pool, at + 60);
     await closeEarnings(pool, at + 6 * 86_400);
     expect(await held('brand-BK-CC')).toBe(150_000); // within the 7 days: still the super admin's call
-    await closeEarnings(pool, at + 7 * 86_400);
+    await closeEarnings(pool, at + 60 + 7 * 86_400); // 7 days after the proposal
     const line = lineIdOf('BK-CC', 'hyd-kondapur', DATE, 19);
     const d = await pool.query(
       'SELECT decision, decided_by FROM refund_decisions WHERE refund_id = $1',
@@ -461,6 +469,23 @@ describe('money through the ledger (P1.7.2–3)', () => {
     expect(d.rows).toEqual([{ decision: 'rejected', decided_by: 'system' }]);
     expect(await held('brand-BK-CC')).toBe(0);
     expect(await revenueFor(line)).toBe(150_000);
+  });
+
+  it('the 7 days to decide count from when the refund was proposed, if that came later', async () => {
+    await book('BK-CD', 'hyd-kondapur', 17, 5, false, 'paid');
+    const start = lineStartsAt({ date: DATE, startHour: 17 });
+    await moveBooking(
+      pool,
+      'BK-CD',
+      'cancelled',
+      { by: 'priya', actor: 'admin', reason: 'brand changed plans' },
+      start - 20 * 86_400,
+    );
+    await settleDue(pool, start - 14 * 86_400); // the settling job ran 6 days late
+    await closeEarnings(pool, start - 12 * 86_400); // 8 days after the cancel, 2 after the proposal
+    expect(await held('brand-BK-CD')).toBe(150_000);
+    await closeEarnings(pool, start - 7 * 86_400); // 7 days after the proposal
+    expect(await held('brand-BK-CD')).toBe(0);
   });
 
   it('a cut given long after a booking settled is still paid, at once', async () => {

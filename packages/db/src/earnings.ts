@@ -16,7 +16,7 @@ import type { Pool, PoolClient } from 'pg';
 import { priceBooks } from './bookings.js';
 import { accrueCuts } from './cuts.js';
 import { postEntry } from './ledger.js';
-import { inTransaction, paidForLine, type OpenLine } from './makeups.js';
+import { inTransaction, paidForLine, refundedOnBooking, type OpenLine } from './makeups.js';
 import { COUNTING, lineTotalsFor } from './plays.js';
 
 type Line = OpenLine & { readonly brand_id: string; readonly state: string };
@@ -267,6 +267,8 @@ export async function decideRefund(
   if (by.role !== 'super-admin') throw new Error('Only a super admin can decide a refund');
   return inTransaction(pool, async (c) => {
     await c.query("SELECT pg_advisory_xact_lock(hashtext('close-earnings'))");
+    // Also the settling lock: a top-up and a new proposal on the same booking never race.
+    await c.query("SELECT pg_advisory_xact_lock(hashtext('settle-lines'))");
     const before = await c.query<{ decision: string; decided_by: string; at: string }>(
       `SELECT decision, decided_by, decided_at::text AS at FROM refund_decisions
         WHERE refund_id = $1`,
@@ -315,7 +317,21 @@ export async function decideRefund(
           line.plays - Math.min(line.plays, await playsFor(c, row.line_id, books)),
         );
         const more = Math.min(refundPaise(missing, line.plays, paid), paid) - base;
-        if (more > 0) await credit(`${refundId}+more`, more, bpOf(more, book.gstBp));
+        if (more > 0) {
+          // Never more GST back, over all the booking's refunds, than the booking was charged.
+          const given = await refundedOnBooking(c, line.booking_id);
+          const moreGst = Math.max(
+            0,
+            Math.min(bpOf(base + more, book.gstBp) - gst, Number(line.gst_paise) - given.gst),
+          );
+          await c.query(
+            `INSERT INTO refund_topups
+               (refund_id, booking_id, missing_plays, base_paise, gst_paise, decided_by, decided_at)
+             VALUES ($1, $2, $3, $4, $5, $6, to_timestamp($7))`,
+            [refundId, line.booking_id, missing, more, moreGst, by.id, now],
+          );
+          await credit(`${refundId}+more`, more, moreGst);
+        }
       }
     }
     if (line) await closeLine(c, line, books, new Map(), now, by.id);

@@ -71,6 +71,21 @@ export async function paidForLine(c: PoolClient, l: OpenLine, book: PriceBook): 
   return Number(l.paise) - (shares[i] ?? 0);
 }
 
+/**
+ * What a booking's refunds give back so far, before and after GST (proposals and top-ups): never
+ * more, over all of them, than its bill.
+ */
+export async function refundedOnBooking(c: Pick<PoolClient, 'query'>, bookingId: string) {
+  const r = await c.query<{ base: string; gst: string }>(
+    `SELECT coalesce(sum(base_paise), 0) AS base, coalesce(sum(gst_paise), 0) AS gst
+       FROM (SELECT base_paise, gst_paise FROM refunds WHERE booking_id = $1
+             UNION ALL
+             SELECT base_paise, gst_paise FROM refund_topups WHERE booking_id = $1) x`,
+    [bookingId],
+  );
+  return { base: Number(r.rows[0]?.base ?? 0), gst: Number(r.rows[0]?.gst ?? 0) };
+}
+
 /** A make-up that opened: its area-hours' plans must be re-sent with it (`addMakeUps`). */
 export interface OpenedMakeUp {
   readonly makeUpId: string;
@@ -154,7 +169,7 @@ export async function settleDue(pool: Pool, now: number): Promise<Settled> {
         // Early enough: a full refund is proposed (a super admin may approve it; otherwise no
         // refund). Too late: nothing can be refunded, the money is earned.
         if (Number(l.cancelled_at) <= Number(l.first_hour_at) - book.cancelRefundHours * 3600)
-          await proposeRefund(c, l, lineId, book, l.plays);
+          await proposeRefund(c, l, lineId, book, l.plays, now);
         else
           await c.query(
             `INSERT INTO line_settlements (line_id, step, outcome, owed) VALUES ($1, 'refund', 'forfeited', 0)`,
@@ -178,6 +193,7 @@ async function proposeRefund(
   lineId: string,
   book: PriceBook,
   missing: number,
+  now: number,
 ): Promise<void> {
   const decide = (outcome: string) =>
     c.query(
@@ -187,25 +203,29 @@ async function proposeRefund(
   const paid = await paidForLine(c, l, book);
   if (paid === 0 || missing === 0)
     return void (await decide(paid === 0 ? 'nothing paid' : 'not needed'));
-  const before = await c.query<{ base: string; gst: string }>(
-    `SELECT coalesce(sum(base_paise), 0) AS base, coalesce(sum(gst_paise), 0) AS gst
-       FROM refunds WHERE booking_id = $1`,
-    [l.booking_id],
-  );
+  const before = await refundedOnBooking(c, l.booking_id);
   const base = Math.min(
     refundPaise(missing, l.plays, paid),
-    Number(l.subtotal_paise) - Number(before.rows[0]?.base ?? 0),
+    Number(l.subtotal_paise) - before.base,
   );
   if (base <= 0) return void (await decide('not needed'));
-  const gst = Math.min(
-    bpOf(base, book.gstBp),
-    Number(l.gst_paise) - Number(before.rows[0]?.gst ?? 0),
-  );
+  const gst = Math.min(bpOf(base, book.gstBp), Number(l.gst_paise) - before.gst);
   await c.query(
     `INSERT INTO refunds (refund_id, line_id, booking_id, missing_plays, promised_plays,
-       paid_paise, base_paise, gst_paise, price_book_version)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-    [`${lineId}#refund`, lineId, l.booking_id, missing, l.plays, paid, base, gst, book.version],
+       paid_paise, base_paise, gst_paise, price_book_version, proposed_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, to_timestamp($10))`,
+    [
+      `${lineId}#refund`,
+      lineId,
+      l.booking_id,
+      missing,
+      l.plays,
+      paid,
+      base,
+      gst,
+      book.version,
+      now,
+    ],
   );
   await decide('refund');
 }
@@ -293,14 +313,10 @@ async function settleLine(
       else if (paid === 0) await decide('refund', 'nothing paid', step.missing);
       else {
         // Never more, over all the booking's refunds, than its bill (before and after GST).
-        const before = await c.query<{ base: string; gst: string }>(
-          `SELECT coalesce(sum(base_paise), 0) AS base, coalesce(sum(gst_paise), 0) AS gst
-             FROM refunds WHERE booking_id = $1`,
-          [l.booking_id],
-        );
+        const before = await refundedOnBooking(c, l.booking_id);
         const base = Math.min(
           refundPaise(step.missing, l.plays, paid),
-          Number(l.subtotal_paise) - Number(before.rows[0]?.base ?? 0),
+          Number(l.subtotal_paise) - before.base,
         );
         if (base <= 0) {
           // Too little missing to come to a paisa: nothing to give back.
@@ -308,14 +324,11 @@ async function settleLine(
           done.refund = { missing: step.missing };
           continue;
         }
-        const gst = Math.min(
-          bpOf(base, book.gstBp),
-          Number(l.gst_paise) - Number(before.rows[0]?.gst ?? 0),
-        );
+        const gst = Math.min(bpOf(base, book.gstBp), Number(l.gst_paise) - before.gst);
         await c.query(
           `INSERT INTO refunds (refund_id, line_id, booking_id, missing_plays, promised_plays,
-             paid_paise, base_paise, gst_paise, price_book_version)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+             paid_paise, base_paise, gst_paise, price_book_version, proposed_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, to_timestamp($10))`,
           [
             `${lineId}#refund`,
             lineId,
@@ -326,6 +339,7 @@ async function settleLine(
             base,
             gst,
             book.version,
+            now,
           ],
         );
         await decide('refund', 'refund', step.missing);
