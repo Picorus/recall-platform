@@ -255,29 +255,40 @@ export interface Cut {
   readonly partnerId: string;
   readonly rateBp: number;
   readonly gstBp: number;
+  /** TDS held back from the cut (not its GST) and paid to the government (Prateek, 24 Oct 2026). */
+  readonly tdsBp: number;
 }
 
 /**
  * Brings a booking's cut up (or down) to its rate on what the booking has delivered so far (cuts
- * are worked out on delivered plays: not on what was invoiced, nor on money kept without delivery). The partner's GST is paid on top and claimed back by
- * RECALL. `soFar` is the cut and GST already recorded (from the ledger); `n` numbers the entry.
+ * are worked out on delivered plays: not on what was invoiced, nor on money kept without delivery).
+ * The partner's GST is paid on top and claimed back by RECALL; TDS on the cut is held back from the
+ * partner and owed to the government. `soFar` is the cut, GST and TDS already recorded (from the
+ * ledger); `n` numbers the entry.
  */
 export function cutAccrued(
   cut: Cut,
-  earned: number,
-  soFar: { readonly cut: number; readonly gst: number },
+  delivered: number,
+  soFar: { readonly cut: number; readonly gst: number; readonly tds: number },
   n: number,
   at: number,
 ): Entry | undefined {
-  const target = Math.floor((earned * cut.rateBp + 5_000) / 10_000);
-  const gstTarget = Math.floor((target * cut.gstBp + 5_000) / 10_000);
+  const bp = (x: number, rate: number) => Math.floor((x * rate + 5_000) / 10_000);
+  const target = bp(delivered, cut.rateBp);
   const more = target - soFar.cut;
-  const moreGst = gstTarget - soFar.gst;
-  if (more === 0 && moreGst === 0) return undefined;
+  const moreGst = bp(target, cut.gstBp) - soFar.gst;
+  const moreTds = bp(target, cut.tdsBp) - soFar.tds;
+  if (more === 0 && moreGst === 0 && moreTds === 0) return undefined;
   const expense = cut.kind === 'agency' ? 'agency-cuts' : 'aggregator-cuts';
   const payable = cut.kind === 'agency' ? 'agency-payable' : 'aggregator-payable';
-  const side = (n2: number, up: 'debit' | 'credit'): 'debit' | 'credit' =>
-    n2 >= 0 ? up : up === 'debit' ? 'credit' : 'debit';
+  /** A posting on its usual side when the amount grows, on the other side when it shrinks. */
+  const move = (account: Account, usual: 'debit' | 'credit', amount: number) =>
+    post(
+      account,
+      amount >= 0 ? usual : usual === 'debit' ? 'credit' : 'debit',
+      Math.abs(amount),
+      cut.partnerId,
+    );
   return {
     entryId: `cut:${cut.bookingId}:${cut.kind}:${n}`,
     at,
@@ -285,9 +296,10 @@ export function cutAccrued(
     ref: cut.bookingId,
     memo: `${cut.kind === 'agency' ? 'Agency' : 'Aggregator'} cut on delivered plays`,
     postings: [
-      ...post(expense, side(more, 'debit'), Math.abs(more), cut.partnerId),
-      ...post('gst-input', side(moreGst, 'debit'), Math.abs(moreGst), cut.partnerId),
-      ...post(payable, side(more + moreGst, 'credit'), Math.abs(more + moreGst), cut.partnerId),
+      ...move(expense, 'debit', more),
+      ...move('gst-input', 'debit', moreGst),
+      ...move(payable, 'credit', more + moreGst - moreTds),
+      ...move('tds-payable', 'credit', moreTds),
     ],
   };
 }

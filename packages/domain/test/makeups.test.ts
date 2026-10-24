@@ -227,5 +227,8 @@ describe('the refund (P1.6.4)', () => {
     expect(
       checkPriceBook({ ...PRICE_BOOK_V1, cuts: { agency: 1_000, aggregator: 5_001 } }),
     ).toEqual(['a cut rate must be 0.01–50%']);
+    expect(checkPriceBook({ ...PRICE_BOOK_V1, cutTdsBp: 2_500 })).toEqual([
+      'TDS on a cut must be 0–20%',
+    ]);
   });
 });

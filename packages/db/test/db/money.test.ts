@@ -380,15 +380,18 @@ describe('money through the ledger (P1.7.2–3)', () => {
       giveCut(pool, cut, { id: 'prateek', role: 'super-admin' }, 'again', W.second.until),
     ).rejects.toThrow();
     await closeEarnings(pool, W.second.until + 4 * 86_400);
-    // BK-M2 earned ₹1,200 (after the stolen screen's refund): 10% = ₹120, plus 18% GST = ₹21.60.
+    // BK-M2 delivered ₹1,200 (after the stolen screen's refund): 10% = ₹120, plus 18% GST = ₹21.60,
+    // less 2% TDS on the ₹120 (₹2.40), which is owed to the government instead.
     const owed = await accountTotals(pool, 'agency-payable', { party: 'adfirst' });
-    expect(owed.credit - owed.debit).toBe(12_000 + 2_160);
+    expect(owed.credit - owed.debit).toBe(12_000 + 2_160 - 240);
+    const tds = await accountTotals(pool, 'tds-payable', { party: 'adfirst' });
+    expect(tds.credit - tds.debit).toBe(240);
     const itc = await accountTotals(pool, 'gst-input');
     expect(itc.debit - itc.credit).toBe(2_160);
     // Running again owes nothing more.
     await closeEarnings(pool, W.second.until + 5 * 86_400);
     const again = await accountTotals(pool, 'agency-payable', { party: 'adfirst' });
-    expect(again.credit - again.debit).toBe(14_160);
+    expect(again.credit - again.debit).toBe(13_920);
   });
 
   it('money kept without delivery is booked apart from revenue earned by plays', async () => {
@@ -470,8 +473,9 @@ describe('money through the ledger (P1.7.2–3)', () => {
       'aggregator deal, agreed late',
       W.second.until + 60 * 86_400,
     );
-    // 2% of what was delivered, rounded to the paisa; no GST (partner not registered).
-    expect(await owedTo('aggregator-payable', 'rapido')).toBe(Math.round(delivered * 0.02));
+    // 2% of what was delivered, rounded to the paisa; no GST (partner not registered); 2% TDS held back.
+    const cut = Math.round(delivered * 0.02);
+    expect(await owedTo('aggregator-payable', 'rapido')).toBe(cut - Math.round(cut * 0.02));
   });
 
   it('a cut can only be given on a paid booking that can still deliver, at a sane rate', async () => {

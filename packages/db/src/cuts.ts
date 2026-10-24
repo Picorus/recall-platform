@@ -11,7 +11,7 @@ import { inTransaction } from './makeups.js';
  */
 export async function giveCut(
   pool: Pool,
-  cut: Omit<Cut, 'rateBp'> & { readonly rateBp?: number },
+  cut: Omit<Cut, 'rateBp' | 'tdsBp'> & { readonly rateBp?: number },
   by: { readonly id: string; readonly role: string },
   reason: string,
   now: number = Math.floor(Date.now() / 1000),
@@ -27,8 +27,14 @@ export async function giveCut(
   await inTransaction(pool, async (c) => {
     // Same lock as the hour close, so the cut is brought in line at once and never posted twice.
     await c.query("SELECT pg_advisory_xact_lock(hashtext('close-earnings'))");
-    const r = await c.query<{ rate: number | null; trial: boolean; paid: boolean; state: string }>(
-      `SELECT (p.book -> 'cuts' ->> $2)::int AS rate, b.trial,
+    const r = await c.query<{
+      rate: number | null;
+      tds: number | null;
+      trial: boolean;
+      paid: boolean;
+      state: string;
+    }>(
+      `SELECT (p.book -> 'cuts' ->> $2)::int AS rate, (p.book ->> 'cutTdsBp')::int AS tds, b.trial,
               EXISTS (SELECT 1 FROM booking_events e WHERE e.booking_id = b.booking_id
                        AND e.state = 'paid') AS paid,
               (SELECT state FROM booking_events e WHERE e.booking_id = b.booking_id
@@ -46,9 +52,10 @@ export async function giveCut(
       throw new Error(`A ${row.state} booking delivers nothing, so it has no cut`);
     const rate = cut.rateBp ?? row.rate ?? (cut.kind === 'agency' ? 1_000 : 200);
     await c.query(
-      `INSERT INTO booking_cuts (booking_id, kind, partner_id, rate_bp, gst_bp, decided_by, reason)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [cut.bookingId, cut.kind, cut.partnerId, rate, cut.gstBp, by.id, reason],
+      `INSERT INTO booking_cuts
+         (booking_id, kind, partner_id, rate_bp, gst_bp, tds_bp, decided_by, reason)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [cut.bookingId, cut.kind, cut.partnerId, rate, cut.gstBp, row.tds ?? 200, by.id, reason],
     );
     await accrueCuts(c, cut.bookingId, now, by.id);
   });
@@ -66,7 +73,8 @@ export async function accrueCuts(
     partner_id: string;
     rate_bp: number;
     gst_bp: number;
-  }>('SELECT kind, partner_id, rate_bp, gst_bp FROM booking_cuts WHERE booking_id = $1', [
+    tds_bp: number;
+  }>('SELECT kind, partner_id, rate_bp, gst_bp, tds_bp FROM booking_cuts WHERE booking_id = $1', [
     bookingId,
   ]);
   if (cuts.rows.length === 0) return 0;
@@ -82,9 +90,10 @@ export async function accrueCuts(
   let posted = 0;
   for (const k of cuts.rows) {
     const expense = k.kind === 'agency' ? 'agency-cuts' : 'aggregator-cuts';
-    const so = await c.query<{ cut: string; gst: string; n: string }>(
+    const so = await c.query<{ cut: string; gst: string; tds: string; n: string }>(
       `SELECT coalesce(sum(p.debit - p.credit) FILTER (WHERE p.account = $2), 0) AS cut,
               coalesce(sum(p.debit - p.credit) FILTER (WHERE p.account = 'gst-input'), 0) AS gst,
+              coalesce(sum(p.credit - p.debit) FILTER (WHERE p.account = 'tds-payable'), 0) AS tds,
               count(DISTINCT e.entry_id) AS n
          FROM ledger_postings p JOIN ledger_entries e USING (entry_id)
         WHERE e.ref = $1 AND e.kind = $3`,
@@ -92,9 +101,16 @@ export async function accrueCuts(
     );
     const row = so.rows[0];
     const e = cutAccrued(
-      { bookingId, kind: k.kind, partnerId: k.partner_id, rateBp: k.rate_bp, gstBp: k.gst_bp },
+      {
+        bookingId,
+        kind: k.kind,
+        partnerId: k.partner_id,
+        rateBp: k.rate_bp,
+        gstBp: k.gst_bp,
+        tdsBp: k.tds_bp,
+      },
       earned,
-      { cut: Number(row?.cut ?? 0), gst: Number(row?.gst ?? 0) },
+      { cut: Number(row?.cut ?? 0), gst: Number(row?.gst ?? 0), tds: Number(row?.tds ?? 0) },
       Number(row?.n ?? 0) + 1,
       now,
     );

@@ -59,6 +59,8 @@ export interface PriceBook {
   readonly cancelRefundDecideHours: number;
   /** Cut rates used when RECALL decides to give one (basis points; never automatic). */
   readonly cuts: { readonly agency: number; readonly aggregator: number };
+  /** TDS held back from a cut (basis points; 2% under section 194H, to confirm with the CA). */
+  readonly cutTdsBp: number;
 }
 
 /** The book in force from 22 Oct 2026: rulebook v5.4 and Prateek's decisions of 21–22 Oct. */
@@ -88,6 +90,7 @@ export const PRICE_BOOK_V1: PriceBook = {
   cancelRefundHours: 72,
   cancelRefundDecideHours: 168,
   cuts: { agency: 1_000, aggregator: 200 },
+  cutTdsBp: 200,
 };
 
 /** Highest cut rate that can be given (50%, in basis points). */
@@ -136,12 +139,14 @@ export function checkPriceBook(b: PriceBook): PriceBookProblem[] {
     ['cancelRefundDecideHours', b.cancelRefundDecideHours],
     ['cuts.agency', b.cuts.agency],
     ['cuts.aggregator', b.cuts.aggregator],
+    ['cutTdsBp', b.cutTdsBp],
   ] as const) {
     if (!whole(v)) problems.push(`${name} must be a whole number`);
   }
   if (b.cancelRefundDecideHours < 1) problems.push('cancelRefundDecideHours must be at least 1');
   for (const v of [b.cuts.agency, b.cuts.aggregator])
     if (v < 1 || v > CUT_MAX_BP) problems.push('a cut rate must be 0.01–50%');
+  if (b.cutTdsBp > 2_000) problems.push('TDS on a cut must be 0–20%');
   if (b.playsPerBikeHour < 1 || b.minBikesPerLine < 1)
     problems.push('plays and bikes must be at least 1');
   const c = b.capacity;

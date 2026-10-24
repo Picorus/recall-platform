@@ -89,6 +89,7 @@ export async function priceBooks(pool: Pick<Pool, 'query'>): Promise<PriceBook[]
     cancelRefundHours: x.book.cancelRefundHours ?? 72,
     cancelRefundDecideHours: x.book.cancelRefundDecideHours ?? 168,
     cuts: x.book.cuts ?? { agency: 1_000, aggregator: 200 },
+    cutTdsBp: x.book.cutTdsBp ?? 200,
   }));
 }
 
