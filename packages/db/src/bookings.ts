@@ -3,6 +3,7 @@
 // checked one at a time so two people can never take the same limited bikes.
 import {
   DEFAULT_CAPACITY_RULES,
+  DEFAULT_MAKE_UP_RULES,
   DEFAULT_PLAY_RULES,
   capacityProblems,
   checkPriceBook,
@@ -71,13 +72,14 @@ export async function savePriceBook(pool: Pool, book: PriceBook, savedBy: string
 
 export async function priceBooks(pool: Pick<Pool, 'query'>): Promise<PriceBook[]> {
   // Stored as saved; a book saved before a setting existed gets its default (the rule then).
-  const r = await pool.query<{ book: Partial<PriceBook> & Omit<PriceBook, 'capacity' | 'plays'> }>(
-    'SELECT book FROM price_books ORDER BY version',
-  );
+  const r = await pool.query<{
+    book: Partial<PriceBook> & Omit<PriceBook, 'capacity' | 'plays' | 'makeUps'>;
+  }>('SELECT book FROM price_books ORDER BY version');
   return r.rows.map((x) => ({
     ...x.book,
     capacity: x.book.capacity ?? DEFAULT_CAPACITY_RULES,
     plays: x.book.plays ?? DEFAULT_PLAY_RULES,
+    makeUps: x.book.makeUps ?? DEFAULT_MAKE_UP_RULES,
   }));
 }
 

@@ -3,7 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { lineStartsAt } from '../src/bookings.js';
 import {
   DEFAULT_MAKE_UP_RULES as RULES,
-  discountShare,
+  discountShares,
+  nextDecisionAt,
   makeUpWindows,
   missingPlays,
   nextSettlementStep,
@@ -60,8 +61,24 @@ describe('deciding, step by step (P1.6.1–4)', () => {
       step: 'first',
       owed: 0,
     });
+    // Checked once more when the day closes (in case plays were later found fake), then done.
     const done: Settlement = { first: 'not needed' };
-    expect(nextSettlementStep(line(18), 1000, done, NONE, end + 10 * 86400)).toBeUndefined();
+    const close = makeUpWindows(line(18)).second.until + RULES.dayCloseSeconds;
+    expect(nextDecisionAt(line(18), done)).toBe(close);
+    const full = { ...NONE, line: 1000 };
+    expect(nextSettlementStep(line(18), 1000, done, full, close - 1)).toBeUndefined();
+    expect(nextSettlementStep(line(18), 1000, done, full, close)).toEqual({
+      step: 'refund',
+      missing: 0,
+    });
+    expect(nextDecisionAt(line(18), { ...done, refund: 'not needed' })).toBeUndefined();
+  });
+
+  it('a line delivered in full whose plays are later found fake is refunded at day close', () => {
+    const close = makeUpWindows(line(18)).second.until + RULES.dayCloseSeconds;
+    expect(
+      nextSettlementStep(line(18), 1000, { first: 'not needed' }, { ...NONE, line: 800 }, close),
+    ).toEqual({ step: 'refund', missing: 200 });
   });
 
   it('still short after the first make-up → the next day; still short after that day closes → refund', () => {
@@ -152,20 +169,42 @@ describe('the refund (P1.6.4)', () => {
     );
   });
 
-  it('a 6-month deal line refunds what was paid after the discount; shares never exceed the discount', () => {
-    // ₹6,000 line, 8% off on a ₹12,000 discounted total (discount ₹960): this line's share is ₹480.
-    expect(discountShare(600_000, true, 96_000, 1_200_000)).toBe(48_000);
-    expect(discountShare(600_000, false, 96_000, 1_200_000)).toBe(0);
+  it('a 6-month deal line refunds what was paid after the discount', () => {
+    // ₹6,000 + ₹6,000 discounted lines, ₹960 off: each line's share is ₹480; a Lite line gets none.
+    expect(
+      discountShares(
+        [
+          { paise: 600_000, discounted: true },
+          { paise: 600_000, discounted: true },
+          { paise: 110_000, discounted: false },
+        ],
+        96_000,
+      ),
+    ).toEqual([48_000, 48_000, 0]);
+  });
+
+  it('shares add up exactly to the discount, so what the lines were paid adds up to the bill', () => {
+    // The reviewer's case: ₹333.33 a bike-hour, 8% off, lines of 5, 5 and 7 bikes.
+    const lines = [166_665, 166_665, 233_331].map((paise) => ({ paise, discounted: true }));
+    const total = 566_661;
+    const discount = Math.floor((total * 800 + 5_000) / 10_000);
+    expect(discountShares(lines, discount).reduce((a, b) => a + b, 0)).toBe(discount);
     fc.assert(
       fc.property(
-        fc.array(fc.integer({ min: 1, max: 10_000_000 }), { minLength: 1, maxLength: 30 }),
-        fc.integer({ min: 0, max: 2_000 }),
-        (lines, bp) => {
-          const total = lines.reduce((a, b) => a + b, 0);
-          const discount = Math.floor((total * bp) / 10_000);
-          const shares = lines.map((l) => discountShare(l, true, discount, total));
-          expect(shares.reduce((a, b) => a + b, 0)).toBeLessThanOrEqual(discount);
-          shares.forEach((s, i) => expect(s).toBeLessThanOrEqual(lines[i] ?? 0));
+        fc.array(
+          fc.record({ paise: fc.integer({ min: 0, max: 10_000_000 }), discounted: fc.boolean() }),
+          { minLength: 1, maxLength: 30 },
+        ),
+        fc.integer({ min: 0, max: 9_999 }),
+        (ls, bp) => {
+          const t = ls.reduce((n, l) => n + (l.discounted ? l.paise : 0), 0);
+          const d = Math.floor((t * bp) / 10_000);
+          const shares = discountShares(ls, d);
+          expect(shares.reduce((a, b) => a + b, 0)).toBe(t === 0 ? 0 : d);
+          shares.forEach((x, i) => {
+            expect(x).toBeGreaterThanOrEqual(0);
+            expect(x).toBeLessThanOrEqual(ls[i]?.discounted ? (ls[i]?.paise ?? 0) : 0);
+          });
         },
       ),
     );

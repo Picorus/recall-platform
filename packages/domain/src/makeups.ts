@@ -121,17 +121,32 @@ export function nextSettlementStep(
     if (now < hourEnds + rules.closeAfterSeconds) return undefined;
     return { step: 'first', owed, window: w.first };
   }
-  if (done.first === 'not needed') return undefined;
-  if (done.second === undefined) {
+  // A line once delivered in full is still checked when the day closes: if plays were later found
+  // fake (a stolen screen's key given up), what is missing is refunded.
+  if (done.second === undefined && done.first !== 'not needed') {
     const after = (w.first?.until ?? hourEnds) + rules.closeAfterSeconds;
     if (now < after) return undefined;
     return { step: 'second', owed, window: w.second };
   }
-  if (done.second === 'not needed') return undefined;
   if (done.refund === undefined) {
     if (now < w.second.until + rules.dayCloseSeconds) return undefined;
     return { step: 'refund', missing: owed };
   }
+  return undefined;
+}
+
+/** When the next decision for a line falls due (to skip lines with nothing due cheaply). */
+export function nextDecisionAt(
+  line: LineSlot,
+  done: Settlement,
+  rules: MakeUpRules = DEFAULT_MAKE_UP_RULES,
+): number | undefined {
+  const w = makeUpWindows(line, rules);
+  const hourEnds = lineStartsAt(line) + 3600;
+  if (done.first === undefined) return hourEnds + rules.closeAfterSeconds;
+  if (done.second === undefined && done.first !== 'not needed')
+    return (w.first?.until ?? hourEnds) + rules.closeAfterSeconds;
+  if (done.refund === undefined) return w.second.until + rules.dayCloseSeconds;
   return undefined;
 }
 
@@ -153,15 +168,30 @@ export function refundPaise(missing: number, promised: number, paidPaise: number
 }
 
 /**
- * A line's share of its booking's deal discount (paise), so a refund gives back what was really paid
- * for that line. Shares are rounded down, so together they never exceed the discount.
+ * Each line's share of its booking's deal discount (paise), so a refund gives back what was really
+ * paid for that line. Shares go to discounted lines in proportion to their price, rounded down, and
+ * the paise left over go one each to the lines with the largest remainders (ties: the earlier
+ * line), so the shares add up exactly to the discount: what the lines are paid adds up to the bill.
  */
-export function discountShare(
-  linePaise: number,
-  discounted: boolean,
-  bookingDiscount: number,
-  discountedTotal: number,
-): number {
-  if (!discounted || bookingDiscount === 0 || discountedTotal === 0) return 0;
-  return Number((BigInt(bookingDiscount) * BigInt(linePaise)) / BigInt(discountedTotal));
+export function discountShares(
+  lines: readonly { readonly paise: number; readonly discounted: boolean }[],
+  discount: number,
+): number[] {
+  const total = lines.reduce((n, l) => n + (l.discounted ? l.paise : 0), 0);
+  if (discount === 0 || total === 0) return lines.map(() => 0);
+  const D = BigInt(discount);
+  const T = BigInt(total);
+  const exact = lines.map((l) => (l.discounted ? D * BigInt(l.paise) : 0n));
+  const shares = exact.map((x) => x / T);
+  let left = D - shares.reduce((a, b) => a + b, 0n);
+  const order = exact
+    .map((x, i) => ({ i, rem: x % T, discounted: lines[i]?.discounted ?? false }))
+    .filter((x) => x.discounted)
+    .sort((a, b) => (a.rem === b.rem ? a.i - b.i : a.rem > b.rem ? -1 : 1));
+  for (const { i } of order) {
+    if (left === 0n) break;
+    shares[i] = (shares[i] ?? 0n) + 1n;
+    left -= 1n;
+  }
+  return shares.map(Number);
 }

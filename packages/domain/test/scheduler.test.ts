@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   assign,
   brandPlaysPerHour,
+  addMakeUps,
   buildHourPlan,
   DEFAULT_SPOT_RULES as RULES,
   fallbackPick,
@@ -109,6 +110,36 @@ describe('the hour plan (P1.4.1)', () => {
       'make-up:OLD',
       'aggregator:AGG',
     ]);
+  });
+});
+
+describe('make-ups that open after a plan was sent (P1.6.2)', () => {
+  it('the plan is re-sent with the make-up first in RECALL spots and after paid lines for spare bikes', () => {
+    const plan = buildHourPlan({
+      ...base,
+      paid: [paid('L1', 5)],
+      trials: [paid('T1', 5)],
+      aggregator: [{ id: 'AGG', ads: ['agg'], plays: 100 }],
+    });
+    const more = addMakeUps(plan, [{ lineId: 'OLD#1', brandId: 'b', ads: ['old'], plays: 300 }]);
+    expect(more.revision).toBe(2);
+    expect(more.lines.map((l) => l.lineId)).toEqual(['L1', 'OLD#1', 'T1']);
+    expect(more.spotDemands.map((d) => d.id)).toEqual(['OLD#1', 'AGG']);
+    // The same make-up again with fewer plays owed replaces the old numbers.
+    const again = addMakeUps(more, [{ lineId: 'OLD#1', brandId: 'b', ads: ['old'], plays: 120 }]);
+    expect(again.lines.filter((l) => l.lineId === 'OLD#1').map((l) => l.plays)).toEqual([120]);
+    expect(again.revision).toBe(3);
+  });
+
+  it('a spare bike carrying a make-up plays it as a make-up, so it counts for the make-up', () => {
+    const plan = addMakeUps(buildHourPlan(base), [
+      { lineId: 'OLD#1', brandId: 'b', ads: ['old'], plays: 300 },
+    ]);
+    expect(spotAt(plan, { lineId: 'OLD#1', spotId: undefined }, 0)).toEqual({
+      kind: 'make-up',
+      id: 'OLD#1',
+      ad: 'old',
+    });
   });
 });
 

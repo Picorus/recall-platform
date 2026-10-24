@@ -225,9 +225,9 @@ export async function judgePlays(
       : signatureOk(key.public_key, playBytes(screenId, seq, play), play.sig)
         ? 'ok'
         : 'bad';
-    // Brand plays name a booking line; make-up plays a make-up.
+    // Brand plays name a booking line or (on a spare bike) a make-up; make-up plays a make-up.
     const named =
-      (play.slot === 'brand' && !play.ref.includes('#')) ||
+      (play.slot === 'brand' && (!play.ref.includes('#') || /#[12]$/.test(play.ref))) ||
       (play.slot === 'make-up' && /#[12]$/.test(play.ref));
     if (named && !lines.has(play.ref)) lines.set(play.ref, await targetInfo(c, play.ref));
     const info = named ? lines.get(play.ref) : undefined;
@@ -256,6 +256,8 @@ export async function judgePlays(
 export async function lineTotalsFor(
   pool: Pick<Pool, 'query'>,
   lineId: string,
+  /** Price books, when the caller has them already. */
+  books?: readonly PriceBook[],
 ): Promise<LineTotals> {
   const info = await targetInfo(pool, lineId);
   const r = await pool.query<{
@@ -278,6 +280,8 @@ export async function lineTotalsFor(
       counts: x.counts,
       people: x.people,
     })),
-    info ? rulesOf(await priceBooks(pool), { version: info.priceBookVersion }) : DEFAULT_PLAY_RULES,
+    info
+      ? rulesOf(books ?? (await priceBooks(pool)), { version: info.priceBookVersion })
+      : DEFAULT_PLAY_RULES,
   );
 }

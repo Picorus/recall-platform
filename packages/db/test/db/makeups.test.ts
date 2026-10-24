@@ -14,7 +14,7 @@ import type pg from 'pg';
 import { saveAreaVersion } from '../../src/areas.js';
 import { createBooking, moveBooking, savePriceBook } from '../../src/bookings.js';
 import { decideRefund, makeUpsDue, settleDue } from '../../src/makeups.js';
-import { addScreenKey, lineTotalsFor } from '../../src/plays.js';
+import { addScreenKey, lineTotalsFor, revokeScreenKey } from '../../src/plays.js';
 import { storeUpload } from '../../src/screen-reports.js';
 import { freshDatabase } from './fresh-db.js';
 
@@ -128,7 +128,15 @@ describe('make-ups and refunds in the database (P1.6)', () => {
   }, 60_000);
 
   it('short by 100 at 7:10 pm: a make-up of 100 plays opens for 7–9 pm in Madhapur', async () => {
-    await settleDue(pool, HOUR + 3600 + 600);
+    const run = await settleDue(pool, HOUR + 3600 + 600);
+    // The plans for 7 pm and 8 pm went out before this make-up existed: they are named to re-send.
+    expect(run.opened).toContainEqual({
+      makeUpId: `${LINE}#1`,
+      areaId: 'hyd-madhapur',
+      date: DATE,
+      hours: [19, 20],
+    });
+    expect(run.failed).toEqual([]);
     expect(await makeUpsDue(pool, 'hyd-madhapur', DATE, 19)).toEqual([
       { makeUpId: `${LINE}#1`, brandId: 'brand-BK-M1', plays: 100 },
     ]);
@@ -164,13 +172,35 @@ describe('make-ups and refunds in the database (P1.6)', () => {
     expect(due).toEqual([{ makeUpId: `${LINE}#2`, brandId: 'brand-BK-M1', plays: 30 }]);
   }, 60_000);
 
+  it('a line delivered in full whose plays turn out fake (a stolen screen) is refunded at day close', async () => {
+    // Screen f1 was stolen before 10 am: its 200 plays on the 10 am line stop counting.
+    await revokeScreenKey(
+      pool,
+      'f1',
+      'k1',
+      'prateek',
+      'stolen, plays faked',
+      lineStartsAt({ date: DATE, startHour: 10 }),
+    );
+    const tenDayClose = lineStartsAt({ date: '2027-08-25', startHour: 10 }) + 3600 + 86_400;
+    await settleDue(pool, tenDayClose);
+    const r = await pool.query(
+      `SELECT missing_plays, base_paise::int FROM refunds WHERE line_id = $1`,
+      [FULL],
+    );
+    // 200 of 1,000 missing → a fifth of ₹1,500.
+    expect(r.rows).toEqual([{ missing_plays: 200, base_paise: 30_000 }]);
+  });
+
   it('still 25 short when the next day closes: a refund of 25/200 × ₹300 = ₹37.50 + GST is proposed', async () => {
     await upload(
       's4',
       plays('s4', 5, W.second.from, { slot: 'make-up', ref: `${LINE}#2` }),
       W.second.from + 900,
     );
-    expect(await settleDue(pool, W.second.until + 86_400 - 1)).toBe(0);
+    await settleDue(pool, W.second.until + 86_400 - 1);
+    const none = await pool.query(`SELECT 1 FROM refunds WHERE line_id = $1`, [LINE]);
+    expect(none.rows).toEqual([]);
     await settleDue(pool, W.second.until + 86_400);
     const r = await pool.query(
       `SELECT missing_plays, paid_paise::int, base_paise::int, gst_paise::int FROM refunds WHERE line_id = $1`,
@@ -200,9 +230,9 @@ describe('make-ups and refunds in the database (P1.6)', () => {
       settleDue(pool, later),
       settleDue(pool, later),
     ]);
-    expect(runs).toEqual([0, 0, 0]);
+    expect(runs.map((r) => r.decisions)).toEqual([0, 0, 0]);
     const n = await pool.query(`SELECT count(*)::int AS n FROM refunds`);
-    expect(n.rows[0]).toEqual({ n: 1 });
+    expect(n.rows[0]).toEqual({ n: 2 });
   });
 
   it('only a super admin decides a refund, and only once', async () => {

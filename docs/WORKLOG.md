@@ -2,6 +2,32 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 24 Oct 2026 · P1.6 · Make-ups and refunds
+- P1.5 merged (PR #19).
+- Domain (`makeups.ts`):
+  - Make-up windows: the next 2 hours, never past 02:00; then the same hour the next day.
+  - `nextSettlementStep` / `nextDecisionAt`: one decision at a time — hour end + 10 min, first make-up end + 10 min, then day close 24 h after the second make-up.
+  - `refundPaise`: exact, rounds halves up, never more than paid. `discountShares`: shares add up exactly to the discount.
+  - Settings live in the price book (`makeUps`).
+  - Scheduler: `addMakeUps` re-issues a sent hour plan (revision + 1) when a make-up opens; a spare bike carrying a make-up plays it as a make-up.
+- Database (migration 0008: `make_ups`, `line_settlements`, `refunds`, `refund_decisions`, append-only):
+  - `settleDue`: one run at a time. Each line is decided on its own (one failure does not block the rest). Lines with nothing due are skipped cheaply. It returns the make-ups opened, so their plans are re-sent.
+  - A booking's refunds never exceed its bill or its GST.
+  - `makeUpsDue` feeds hour plans. `decideRefund` is for super admins only.
+- Second review found 5 issues, all fixed with tests:
+  - make-up plays from spare bikes never counted;
+  - the first make-up could never reach the screens (plans go out 2 hours ahead);
+  - a line once "delivered" was never re-checked after a stolen screen's plays stopped counting;
+  - with odd prices, deal-discount rounding could refund 1 paisa more than paid;
+  - the decision run re-read everything under its lock.
+- Tests: 210 domain, 65 database. The database test walks a line through every stage: 100 short, make-up 7–9 pm (spots and spare bikes), late uploads shrink the next-day make-up, refund ₹37.50 + GST. It also covers: a full line, a trial (no refund), a stolen screen found after a full delivery (refunded at day close), three runs at once (nothing twice), super-admin-only approval, and no edits or deletes.
+- Open:
+  - Refund approval checks the role given by the caller; sign-in and roles come with the admin portal (P3.1).
+  - Each make-up gets its own 10% edge allowance (as worded in DECISIONS).
+  - The credit note and the payment back come with the ledger (P1.7).
+  - The cloud service that builds and sends hour plans comes with the services step.
+- **Next: P1.7** ledger, GST, cuts and rider earnings.
+
 ## 22 Oct 2026 · P1.5 · Play counting and proof
 - P1.4 merged (PR #18).
 - Domain (`plays.ts`):
