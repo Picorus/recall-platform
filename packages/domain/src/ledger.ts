@@ -7,6 +7,8 @@ export const ACCOUNTS = {
   /** Money received from the payment gateway, not yet settled into the bank. */
   'payment-clearing': 'asset',
   bank: 'asset',
+  /** GST charged to RECALL by partners (on their cuts), to be claimed back as input tax credit. */
+  'gst-input': 'asset',
   /** Paid by brands for campaigns not yet delivered. */
   'campaign-held': 'liability',
   'gst-payable': 'liability',
@@ -178,6 +180,10 @@ export function earnedPaise(paid: number, promised: number, delivered: number): 
  * hour closes already moved (worked out from the ledger). If the line has earned less than that
  * (plays later found not to count, e.g. a stolen screen's), the difference goes back to held.
  * Undefined when nothing changed.
+ *
+ * Revenue comes in two parts, kept apart so cuts can follow delivery: `delivered` (earned by plays,
+ * the default) and `kept` (paid but never delivered, kept under the rules: a late cancellation, a
+ * refund rejected, ads that never came).
  */
 export function lineEarned(l: {
   readonly lineId: string;
@@ -187,16 +193,24 @@ export function lineEarned(l: {
   /** A unique label for this hour close (e.g. its time), so a close is never posted twice. */
   readonly closeId: string;
   readonly at: number;
+  readonly part?: 'delivered' | 'kept';
 }): Entry | undefined {
   const more = l.earnedNow - l.earnedSoFar;
   if (more === 0) return undefined;
   const back = more < 0;
+  const kept = l.part === 'kept';
   return {
-    entryId: `earned:${l.lineId}:${l.closeId}`,
+    entryId: `${kept ? 'kept' : 'earned'}:${l.lineId}:${l.closeId}`,
     at: l.at,
-    kind: back ? 'line-earned-back' : 'line-earned',
+    kind: `${kept ? 'line-kept' : 'line-earned'}${back ? '-back' : ''}`,
     ref: l.lineId,
-    memo: back ? `Plays for ${l.lineId} found not to count` : `Plays delivered for ${l.lineId}`,
+    memo: kept
+      ? back
+        ? `Money kept for ${l.lineId} put back to held`
+        : `Money kept for ${l.lineId} (paid, not delivered, no refund)`
+      : back
+        ? `Plays for ${l.lineId} found not to count`
+        : `Plays delivered for ${l.lineId}`,
     postings: back
       ? [...post('revenue', 'debit', -more), ...post('campaign-held', 'credit', -more, l.brandId)]
       : [...post('campaign-held', 'debit', more, l.brandId), ...post('revenue', 'credit', more)],
@@ -225,6 +239,71 @@ export function refundApproved(r: {
       ...post('campaign-held', 'debit', r.base, r.brandId),
       ...post('gst-payable', 'debit', r.gst),
       ...post('refunds-payable', 'credit', r.base + r.gst, r.brandId),
+    ],
+  };
+}
+
+// ---------------------------------------------------------------- P1.7.4 cuts
+
+/**
+ * A cut RECALL decided to give on a booking (Prateek, 24 Oct 2026: never automatic): an agency or an
+ * aggregator, its rate, and the GST the partner charges on it (0 when not registered).
+ */
+export interface Cut {
+  readonly bookingId: string;
+  readonly kind: 'agency' | 'aggregator';
+  readonly partnerId: string;
+  readonly rateBp: number;
+  readonly gstBp: number;
+  /** TDS held back from the cut before GST, paid to the government (Prateek, 24 Oct 2026). */
+  readonly tdsBp: number;
+}
+
+/**
+ * Brings a booking's cut up (or down) to its rate on what the booking has delivered so far (cuts
+ * are worked out on delivered plays: not on what was invoiced, nor on money kept without delivery).
+ * The cut includes the partner's GST (Prateek, 24 Oct 2026: 10% of ₹1,200 is ₹120 in all): that
+ * GST is claimed back by RECALL. TDS on the cut before GST is held back from the partner and owed
+ * to the government, so the partner is paid the cut less TDS. `soFar` is the cut before GST, the
+ * GST and the TDS already recorded (from the ledger); `n` numbers the entry.
+ */
+export function cutAccrued(
+  cut: Cut,
+  delivered: number,
+  soFar: { readonly cut: number; readonly gst: number; readonly tds: number },
+  n: number,
+  at: number,
+): Entry | undefined {
+  const bp = (x: number, rate: number) => Math.floor((x * rate + 5_000) / 10_000);
+  const total = bp(delivered, cut.rateBp);
+  // The part before GST, to the nearest paisa (halves up); the GST is the rest.
+  const d = 10_000 + cut.gstBp;
+  const net = Math.floor((total * 20_000 + d) / (2 * d));
+  const more = net - soFar.cut;
+  const moreGst = total - net - soFar.gst;
+  const moreTds = bp(net, cut.tdsBp) - soFar.tds;
+  if (more === 0 && moreGst === 0 && moreTds === 0) return undefined;
+  const expense = cut.kind === 'agency' ? 'agency-cuts' : 'aggregator-cuts';
+  const payable = cut.kind === 'agency' ? 'agency-payable' : 'aggregator-payable';
+  /** A posting on its usual side when the amount grows, on the other side when it shrinks. */
+  const move = (account: Account, usual: 'debit' | 'credit', amount: number) =>
+    post(
+      account,
+      amount >= 0 ? usual : usual === 'debit' ? 'credit' : 'debit',
+      Math.abs(amount),
+      cut.partnerId,
+    );
+  return {
+    entryId: `cut:${cut.bookingId}:${cut.kind}:${n}`,
+    at,
+    kind: `${cut.kind}-cut`,
+    ref: cut.bookingId,
+    memo: `${cut.kind === 'agency' ? 'Agency' : 'Aggregator'} cut on delivered plays`,
+    postings: [
+      ...move(expense, 'debit', more),
+      ...move('gst-input', 'debit', moreGst),
+      ...move(payable, 'credit', more + moreGst - moreTds),
+      ...move('tds-payable', 'credit', moreTds),
     ],
   };
 }

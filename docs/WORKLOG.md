@@ -2,6 +2,42 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 24 Oct 2026 · P1.7.4 · Review fixes: cuts and cancellation
+A second agent reviewed cuts and the cancellation code. It found 4 real problems; all are fixed with tests:
+- **A cut given late was never paid.** The hour close only looked at bookings settled in the last week. Now `giveCut` brings the cut in line at once (under the hour-close lock), and every booking with a cut is looked at.
+- **Cuts were paid on money that was not delivered** (a late cancellation, a refund rejected). Revenue is now booked in two kinds: `line-earned` (delivered by plays) and `line-kept` (kept, not delivered). Cuts use delivered only.
+- **An early-cancel refund nobody decided kept the money held for ever.** After 7 days (setting `cancelRefundDecideHours`) the system records it as rejected. Refunds for missing plays have no deadline.
+- **A cut could be given on any booking.** Now it needs a paid booking that can still deliver (not a trial, cancelled or ads-missing), a rate of 0.01–50% and partner GST of 0–28%. The price book's cut rates are checked the same way.
+- Also: if a cut fails during a refund decision, the decision still stands (the next close fixes the cut).
+- Checked and fine: the 72-hour boundary, booking-id matching, no cut posted twice, and raising or lowering a cut.
+- Tests: 226 domain, 92 database.
+- Prateek answered questions 13 and 14 the same day: both money calls confirmed; TDS is held back from cuts; partner GST is claimed back; our rounding wins.
+- **TDS on cuts:** setting `cutTdsBp` (2%, section 194H, CA to confirm the rate and any yearly threshold; until then held back on every cut, the safe side). The rate in force when the cut is given is kept with it (migration 0012).
+- **Cuts include the partner's GST** (Prateek, later the same day): 10% of ₹1,200 = ₹120 in all = ₹101.69 + ₹18.31 GST. TDS on ₹101.69 (₹2.03) goes to `tds-payable`; the partner is owed ₹117.97; the ₹18.31 is claimed back (`gst-input`).
+- Third review (top-ups and TDS): top-up GST could give back 1 paisa more than charged (fixed, test added); top-ups now recorded in `refund_topups` (migration 0013) with who, when and how many plays; refund proposal time comes from the run; cut and TDS rates from the price book in force when the cut is given.
+- A second review of these fixes found no blocking bug. Fixed anyway:
+  - Plays found fake after a refund was proposed: the credit note is now topped up at approval, so the brand pays only for what was delivered.
+  - The 7-day deadline counts from when the refund was proposed, if that is later than the cancellation.
+  - Deciding a refund that is already decided gives a clear message.
+  - A cut error during a refund decision is returned, not hidden.
+- Open (known): a stolen screen found after a line is fully closed changes nothing (closed lines are not reopened). That needs a 'reopen' step; for P3 admin tools.
+- Open (known): the hour close now looks at every booking with a cut each run. That is fine for now; it should be narrowed once there are thousands.
+- **Next: P1.7.5–7** rider earnings, payouts, TDS.
+
+## 24 Oct 2026 · P1.7.4 · Cuts, and cancellation after payment
+- Cancellation after payment (Prateek, answers open question 12; merged in PR #22):
+  - No refund by default.
+  - At least 72 hours (a setting) before the first hour, a full refund is proposed, which a super admin may approve.
+  - Later than that, no refund is possible and the money is earned (`forfeited`).
+- Cuts (Prateek):
+  - Never automatic: a super admin gives a cut on a booking (once per kind), with the partner's GST rate.
+  - `cutAccrued` keeps the cut at its rate of what the booking has earned, going down if earnings go down. The partner's GST is owed on top and recorded in `gst-input` (claimed back).
+  - Default rates (agency 10%, aggregator 2%) are price-book settings.
+  - Migration 0011: `booking_cuts`, `gst-input` account.
+- Tests: 223 domain (property test: cut entries always balance and land on the target), 84 database.
+- Open: input tax credit on partners' GST to be confirmed with the CA.
+- **Next: P1.7.5–7** rider earnings, payouts, TDS.
+
 ## 24 Oct 2026 · P1.7.1–3 · The ledger: payments held, revenue earned, refunds
 - P1.6 merged (PR #20).
 - Domain (`ledger.ts`): accounts; `checkEntry` (balanced, whole paise, one side per posting, two or more postings); `reversal` (only for a person's adjustments); `balances` from postings; `bookingPaid`, `earnedPaise`, `lineEarned` (both ways), `refundApproved`.

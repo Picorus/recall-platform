@@ -16,6 +16,8 @@ Answer whenever you like; each answer moves to `docs/DECISIONS.md` and the row i
 ## Answered 24 Oct 2026 (now in DECISIONS)
 | # | Answer |
 |---|---|
+| ~~13~~ | (a) Cuts are paid only on delivered money. (b) A cancellation refund not decided within 7 days counts as no refund |
+| ~~14~~ | TDS is held back from cuts (we pay the partner after cutting TDS); the partner's GST is claimed back; our per-booking rounding is what goes in the books |
 | ~~12~~ | Cancelled after paying: no refund by default; at least 72 hours before the first hour a super admin may refund 100%; later, no refund |
 
 ## Answered 22 Oct 2026 (now in DECISIONS)

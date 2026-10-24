@@ -15,6 +15,7 @@ import { saveAreaVersion } from '../../src/areas.js';
 import { createBooking, moveBooking, savePriceBook } from '../../src/bookings.js';
 import { settleDue } from '../../src/makeups.js';
 import { closeEarnings, decideRefund } from '../../src/earnings.js';
+import { giveCut } from '../../src/cuts.js';
 import { accountTotals, trialBalance } from '../../src/ledger.js';
 import { addScreenKey, revokeScreenKey } from '../../src/plays.js';
 import { storeUpload } from '../../src/screen-reports.js';
@@ -129,6 +130,21 @@ const held = async (brand: string) => {
   const t = await accountTotals(pool, 'campaign-held', { party: brand });
   return t.credit - t.debit;
 };
+/** Revenue a booking's plays delivered (money kept without delivery left out). */
+const deliveredFor = async (bookingId: string) => {
+  const r = await pool.query<{ n: string }>(
+    `SELECT coalesce(sum(p.credit - p.debit), 0) AS n
+       FROM ledger_postings p JOIN ledger_entries e USING (entry_id)
+      WHERE p.account = 'revenue' AND e.kind LIKE 'line-earned%' AND e.ref LIKE $1 || '/%'`,
+    [bookingId],
+  );
+  return Number(r.rows[0]?.n ?? 0);
+};
+const owedTo = async (account: 'agency-payable' | 'aggregator-payable', partner: string) => {
+  const t = await accountTotals(pool, account, { party: partner });
+  return t.credit - t.debit;
+};
+const SUPER = { id: 'prateek', role: 'super-admin' } as const;
 const revenueFor = async (ref: string) => {
   const t = await accountTotals(pool, 'revenue', { ref });
   return t.credit - t.debit;
@@ -240,6 +256,43 @@ describe('money through the ledger (P1.7.2–3)', () => {
     expect(await revenueFor(lineIdOf('BK-Z', 'hyd-madhapur', DATE, 20))).toBe(30_000);
   }, 60_000);
 
+  it('plays found fake after a refund was proposed: the credit note is topped up at approval', async () => {
+    await book('BK-T', 'hyd-madhapur', 19, 5);
+    const line = lineIdOf('BK-T', 'hyd-madhapur', DATE, 19);
+    const start = lineStartsAt({ date: DATE, startHour: 19 });
+    for (const s of ['t1', 't2']) {
+      await screen(s);
+      await upload(s, plays(s, 200, start, { ref: line }), start + 3500);
+    }
+    const w = makeUpWindows({ lineId: line, areaId: 'hyd-madhapur', date: DATE, startHour: 19 });
+    const close = w.second.until + 86_400;
+    for (let i = 0; i < 3; i += 1) await settleDue(pool, close);
+    const r = await pool.query(`SELECT base_paise::int AS base FROM refunds WHERE line_id = $1`, [
+      line,
+    ]);
+    expect(r.rows).toEqual([{ base: 90_000 }]); // 600 of 1,000 missing
+    await revokeScreenKey(pool, 't2', 'k1', 'prateek', 'stolen, plays faked', start);
+    const out = await decideRefund(pool, `${line}#refund`, 'approved', SUPER, 'short', close + 60);
+    expect(out).toEqual({});
+    // Now 800 missing: ₹1,200 + 18% GST back to the brand; only the 200 delivered plays are earned.
+    const owed = await accountTotals(pool, 'refunds-payable', { party: 'brand-BK-T' });
+    expect(owed.credit - owed.debit).toBe(120_000 + 21_600);
+    expect(await held('brand-BK-T')).toBe(0);
+    const top = await pool.query(
+      `SELECT missing_plays, base_paise::int AS base, gst_paise::int AS gst, decided_by
+         FROM refund_topups WHERE refund_id = $1`,
+      [`${line}#refund`],
+    );
+    expect(top.rows).toEqual([
+      { missing_plays: 800, base: 30_000, gst: 5_400, decided_by: 'prateek' },
+    ]);
+    expect(await deliveredFor('BK-T')).toBe(30_000);
+    expect(await revenueFor(line)).toBe(30_000);
+    await expect(
+      decideRefund(pool, `${line}#refund`, 'rejected', SUPER, 'changed mind', close + 120),
+    ).rejects.toThrow(/already approved by prateek/);
+  }, 60_000);
+
   it('ads never came: no refund, everything paid is earned and nothing stays held', async () => {
     await book('BK-X', 'hyd-madhapur', 21, 5, false, 'paid');
     const started = lineStartsAt({ date: DATE, startHour: 21 }) + 60;
@@ -315,6 +368,180 @@ describe('money through the ledger (P1.7.2–3)', () => {
     );
     expect(await held('brand-BK-V')).toBe(0);
     expect(await revenueFor(line)).toBe(150_000);
+  });
+
+  it("a cut is given only when a super admin decides, once, on what was delivered, with the partner's GST", async () => {
+    const cut = { bookingId: 'BK-M2', kind: 'agency' as const, partnerId: 'adfirst', gstBp: 1_800 };
+    await expect(giveCut(pool, cut, { id: 'priya', role: 'admin' }, 'agency deal')).rejects.toThrow(
+      /super admin/,
+    );
+    // No cut given yet: nothing owed to anyone.
+    expect(await accountTotals(pool, 'agency-payable')).toEqual({ debit: 0, credit: 0 });
+    await giveCut(
+      pool,
+      cut,
+      { id: 'prateek', role: 'super-admin' },
+      'AdFirst brought this brand',
+      W.second.until,
+    );
+    await expect(
+      giveCut(pool, cut, { id: 'prateek', role: 'super-admin' }, 'again', W.second.until),
+    ).rejects.toThrow();
+    await closeEarnings(pool, W.second.until + 4 * 86_400);
+    // BK-M2 delivered ₹1,200 (after the stolen screen's refund): 10% = ₹120 in all, the agency's 18%
+    // GST included (₹101.69 + ₹18.31). 2% TDS on the ₹101.69 (₹2.03) goes to the government; the
+    // agency is paid ₹117.97. RECALL claims the ₹18.31 back.
+    const owed = await accountTotals(pool, 'agency-payable', { party: 'adfirst' });
+    expect(owed.credit - owed.debit).toBe(12_000 - 203);
+    const tds = await accountTotals(pool, 'tds-payable', { party: 'adfirst' });
+    expect(tds.credit - tds.debit).toBe(203);
+    const itc = await accountTotals(pool, 'gst-input');
+    expect(itc.debit - itc.credit).toBe(1_831);
+    // Running again owes nothing more.
+    await closeEarnings(pool, W.second.until + 5 * 86_400);
+    const again = await accountTotals(pool, 'agency-payable', { party: 'adfirst' });
+    expect(again.credit - again.debit).toBe(11_797);
+  });
+
+  it('money kept without delivery is booked apart from revenue earned by plays', async () => {
+    // BK-W was cancelled too late: ₹1,100 kept, none of it delivered.
+    expect(await deliveredFor('BK-W')).toBe(0);
+    const kept = await pool.query<{ kind: string }>(
+      `SELECT DISTINCT kind FROM ledger_entries WHERE ref = $1 AND kind LIKE 'line-%'`,
+      [lineIdOf('BK-W', 'hyd-kondapur', DATE, 23)],
+    );
+    expect(kept.rows.map((r) => r.kind)).toEqual(['line-kept']);
+  });
+
+  it('a cut is never paid on money kept without delivery: a late cancellation, a refund rejected', async () => {
+    // Given while the bookings were live, then each was cancelled.
+    await book('BK-CA', 'hyd-kondapur', 21, 5, false, 'paid');
+    await book('BK-CB', 'hyd-kondapur', 20, 5, false, 'paid');
+    for (const id of ['BK-CA', 'BK-CB'])
+      await giveCut(
+        pool,
+        { bookingId: id, kind: 'agency', partnerId: `ag-${id}`, gstBp: 1_800 },
+        SUPER,
+        'agency brought this brand',
+        BOOKED + 600,
+      );
+    const startA = lineStartsAt({ date: DATE, startHour: 21 });
+    const startB = lineStartsAt({ date: DATE, startHour: 20 });
+    const cancel = { by: 'priya', actor: 'admin', reason: 'brand pulled out' } as const;
+    await moveBooking(pool, 'BK-CA', 'cancelled', cancel, startA - 10 * 3600);
+    await moveBooking(pool, 'BK-CB', 'cancelled', cancel, startB - 5 * 86_400);
+    await settleDue(pool, startA - 9 * 3600);
+    await decideRefund(
+      pool,
+      `${lineIdOf('BK-CB', 'hyd-kondapur', DATE, 20)}#refund`,
+      'rejected',
+      SUPER,
+      'no refund policy',
+      startA - 9 * 3600,
+    );
+    await closeEarnings(pool, startA - 9 * 3600);
+    for (const id of ['BK-CA', 'BK-CB']) {
+      expect(await held(`brand-${id}`)).toBe(0);
+      expect(await deliveredFor(id)).toBe(0);
+      expect(await owedTo('agency-payable', `ag-${id}`)).toBe(0);
+    }
+  });
+
+  it('a cancellation refund nobody decides in time is taken as rejected, so nothing stays held', async () => {
+    await book('BK-CC', 'hyd-kondapur', 19, 5, false, 'paid');
+    const start = lineStartsAt({ date: DATE, startHour: 19 });
+    const at = start - 5 * 86_400;
+    await moveBooking(
+      pool,
+      'BK-CC',
+      'cancelled',
+      { by: 'priya', actor: 'admin', reason: 'brand changed plans' },
+      at,
+    );
+    await settleDue(pool, at + 60);
+    await closeEarnings(pool, at + 6 * 86_400);
+    expect(await held('brand-BK-CC')).toBe(150_000); // within the 7 days: still the super admin's call
+    await closeEarnings(pool, at + 60 + 7 * 86_400); // 7 days after the proposal
+    const line = lineIdOf('BK-CC', 'hyd-kondapur', DATE, 19);
+    const d = await pool.query(
+      'SELECT decision, decided_by FROM refund_decisions WHERE refund_id = $1',
+      [`${line}#refund`],
+    );
+    expect(d.rows).toEqual([{ decision: 'rejected', decided_by: 'system' }]);
+    expect(await held('brand-BK-CC')).toBe(0);
+    expect(await revenueFor(line)).toBe(150_000);
+  });
+
+  it('the 7 days to decide count from when the refund was proposed, if that came later', async () => {
+    await book('BK-CD', 'hyd-kondapur', 17, 5, false, 'paid');
+    const start = lineStartsAt({ date: DATE, startHour: 17 });
+    await moveBooking(
+      pool,
+      'BK-CD',
+      'cancelled',
+      { by: 'priya', actor: 'admin', reason: 'brand changed plans' },
+      start - 20 * 86_400,
+    );
+    await settleDue(pool, start - 14 * 86_400); // the settling job ran 6 days late
+    await closeEarnings(pool, start - 12 * 86_400); // 8 days after the cancel, 2 after the proposal
+    expect(await held('brand-BK-CD')).toBe(150_000);
+    await closeEarnings(pool, start - 7 * 86_400); // 7 days after the proposal
+    expect(await held('brand-BK-CD')).toBe(0);
+  });
+
+  it('a cut given long after a booking settled is still paid, at once', async () => {
+    const delivered = await deliveredFor('BK-M1');
+    expect(delivered).toBeGreaterThan(0);
+    await giveCut(
+      pool,
+      { bookingId: 'BK-M1', kind: 'aggregator', partnerId: 'rapido', gstBp: 0 },
+      SUPER,
+      'aggregator deal, agreed late',
+      W.second.until + 60 * 86_400,
+    );
+    // 2% of what was delivered, rounded to the paisa; no GST (partner not registered); 2% TDS held back.
+    const cut = Math.round(delivered * 0.02);
+    expect(await owedTo('aggregator-payable', 'rapido')).toBe(cut - Math.round(cut * 0.02));
+  });
+
+  it('a cut can only be given on a paid booking that can still deliver, at a sane rate', async () => {
+    const give = (bookingId: string, extra: { rateBp?: number; gstBp?: number } = {}) =>
+      giveCut(
+        pool,
+        { bookingId, kind: 'agency', partnerId: 'adfirst', gstBp: 1_800, ...extra },
+        SUPER,
+        'agency deal',
+        BOOKED + 600,
+      );
+    await createBooking(
+      pool,
+      {
+        bookingId: 'BK-UNPAID',
+        brandId: 'brand-unpaid',
+        request: {
+          lines: [{ areaId: 'hyd-kondapur', date: DATE, startHour: 13, bikes: 5 }],
+          repeatMonths: 1,
+          channel: 'admin',
+        },
+        by: 'priya',
+      },
+      BOOKED,
+    );
+    await moveBooking(
+      pool,
+      'BK-UNPAID',
+      'awaiting-payment',
+      { by: 'priya', actor: 'admin' },
+      BOOKED,
+    );
+    await expect(give('BK-UNPAID')).rejects.toThrow(/paid booking/);
+    await expect(give('BK-M3')).rejects.toThrow(/trial/);
+    await expect(give('BK-W')).rejects.toThrow(/cancelled/);
+    await expect(give('BK-X')).rejects.toThrow(/ads-missing/);
+    await expect(give('BK-M1', { rateBp: 0 })).rejects.toThrow(/rate/);
+    await expect(give('BK-M1', { rateBp: 5_001 })).rejects.toThrow(/rate/);
+    await expect(give('BK-M1', { gstBp: 3_000 })).rejects.toThrow(/GST/);
+    await expect(give('NO-SUCH')).rejects.toThrow(/No booking/);
   });
 
   it('the whole ledger balances', async () => {
