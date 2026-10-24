@@ -12,7 +12,7 @@ Answer whenever you like; each answer moves to `docs/DECISIONS.md` and the row i
 | 6 | Support phone and WhatsApp numbers (hours: 10 am – 7 pm for now) | Rider Help; brand Help; admin Support | P3.15, P4.9 |
 | 7 | Charging steps for the screen, once the equipment is final (from the screen maker) | Rider Your screen | P4.8 |
 | 10b | TDS rate on rider pay and any gig-worker levy (ask your CA) | Admin Payouts; rider Payouts | P1.7.7 |
-| 15 | POC base: what decides whether a rider gets ₹2,000, ₹4,000 or ₹6,000 (hours promised, shift, something else)? For now an admin picks it per rider | Admin Riders; rider Earnings | P1.7.6 |
+| 15 | POC base: what decides whether a rider gets ₹2,000, ₹4,000 or ₹6,000 (hours promised, shift, something else)? And does a rider who joins mid-month get the full base? For now an admin picks it per rider, and the full base is paid | Admin Riders; rider Earnings | P1.7.6 |
 
 ## Answered 24 Oct 2026 (now in DECISIONS)
 | # | Answer |

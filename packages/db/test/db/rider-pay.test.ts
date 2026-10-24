@@ -148,9 +148,9 @@ describe('rider pay in the POC (P1.7.6)', () => {
     // R-EEE rides outside the pay zone half of each minute: 150 h on the clock, 75 h counted.
     await assignScreen(pool, 'scr-e', 'R-EEE', start, 'fitter');
     await ride('scr-e', '2027-08-02', 15, 10, 30);
-    await setPocBase(pool, 'R-AAA', AUG, 600_000, ADMIN, 'founding rider, full base', BOOKED);
-    await setPocBase(pool, 'R-BBB', AUG, 200_000, ADMIN, 'founding rider, small base', BOOKED);
-    await setPocBase(pool, 'R-EEE', AUG, 400_000, ADMIN, 'founding rider, mid base', BOOKED);
+    await setPocBase(pool, 'R-AAA', AUG, 600_000, ADMIN, 'founding rider, full base');
+    await setPocBase(pool, 'R-BBB', AUG, 200_000, ADMIN, 'founding rider, small base');
+    await setPocBase(pool, 'R-EEE', AUG, 400_000, ADMIN, 'founding rider, mid base');
   }, 60_000);
 
   it('nothing is owed before the month ends: POC pay is paid once, after the month', async () => {
@@ -186,16 +186,35 @@ describe('rider pay in the POC (P1.7.6)', () => {
     expect(await owed('R-BBB')).toBe(800_000 - 8_000);
   });
 
+  it('a base pays only riders who rode a screen that month; 0 ends a base', async () => {
+    await setPocBase(pool, 'R-GONE', '2027-07', 600_000, ADMIN, 'left before August');
+    await setPocBase(pool, 'R-BBB', '2027-09', 0, ADMIN, 'left at the end of August');
+    const aug = await accrueRiderPay(pool, AUG, end + 7200);
+    expect(aug.pay.find((p) => p.riderId === 'R-GONE')).toBeUndefined();
+    expect(await owed('R-GONE')).toBe(0);
+    const sep = monthBounds('2027-09');
+    await assignScreen(pool, 'scr-b', null, sep.start, 'fitter');
+    await assignScreen(pool, 'scr-b', 'R-BBB', sep.start + 86_400, 'fitter');
+    const r = await accrueRiderPay(pool, '2027-09', sep.end + 60);
+    expect(r.pay.find((p) => p.riderId === 'R-BBB')?.base ?? 0).toBe(0);
+  });
+
+  it('a rider is on one screen at a time', async () => {
+    await expect(assignScreen(pool, 'scr-z', 'R-AAA', end - 86_400, 'fitter')).rejects.toThrow(
+      /R-AAA is on scr-a/,
+    );
+  });
+
   it('a base can only be one of the bases in the price book, set by an admin', async () => {
+    await expect(setPocBase(pool, 'R-XYZ', AUG, 500_000, ADMIN, 'not a real base')).rejects.toThrow(
+      /Base must be 0 or one of ₹2000, ₹4000, ₹6000/,
+    );
     await expect(
-      setPocBase(pool, 'R-XYZ', AUG, 500_000, ADMIN, 'not a real base', BOOKED),
-    ).rejects.toThrow(/Base must be one of ₹2000, ₹4000, ₹6000/);
-    await expect(
-      setPocBase(pool, 'R-XYZ', AUG, 200_000, { id: 'r', role: 'rider' }, 'self-service', BOOKED),
+      setPocBase(pool, 'R-XYZ', AUG, 200_000, { id: 'r', role: 'rider' }, 'self-service'),
     ).rejects.toThrow(/admin/);
-    await expect(
-      setPocBase(pool, 'R-XYZ', '2027-13', 200_000, ADMIN, 'bad month', BOOKED),
-    ).rejects.toThrow(/YYYY-MM/);
+    await expect(setPocBase(pool, 'R-XYZ', '2027-13', 200_000, ADMIN, 'bad month')).rejects.toThrow(
+      /YYYY-MM/,
+    );
   });
 });
 
@@ -244,16 +263,27 @@ describe('rider pay after the POC (P1.7.5)', () => {
 
   it('more hours later in the month: only the difference is posted', async () => {
     await ride('scr-f', '2027-09-20', 2, 10);
-    const r = await accrueRiderPay(pool, SEP, end + 49 * 3600);
+    const r = await accrueRiderPay(pool, SEP, end + 24 * 3600);
     expect(r.posted).toBe(1);
-    expect(r.pay.find((p) => p.riderId === 'R-FFF')).toMatchObject({ hourly: 75_000, final: true });
+    expect(r.pay.find((p) => p.riderId === 'R-FFF')).toMatchObject({
+      hourly: 75_000,
+      final: false,
+    });
+    expect(await owed('R-FFF')).toBe(82_500 - 825);
+  });
+
+  it('once the month has closed, its pay never changes by itself: a late change is reported', async () => {
+    await ride('scr-f', '2027-09-25', 1, 10);
+    const r = await accrueRiderPay(pool, SEP, end + 49 * 3600);
+    expect(r.posted).toBe(0);
+    expect(r.late).toEqual([{ riderId: 'R-FFF', grossChange: 25_000 }]);
     expect(await owed('R-FFF')).toBe(82_500 - 825);
   });
 
   it('hourly pay stops at 260 moving hours a month', async () => {
     await assignScreen(pool, 'scr-h', 'R-HHH', start, 'fitter');
     await ride('scr-h', '2027-09-01', 27, 10); // 270 hours
-    const r = await accrueRiderPay(pool, SEP, end + 50 * 3600);
+    const r = await accrueRiderPay(pool, SEP, end + 24 * 3600);
     expect(r.pay.find((p) => p.riderId === 'R-HHH')).toMatchObject({
       countedSeconds: 270 * 3600,
       paidSeconds: 260 * 3600,

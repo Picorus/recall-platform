@@ -32,16 +32,29 @@ export async function assignScreen(
   by: string,
 ): Promise<void> {
   if (riderId !== null && !RIDER.test(riderId)) throw new RangeError(`Bad rider id ${riderId}`);
-  await inTransaction(pool, (c) =>
-    c.query(
+  await inTransaction(pool, async (c) => {
+    await c.query("SELECT pg_advisory_xact_lock(hashtext('rider-screens'))");
+    // One screen per rider at a time: his hours and plays must come from one bike.
+    if (riderId !== null) {
+      const other = await c.query<{ screen_id: string }>(
+        `SELECT screen_id FROM (
+           SELECT DISTINCT ON (screen_id) screen_id, rider_id FROM rider_screens
+            WHERE from_at <= to_timestamp($2) ORDER BY screen_id, from_at DESC) x
+          WHERE rider_id = $1 AND screen_id <> $3`,
+        [riderId, from, screenId],
+      );
+      const busy = other.rows[0];
+      if (busy) throw new Error(`${riderId} is on ${busy.screen_id}: take him off it first`);
+    }
+    await c.query(
       `INSERT INTO rider_screens (screen_id, from_at, rider_id, set_by)
        VALUES ($1, to_timestamp($2), $3, $4)`,
       [screenId, from, riderId, by],
-    ),
-  );
+    );
+  });
 }
 
-/** Puts a rider on a POC base from a month on (one of the bases in the price book in force). */
+/** Puts a rider on a POC base from a month on (a base of that month's price book, or 0 to end it). */
 export async function setPocBase(
   pool: Pool,
   riderId: string,
@@ -49,17 +62,17 @@ export async function setPocBase(
   basePaise: number,
   by: { readonly id: string; readonly role: string },
   reason: string,
-  now: number = Math.floor(Date.now() / 1000),
 ): Promise<void> {
   if (by.role !== 'super-admin' && by.role !== 'admin')
     throw new Error('Only an admin can set a rider’s base');
   if (!RIDER.test(riderId)) throw new RangeError(`Bad rider id ${riderId}`);
   if (!MONTH.test(fromMonth)) throw new RangeError('Month must be YYYY-MM');
   await inTransaction(pool, async (c) => {
-    const book = priceBookAt(await priceBooks(c), isoAt(now));
-    if (!book?.riderPay.pocBasesPaise.includes(basePaise))
+    // The bases of the price book for that month; 0 takes a rider off his base.
+    const book = priceBookAt(await priceBooks(c), isoAt(monthBounds(fromMonth).start));
+    if (basePaise !== 0 && !book?.riderPay.pocBasesPaise.includes(basePaise))
       throw new RangeError(
-        `Base must be one of ${(book?.riderPay.pocBasesPaise ?? []).map((p) => `₹${p / 100}`).join(', ')}`,
+        `Base must be 0 or one of ${(book?.riderPay.pocBasesPaise ?? []).map((p) => `₹${p / 100}`).join(', ')}`,
       );
     await c.query(
       `INSERT INTO rider_poc_bases (rider_id, from_month, base_paise, set_by, reason)
@@ -101,8 +114,13 @@ async function stretches(c: Pick<PoolClient, 'query'>, from: number, to: number)
 }
 type Stretch = Awaited<ReturnType<typeof stretches>>[number];
 
-const riderAt = (all: readonly Stretch[], screenId: string, t: number) =>
-  all.find((s) => s.screenId === screenId && s.from <= t && t < s.to)?.riderId;
+/** Who rode a screen at a moment: stretches grouped by screen, so each lookup is short. */
+function ridersOf(all: readonly Stretch[]) {
+  const byScreen = new Map<string, Stretch[]>();
+  for (const s of all) byScreen.set(s.screenId, [...(byScreen.get(s.screenId) ?? []), s]);
+  return (screenId: string, t: number) =>
+    byScreen.get(screenId)?.find((s) => s.from <= t && t < s.to)?.riderId;
+}
 
 /**
  * What each rider's counted plays sold in a month: every sold line of the month's business days
@@ -126,6 +144,7 @@ async function soldByRider(
     [month],
   );
   const out = new Map<string, number>();
+  const riderAt = ridersOf(all);
   for (const l of lines.rows) {
     const book = books.find((b) => b.version === l.price_book_version);
     if (!book) throw new Error(`price book ${l.price_book_version} not found`);
@@ -137,7 +156,7 @@ async function soldByRider(
     ];
     if (counted.length === 0) continue;
     // A play by a screen nobody was riding sells for no rider ('').
-    const keys = counted.map((p) => riderAt(all, p.screenId, p.startAt) ?? '');
+    const keys = counted.map((p) => riderAt(p.screenId, p.startAt) ?? '');
     for (const [rider, paise] of soldShares(await paidForLine(c, l, book), l.plays, keys))
       if (rider !== '') out.set(rider, (out.get(rider) ?? 0) + paise);
   }
@@ -176,15 +195,22 @@ export interface RiderMonthPay extends RiderPay {
 
 /**
  * Brings every rider's pay for `month` in the ledger up to date at `now` (P1.7.5–6): POC pay once
- * the month has ended; after the POC, as the month goes (for the Monday payouts), final once it
- * has closed. Safe to run as often as wanted: runs take turns and each posts only what changed.
+ * the month has ended; after the POC, as the month goes (for the Monday payouts). Once the month
+ * has closed (`monthCloseHours` after its end) it never changes by itself: late changes are
+ * reported in `late`. Safe to run as often as wanted: runs take turns and each posts only what changed.
  * One rider failing does not hold up the others.
  */
 export async function accrueRiderPay(
   pool: Pool,
   month: string,
   now: number,
-): Promise<{ pay: RiderMonthPay[]; posted: number; failed: { riderId: string; error: string }[] }> {
+): Promise<{
+  pay: RiderMonthPay[];
+  posted: number;
+  failed: { riderId: string; error: string }[];
+  /** Changes found after the month closed: not posted, for finance to settle by hand. */
+  late: { riderId: string; grossChange: number }[];
+}> {
   if (!MONTH.test(month)) throw new RangeError('Month must be YYYY-MM');
   return inTransaction(pool, async (c) => {
     await c.query("SELECT pg_advisory_xact_lock(hashtext('rider-pay'))");
@@ -196,17 +222,27 @@ export async function accrueRiderPay(
     const rules = book.riderPay;
     const ended = now >= end;
     const final = now >= end + rules.monthCloseHours * 3600;
-    const all = await stretches(c, start - 3600, end + 3600);
-    const sold = rules.mode === 'standard' ? await soldByRider(c, month, all, books) : new Map();
+    // Up to two days after the month: a last-day line's make-up plays the next day (to 02:00).
+    const all = await stretches(c, start - 3600, end + 2 * 86_400);
+    const sold: Map<string, number> =
+      rules.mode === 'standard' ? await soldByRider(c, month, all, books) : new Map();
     const bases = await c.query<{ rider_id: string; base: string }>(
       `SELECT DISTINCT ON (rider_id) rider_id, base_paise AS base FROM rider_poc_bases
         WHERE from_month <= $1 ORDER BY rider_id, from_month DESC`,
       [month],
     );
     const baseOf = new Map(bases.rows.map((r) => [r.rider_id, Number(r.base)]));
-    const riders = [...new Set([...all.map((s) => s.riderId), ...baseOf.keys()])].sort();
+    // Riders who rode a screen during the month, or whose plays sold for it (a last-day line's
+    // make-up plays the next day). A base alone pays nothing.
+    const riders = [
+      ...new Set([
+        ...all.filter((s) => s.from < end && s.to > start).map((s) => s.riderId),
+        ...sold.keys(),
+      ]),
+    ].sort();
     const pay: RiderMonthPay[] = [];
     const failed: { riderId: string; error: string }[] = [];
+    const late: { riderId: string; grossChange: number }[] = [];
     let posted = 0;
     for (const riderId of riders) {
       await c.query('SAVEPOINT rider');
@@ -231,10 +267,12 @@ export async function accrueRiderPay(
           Number(row?.n ?? 0) + 1,
           now,
         );
-        if (e) {
+        // A closed month never changes by itself (its pay may be paid out): a late change is
+        // reported for finance to settle by hand.
+        if (e && !final) {
           await postEntry(c, e, 'rider-pay');
           posted += 1;
-        }
+        } else if (e) late.push({ riderId, grossChange: p.gross - Number(row?.gross ?? 0) });
         pay.push({ ...p, ...h, riderId, soldPaise, final });
         await c.query('RELEASE SAVEPOINT rider');
       } catch (err) {
@@ -242,6 +280,6 @@ export async function accrueRiderPay(
         failed.push({ riderId, error: err instanceof Error ? err.message : String(err) });
       }
     }
-    return { pay, posted, failed };
+    return { pay, posted, failed, late };
   });
 }
