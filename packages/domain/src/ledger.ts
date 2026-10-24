@@ -255,16 +255,17 @@ export interface Cut {
   readonly partnerId: string;
   readonly rateBp: number;
   readonly gstBp: number;
-  /** TDS held back from the cut (not its GST) and paid to the government (Prateek, 24 Oct 2026). */
+  /** TDS held back from the cut before GST, paid to the government (Prateek, 24 Oct 2026). */
   readonly tdsBp: number;
 }
 
 /**
  * Brings a booking's cut up (or down) to its rate on what the booking has delivered so far (cuts
  * are worked out on delivered plays: not on what was invoiced, nor on money kept without delivery).
- * The partner's GST is paid on top and claimed back by RECALL; TDS on the cut is held back from the
- * partner and owed to the government. `soFar` is the cut, GST and TDS already recorded (from the
- * ledger); `n` numbers the entry.
+ * The cut includes the partner's GST (Prateek, 24 Oct 2026: 10% of ₹1,200 is ₹120 in all): that
+ * GST is claimed back by RECALL. TDS on the cut before GST is held back from the partner and owed
+ * to the government, so the partner is paid the cut less TDS. `soFar` is the cut before GST, the
+ * GST and the TDS already recorded (from the ledger); `n` numbers the entry.
  */
 export function cutAccrued(
   cut: Cut,
@@ -274,10 +275,13 @@ export function cutAccrued(
   at: number,
 ): Entry | undefined {
   const bp = (x: number, rate: number) => Math.floor((x * rate + 5_000) / 10_000);
-  const target = bp(delivered, cut.rateBp);
-  const more = target - soFar.cut;
-  const moreGst = bp(target, cut.gstBp) - soFar.gst;
-  const moreTds = bp(target, cut.tdsBp) - soFar.tds;
+  const total = bp(delivered, cut.rateBp);
+  // The part before GST, to the nearest paisa (halves up); the GST is the rest.
+  const d = 10_000 + cut.gstBp;
+  const net = Math.floor((total * 20_000 + d) / (2 * d));
+  const more = net - soFar.cut;
+  const moreGst = total - net - soFar.gst;
+  const moreTds = bp(net, cut.tdsBp) - soFar.tds;
   if (more === 0 && moreGst === 0 && moreTds === 0) return undefined;
   const expense = cut.kind === 'agency' ? 'agency-cuts' : 'aggregator-cuts';
   const payable = cut.kind === 'agency' ? 'agency-payable' : 'aggregator-payable';

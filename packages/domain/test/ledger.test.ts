@@ -265,7 +265,7 @@ describe('the ledger always balances (property)', () => {
   });
 });
 
-describe("cuts, only when given, with the partner's GST (P1.7.4)", () => {
+describe("cuts, only when given, the partner's GST included, less TDS (P1.7.4)", () => {
   const cut = {
     bookingId: 'BK-1',
     kind: 'agency' as const,
@@ -275,47 +275,47 @@ describe("cuts, only when given, with the partner's GST (P1.7.4)", () => {
     tdsBp: 0,
   };
 
-  it("10% of what was delivered, plus the agency's 18% GST, owed to the agency; the GST is claimed back", () => {
+  it("10% of what was delivered, the agency's 18% GST included, owed to the agency; the GST is claimed back", () => {
     const e = cutAccrued(cut, 150_000, { cut: 0, gst: 0, tds: 0 }, 1, T);
     expect(checkEntry(e as Entry)).toEqual([]);
     expect(e?.postings.map((p) => [p.account, p.debit, p.credit])).toEqual([
-      ['agency-cuts', 15_000, 0],
-      ['gst-input', 2_700, 0],
-      ['agency-payable', 0, 17_700],
+      ['agency-cuts', 12_712, 0],
+      ['gst-input', 2_288, 0],
+      ['agency-payable', 0, 15_000],
     ]);
   });
 
   it('when earned goes down (plays found fake), the cut and its GST come down too; unchanged, no entry', () => {
-    const e = cutAccrued(cut, 120_000, { cut: 15_000, gst: 2_700, tds: 0 }, 2, T);
+    const e = cutAccrued(cut, 120_000, { cut: 12_712, gst: 2_288, tds: 0 }, 2, T);
     expect(e?.postings.map((p) => [p.account, p.debit, p.credit])).toEqual([
-      ['agency-cuts', 0, 3_000],
-      ['gst-input', 0, 540],
-      ['agency-payable', 3_540, 0],
+      ['agency-cuts', 0, 2_543],
+      ['gst-input', 0, 457],
+      ['agency-payable', 3_000, 0],
     ]);
-    expect(cutAccrued(cut, 120_000, { cut: 12_000, gst: 2_160, tds: 0 }, 3, T)).toBeUndefined();
+    expect(cutAccrued(cut, 120_000, { cut: 10_169, gst: 1_831, tds: 0 }, 3, T)).toBeUndefined();
   });
 
-  it('TDS on the cut (not its GST) is held back from the partner and owed to the government', () => {
+  it('₹150 cut with GST included: TDS on the ₹127.12 before GST is held back; the agency gets ₹147.46', () => {
     const e = cutAccrued({ ...cut, tdsBp: 200 }, 150_000, { cut: 0, gst: 0, tds: 0 }, 1, T);
     expect(checkEntry(e as Entry)).toEqual([]);
     expect(e?.postings.map((p) => [p.account, p.debit, p.credit])).toEqual([
-      ['agency-cuts', 15_000, 0],
-      ['gst-input', 2_700, 0],
-      ['agency-payable', 0, 17_400],
-      ['tds-payable', 0, 300],
+      ['agency-cuts', 12_712, 0],
+      ['gst-input', 2_288, 0],
+      ['agency-payable', 0, 14_746],
+      ['tds-payable', 0, 254],
     ]);
     const down = cutAccrued(
       { ...cut, tdsBp: 200 },
       120_000,
-      { cut: 15_000, gst: 2_700, tds: 300 },
+      { cut: 12_712, gst: 2_288, tds: 254 },
       2,
       T,
     );
     expect(down?.postings.map((p) => [p.account, p.debit, p.credit])).toEqual([
-      ['agency-cuts', 0, 3_000],
-      ['gst-input', 0, 540],
-      ['agency-payable', 3_480, 0],
-      ['tds-payable', 60, 0],
+      ['agency-cuts', 0, 2_543],
+      ['gst-input', 0, 457],
+      ['agency-payable', 2_949, 0],
+      ['tds-payable', 51, 0],
     ]);
   });
 
@@ -355,10 +355,13 @@ describe("cuts, only when given, with the partner's GST (P1.7.4)", () => {
             };
           });
           const last = earnings[earnings.length - 1] ?? 0;
-          const target = Math.floor((last * rateBp + 5_000) / 10_000);
-          expect(so.cut).toBe(target);
-          expect(so.gst).toBe(Math.floor((target * gstBp + 5_000) / 10_000));
-          expect(so.tds).toBe(Math.floor((target * tdsBp + 5_000) / 10_000));
+          // In all, the cut is its rate of the last delivered figure, GST included.
+          const total = Math.floor((last * rateBp + 5_000) / 10_000);
+          expect(so.cut + so.gst).toBe(total);
+          expect(Math.abs(so.cut * (10_000 + gstBp) - total * 10_000)).toBeLessThanOrEqual(
+            (10_000 + gstBp) / 2,
+          );
+          expect(so.tds).toBe(Math.floor((so.cut * tdsBp + 5_000) / 10_000));
         },
       ),
     );

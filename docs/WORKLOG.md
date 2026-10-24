@@ -10,9 +10,11 @@ A second agent reviewed cuts and the cancellation code. It found 4 real problems
 - **A cut could be given on any booking.** Now it needs a paid booking that can still deliver (not a trial, cancelled or ads-missing), a rate of 0.01–50% and partner GST of 0–28%. The price book's cut rates are checked the same way.
 - Also: if a cut fails during a refund decision, the decision still stands (the next close fixes the cut).
 - Checked and fine: the 72-hour boundary, booking-id matching, no cut posted twice, and raising or lowering a cut.
-- Tests: 226 domain, 90 database.
+- Tests: 226 domain, 92 database.
 - Prateek answered questions 13 and 14 the same day: both money calls confirmed; TDS is held back from cuts; partner GST is claimed back; our rounding wins.
-- **TDS on cuts:** setting `cutTdsBp` (2%, section 194H, CA to confirm the rate and any yearly threshold; until then held back on every cut, the safe side). The rate is kept with each cut (migration 0012). A cut entry now owes the partner cut + GST − TDS, and the TDS goes to `tds-payable`.
+- **TDS on cuts:** setting `cutTdsBp` (2%, section 194H, CA to confirm the rate and any yearly threshold; until then held back on every cut, the safe side). The rate in force when the cut is given is kept with it (migration 0012).
+- **Cuts include the partner's GST** (Prateek, later the same day): 10% of ₹1,200 = ₹120 in all = ₹101.69 + ₹18.31 GST. TDS on ₹101.69 (₹2.03) goes to `tds-payable`; the partner is owed ₹117.97; the ₹18.31 is claimed back (`gst-input`).
+- Third review (top-ups and TDS): top-up GST could give back 1 paisa more than charged (fixed, test added); top-ups now recorded in `refund_topups` (migration 0013) with who, when and how many plays; refund proposal time comes from the run; cut and TDS rates from the price book in force when the cut is given.
 - A second review of these fixes found no blocking bug. Fixed anyway:
   - Plays found fake after a refund was proposed: the credit note is now topped up at approval, so the brand pays only for what was delivered.
   - The 7-day deadline counts from when the refund was proposed, if that is later than the cancellation.
