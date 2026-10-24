@@ -7,6 +7,7 @@ import {
   lineIdOf,
   nextDecisionAt,
   nextSettlementStep,
+  refundApproved,
   refundPaise,
   type LineSlot,
   type MakeUpWindow,
@@ -15,9 +16,13 @@ import {
 } from '@recall/domain';
 import type { Pool, PoolClient } from 'pg';
 import { priceBooks } from './bookings.js';
+import { postEntry } from './ledger.js';
 import { COUNTING, lineTotalsFor } from './plays.js';
 
-async function inTransaction<T>(pool: Pool, work: (c: PoolClient) => Promise<T>): Promise<T> {
+export async function inTransaction<T>(
+  pool: Pool,
+  work: (c: PoolClient) => Promise<T>,
+): Promise<T> {
   const c = await pool.connect();
   try {
     await c.query('BEGIN');
@@ -33,7 +38,7 @@ async function inTransaction<T>(pool: Pool, work: (c: PoolClient) => Promise<T>)
   }
 }
 
-interface OpenLine {
+export interface OpenLine {
   readonly booking_id: string;
   readonly area_id: string;
   readonly day: string;
@@ -48,7 +53,7 @@ interface OpenLine {
 }
 
 /** What a line was really paid, before GST: its price less its exact share of a deal discount. */
-async function paidForLine(c: PoolClient, l: OpenLine, book: PriceBook): Promise<number> {
+export async function paidForLine(c: PoolClient, l: OpenLine, book: PriceBook): Promise<number> {
   if (l.trial) return 0;
   const all = await c.query<{ area_id: string; day: string; start_hour: number; paise: string }>(
     `SELECT area_id, day::text AS day, start_hour, paise FROM booking_lines WHERE booking_id = $1
@@ -268,19 +273,44 @@ export async function makeUpsDue(
   return out;
 }
 
-/** A super admin approves or rejects a proposed refund (Prateek, 22 Oct 2026). Decided once. */
+/**
+ * A super admin approves or rejects a proposed refund (Prateek, 22 Oct 2026). Decided once. An
+ * approved refund goes into the ledger at once: the undelivered part and its GST are owed back to
+ * the brand (the credit note, P1.7.9).
+ */
 export async function decideRefund(
   pool: Pool,
   refundId: string,
   decision: 'approved' | 'rejected',
   by: { readonly id: string; readonly role: string },
   reason: string,
+  now: number = Math.floor(Date.now() / 1000),
 ): Promise<void> {
   if (by.role !== 'super-admin') throw new Error('Only a super admin can decide a refund');
-  await inTransaction(pool, (c) =>
-    c.query(
+  await inTransaction(pool, async (c) => {
+    await c.query(
       'INSERT INTO refund_decisions (refund_id, decision, decided_by, reason) VALUES ($1, $2, $3, $4)',
       [refundId, decision, by.id, reason],
-    ),
-  );
+    );
+    if (decision !== 'approved') return;
+    const r = await c.query<{ line_id: string; brand_id: string; base: string; gst: string }>(
+      `SELECT r.line_id, b.brand_id, r.base_paise AS base, r.gst_paise AS gst
+         FROM refunds r JOIN bookings b USING (booking_id) WHERE r.refund_id = $1`,
+      [refundId],
+    );
+    const row = r.rows[0];
+    if (!row) throw new Error(`No refund ${refundId}`);
+    await postEntry(
+      c,
+      refundApproved({
+        refundId,
+        lineId: row.line_id,
+        brandId: row.brand_id,
+        base: Number(row.base),
+        gst: Number(row.gst),
+        at: now,
+      }),
+      by.id,
+    );
+  });
 }

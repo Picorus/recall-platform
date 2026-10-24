@@ -101,6 +101,22 @@ describe('held → earned, hour by hour (P1.7.3)', () => {
     ).toBeUndefined();
   });
 
+  it('plays later found not to count (a stolen screen): the excess goes back from revenue to held', () => {
+    const e = lineEarned({
+      lineId: 'L1',
+      brandId: 'b',
+      earnedNow: 120_000,
+      earnedSoFar: 150_000,
+      closeId: '9',
+      at: T,
+    });
+    expect(checkEntry(e as Entry)).toEqual([]);
+    expect(e?.postings.map((p) => [p.account, p.debit, p.credit])).toEqual([
+      ['revenue', 30_000, 0],
+      ['campaign-held', 0, 30_000],
+    ]);
+  });
+
   it('a short line: earned + refund = what was paid, and held ends at exactly 0', () => {
     // ₹1,500 paid for 1,000 plays; 975 delivered; 25 refunded (₹37.50 + ₹6.75 GST).
     const earned = lineEarned({
@@ -149,7 +165,10 @@ describe('held → earned, hour by hour (P1.7.3)', () => {
             });
             if (e) {
               expect(checkEntry(e)).toEqual([]);
-              soFar += e.postings[0]?.debit ?? 0;
+              soFar +=
+                e.kind === 'line-earned'
+                  ? (e.postings[0]?.debit ?? 0)
+                  : -(e.postings[0]?.debit ?? 0);
             }
           });
           expect(soFar).toBe(earnedPaise(paidPaise, promised, delivered));

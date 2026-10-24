@@ -168,7 +168,9 @@ export function earnedPaise(paid: number, promised: number, delivered: number): 
 
 /**
  * P1.7.3: moves the newly earned part of a line from held to revenue. `earnedSoFar` is what earlier
- * hour closes already moved (worked out from the ledger). Undefined when there is nothing new.
+ * hour closes already moved (worked out from the ledger). If the line has earned less than that
+ * (plays later found not to count, e.g. a stolen screen's), the difference goes back to held.
+ * Undefined when nothing changed.
  */
 export function lineEarned(l: {
   readonly lineId: string;
@@ -180,17 +182,17 @@ export function lineEarned(l: {
   readonly at: number;
 }): Entry | undefined {
   const more = l.earnedNow - l.earnedSoFar;
-  if (more <= 0) return undefined;
+  if (more === 0) return undefined;
+  const back = more < 0;
   return {
     entryId: `earned:${l.lineId}:${l.closeId}`,
     at: l.at,
-    kind: 'line-earned',
+    kind: back ? 'line-earned-back' : 'line-earned',
     ref: l.lineId,
-    memo: `Plays delivered for ${l.lineId}`,
-    postings: [
-      ...post('campaign-held', 'debit', more, l.brandId),
-      ...post('revenue', 'credit', more),
-    ],
+    memo: back ? `Plays for ${l.lineId} found not to count` : `Plays delivered for ${l.lineId}`,
+    postings: back
+      ? [...post('revenue', 'debit', -more), ...post('campaign-held', 'credit', -more, l.brandId)]
+      : [...post('campaign-held', 'debit', more, l.brandId), ...post('revenue', 'credit', more)],
   };
 }
 

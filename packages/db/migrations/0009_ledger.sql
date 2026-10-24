@@ -59,4 +59,12 @@ CREATE TRIGGER ledger_postings_no_change BEFORE UPDATE OR DELETE ON ledger_posti
 CREATE TRIGGER ledger_postings_no_truncate BEFORE TRUNCATE ON ledger_postings
   FOR EACH STATEMENT EXECUTE FUNCTION recall_append_only();
 
-GRANT SELECT, INSERT ON ledger_entries, ledger_postings TO recall_app;
+-- Lines whose earnings are final (all of what was paid is earned or refunded): not looked at again.
+CREATE TABLE line_earnings_closed (
+  line_id   text        PRIMARY KEY,
+  closed_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TRIGGER line_earnings_closed_no_change BEFORE UPDATE OR DELETE ON line_earnings_closed
+  FOR EACH ROW EXECUTE FUNCTION recall_append_only();
+
+GRANT SELECT, INSERT ON ledger_entries, ledger_postings, line_earnings_closed TO recall_app;
