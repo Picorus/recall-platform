@@ -11,8 +11,12 @@ Answer whenever you like; each answer moves to `docs/DECISIONS.md` and the row i
 | 5 | Fitting centre address(es) (any number can be added) | Rider Fitting | P4.3 |
 | 6 | Support phone and WhatsApp numbers (hours: 10 am – 7 pm for now) | Rider Help; brand Help; admin Support | P3.15, P4.9 |
 | 7 | Charging steps for the screen, once the equipment is final (from the screen maker) | Rider Your screen | P4.8 |
-| 12 | A brand cancels a paid booking before it starts: full refund, refund minus a fee, or credit for a later booking? (Rulebook says only: no refund if ads are late) | Brand portal; admin Bookings; Money | P1.7 refunds, P5 |
 | 10b | TDS rate on rider pay and any gig-worker levy (ask your CA) | Admin Payouts; rider Payouts | P1.7.7 |
+
+## Answered 24 Oct 2026 (now in DECISIONS)
+| # | Answer |
+|---|---|
+| ~~12~~ | Cancelled after paying: no refund by default; at least 72 hours before the first hour a super admin may refund 100%; later, no refund |
 
 ## Answered 22 Oct 2026 (now in DECISIONS)
 | # | Answer |

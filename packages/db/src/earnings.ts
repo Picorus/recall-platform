@@ -27,8 +27,8 @@ async function openLines(c: PoolClient, today: string, lineId?: string): Promise
        FROM booking_lines bl JOIN bookings b USING (booking_id)
        JOIN LATERAL (SELECT state FROM booking_events e WHERE e.booking_id = bl.booking_id
                       ORDER BY seq DESC LIMIT 1) s ON true
-      WHERE NOT b.trial AND bl.day <= $1::date
-        AND (s.state = ANY($2) OR s.state IN ('ads-missing', 'cancelled'))
+      WHERE NOT b.trial
+        AND ((s.state = ANY($2) AND bl.day <= $1::date) OR s.state IN ('ads-missing', 'cancelled'))
         AND EXISTS (SELECT 1 FROM booking_events p WHERE p.booking_id = bl.booking_id AND p.state = 'paid')
         AND NOT EXISTS (SELECT 1 FROM line_earnings_closed x
                          WHERE x.line_id = bl.booking_id || '/' || bl.area_id || '/' || bl.day::text
@@ -76,7 +76,7 @@ async function targetFor(
   if (refund?.decision === 'approved')
     return { earned: paid - Number(refund.base ?? 0), final: true };
   if (refund?.decision === 'rejected') return { earned: paid, final: true };
-  // A cancelled booking earns nothing while its refund is decided.
+  // A cancelled booking earns nothing while its refund is decided (or until the decision step runs).
   if (l.state === 'cancelled') return { earned: 0, final: false };
   const delivered =
     (await lineTotalsFor(c, lineId, books)).plays +
