@@ -3,6 +3,7 @@
 // checked one at a time so two people can never take the same limited bikes.
 import {
   DEFAULT_CAPACITY_RULES,
+  bookingPaid,
   DEFAULT_MAKE_UP_RULES,
   DEFAULT_PLAY_RULES,
   capacityProblems,
@@ -28,6 +29,7 @@ import {
 } from '@recall/domain';
 import type { Pool, PoolClient } from 'pg';
 import { allAreaVersions } from './areas.js';
+import { postEntry } from './ledger.js';
 import { forecastLimits } from './supply.js';
 
 async function inTransaction<T>(pool: Pool, work: (c: PoolClient) => Promise<T>): Promise<T> {
@@ -374,6 +376,8 @@ export interface StepBy {
   readonly by: string;
   readonly actor: Actor;
   readonly reason?: string;
+  /** For the move to paid: the payment's id at the gateway (P1.7.2). */
+  readonly paymentId?: string;
 }
 
 /** Moves a booking to its next step, if the rules allow it now; logs who and why. */
@@ -409,6 +413,8 @@ export async function moveBooking(
       lastHourEndsAt: last.last_hour_ends_at.getTime() / 1000,
       adsDueAt: last.ads_due_at.getTime() / 1000,
     };
+    if (who.paymentId !== undefined && !/^[A-Za-z0-9._-]{1,80}$/.test(who.paymentId))
+      throw new Error('Payment id must be 1–80 letters, digits, dots, dashes or underscores');
     const problem = stepProblem(last.state, to, now, timing, who.actor, who.reason);
     if (problem) throw new Error(problem);
     if (last.state === 'draft' && to === 'awaiting-payment' && !last.trial) {
@@ -452,5 +458,26 @@ export async function moveBooking(
       'INSERT INTO booking_events (booking_id, seq, state, at, by_who, reason) VALUES ($1, $2, $3, to_timestamp($4), $5, $6)',
       [bookingId, last.seq + 1, to, now, who.by, who.reason ?? null],
     );
+    if (to === 'paid') {
+      // P1.7.2: the advance (subtotal + GST) is held until plays are delivered; GST is owed at once.
+      const m = await c.query<{ brand_id: string; subtotal: string; gst: string }>(
+        'SELECT brand_id, subtotal_paise AS subtotal, gst_paise AS gst FROM bookings WHERE booking_id = $1',
+        [bookingId],
+      );
+      const b = m.rows[0];
+      if (b && Number(b.subtotal) + Number(b.gst) > 0)
+        await postEntry(
+          c,
+          bookingPaid({
+            bookingId,
+            brandId: b.brand_id,
+            subtotal: Number(b.subtotal),
+            gst: Number(b.gst),
+            paymentId: who.paymentId ?? 'advance',
+            at: now,
+          }),
+          who.by,
+        );
+    }
   });
 }

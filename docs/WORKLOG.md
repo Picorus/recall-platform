@@ -2,6 +2,32 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 24 Oct 2026 · P1.7.1–3 · The ledger: payments held, revenue earned, refunds
+- P1.6 merged (PR #20).
+- Domain (`ledger.ts`): accounts; `checkEntry` (balanced, whole paise, one side per posting, two or more postings); `reversal` (only for a person's adjustments); `balances` from postings; `bookingPaid`, `earnedPaise`, `lineEarned` (both ways), `refundApproved`.
+- Database (migration 0009):
+  - `ledger_entries`, `ledger_postings`, with balance checked at commit.
+  - Writes only through `ledger_post`, so postings can't be added later and a reversal must mirror its entry. Append-only.
+  - `postEntry` is idempotent. `accountTotals` and `trialBalance` are summed from the postings.
+- Flows:
+  - Paying a booking posts the advance (held + GST owed).
+  - `closeEarnings`: per line, delivered share to revenue (and back when plays are found fake); entries numbered per line; one line failing doesn't stop the others.
+  - `decideRefund` posts the credit note and settles the line in the same step.
+  - Ads missing: everything is earned. Cancelled after paying: a full refund is proposed for sign-off.
+- Cuts: Prateek decided they are given only when RECALL chooses, and then with their GST (recorded in DECISIONS and the plan).
+- Second review found 5 issues, all fixed with tests:
+  - paid bookings cancelled or forfeited kept money held forever;
+  - reversing a closed line's entry left money stuck;
+  - postings could be added to an old entry later;
+  - one bad line stopped all earnings;
+  - held went negative between a refund approval and the next close.
+  Also: a refund rounding to ₹0 is not proposed; payment ids are checked.
+- Tests: 219 domain (500-run property test: the ledger always balances), 81 database. The money walk: ₹1,500 paid → ₹1,350 earned → make-ups earn → stolen screen's revenue goes back → refund approved → held ₹0. Also covered: ads missing, cancelled after paying, a rerun at the same moment, hand-written rows refused, a non-mirroring reversal refused.
+- Open:
+  - `closeEarnings` re-reads each booking's lines per line (slow for 12-month deals with thousands of lines); cache before the load tests.
+  - Open question 12 (cancellation refund policy).
+- **Next: P1.7.4–7** cuts (when given, with GST), rider earnings, payouts and TDS; then P1.7.9 GST registers.
+
 ## 24 Oct 2026 · P1.6 · Make-ups and refunds
 - P1.5 merged (PR #19).
 - Domain (`makeups.ts`):

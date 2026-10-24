@@ -17,7 +17,10 @@ import type { Pool, PoolClient } from 'pg';
 import { priceBooks } from './bookings.js';
 import { COUNTING, lineTotalsFor } from './plays.js';
 
-async function inTransaction<T>(pool: Pool, work: (c: PoolClient) => Promise<T>): Promise<T> {
+export async function inTransaction<T>(
+  pool: Pool,
+  work: (c: PoolClient) => Promise<T>,
+): Promise<T> {
   const c = await pool.connect();
   try {
     await c.query('BEGIN');
@@ -33,7 +36,7 @@ async function inTransaction<T>(pool: Pool, work: (c: PoolClient) => Promise<T>)
   }
 }
 
-interface OpenLine {
+export interface OpenLine {
   readonly booking_id: string;
   readonly area_id: string;
   readonly day: string;
@@ -48,7 +51,7 @@ interface OpenLine {
 }
 
 /** What a line was really paid, before GST: its price less its exact share of a deal discount. */
-async function paidForLine(c: PoolClient, l: OpenLine, book: PriceBook): Promise<number> {
+export async function paidForLine(c: PoolClient, l: OpenLine, book: PriceBook): Promise<number> {
   if (l.trial) return 0;
   const all = await c.query<{ area_id: string; day: string; start_hour: number; paise: string }>(
     `SELECT area_id, day::text AS day, start_hour, paise FROM booking_lines WHERE booking_id = $1
@@ -123,8 +126,77 @@ export async function settleDue(pool: Pool, now: number): Promise<Settled> {
         failed.push({ lineId, error: e instanceof Error ? e.message : String(e) });
       }
     }
+    // A booking cancelled after it was paid: a full refund of each line is proposed for a super admin
+    // to approve or reject (open question 12 decides the policy; every refund is signed off).
+    const cancelled = await c.query<OpenLine>(
+      `SELECT bl.booking_id, bl.area_id, bl.day::text AS day, bl.start_hour, bl.plays, bl.paise,
+              b.trial, b.discount_paise, b.subtotal_paise, b.gst_paise, b.price_book_version
+         FROM booking_lines bl JOIN bookings b USING (booking_id)
+         JOIN LATERAL (SELECT state FROM booking_events e WHERE e.booking_id = bl.booking_id
+                        ORDER BY seq DESC LIMIT 1) s ON true
+        WHERE s.state = 'cancelled' AND NOT b.trial
+          AND EXISTS (SELECT 1 FROM booking_events p WHERE p.booking_id = bl.booking_id AND p.state = 'paid')
+          AND NOT EXISTS (
+            SELECT 1 FROM line_settlements ls
+             WHERE ls.line_id = bl.booking_id || '/' || bl.area_id || '/' || bl.day::text || '/' || bl.start_hour
+               AND ls.step = 'refund')
+        ORDER BY bl.day, bl.start_hour, bl.booking_id, bl.area_id`,
+    );
+    for (const l of cancelled.rows) {
+      const lineId = lineIdOf(l.booking_id, l.area_id, l.day, l.start_hour);
+      await c.query('SAVEPOINT line');
+      try {
+        const book = books.find((b) => b.version === l.price_book_version);
+        if (!book) throw new Error(`price book ${l.price_book_version} not found`);
+        await proposeRefund(c, l, lineId, book, l.plays);
+        decisions += 1;
+        await c.query('RELEASE SAVEPOINT line');
+      } catch (e) {
+        await c.query('ROLLBACK TO SAVEPOINT line');
+        failed.push({ lineId, error: e instanceof Error ? e.message : String(e) });
+      }
+    }
     return { decisions, opened, failed };
   });
+}
+
+/** Proposes a refund of `missing` plays of a line (capped by the booking's bill and GST). */
+async function proposeRefund(
+  c: PoolClient,
+  l: OpenLine,
+  lineId: string,
+  book: PriceBook,
+  missing: number,
+): Promise<void> {
+  const decide = (outcome: string) =>
+    c.query(
+      `INSERT INTO line_settlements (line_id, step, outcome, owed) VALUES ($1, 'refund', $2, $3)`,
+      [lineId, outcome, missing],
+    );
+  const paid = await paidForLine(c, l, book);
+  if (paid === 0 || missing === 0)
+    return void (await decide(paid === 0 ? 'nothing paid' : 'not needed'));
+  const before = await c.query<{ base: string; gst: string }>(
+    `SELECT coalesce(sum(base_paise), 0) AS base, coalesce(sum(gst_paise), 0) AS gst
+       FROM refunds WHERE booking_id = $1`,
+    [l.booking_id],
+  );
+  const base = Math.min(
+    refundPaise(missing, l.plays, paid),
+    Number(l.subtotal_paise) - Number(before.rows[0]?.base ?? 0),
+  );
+  if (base <= 0) return void (await decide('not needed'));
+  const gst = Math.min(
+    bpOf(base, book.gstBp),
+    Number(l.gst_paise) - Number(before.rows[0]?.gst ?? 0),
+  );
+  await c.query(
+    `INSERT INTO refunds (refund_id, line_id, booking_id, missing_plays, promised_plays,
+       paid_paise, base_paise, gst_paise, price_book_version)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+    [`${lineId}#refund`, lineId, l.booking_id, missing, l.plays, paid, base, gst, book.version],
+  );
+  await decide('refund');
 }
 
 async function settleLine(
@@ -219,6 +291,12 @@ async function settleLine(
           refundPaise(step.missing, l.plays, paid),
           Number(l.subtotal_paise) - Number(before.rows[0]?.base ?? 0),
         );
+        if (base <= 0) {
+          // Too little missing to come to a paisa: nothing to give back.
+          await decide('refund', 'not needed', step.missing);
+          done.refund = { missing: step.missing };
+          continue;
+        }
         const gst = Math.min(
           bpOf(base, book.gstBp),
           Number(l.gst_paise) - Number(before.rows[0]?.gst ?? 0),
@@ -266,21 +344,4 @@ export async function makeUpsDue(
     if (left > 0) out.push({ makeUpId: m.make_up_id, brandId: m.brand_id, plays: left });
   }
   return out;
-}
-
-/** A super admin approves or rejects a proposed refund (Prateek, 22 Oct 2026). Decided once. */
-export async function decideRefund(
-  pool: Pool,
-  refundId: string,
-  decision: 'approved' | 'rejected',
-  by: { readonly id: string; readonly role: string },
-  reason: string,
-): Promise<void> {
-  if (by.role !== 'super-admin') throw new Error('Only a super admin can decide a refund');
-  await inTransaction(pool, (c) =>
-    c.query(
-      'INSERT INTO refund_decisions (refund_id, decision, decided_by, reason) VALUES ($1, $2, $3, $4)',
-      [refundId, decision, by.id, reason],
-    ),
-  );
 }
