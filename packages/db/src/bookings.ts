@@ -413,6 +413,8 @@ export async function moveBooking(
       lastHourEndsAt: last.last_hour_ends_at.getTime() / 1000,
       adsDueAt: last.ads_due_at.getTime() / 1000,
     };
+    if (who.paymentId !== undefined && !/^[A-Za-z0-9._-]{1,80}$/.test(who.paymentId))
+      throw new Error('Payment id must be 1–80 letters, digits, dots, dashes or underscores');
     const problem = stepProblem(last.state, to, now, timing, who.actor, who.reason);
     if (problem) throw new Error(problem);
     if (last.state === 'draft' && to === 'awaiting-payment' && !last.trial) {

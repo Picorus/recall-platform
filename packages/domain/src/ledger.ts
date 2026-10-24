@@ -82,6 +82,13 @@ export function checkEntry(e: Entry): LedgerProblem[] {
   return problems;
 }
 
+/**
+ * Entries made by the system (payments, hour closes, refunds) are put right by the system itself,
+ * never reversed by hand, so the figures worked out from them always agree. Only entries made by a
+ * person (manual adjustments) may be reversed.
+ */
+export const REVERSIBLE_KINDS: ReadonlySet<string> = new Set(['manual-adjustment']);
+
 /** The entry that undoes `e` exactly (debits and credits swapped). */
 export function reversal(e: Entry, at: number, memo: string): Entry {
   return {

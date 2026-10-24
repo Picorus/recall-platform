@@ -56,37 +56,57 @@ describe('the ledger in the database (P1.7.1)', () => {
     expect(await accountTotals(pool, 'payment-clearing')).toEqual({ debit: 177_000, credit: 0 });
   });
 
-  it('the database itself refuses an entry that does not balance, even written by hand', async () => {
-    await expect(
-      asApp(async (c) => {
-        await c.query(
-          `INSERT INTO ledger_entries (entry_id, at, kind, ref, memo, posted_by)
-           VALUES ('bad', to_timestamp(${T}), 'k', 'r', 'm', 'x')`,
-        );
-        await c.query(
-          `INSERT INTO ledger_postings (entry_id, n, account, debit, credit)
-           VALUES ('bad', 1, 'bank', 100, 0), ('bad', 2, 'revenue', 0, 99)`,
-        );
-      }),
-    ).rejects.toThrow(/does not balance/);
+  it('the app cannot write ledger rows directly, so postings can never be added to an entry later', async () => {
     await expect(
       asApp((c) =>
         c.query(
-          `INSERT INTO ledger_entries (entry_id, at, kind, ref, memo, posted_by)
-           VALUES ('empty', to_timestamp(${T}), 'k', 'r', 'm', 'x')`,
+          `INSERT INTO ledger_postings (entry_id, n, account, debit, credit)
+           VALUES ('paid:BK-1:pay-1', 9, 'bank', 999999, 0), ('paid:BK-1:pay-1', 10, 'revenue', 0, 999999)`,
+        ),
+      ),
+    ).rejects.toThrow(/permission denied/);
+  });
+
+  it('the database itself refuses an entry that does not balance', async () => {
+    await expect(
+      asApp((c) =>
+        c.query(
+          `SELECT ledger_post('bad', to_timestamp(${T}), 'manual-adjustment', 'r', 'm', NULL, 'x',
+             '[{"account":"bank","debit":"100","credit":"0"},{"account":"revenue","debit":"0","credit":"99"}]')`,
         ),
       ),
     ).rejects.toThrow(/does not balance/);
   });
 
-  it('a mistake is undone once by a reversing entry; entries cannot be edited or deleted', async () => {
-    await post(pool, reversal(paid, T + 60, 'paid twice by mistake'), 'prateek');
-    expect(await accountTotals(pool, 'payment-clearing')).toEqual({
-      debit: 177_000,
-      credit: 177_000,
-    });
+  it("entries made by the system are not reversed by hand; a person's adjustment can be, once, and only exactly", async () => {
+    await expect(post(pool, reversal(paid, T + 60, 'oops'), 'prateek')).rejects.toThrow(
+      /put right by the system/,
+    );
+    const adj = {
+      entryId: 'adj-1',
+      at: T,
+      kind: 'manual-adjustment',
+      ref: 'BK-1',
+      memo: 'gateway fee',
+      postings: [
+        { account: 'gateway-fees' as const, debit: 354, credit: 0 },
+        { account: 'payment-clearing' as const, debit: 0, credit: 354 },
+      ],
+    };
+    await post(pool, adj, 'priya');
+    // A "reversal" that does not mirror the entry is refused by the database.
     await expect(
-      post(pool, { ...reversal(paid, T + 120, 'again'), entryId: 'another-reversal' }, 'prateek'),
+      asApp((c) =>
+        c.query(
+          `SELECT ledger_post('adj-1~fake', to_timestamp(${T}), 'x', 'BK-1', 'm', 'adj-1', 'x',
+             '[{"account":"bank","debit":"1","credit":"0"},{"account":"revenue","debit":"0","credit":"1"}]')`,
+        ),
+      ),
+    ).rejects.toThrow(/does not mirror/);
+    await post(pool, reversal(adj, T + 60, 'typed the wrong amount'), 'priya');
+    expect(await accountTotals(pool, 'gateway-fees')).toEqual({ debit: 354, credit: 354 });
+    await expect(
+      post(pool, { ...reversal(adj, T + 120, 'again'), entryId: 'another-reversal' }, 'priya'),
     ).rejects.toThrow();
     await expect(pool.query(`UPDATE ledger_postings SET debit = 1`)).rejects.toThrow();
     await expect(pool.query(`DELETE FROM ledger_entries`)).rejects.toThrow();

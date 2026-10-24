@@ -1,6 +1,6 @@
 // P1.7.1 in the database: posting entries and reading balances. The database checks every entry
 // balances when the transaction commits; balances are always summed from the postings.
-import { checkEntry, type Account, type Entry } from '@recall/domain';
+import { checkEntry, REVERSIBLE_KINDS, type Account, type Entry } from '@recall/domain';
 import type { Pool, PoolClient } from 'pg';
 
 type Q = Pick<PoolClient, 'query'>;
@@ -82,20 +82,30 @@ export async function postEntry(c: Q, e: Entry, postedBy: string): Promise<'post
     if (!sameEntry(existing, e)) throw new LedgerError([`${e.entryId} already posted differently`]);
     return 'already';
   }
-  await c.query(
-    `INSERT INTO ledger_entries (entry_id, at, kind, ref, memo, reverses, posted_by)
-     VALUES ($1, to_timestamp($2), $3, $4, $5, $6, $7)`,
-    [e.entryId, e.at, e.kind, e.ref, e.memo, e.reverses ?? null, postedBy],
-  );
-  let n = 0;
-  for (const p of e.postings) {
-    n += 1;
-    await c.query(
-      `INSERT INTO ledger_postings (entry_id, n, account, debit, credit, party)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [e.entryId, n, p.account, p.debit, p.credit, p.party ?? null],
-    );
+  if (e.reverses !== undefined) {
+    const original = await entryById(c, e.reverses);
+    if (!original) throw new LedgerError([`nothing to reverse: ${e.reverses}`]);
+    if (!REVERSIBLE_KINDS.has(original.kind))
+      throw new LedgerError([`${original.kind} entries are put right by the system, not reversed`]);
   }
+  // One call writes the entry and all its postings; the database checks a reversal mirrors its entry.
+  await c.query('SELECT ledger_post($1, to_timestamp($2), $3, $4, $5, $6, $7, $8::jsonb)', [
+    e.entryId,
+    e.at,
+    e.kind,
+    e.ref,
+    e.memo,
+    e.reverses ?? null,
+    postedBy,
+    JSON.stringify(
+      e.postings.map((p) => ({
+        account: p.account,
+        debit: String(p.debit),
+        credit: String(p.credit),
+        party: p.party ?? null,
+      })),
+    ),
+  ]);
   return 'posted';
 }
 

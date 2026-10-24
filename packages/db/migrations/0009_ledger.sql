@@ -67,4 +67,35 @@ CREATE TABLE line_earnings_closed (
 CREATE TRIGGER line_earnings_closed_no_change BEFORE UPDATE OR DELETE ON line_earnings_closed
   FOR EACH ROW EXECUTE FUNCTION recall_append_only();
 
-GRANT SELECT, INSERT ON ledger_entries, ledger_postings, line_earnings_closed TO recall_app;
+-- The app never writes ledger rows directly: it posts a whole entry through ledger_post, so postings
+-- can never be added to an entry later, and a reversal must mirror exactly the entry it undoes.
+CREATE FUNCTION ledger_post(
+  p_entry_id text, p_at timestamptz, p_kind text, p_ref text, p_memo text, p_reverses text,
+  p_by text, p_postings jsonb
+) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
+BEGIN
+  INSERT INTO ledger_entries (entry_id, at, kind, ref, memo, reverses, posted_by)
+  VALUES (p_entry_id, p_at, p_kind, p_ref, p_memo, p_reverses, p_by);
+  INSERT INTO ledger_postings (entry_id, n, account, debit, credit, party)
+  SELECT p_entry_id, x.n::integer, x.p->>'account', (x.p->>'debit')::bigint,
+         (x.p->>'credit')::bigint, x.p->>'party'
+    FROM jsonb_array_elements(p_postings) WITH ORDINALITY AS x(p, n);
+  IF p_reverses IS NOT NULL AND EXISTS (
+       (SELECT n, account, credit AS debit, debit AS credit, party FROM ledger_postings
+         WHERE entry_id = p_reverses
+        EXCEPT ALL
+        SELECT n, account, debit, credit, party FROM ledger_postings WHERE entry_id = p_entry_id)
+       UNION ALL
+       (SELECT n, account, debit, credit, party FROM ledger_postings WHERE entry_id = p_entry_id
+        EXCEPT ALL
+        SELECT n, account, credit, debit, party FROM ledger_postings WHERE entry_id = p_reverses)) THEN
+    RAISE EXCEPTION 'reversal % does not mirror %', p_entry_id, p_reverses;
+  END IF;
+END
+$$;
+REVOKE ALL ON FUNCTION ledger_post(text, timestamptz, text, text, text, text, text, jsonb) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION ledger_post(text, timestamptz, text, text, text, text, text, jsonb)
+  TO recall_app;
+
+GRANT SELECT ON ledger_entries, ledger_postings TO recall_app;
+GRANT SELECT, INSERT ON line_earnings_closed TO recall_app;

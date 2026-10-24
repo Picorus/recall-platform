@@ -13,8 +13,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type pg from 'pg';
 import { saveAreaVersion } from '../../src/areas.js';
 import { createBooking, moveBooking, savePriceBook } from '../../src/bookings.js';
-import { decideRefund, settleDue } from '../../src/makeups.js';
-import { closeEarnings } from '../../src/earnings.js';
+import { settleDue } from '../../src/makeups.js';
+import { closeEarnings, decideRefund } from '../../src/earnings.js';
 import { accountTotals, trialBalance } from '../../src/ledger.js';
 import { addScreenKey, revokeScreenKey } from '../../src/plays.js';
 import { storeUpload } from '../../src/screen-reports.js';
@@ -80,7 +80,14 @@ function plays(
 }
 const upload = (id: string, batch: Numbered[], now: number) => storeUpload(pool, id, batch, 1, now);
 
-async function book(id: string, areaId: string, startHour: number, bikes: number, trial = false) {
+async function book(
+  id: string,
+  areaId: string,
+  startHour: number,
+  bikes: number,
+  trial = false,
+  upTo: 'paid' | 'ads-approved' = 'ads-approved',
+) {
   await createBooking(
     pool,
     {
@@ -99,7 +106,8 @@ async function book(id: string, areaId: string, startHour: number, bikes: number
   // A free trial goes through the same steps (paid at ₹0).
   await moveBooking(pool, id, 'awaiting-payment', { by: 'priya', actor: 'admin' }, BOOKED);
   await moveBooking(pool, id, 'paid', { by: 'gateway', actor: 'system' }, BOOKED + 60);
-  await moveBooking(pool, id, 'ads-approved', { by: 'priya', actor: 'admin' }, BOOKED + 120);
+  if (upTo === 'ads-approved')
+    await moveBooking(pool, id, 'ads-approved', { by: 'priya', actor: 'admin' }, BOOKED + 120);
 }
 
 beforeAll(async () => {
@@ -143,7 +151,7 @@ describe('money through the ledger (P1.7.2–3)', () => {
     expect(await revenueFor(LINE)).toBe(135_000); // 900 of 1,000
     expect(await revenueFor(FULL)).toBe(150_000);
     // Running again moves nothing new.
-    expect(await closeEarnings(pool, HOUR + 3600 + 600)).toBe(0);
+    expect((await closeEarnings(pool, HOUR + 3600 + 600)).posted).toBe(0);
   }, 60_000);
 
   it('make-up plays earn too', async () => {
@@ -199,6 +207,9 @@ describe('money through the ledger (P1.7.2–3)', () => {
       'stolen screen',
       close + 60,
     );
+    // Settled in the same step as the decision: held is never below 0, even before the next close.
+    expect(await held('brand-BK-M1')).toBe(0);
+    expect(await held('brand-BK-M2')).toBe(0);
     await closeEarnings(pool, close + 120);
     expect(await held('brand-BK-M1')).toBe(0);
     expect(await held('brand-BK-M2')).toBe(0);
@@ -207,7 +218,60 @@ describe('money through the ledger (P1.7.2–3)', () => {
     const owed = await accountTotals(pool, 'refunds-payable');
     expect(owed.credit - owed.debit).toBe(3_750 + 675 + 30_000 + 5_400);
     // Closed lines are not looked at again.
-    expect(await closeEarnings(pool, close + 3 * 86_400)).toBe(0);
+    expect((await closeEarnings(pool, close + 3 * 86_400)).posted).toBe(0);
+  });
+
+  it('a close run again at the same moment after plays changed posts the difference, without clashing', async () => {
+    await book('BK-Z', 'hyd-madhapur', 20, 5);
+    const twenty = lineStartsAt({ date: DATE, startHour: 20 });
+    for (const s of ['z1', 'z2']) {
+      await screen(s);
+      await upload(
+        s,
+        plays(s, 200, twenty, { ref: lineIdOf('BK-Z', 'hyd-madhapur', DATE, 20) }),
+        twenty + 3500,
+      );
+    }
+    const t = twenty + 3600 + 600;
+    await closeEarnings(pool, t);
+    await revokeScreenKey(pool, 'z2', 'k1', 'prateek', 'stolen, plays faked', twenty);
+    const again = await closeEarnings(pool, t);
+    expect(again.failed).toEqual([]);
+    expect(await revenueFor(lineIdOf('BK-Z', 'hyd-madhapur', DATE, 20))).toBe(30_000);
+  }, 60_000);
+
+  it('ads never came: no refund, everything paid is earned and nothing stays held', async () => {
+    await book('BK-X', 'hyd-madhapur', 21, 5, false, 'paid');
+    const started = lineStartsAt({ date: DATE, startHour: 21 }) + 60;
+    await moveBooking(pool, 'BK-X', 'ads-missing', { by: 'system', actor: 'system' }, started);
+    await closeEarnings(pool, started + 60);
+    expect(await held('brand-BK-X')).toBe(0);
+    expect(await revenueFor(lineIdOf('BK-X', 'hyd-madhapur', DATE, 21))).toBe(150_000);
+  });
+
+  it('cancelled after paying: a full refund is proposed; nothing is earned until a super admin decides', async () => {
+    await book('BK-Y', 'hyd-madhapur', 22, 5, false, 'paid');
+    await moveBooking(
+      pool,
+      'BK-Y',
+      'cancelled',
+      { by: 'priya', actor: 'admin', reason: 'brand changed plans' },
+      BOOKED + 3600,
+    );
+    await settleDue(pool, BOOKED + 7200);
+    await closeEarnings(pool, BOOKED + 7200);
+    expect(await held('brand-BK-Y')).toBe(150_000);
+    const line = lineIdOf('BK-Y', 'hyd-madhapur', DATE, 22);
+    await decideRefund(
+      pool,
+      `${line}#refund`,
+      'approved',
+      { id: 'prateek', role: 'super-admin' },
+      'cancelled early',
+      BOOKED + 9000,
+    );
+    expect(await held('brand-BK-Y')).toBe(0);
+    expect(await revenueFor(line)).toBe(0);
   });
 
   it('the whole ledger balances', async () => {
