@@ -96,7 +96,7 @@ export function signatureOk(publicKey: string, bytes: string, sig: string): bool
 }
 
 /** Booking states in which a line's plays count: its ads were approved and it was not called off. */
-const COUNTING = ['ads-approved', 'running', 'done', 'report-sent'];
+export const COUNTING = ['ads-approved', 'running', 'done', 'report-sent'];
 
 interface LineInfo {
   readonly line: LineForPlays;
@@ -124,12 +124,50 @@ async function lineInfo(c: Q, lineId: string): Promise<LineInfo | undefined> {
   );
   const row = r.rows[0];
   if (!row) return undefined;
+  const startsAt = lineStartsAt({ date: day, startHour });
   return {
-    line: { lineId, areaId, startsAt: lineStartsAt({ date: day, startHour }), plays: row.plays },
+    line: { lineId, areaId, startsAt, endsAt: startsAt + 3600, plays: row.plays },
     state: row.state,
     priceBookVersion: row.version,
   };
 }
+
+/** A make-up ("<line id>#1" or "#2"), with its booking's state and price book (P1.6). */
+async function makeUpInfo(c: Q, makeUpId: string): Promise<LineInfo | undefined> {
+  const r = await c.query<{
+    area_id: string;
+    from: string;
+    until: string;
+    plays: number;
+    state: string;
+    version: number;
+  }>(
+    `SELECT m.area_id, extract(epoch FROM m.window_from)::bigint AS from,
+            extract(epoch FROM m.window_until)::bigint AS until, m.plays,
+            b.price_book_version AS version,
+            (SELECT state FROM booking_events e WHERE e.booking_id = m.booking_id
+              ORDER BY seq DESC LIMIT 1) AS state
+       FROM make_ups m JOIN bookings b USING (booking_id) WHERE m.make_up_id = $1`,
+    [makeUpId],
+  );
+  const row = r.rows[0];
+  if (!row) return undefined;
+  return {
+    line: {
+      lineId: makeUpId,
+      areaId: row.area_id,
+      startsAt: Number(row.from),
+      endsAt: Number(row.until),
+      plays: row.plays,
+    },
+    state: row.state,
+    priceBookVersion: row.version,
+  };
+}
+
+/** What a play reference names: a booking line or a make-up of one. */
+const targetInfo = (c: Q, ref: string) =>
+  /#[12]$/.test(ref) ? makeUpInfo(c, ref) : lineInfo(c, ref);
 
 /** Play rules of a price book version (or those in force at a moment). */
 function rulesOf(books: readonly PriceBook[], at: { version: number } | { time: number }) {
@@ -187,9 +225,12 @@ export async function judgePlays(
       : signatureOk(key.public_key, playBytes(screenId, seq, play), play.sig)
         ? 'ok'
         : 'bad';
-    if (play.slot === 'brand' && !lines.has(play.ref))
-      lines.set(play.ref, await lineInfo(c, play.ref));
-    const info = play.slot === 'brand' ? lines.get(play.ref) : undefined;
+    // Brand plays name a booking line; make-up plays a make-up.
+    const named =
+      (play.slot === 'brand' && !play.ref.includes('#')) ||
+      (play.slot === 'make-up' && /#[12]$/.test(play.ref));
+    if (named && !lines.has(play.ref)) lines.set(play.ref, await targetInfo(c, play.ref));
+    const info = named ? lines.get(play.ref) : undefined;
     const j = judgePlay(
       play,
       {
@@ -208,7 +249,7 @@ export async function judgePlays(
 }
 
 /**
- * Totals for one booking line from its stored plays (P1.5.3–4), by the rules of the price book it
+ * Totals for one booking line, or one make-up, from its stored plays (P1.5.3–4), by the rules of the price book it
  * was sold on, so they never change when prices or rules change later. Plays signed with a key
  * after it was given up are left out.
  */
@@ -216,7 +257,7 @@ export async function lineTotalsFor(
   pool: Pick<Pool, 'query'>,
   lineId: string,
 ): Promise<LineTotals> {
-  const info = await lineInfo(pool, lineId);
+  const info = await targetInfo(pool, lineId);
   const r = await pool.query<{
     screen_id: string;
     t: string;

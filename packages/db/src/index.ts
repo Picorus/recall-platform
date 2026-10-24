@@ -5,3 +5,4 @@ export * from './screen-reports.js';
 export * from './bookings.js';
 export * from './supply.js';
 export * from './plays.js';
+export * from './makeups.js';
