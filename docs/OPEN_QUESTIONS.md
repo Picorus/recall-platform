@@ -12,12 +12,12 @@ Answer whenever you like; each answer moves to `docs/DECISIONS.md` and the row i
 | 6 | Support phone and WhatsApp numbers (hours: 10 am – 7 pm for now) | Rider Help; brand Help; admin Support | P3.15, P4.9 |
 | 7 | Charging steps for the screen, once the equipment is final (from the screen maker) | Rider Your screen | P4.8 |
 | 10b | TDS rate on rider pay and any gig-worker levy (ask your CA) | Admin Payouts; rider Payouts | P1.7.7 |
-| 13 | Two money calls made for now (change any time): (a) agency/aggregator cuts are paid only on what was delivered, not on money RECALL keeps from a late cancellation or a rejected refund; (b) a cancellation refund not decided within 7 days counts as "no refund". OK? | Admin Bookings; Payouts | P1.7.4 |
-| 14 | Ask your CA: TDS on agency commission (section 194H) when RECALL pays a cut; claiming the partner's GST back (and CGST/SGST vs IGST); whose rounding wins — the partner's monthly invoice or our per-booking figure (they can differ by 1 paisa per booking) | Admin Payouts; GST registers | P1.7.7 |
 
 ## Answered 24 Oct 2026 (now in DECISIONS)
 | # | Answer |
 |---|---|
+| ~~13~~ | (a) Cuts are paid only on delivered money. (b) A cancellation refund not decided within 7 days counts as no refund |
+| ~~14~~ | TDS is held back from cuts (we pay the partner after cutting TDS); the partner's GST is claimed back; our per-booking rounding is what goes in the books |
 | ~~12~~ | Cancelled after paying: no refund by default; at least 72 hours before the first hour a super admin may refund 100%; later, no refund |
 
 ## Answered 22 Oct 2026 (now in DECISIONS)

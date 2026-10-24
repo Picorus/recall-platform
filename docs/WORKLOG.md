@@ -11,7 +11,7 @@ A second agent reviewed cuts and the cancellation code. It found 4 real problems
 - Also: if a cut fails during a refund decision, the decision still stands (the next close fixes the cut).
 - Checked and fine: the 72-hour boundary, booking-id matching, no cut posted twice, and raising or lowering a cut.
 - Tests: 225 domain, 89 database.
-- Open for Prateek: question 13 (confirm the two money calls above). For the CA: question 14 (TDS on agency commission, GST claim-back split, rounding against the partner's invoice).
+- Prateek answered questions 13 and 14 the same day: both money calls confirmed; TDS is held back from cuts; partner GST is claimed back; our rounding wins. TDS on cuts is built next (P1.7.4), with the TDS setting.
 - Open (known): the hour close now looks at every booking with a cut each run. That is fine for now; it should be narrowed once there are thousands.
 - **Next: P1.7.5–7** rider earnings, payouts, TDS.
 
