@@ -76,7 +76,10 @@ export async function priceBooks(pool: Pick<Pool, 'query'>): Promise<PriceBook[]
   // Stored as saved; a book saved before a setting existed gets its default (the rule then).
   const r = await pool.query<{
     book: Partial<PriceBook> &
-      Omit<PriceBook, 'capacity' | 'plays' | 'makeUps' | 'cancelRefundHours' | 'cuts'>;
+      Omit<
+        PriceBook,
+        'capacity' | 'plays' | 'makeUps' | 'cancelRefundHours' | 'cancelRefundDecideHours' | 'cuts'
+      >;
   }>('SELECT book FROM price_books ORDER BY version');
   return r.rows.map((x) => ({
     ...x.book,
@@ -84,6 +87,7 @@ export async function priceBooks(pool: Pick<Pool, 'query'>): Promise<PriceBook[]
     plays: x.book.plays ?? DEFAULT_PLAY_RULES,
     makeUps: x.book.makeUps ?? DEFAULT_MAKE_UP_RULES,
     cancelRefundHours: x.book.cancelRefundHours ?? 72,
+    cancelRefundDecideHours: x.book.cancelRefundDecideHours ?? 168,
     cuts: x.book.cuts ?? { agency: 1_000, aggregator: 200 },
   }));
 }

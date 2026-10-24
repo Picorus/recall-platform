@@ -2,6 +2,19 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 24 Oct 2026 · P1.7.4 · Review fixes: cuts and cancellation
+A second agent reviewed cuts and the cancellation code. It found 4 real problems; all are fixed with tests:
+- **A cut given late was never paid.** The hour close only looked at bookings settled in the last week. Now `giveCut` brings the cut in line at once (under the hour-close lock), and every booking with a cut is looked at.
+- **Cuts were paid on money that was not delivered** (a late cancellation, a refund rejected). Revenue is now booked in two kinds: `line-earned` (delivered by plays) and `line-kept` (kept, not delivered). Cuts use delivered only.
+- **An early-cancel refund nobody decided kept the money held for ever.** After 7 days (setting `cancelRefundDecideHours`) the system records it as rejected. Refunds for missing plays have no deadline.
+- **A cut could be given on any booking.** Now it needs a paid booking that can still deliver (not a trial, cancelled or ads-missing), a rate of 0.01–50% and partner GST of 0–28%. The price book's cut rates are checked the same way.
+- Also: if a cut fails during a refund decision, the decision still stands (the next close fixes the cut).
+- Checked and fine: the 72-hour boundary, booking-id matching, no cut posted twice, and raising or lowering a cut.
+- Tests: 225 domain, 89 database.
+- Open for Prateek: question 13 (confirm the two money calls above). For the CA: question 14 (TDS on agency commission, GST claim-back split, rounding against the partner's invoice).
+- Open (known): the hour close now looks at every booking with a cut each run. That is fine for now; it should be narrowed once there are thousands.
+- **Next: P1.7.5–7** rider earnings, payouts, TDS.
+
 ## 24 Oct 2026 · P1.7.4 · Cuts, and cancellation after payment
 - Cancellation after payment (Prateek, answers open question 12; merged in PR #22):
   - No refund by default.

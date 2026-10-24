@@ -102,6 +102,23 @@ describe('held → earned, hour by hour (P1.7.3)', () => {
     ).toBeUndefined();
   });
 
+  it('money kept without delivery is its own kind and id, so cuts can leave it out', () => {
+    const e = lineEarned({
+      lineId: 'L1',
+      brandId: 'brand-1',
+      earnedNow: 110_000,
+      earnedSoFar: 0,
+      closeId: '1',
+      at: T,
+      part: 'kept',
+    });
+    expect([e?.entryId, e?.kind]).toEqual(['kept:L1:1', 'line-kept']);
+    expect(e?.postings.map((p) => [p.account, p.debit, p.credit])).toEqual([
+      ['campaign-held', 110_000, 0],
+      ['revenue', 0, 110_000],
+    ]);
+  });
+
   it('plays later found not to count (a stolen screen): the excess goes back from revenue to held', () => {
     const e = lineEarned({
       lineId: 'L1',

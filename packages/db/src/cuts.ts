@@ -1,6 +1,6 @@
 // P1.7.4 in the database: giving a cut on a booking (only when RECALL decides) and keeping each cut
 // in line with what the booking has earned.
-import { cutAccrued, type Cut } from '@recall/domain';
+import { CUT_MAX_BP, cutAccrued, type Cut } from '@recall/domain';
 import type { Pool, PoolClient } from 'pg';
 import { postEntry } from './ledger.js';
 import { inTransaction } from './makeups.js';
@@ -14,26 +14,47 @@ export async function giveCut(
   cut: Omit<Cut, 'rateBp'> & { readonly rateBp?: number },
   by: { readonly id: string; readonly role: string },
   reason: string,
+  now: number = Math.floor(Date.now() / 1000),
 ): Promise<void> {
   if (by.role !== 'super-admin') throw new Error('Only a super admin can give a cut');
+  if (
+    cut.rateBp !== undefined &&
+    !(Number.isSafeInteger(cut.rateBp) && cut.rateBp >= 1 && cut.rateBp <= CUT_MAX_BP)
+  )
+    throw new RangeError('A cut rate must be 0.01–50% (whole basis points)');
+  if (!(Number.isSafeInteger(cut.gstBp) && cut.gstBp >= 0 && cut.gstBp <= 2_800))
+    throw new RangeError("The partner's GST must be 0–28% (whole basis points)");
   await inTransaction(pool, async (c) => {
-    const r = await c.query<{ rate: number | null }>(
-      `SELECT (p.book -> 'cuts' ->> $2)::int AS rate
+    // Same lock as the hour close, so the cut is brought in line at once and never posted twice.
+    await c.query("SELECT pg_advisory_xact_lock(hashtext('close-earnings'))");
+    const r = await c.query<{ rate: number | null; trial: boolean; paid: boolean; state: string }>(
+      `SELECT (p.book -> 'cuts' ->> $2)::int AS rate, b.trial,
+              EXISTS (SELECT 1 FROM booking_events e WHERE e.booking_id = b.booking_id
+                       AND e.state = 'paid') AS paid,
+              (SELECT state FROM booking_events e WHERE e.booking_id = b.booking_id
+                ORDER BY seq DESC LIMIT 1) AS state
          FROM bookings b JOIN price_books p ON p.version = b.price_book_version
         WHERE b.booking_id = $1`,
       [cut.bookingId, cut.kind],
     );
-    if (!r.rows[0]) throw new Error(`No booking ${cut.bookingId}`);
-    const rate = cut.rateBp ?? r.rows[0].rate ?? (cut.kind === 'agency' ? 1_000 : 200);
+    const row = r.rows[0];
+    if (!row) throw new Error(`No booking ${cut.bookingId}`);
+    // Cuts are on delivered plays: only a paid booking that can still deliver can have one.
+    if (row.trial) throw new Error('A trial has no cut: nothing is paid');
+    if (!row.paid) throw new Error('A cut can only be given on a paid booking');
+    if (row.state === 'cancelled' || row.state === 'ads-missing')
+      throw new Error(`A ${row.state} booking delivers nothing, so it has no cut`);
+    const rate = cut.rateBp ?? row.rate ?? (cut.kind === 'agency' ? 1_000 : 200);
     await c.query(
       `INSERT INTO booking_cuts (booking_id, kind, partner_id, rate_bp, gst_bp, decided_by, reason)
        VALUES ($1, $2, $3, $4, $5, $6, $7)`,
       [cut.bookingId, cut.kind, cut.partnerId, rate, cut.gstBp, by.id, reason],
     );
+    await accrueCuts(c, cut.bookingId, now, by.id);
   });
 }
 
-/** Brings every cut of a booking in line with its revenue (inside the caller's transaction). */
+/** Brings every cut of a booking in line with its delivered revenue (inside the caller's transaction). */
 export async function accrueCuts(
   c: PoolClient,
   bookingId: string,
@@ -49,11 +70,12 @@ export async function accrueCuts(
     bookingId,
   ]);
   if (cuts.rows.length === 0) return 0;
-  // Revenue of all the booking's lines (their refs are "<booking>/<area>/<day>/<hour>").
+  // Delivered revenue of all the booking's lines (refs "<booking>/<area>/<day>/<hour>"); money kept
+  // without delivery (late cancel, refund rejected, ads missing) carries no cut.
   const rev = await c.query<{ n: string }>(
     `SELECT coalesce(sum(p.credit - p.debit), 0) AS n
        FROM ledger_postings p JOIN ledger_entries e USING (entry_id)
-      WHERE p.account = 'revenue' AND e.ref LIKE $1 || '/%'`,
+      WHERE p.account = 'revenue' AND e.kind LIKE 'line-earned%' AND e.ref LIKE $1 || '/%'`,
     [bookingId],
   );
   const earned = Number(rev.rows[0]?.n ?? 0);

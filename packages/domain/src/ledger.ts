@@ -180,6 +180,10 @@ export function earnedPaise(paid: number, promised: number, delivered: number): 
  * hour closes already moved (worked out from the ledger). If the line has earned less than that
  * (plays later found not to count, e.g. a stolen screen's), the difference goes back to held.
  * Undefined when nothing changed.
+ *
+ * Revenue comes in two parts, kept apart so cuts can follow delivery: `delivered` (earned by plays,
+ * the default) and `kept` (paid but never delivered, kept under the rules: a late cancellation, a
+ * refund rejected, ads that never came).
  */
 export function lineEarned(l: {
   readonly lineId: string;
@@ -189,16 +193,24 @@ export function lineEarned(l: {
   /** A unique label for this hour close (e.g. its time), so a close is never posted twice. */
   readonly closeId: string;
   readonly at: number;
+  readonly part?: 'delivered' | 'kept';
 }): Entry | undefined {
   const more = l.earnedNow - l.earnedSoFar;
   if (more === 0) return undefined;
   const back = more < 0;
+  const kept = l.part === 'kept';
   return {
-    entryId: `earned:${l.lineId}:${l.closeId}`,
+    entryId: `${kept ? 'kept' : 'earned'}:${l.lineId}:${l.closeId}`,
     at: l.at,
-    kind: back ? 'line-earned-back' : 'line-earned',
+    kind: `${kept ? 'line-kept' : 'line-earned'}${back ? '-back' : ''}`,
     ref: l.lineId,
-    memo: back ? `Plays for ${l.lineId} found not to count` : `Plays delivered for ${l.lineId}`,
+    memo: kept
+      ? back
+        ? `Money kept for ${l.lineId} put back to held`
+        : `Money kept for ${l.lineId} (paid, not delivered, no refund)`
+      : back
+        ? `Plays for ${l.lineId} found not to count`
+        : `Plays delivered for ${l.lineId}`,
     postings: back
       ? [...post('revenue', 'debit', -more), ...post('campaign-held', 'credit', -more, l.brandId)]
       : [...post('campaign-held', 'debit', more, l.brandId), ...post('revenue', 'credit', more)],
@@ -246,8 +258,8 @@ export interface Cut {
 }
 
 /**
- * Brings a booking's cut up (or down) to its rate on what the booking has earned so far (cuts are
- * worked out on delivered, not invoiced). The partner's GST is paid on top and claimed back by
+ * Brings a booking's cut up (or down) to its rate on what the booking has delivered so far (cuts
+ * are worked out on delivered plays: not on what was invoiced, nor on money kept without delivery). The partner's GST is paid on top and claimed back by
  * RECALL. `soFar` is the cut and GST already recorded (from the ledger); `n` numbers the entry.
  */
 export function cutAccrued(

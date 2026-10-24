@@ -42,28 +42,54 @@ async function openLines(c: PoolClient, today: string, lineId?: string): Promise
   return r.rows;
 }
 
-/** What a line has moved to revenue so far, and how many earned entries it has (from the ledger). */
+/**
+ * What a line has moved to revenue so far, in its two parts (delivered by plays, and kept without
+ * delivery), and how many entries of each it has (from the ledger).
+ */
 async function earnedSoFar(c: Pick<PoolClient, 'query'>, lineId: string) {
-  const r = await c.query<{ n: string; k: string }>(
-    `SELECT coalesce(sum(p.credit - p.debit), 0) AS n,
-            count(DISTINCT e.entry_id) FILTER (WHERE e.kind LIKE 'line-earned%') AS k
+  const r = await c.query<{ d: string; k: string; dn: string; kn: string }>(
+    `SELECT coalesce(sum(p.credit - p.debit) FILTER (WHERE e.kind LIKE 'line-earned%'), 0) AS d,
+            coalesce(sum(p.credit - p.debit) FILTER (WHERE e.kind LIKE 'line-kept%'), 0) AS k,
+            count(DISTINCT e.entry_id) FILTER (WHERE e.kind LIKE 'line-earned%') AS dn,
+            count(DISTINCT e.entry_id) FILTER (WHERE e.kind LIKE 'line-kept%') AS kn
        FROM ledger_postings p JOIN ledger_entries e USING (entry_id)
       WHERE e.ref = $1 AND p.account = 'revenue'`,
     [lineId],
   );
-  return { paise: Number(r.rows[0]?.n ?? 0), entries: Number(r.rows[0]?.k ?? 0) };
+  const row = r.rows[0];
+  return {
+    delivered: Number(row?.d ?? 0),
+    kept: Number(row?.k ?? 0),
+    deliveredEntries: Number(row?.dn ?? 0),
+    keptEntries: Number(row?.kn ?? 0),
+  };
 }
 
-/** What a line should have earned by now, and whether that is its final figure. */
+/**
+ * What a line should have earned by now, split into what its plays delivered and what is kept
+ * without delivery, and whether that is its final figure.
+ */
 async function targetFor(
   c: PoolClient,
   l: Line,
   lineId: string,
   paid: number,
   books: readonly PriceBook[],
-): Promise<{ earned: number; final: boolean }> {
-  // Ads never came: no refund (rulebook v5.4); everything paid is earned.
-  if (l.state === 'ads-missing') return { earned: paid, final: true };
+): Promise<{ delivered: number; kept: number; final: boolean }> {
+  const byPlays = async () => {
+    const plays =
+      (await lineTotalsFor(c, lineId, books)).plays +
+      (await lineTotalsFor(c, `${lineId}#1`, books)).plays +
+      (await lineTotalsFor(c, `${lineId}#2`, books)).plays;
+    return earnedPaise(paid, l.plays, plays);
+  };
+  /** Final: `total` is earned; the part its plays delivered is delivered, the rest is kept. */
+  const settle = async (total: number) => {
+    const delivered = Math.min(await byPlays(), total);
+    return { delivered, kept: total - delivered, final: true };
+  };
+  // Ads never came: no refund (rulebook v5.4); everything paid is kept.
+  if (l.state === 'ads-missing') return settle(paid);
   const s = await c.query<{ outcome: string; base: string | null; decision: string | null }>(
     `SELECT ls.outcome, r.base_paise AS base, d.decision
        FROM line_settlements ls
@@ -73,20 +99,16 @@ async function targetFor(
     [lineId],
   );
   const refund = s.rows[0];
-  if (refund && refund.outcome !== 'refund') return { earned: paid, final: true };
-  if (refund?.decision === 'approved')
-    return { earned: paid - Number(refund.base ?? 0), final: true };
-  if (refund?.decision === 'rejected') return { earned: paid, final: true };
+  if (refund && refund.outcome !== 'refund') return settle(paid);
+  if (refund?.decision === 'approved') return settle(paid - Number(refund.base ?? 0));
+  if (refund?.decision === 'rejected') return settle(paid);
   // A cancelled booking earns nothing while its refund is decided (or until the decision step runs).
-  if (l.state === 'cancelled') return { earned: 0, final: false };
-  const delivered =
-    (await lineTotalsFor(c, lineId, books)).plays +
-    (await lineTotalsFor(c, `${lineId}#1`, books)).plays +
-    (await lineTotalsFor(c, `${lineId}#2`, books)).plays;
-  const byPlays = earnedPaise(paid, l.plays, delivered);
+  if (l.state === 'cancelled') return { delivered: 0, kept: 0, final: false };
+  const delivered = await byPlays();
   // Awaiting a super admin: never earn into the part that may be refunded.
   return {
-    earned: refund ? Math.min(byPlays, paid - Number(refund.base ?? 0)) : byPlays,
+    delivered: refund ? Math.min(delivered, paid - Number(refund.base ?? 0)) : delivered,
+    kept: 0,
     final: false,
   };
 }
@@ -117,19 +139,30 @@ async function closeLine(
   }
   const target = await targetFor(c, l, lineId, paid, books);
   const so = await earnedSoFar(c, lineId);
-  const e = lineEarned({
-    lineId,
-    brandId: l.brand_id,
-    earnedNow: target.earned,
-    earnedSoFar: so.paise,
-    // Numbered per line: under the lock each close gets the next number, never one already used.
-    closeId: String(so.entries + 1),
-    at: now,
-  });
-  if (e) await postEntry(c, e, by);
+  // Numbered per line and part: under the lock each close gets the next number, never one used.
+  const entries = [
+    lineEarned({
+      lineId,
+      brandId: l.brand_id,
+      earnedNow: target.delivered,
+      earnedSoFar: so.delivered,
+      closeId: String(so.deliveredEntries + 1),
+      at: now,
+    }),
+    lineEarned({
+      lineId,
+      brandId: l.brand_id,
+      earnedNow: target.kept,
+      earnedSoFar: so.kept,
+      closeId: String(so.keptEntries + 1),
+      at: now,
+      part: 'kept',
+    }),
+  ].filter((e) => e !== undefined);
+  for (const e of entries) await postEntry(c, e, by);
   if (target.final)
     await c.query('INSERT INTO line_earnings_closed (line_id) VALUES ($1)', [lineId]);
-  return e ? 1 : 0;
+  return entries.length;
 }
 
 const todayOf = (now: number) => new Date((now + 330 * 60) * 1000).toISOString().slice(0, 10);
@@ -149,6 +182,21 @@ export async function closeEarnings(
     const paidCache = new Map<string, number>();
     let posted = 0;
     const failed: { lineId: string; error: string }[] = [];
+    // A cancellation refund left undecided past its deadline is taken as rejected: "not approved =
+    // no refund" (Prateek, 24 Oct 2026). Recorded like any decision, by the system.
+    await c.query(
+      `INSERT INTO refund_decisions (refund_id, decision, decided_by, reason)
+       SELECT r.refund_id, 'rejected', 'system', 'No super-admin decision in time: not approved, no refund'
+         FROM refunds r JOIN bookings b USING (booking_id)
+         JOIN price_books pb ON pb.version = b.price_book_version
+         JOIN LATERAL (SELECT state, at FROM booking_events e WHERE e.booking_id = r.booking_id
+                        ORDER BY seq DESC LIMIT 1) s ON true
+        WHERE s.state = 'cancelled'
+          AND NOT EXISTS (SELECT 1 FROM refund_decisions d WHERE d.refund_id = r.refund_id)
+          AND s.at + make_interval(hours => coalesce((pb.book ->> 'cancelRefundDecideHours')::int, 168))
+              <= to_timestamp($1)`,
+      [now],
+    );
     for (const l of await openLines(c, todayOf(now))) {
       await c.query('SAVEPOINT line');
       try {
@@ -162,15 +210,10 @@ export async function closeEarnings(
         });
       }
     }
-    // Cuts follow what each booking has earned (only bookings RECALL gave a cut on).
-    // Bookings still settling: a line not closed yet, or closed in the last week.
+    // Cuts follow what each booking has delivered (only bookings RECALL gave a cut on). Every such
+    // booking is looked at, so a cut given late is still paid; each posts only what is new.
     const withCuts = await c.query<{ booking_id: string }>(
-      `SELECT DISTINCT k.booking_id FROM booking_cuts k JOIN booking_lines bl USING (booking_id)
-        WHERE NOT EXISTS (
-                SELECT 1 FROM line_earnings_closed x
-                 WHERE x.line_id = bl.booking_id || '/' || bl.area_id || '/' || bl.day::text || '/' || bl.start_hour
-                   AND x.closed_at < now() - interval '7 days')
-        ORDER BY k.booking_id`,
+      'SELECT DISTINCT booking_id FROM booking_cuts ORDER BY booking_id',
     );
     for (const b of withCuts.rows) {
       await c.query('SAVEPOINT cut');
@@ -228,6 +271,13 @@ export async function decideRefund(
       );
     const [line] = await openLines(c, '9999-12-31', row.line_id);
     if (line) await closeLine(c, line, await priceBooks(c), new Map(), now, by.id);
-    await accrueCuts(c, row.line_id.split('/')[0] ?? '', now, by.id);
+    // A cut that cannot be brought in line now never undoes the decision: the next close does it.
+    await c.query('SAVEPOINT cut');
+    try {
+      await accrueCuts(c, row.line_id.split('/')[0] ?? '', now, by.id);
+      await c.query('RELEASE SAVEPOINT cut');
+    } catch {
+      await c.query('ROLLBACK TO SAVEPOINT cut');
+    }
   });
 }

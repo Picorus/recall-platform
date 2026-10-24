@@ -216,4 +216,16 @@ describe('the refund (P1.6.4)', () => {
       checkPriceBook({ ...PRICE_BOOK_V1, makeUps: { ...PRICE_BOOK_V1.makeUps, nextHours: 9 } }),
     ).toEqual(['make-up settings must be whole numbers; at most 4 next hours']);
   });
+
+  it('cancellation and cut settings are checked too', () => {
+    expect(checkPriceBook({ ...PRICE_BOOK_V1, cancelRefundDecideHours: 0 })).toEqual([
+      'cancelRefundDecideHours must be at least 1',
+    ]);
+    expect(checkPriceBook({ ...PRICE_BOOK_V1, cuts: { agency: 0, aggregator: 200 } })).toEqual([
+      'a cut rate must be 0.01–50%',
+    ]);
+    expect(
+      checkPriceBook({ ...PRICE_BOOK_V1, cuts: { agency: 1_000, aggregator: 5_001 } }),
+    ).toEqual(['a cut rate must be 0.01–50%']);
+  });
 });
