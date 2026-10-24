@@ -214,6 +214,32 @@ export interface LineTotals {
   readonly people: number;
 }
 
+const byTime = <T extends CountedPlay>(plays: readonly T[]): T[] =>
+  [...plays].sort(
+    (a, b) =>
+      a.startAt - b.startAt || (a.screenId < b.screenId ? -1 : a.screenId > b.screenId ? 1 : 0),
+  );
+
+/**
+ * The plays of a line that count, earliest first: all inside ones, and edge ones up to
+ * `edgeShareBp` of the promise (P1.5.3). Used for the line's totals and to share what the line
+ * sold between the screens that delivered it (rider pay, P1.7.5).
+ */
+export function countedPlays<T extends CountedPlay>(
+  promised: number,
+  plays: readonly T[],
+  rules: PlayRules = DEFAULT_PLAY_RULES,
+): T[] {
+  const edgeCap = Math.floor((promised * rules.edgeShareBp) / 10_000);
+  let edge = 0;
+  return byTime(plays).filter((p) => {
+    if (p.counts !== 'edge') return true;
+    if (edge >= edgeCap) return false;
+    edge += 1;
+    return true;
+  });
+}
+
 /**
  * Totals for one line (P1.5.3–4). Edge plays count, earliest first, up to `edgeShareBp` of the
  * promised plays. The same plays always give the same totals, in whatever order they come.
@@ -223,20 +249,9 @@ export function lineTotals(
   plays: readonly CountedPlay[],
   rules: PlayRules = DEFAULT_PLAY_RULES,
 ): LineTotals {
-  const edgeCap = Math.floor((promised * rules.edgeShareBp) / 10_000);
-  const sorted = [...plays].sort(
-    (a, b) =>
-      a.startAt - b.startAt || (a.screenId < b.screenId ? -1 : a.screenId > b.screenId ? 1 : 0),
-  );
-  let edgeCounted = 0;
-  const counted: CountedPlay[] = [];
-  for (const p of sorted) {
-    if (p.counts === 'edge') {
-      if (edgeCounted >= edgeCap) continue;
-      edgeCounted += 1;
-    }
-    counted.push(p);
-  }
+  const sorted = byTime(plays);
+  const counted = countedPlays(promised, plays, rules);
+  const edgeCounted = counted.filter((p) => p.counts === 'edge').length;
   return {
     plays: counted.length,
     inside: sorted.filter((p) => p.counts === 'inside').length,

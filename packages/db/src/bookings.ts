@@ -5,6 +5,7 @@ import {
   DEFAULT_CAPACITY_RULES,
   bookingPaid,
   DEFAULT_MAKE_UP_RULES,
+  DEFAULT_RIDER_PAY_RULES,
   DEFAULT_PLAY_RULES,
   capacityProblems,
   checkPriceBook,
@@ -90,6 +91,7 @@ export async function priceBooks(pool: Pick<Pool, 'query'>): Promise<PriceBook[]
     cancelRefundDecideHours: x.book.cancelRefundDecideHours ?? 168,
     cuts: x.book.cuts ?? { agency: 1_000, aggregator: 200 },
     cutTdsBp: x.book.cutTdsBp ?? 200,
+    riderPay: x.book.riderPay ?? DEFAULT_RIDER_PAY_RULES,
   }));
 }
 

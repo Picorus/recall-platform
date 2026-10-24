@@ -148,7 +148,7 @@ The scheduler answers one question every minute: which booking does each bike in
 1. **P1.7.1 Ledger.** Double-entry accounts: payment clearing, money held for campaigns not yet delivered, revenue earned, GST payable, agency payable, aggregator payable, rider earnings payable, refunds payable, TDS payable, gateway fees. Every booking, delivery, refund and payout is a balanced entry.
 2. **P1.7.2 Brand pays in advance.** Full amount + GST, then a GST tax invoice is issued at once. The money sits as "held" until plays are delivered.
 3. **P1.7.3 Revenue earned hour by hour.** At each hour close, the delivered part moves from held to earned.
-4. **P1.7.4 Cuts.** Agency 10% on bookings made by an agency; aggregator 2% on brands referred by a delivery or ride app. Not automatic: RECALL decides whether a cut is given (per booking or per partner deal); when given, it is paid with its GST on top (Prateek, 24 Oct 2026). Worked out on what was delivered (not invoiced), recorded as payable and paid monthly with a statement.
+4. **P1.7.4 Cuts.** Agency 10% on bookings made by an agency; aggregator 2% on brands referred by a delivery or ride app. Not automatic: RECALL decides whether a cut is given (per booking or per partner deal); the cut includes the partner's GST (claimed back), and TDS on the part before GST is held back (Prateek, 24 Oct 2026). Worked out on what was delivered (not invoiced), recorded as payable and paid monthly with a statement.
 5. **P1.7.5 Rider earnings (after the POC).** ₹25 for each moving hour + 25% of what his hours sold (the booking's bike-hour price × the share of plays his screen delivered). Paid hours capped at 260 active hours a month (moving hours as RECALL counts them; Prateek, 22 Oct 2026).
 6. **P1.7.6 Rider earnings (POC).** Flat ₹8,000 / ₹10,000 / ₹12,000 (base + ₹6,000 founding bonus). Bonus in full at 150+ verified moving hours inside the pay zone (POC: within 15 km of Hitech City), none below 150; moving hours as RECALL calculates them from the screen, never app-open time (Prateek, 22 Oct 2026). Day-90 bonus of ₹3,000 paid towards the screen loan. POC pay is paid once a month, after the month ends (Prateek, 22 Oct 2026).
 7. **P1.7.7 Payouts.** Weekly run every Monday: system prepares, finance approves in admin, the payout provider pays each rider's bank or UPI. Failed payouts retry and show in admin. TDS is deducted from rider pay at the rate the CA confirms (a setting); a gig-worker levy, if any, is a setting too.
@@ -390,8 +390,8 @@ Phases overlap on purpose: each starts once the part it depends on is stable, no
 | P1.1–P1.2 | Areas and GPS | Done | Nov 2026 |
 | P1.3 | Inventory, prices, bookings | Done | Dec 2026 |
 | P1.4 | Ad scheduler | Done | Dec 2026 – Jan 2027 |
-| P1.5–P1.6 | Play counting, make-ups, refunds | Doing | Jan 2027 |
-| P1.7 | Ledger, GST, rider earnings, payouts | To do | Jan – Feb 2027 |
+| P1.5–P1.6 | Play counting, make-ups, refunds | Done | Jan 2027 |
+| P1.7 | Ledger, GST, rider earnings, payouts | Doing | Jan – Feb 2027 |
 | P1.8–P1.9 | People counts, final report | To do | Feb 2027 |
 | P2.1–P2.8 | Player on emulator | To do | Jan – Feb 2027 |
 | P2.9–P2.14 | Counter, health, updates, fitting check on the sample unit | Blocked | Mar – Apr 2027 |

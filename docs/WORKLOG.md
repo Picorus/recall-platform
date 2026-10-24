@@ -2,6 +2,21 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 24 Oct 2026 · P1.7.5–6 · Rider pay
+- P1.7.4 merged (PR #23).
+- Domain (`rider-pay.ts`, settings `riderPay` in the price book):
+  - POC: base (₹2,000 / ₹4,000 / ₹6,000, set per rider) + ₹6,000 bonus at 150+ moving hours in the pay zone, none below; worked out after the month ends.
+  - After the POC: ₹25 a moving hour (capped at 260 a month) + 25% of what his hours sold.
+  - TDS 1% for now (a setting; CA to confirm).
+  - `soldShares`: a line's money shared by counted plays (each play = paid ÷ promised), never more than the line was paid.
+  - `riderPayAccrued`: rider earnings, owed to the rider less TDS, TDS owed to the government; up or down by the difference.
+  - `countedPlays` split out of `lineTotals`, so pay and play totals count the same plays.
+- Database (migration 0014): `rider_screens` (who rides which screen from when; append-only) and `rider_poc_bases`. `accrueRiderPay(month, now)`: every rider's hours (only while he rode each screen), what his plays sold, and the ledger brought up to date. Safe to rerun; one rider failing doesn't stop the others.
+- Tests: 235 domain (property tests: shares never more than paid; pay entries always balance and land on the figure), 8 new database tests (POC bonus at exactly 150 h and not at 149; a screen changing hands; pay-zone seconds only; late minutes; ₹25/h + 25% sold; 260 h cap; ledger balances).
+- Open for Prateek: question 15 (what decides a rider's POC base).
+- Open: the day-90 ₹3,000 bonus towards the screen loan comes with P1.7.8 (screen loan).
+- **Next: P1.7.7** Monday payout run (finance approves, payout adapter with a fake, retries).
+
 ## 24 Oct 2026 · P1.7.4 · Review fixes: cuts and cancellation
 A second agent reviewed cuts and the cancellation code. It found 4 real problems; all are fixed with tests:
 - **A cut given late was never paid.** The hour close only looked at bookings settled in the last week. Now `giveCut` brings the cut in line at once (under the hour-close lock), and every booking with a cut is looked at.
