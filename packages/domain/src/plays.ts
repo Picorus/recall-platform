@@ -109,19 +109,20 @@ export function checkPlayShape(x: Record<string, unknown>): string | undefined {
 
 // ---------------------------------------------------------------- P1.5.2 the cloud's checks
 
-/** A booking line as the cloud knows it, for checking plays. */
+/** What a play can count for: a booking line, or a make-up of one (P1.6), as the cloud knows it. */
 export interface LineForPlays {
+  /** Booking line id, or make-up id ("<line id>#1"). */
   readonly lineId: string;
   readonly areaId: string;
-  /** First second of its hour (UTC). */
+  /** Its time window, UTC seconds: [startsAt, endsAt). A line is one hour; a make-up 1–2 hours. */
   readonly startsAt: number;
-  /** Plays promised (bikes × plays per bike-hour). */
+  readonly endsAt: number;
+  /** Plays promised (a line: bikes × plays per bike-hour) or owed (a make-up). */
   readonly plays: number;
 }
 
 /** Why a play is refused outright (not stored as a play at all). */
-export type PlayRefusal =
-  'bad signature' | 'unknown key' | 'starts in the future' | 'overlaps another play';
+export type PlayRefusal = 'bad signature' | 'unknown key' | 'overlaps another play';
 
 /** What a stored play counts as. */
 export type PlayCount =
@@ -136,7 +137,7 @@ export interface PlayContext {
   readonly neighbours: readonly number[];
   /** All versions of all areas (the one in force at the play's time is used). */
   readonly areas: readonly AreaVersion[];
-  /** The booking line the play names, if there is one and it is sold (paid or later). */
+  /** The line or make-up the play names, if it exists and counts (ads approved, not called off). */
   readonly line: LineForPlays | undefined;
 }
 
@@ -170,14 +171,17 @@ export function judgePlay(
   const cloudPlace = placeKey(locate(point, inForce));
   const no = (reason: string) => ({ count: { counts: 'no' as const, reason }, cloudPlace });
 
-  if (p.slot !== 'brand') return no(`${p.slot} spot`);
+  // Brand spots count for a booking line; make-up plays (in RECALL spots or on spare bikes) for
+  // their make-up. Aggregator and RECALL's own ads count for no brand.
+  if (p.slot !== 'brand' && p.slot !== 'make-up') return no(`${p.slot} spot`);
   if (p.startAt > ctx.receivedAt + rules.maxAheadSeconds) return no('screen clock ahead');
   if (p.startAt < ctx.receivedAt - rules.maxAgeSeconds) return no('arrived too late');
   if (p.lengthS < rules.minPlaySeconds) return no('cut short');
   if (p.accuracyM > rules.maxAccuracyM) return no('position not accurate enough');
   const line = ctx.line;
-  if (!line || line.lineId !== p.ref) return no('not a sold booking line');
-  if (p.startAt < line.startsAt || p.startAt >= line.startsAt + 3600) return no('outside its hour');
+  if (!line || line.lineId !== p.ref)
+    return no(p.slot === 'make-up' ? 'not an open make-up' : 'not a sold booking line');
+  if (p.startAt < line.startsAt || p.startAt >= line.endsAt) return no('outside its hour');
   // Inside or in the edge zone of the line's own area (even where that edge overlaps a neighbour).
   const area = published(line.areaId);
   const place = area?.active ? locate(point, [area]) : ({ kind: 'outside' } as const);

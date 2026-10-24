@@ -1,6 +1,7 @@
 // P1.3.2: prices, offers, minimums and deadlines. All of them are settings (hard rule 8): a super
 // admin changes them in admin → Prices and rules, each change is a new version from a date, and a
 // booking keeps the version it was sold on.
+import { DEFAULT_MAKE_UP_RULES, type MakeUpRules } from './makeups.js';
 import { DEFAULT_PLAY_RULES, type PlayRules } from './plays.js';
 import { DEFAULT_CAPACITY_RULES, type CapacityRules } from './supply.js';
 import { parseUtcIso } from './time.js';
@@ -44,6 +45,8 @@ export interface PriceBook {
   readonly capacity: CapacityRules;
   /** How plays are checked and counted (P1.5): edge share, time limits, GPS accuracy. */
   readonly plays: PlayRules;
+  /** When shortfalls become make-ups and refunds (P1.6). */
+  readonly makeUps: MakeUpRules;
 }
 
 /** The book in force from 22 Oct 2026: rulebook v5.4 and Prateek's decisions of 21–22 Oct. */
@@ -69,6 +72,7 @@ export const PRICE_BOOK_V1: PriceBook = {
   trialBikeHours: 20,
   capacity: DEFAULT_CAPACITY_RULES,
   plays: DEFAULT_PLAY_RULES,
+  makeUps: DEFAULT_MAKE_UP_RULES,
 };
 
 export type PriceBookProblem = string;
@@ -142,6 +146,9 @@ export function checkPriceBook(b: PriceBook): PriceBookProblem[] {
   if (!playNumbers.every(whole)) problems.push('play settings must be whole numbers');
   if (p.spotSeconds < 1 || p.minPlaySeconds > p.spotSeconds || p.edgeShareBp > 10_000)
     problems.push('plays: a play is at most one spot long; edge share at most 100%');
+  const m = b.makeUps;
+  if (![m.closeAfterSeconds, m.nextHours, m.dayCloseSeconds].every(whole) || m.nextHours > 4)
+    problems.push('make-up settings must be whole numbers; at most 4 next hours');
   return problems;
 }
 
