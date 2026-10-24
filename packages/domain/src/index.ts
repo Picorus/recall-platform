@@ -13,5 +13,6 @@ export * from './price-book.js';
 export * from './bookings.js';
 export * from './booking-flow.js';
 export * from './supply.js';
+export * from './makeups.js';
 export * from './plays.js';
 export * from './scheduler.js';

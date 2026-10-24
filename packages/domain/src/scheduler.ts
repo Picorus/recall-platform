@@ -88,6 +88,8 @@ export interface HourPlan {
   readonly spotDemands: readonly SpotDemand[];
   /** RECALL's own ads: whatever is left. */
   readonly recallAds: readonly string[];
+  /** Goes up each time the plan is re-sent (a make-up opened): screens keep the newest. */
+  readonly revision: number;
 }
 
 export interface PlanInput {
@@ -186,6 +188,48 @@ export function buildHourPlan(input: PlanInput, rules: SpotRules = DEFAULT_SPOT_
       ...input.aggregator.map((a) => ({ ...a, kind: 'aggregator' as const })),
     ],
     recallAds: input.recallAds,
+    revision: 1,
+  };
+}
+
+/**
+ * A plan already sent, with make-ups that opened since (P1.6.2: the first make-up runs in the 2 hours
+ * straight after a line's hour, whose plans went out before it existed). Make-ups go first in
+ * RECALL's spots and after paid lines for spare bikes, as in `buildHourPlan`; ones already in the
+ * plan take the new number of plays owed. The revision goes up so screens take the new plan.
+ */
+export function addMakeUps(plan: HourPlan, makeUps: PlanInput['makeUps']): HourPlan {
+  for (const m of makeUps) {
+    if (m.ads.length < 1 || !Number.isSafeInteger(m.plays) || m.plays < 0)
+      throw new PlanError([`${m.lineId}: needs an ad and a whole number of plays`]);
+    if (plan.lines.some((l) => l.lineId === m.lineId && l.kind !== 'make-up'))
+      throw new PlanError([`${m.lineId}: listed twice`]);
+  }
+  const ids = new Set(makeUps.map((m) => m.lineId));
+  const lines = plan.lines.filter((l) => !ids.has(l.lineId));
+  const demands = plan.spotDemands.filter((d) => !ids.has(d.id));
+  const paid = lines.filter((l) => l.kind === 'paid');
+  const oldMakeUps = lines.filter((l) => l.kind === 'make-up');
+  const trials = lines.filter((l) => l.kind === 'trial');
+  return {
+    ...plan,
+    lines: [
+      ...paid,
+      ...oldMakeUps,
+      ...makeUps.map((m) => ({ ...m, kind: 'make-up' as const, bikes: 0 })),
+      ...trials,
+    ],
+    spotDemands: [
+      ...demands.filter((d) => d.kind === 'make-up'),
+      ...makeUps.map((m) => ({
+        id: m.lineId,
+        kind: 'make-up' as const,
+        ads: m.ads,
+        plays: m.plays,
+      })),
+      ...demands.filter((d) => d.kind === 'aggregator'),
+    ],
+    revision: plan.revision + 1,
   };
 }
 
@@ -228,7 +272,11 @@ export function spotAt(
   const l = plan.lines.find((x) => x.lineId === carry.lineId);
   const brandIndex = Math.floor(index / group) * rules.brandPlaysPerRecallSpot + (index % group);
   const ad = l && nth(l.ads, brandIndex);
-  return l && ad !== undefined ? { kind: 'brand', lineId: l.lineId, ad } : recall();
+  if (!l || ad === undefined) return recall();
+  // A spare bike carrying a make-up plays it in its brand spots too, and the play says so.
+  return l.kind === 'make-up'
+    ? { kind: 'make-up', id: l.lineId, ad }
+    : { kind: 'brand', lineId: l.lineId, ad };
 }
 
 // ---------------------------------------------------------------- P1.4.2 live assignment

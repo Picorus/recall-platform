@@ -38,7 +38,7 @@ const ctx = (over: Partial<PlayContext> = {}): PlayContext => ({
   signature: 'ok',
   neighbours: [],
   areas: AREAS,
-  line: { lineId: LINE, areaId: 'hyd-madhapur', startsAt: HOUR, plays: 1000 },
+  line: { lineId: LINE, areaId: 'hyd-madhapur', startsAt: HOUR, endsAt: HOUR + 3600, plays: 1000 },
   ...over,
 });
 const verdict = (p: PlayReport, c: PlayContext = ctx()) => {
