@@ -52,6 +52,8 @@ export interface PriceBook {
    * with a super admin's approval; cancelled later, nothing can be refunded (Prateek, 24 Oct 2026).
    */
   readonly cancelRefundHours: number;
+  /** Cut rates used when RECALL decides to give one (basis points; never automatic). */
+  readonly cuts: { readonly agency: number; readonly aggregator: number };
 }
 
 /** The book in force from 22 Oct 2026: rulebook v5.4 and Prateek's decisions of 21–22 Oct. */
@@ -79,6 +81,7 @@ export const PRICE_BOOK_V1: PriceBook = {
   plays: DEFAULT_PLAY_RULES,
   makeUps: DEFAULT_MAKE_UP_RULES,
   cancelRefundHours: 72,
+  cuts: { agency: 1_000, aggregator: 200 },
 };
 
 export type PriceBookProblem = string;
@@ -121,6 +124,8 @@ export function checkPriceBook(b: PriceBook): PriceBookProblem[] {
     ['trialBikeHours', b.trialBikeHours],
     ['repeatSpreadBp', b.repeatSpreadBp],
     ['cancelRefundHours', b.cancelRefundHours],
+    ['cuts.agency', b.cuts.agency],
+    ['cuts.aggregator', b.cuts.aggregator],
   ] as const) {
     if (!whole(v)) problems.push(`${name} must be a whole number`);
   }

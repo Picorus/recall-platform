@@ -7,6 +7,8 @@ export const ACCOUNTS = {
   /** Money received from the payment gateway, not yet settled into the bank. */
   'payment-clearing': 'asset',
   bank: 'asset',
+  /** GST charged to RECALL by partners (on their cuts), to be claimed back as input tax credit. */
+  'gst-input': 'asset',
   /** Paid by brands for campaigns not yet delivered. */
   'campaign-held': 'liability',
   'gst-payable': 'liability',
@@ -225,6 +227,55 @@ export function refundApproved(r: {
       ...post('campaign-held', 'debit', r.base, r.brandId),
       ...post('gst-payable', 'debit', r.gst),
       ...post('refunds-payable', 'credit', r.base + r.gst, r.brandId),
+    ],
+  };
+}
+
+// ---------------------------------------------------------------- P1.7.4 cuts
+
+/**
+ * A cut RECALL decided to give on a booking (Prateek, 24 Oct 2026: never automatic): an agency or an
+ * aggregator, its rate, and the GST the partner charges on it (0 when not registered).
+ */
+export interface Cut {
+  readonly bookingId: string;
+  readonly kind: 'agency' | 'aggregator';
+  readonly partnerId: string;
+  readonly rateBp: number;
+  readonly gstBp: number;
+}
+
+/**
+ * Brings a booking's cut up (or down) to its rate on what the booking has earned so far (cuts are
+ * worked out on delivered, not invoiced). The partner's GST is paid on top and claimed back by
+ * RECALL. `soFar` is the cut and GST already recorded (from the ledger); `n` numbers the entry.
+ */
+export function cutAccrued(
+  cut: Cut,
+  earned: number,
+  soFar: { readonly cut: number; readonly gst: number },
+  n: number,
+  at: number,
+): Entry | undefined {
+  const target = Math.floor((earned * cut.rateBp + 5_000) / 10_000);
+  const gstTarget = Math.floor((target * cut.gstBp + 5_000) / 10_000);
+  const more = target - soFar.cut;
+  const moreGst = gstTarget - soFar.gst;
+  if (more === 0 && moreGst === 0) return undefined;
+  const expense = cut.kind === 'agency' ? 'agency-cuts' : 'aggregator-cuts';
+  const payable = cut.kind === 'agency' ? 'agency-payable' : 'aggregator-payable';
+  const side = (n2: number, up: 'debit' | 'credit'): 'debit' | 'credit' =>
+    n2 >= 0 ? up : up === 'debit' ? 'credit' : 'debit';
+  return {
+    entryId: `cut:${cut.bookingId}:${cut.kind}:${n}`,
+    at,
+    kind: `${cut.kind}-cut`,
+    ref: cut.bookingId,
+    memo: `${cut.kind === 'agency' ? 'Agency' : 'Aggregator'} cut on delivered plays`,
+    postings: [
+      ...post(expense, side(more, 'debit'), Math.abs(more), cut.partnerId),
+      ...post('gst-input', side(moreGst, 'debit'), Math.abs(moreGst), cut.partnerId),
+      ...post(payable, side(more + moreGst, 'credit'), Math.abs(more + moreGst), cut.partnerId),
     ],
   };
 }

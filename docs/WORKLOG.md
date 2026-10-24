@@ -2,6 +2,20 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 24 Oct 2026 · P1.7.4 · Cuts, and cancellation after payment
+- Cancellation after payment (Prateek, answers open question 12; merged in PR #22):
+  - No refund by default.
+  - At least 72 hours (a setting) before the first hour, a full refund is proposed, which a super admin may approve.
+  - Later than that, no refund is possible and the money is earned (`forfeited`).
+- Cuts (Prateek):
+  - Never automatic: a super admin gives a cut on a booking (once per kind), with the partner's GST rate.
+  - `cutAccrued` keeps the cut at its rate of what the booking has earned, going down if earnings go down. The partner's GST is owed on top and recorded in `gst-input` (claimed back).
+  - Default rates (agency 10%, aggregator 2%) are price-book settings.
+  - Migration 0011: `booking_cuts`, `gst-input` account.
+- Tests: 223 domain (property test: cut entries always balance and land on the target), 84 database.
+- Open: input tax credit on partners' GST to be confirmed with the CA.
+- **Next: P1.7.5–7** rider earnings, payouts, TDS.
+
 ## 24 Oct 2026 · P1.7.1–3 · The ledger: payments held, revenue earned, refunds
 - P1.6 merged (PR #20).
 - Domain (`ledger.ts`): accounts; `checkEntry` (balanced, whole paise, one side per posting, two or more postings); `reversal` (only for a person's adjustments); `balances` from postings; `bookingPaid`, `earnedPaise`, `lineEarned` (both ways), `refundApproved`.

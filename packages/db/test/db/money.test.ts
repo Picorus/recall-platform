@@ -15,6 +15,7 @@ import { saveAreaVersion } from '../../src/areas.js';
 import { createBooking, moveBooking, savePriceBook } from '../../src/bookings.js';
 import { settleDue } from '../../src/makeups.js';
 import { closeEarnings, decideRefund } from '../../src/earnings.js';
+import { giveCut } from '../../src/cuts.js';
 import { accountTotals, trialBalance } from '../../src/ledger.js';
 import { addScreenKey, revokeScreenKey } from '../../src/plays.js';
 import { storeUpload } from '../../src/screen-reports.js';
@@ -315,6 +316,29 @@ describe('money through the ledger (P1.7.2–3)', () => {
     );
     expect(await held('brand-BK-V')).toBe(0);
     expect(await revenueFor(line)).toBe(150_000);
+  });
+
+  it("a cut is given only when a super admin decides, once, on what was delivered, with the partner's GST", async () => {
+    const cut = { bookingId: 'BK-M2', kind: 'agency' as const, partnerId: 'adfirst', gstBp: 1_800 };
+    await expect(giveCut(pool, cut, { id: 'priya', role: 'admin' }, 'agency deal')).rejects.toThrow(
+      /super admin/,
+    );
+    // No cut given yet: nothing owed to anyone.
+    expect(await accountTotals(pool, 'agency-payable')).toEqual({ debit: 0, credit: 0 });
+    await giveCut(pool, cut, { id: 'prateek', role: 'super-admin' }, 'AdFirst brought this brand');
+    await expect(
+      giveCut(pool, cut, { id: 'prateek', role: 'super-admin' }, 'again'),
+    ).rejects.toThrow();
+    await closeEarnings(pool, W.second.until + 4 * 86_400);
+    // BK-M2 earned ₹1,200 (after the stolen screen's refund): 10% = ₹120, plus 18% GST = ₹21.60.
+    const owed = await accountTotals(pool, 'agency-payable', { party: 'adfirst' });
+    expect(owed.credit - owed.debit).toBe(12_000 + 2_160);
+    const itc = await accountTotals(pool, 'gst-input');
+    expect(itc.debit - itc.credit).toBe(2_160);
+    // Running again owes nothing more.
+    await closeEarnings(pool, W.second.until + 5 * 86_400);
+    const again = await accountTotals(pool, 'agency-payable', { party: 'adfirst' });
+    expect(again.credit - again.debit).toBe(14_160);
   });
 
   it('the whole ledger balances', async () => {

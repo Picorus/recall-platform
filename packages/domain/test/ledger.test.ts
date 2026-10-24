@@ -4,6 +4,7 @@ import {
   ACCOUNTS,
   balances,
   bookingPaid,
+  cutAccrued,
   checkEntry,
   earnedPaise,
   lineEarned,
@@ -243,6 +244,78 @@ describe('the ledger always balances (property)', () => {
         expect(left).toBe(right);
       }),
       { numRuns: 500 },
+    );
+  });
+});
+
+describe("cuts, only when given, with the partner's GST (P1.7.4)", () => {
+  const cut = {
+    bookingId: 'BK-1',
+    kind: 'agency' as const,
+    partnerId: 'adfirst',
+    rateBp: 1000,
+    gstBp: 1800,
+  };
+
+  it("10% of what was delivered, plus the agency's 18% GST, owed to the agency; the GST is claimed back", () => {
+    const e = cutAccrued(cut, 150_000, { cut: 0, gst: 0 }, 1, T);
+    expect(checkEntry(e as Entry)).toEqual([]);
+    expect(e?.postings.map((p) => [p.account, p.debit, p.credit])).toEqual([
+      ['agency-cuts', 15_000, 0],
+      ['gst-input', 2_700, 0],
+      ['agency-payable', 0, 17_700],
+    ]);
+  });
+
+  it('when earned goes down (plays found fake), the cut and its GST come down too; unchanged, no entry', () => {
+    const e = cutAccrued(cut, 120_000, { cut: 15_000, gst: 2_700 }, 2, T);
+    expect(e?.postings.map((p) => [p.account, p.debit, p.credit])).toEqual([
+      ['agency-cuts', 0, 3_000],
+      ['gst-input', 0, 540],
+      ['agency-payable', 3_540, 0],
+    ]);
+    expect(cutAccrued(cut, 120_000, { cut: 12_000, gst: 2_160 }, 3, T)).toBeUndefined();
+  });
+
+  it('an aggregator not registered for GST: 2% and no GST', () => {
+    const e = cutAccrued(
+      { ...cut, kind: 'aggregator', rateBp: 200, gstBp: 0 },
+      150_000,
+      { cut: 0, gst: 0 },
+      1,
+      T,
+    );
+    expect(e?.postings.map((p) => [p.account, p.debit, p.credit])).toEqual([
+      ['aggregator-cuts', 3_000, 0],
+      ['aggregator-payable', 0, 3_000],
+    ]);
+  });
+
+  it('property: every cut entry balances, going up or down, and lands exactly on the target', () => {
+    fc.assert(
+      fc.property(
+        fc.array(fc.integer({ min: 0, max: 100_000_000 }), { minLength: 1, maxLength: 20 }),
+        fc.integer({ min: 0, max: 3_000 }),
+        fc.constantFrom(0, 500, 1_200, 1_800, 2_800),
+        (earnings, rateBp, gstBp) => {
+          const c = { ...cut, rateBp, gstBp };
+          let so = { cut: 0, gst: 0 };
+          earnings.forEach((earned, i) => {
+            const e = cutAccrued(c, earned, so, i + 1, T);
+            if (!e) return;
+            expect(checkEntry(e)).toEqual([]);
+            const b = balances([e]);
+            so = {
+              cut: so.cut + (b.get('agency-cuts') ?? 0),
+              gst: so.gst + (b.get('gst-input') ?? 0),
+            };
+          });
+          const last = earnings[earnings.length - 1] ?? 0;
+          const target = Math.floor((last * rateBp + 5_000) / 10_000);
+          expect(so.cut).toBe(target);
+          expect(so.gst).toBe(Math.floor((target * gstBp + 5_000) / 10_000));
+        },
+      ),
     );
   });
 });

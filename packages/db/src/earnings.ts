@@ -12,6 +12,7 @@ import {
 } from '@recall/domain';
 import type { Pool, PoolClient } from 'pg';
 import { priceBooks } from './bookings.js';
+import { accrueCuts } from './cuts.js';
 import { postEntry } from './ledger.js';
 import { inTransaction, paidForLine, type OpenLine } from './makeups.js';
 import { COUNTING, lineTotalsFor } from './plays.js';
@@ -161,6 +162,26 @@ export async function closeEarnings(
         });
       }
     }
+    // Cuts follow what each booking has earned (only bookings RECALL gave a cut on).
+    // Bookings still settling: a line not closed yet, or closed in the last week.
+    const withCuts = await c.query<{ booking_id: string }>(
+      `SELECT DISTINCT k.booking_id FROM booking_cuts k JOIN booking_lines bl USING (booking_id)
+        WHERE NOT EXISTS (
+                SELECT 1 FROM line_earnings_closed x
+                 WHERE x.line_id = bl.booking_id || '/' || bl.area_id || '/' || bl.day::text || '/' || bl.start_hour
+                   AND x.closed_at < now() - interval '7 days')
+        ORDER BY k.booking_id`,
+    );
+    for (const b of withCuts.rows) {
+      await c.query('SAVEPOINT cut');
+      try {
+        posted += await accrueCuts(c, b.booking_id, now, 'hour-close');
+        await c.query('RELEASE SAVEPOINT cut');
+      } catch (e) {
+        await c.query('ROLLBACK TO SAVEPOINT cut');
+        failed.push({ lineId: b.booking_id, error: e instanceof Error ? e.message : String(e) });
+      }
+    }
     return { posted, failed };
   });
 }
@@ -207,5 +228,6 @@ export async function decideRefund(
       );
     const [line] = await openLines(c, '9999-12-31', row.line_id);
     if (line) await closeLine(c, line, await priceBooks(c), new Map(), now, by.id);
+    await accrueCuts(c, row.line_id.split('/')[0] ?? '', now, by.id);
   });
 }
