@@ -89,10 +89,22 @@ class Brightness(private val rules: BrightnessRules = BrightnessRules()) {
     }
 
     /**
-     * One second: the sun's height now and the sensor's reading this second (null without one, or
-     * without a reading). Returns the brightness to set (percent, 1–100).
+     * The lowest and highest the screen may be now, whatever is asked: never under the day floor by
+     * day (an ad must be readable while it counts), never over the night cap at night (never blinding).
      */
-    fun next(elevation: Double, lux: Double?): Int {
+    fun limits(elevation: Double): IntRange {
+        val k = daylight(elevation)
+        val low = Math.round(rules.nightFloor + (rules.dayFloor - rules.nightFloor) * k).toInt()
+        val high = Math.round(rules.nightCap + (rules.day - rules.nightCap) * k).toInt()
+        return low..high
+    }
+
+    /**
+     * One second: the sun's height now and the sensor's reading this second (null without one, or
+     * without a reading). `commanded`: a brightness set from admin (P2.12), kept within the same
+     * limits and changed just as smoothly (review P2.12). Returns the brightness to set (percent, 1–100).
+     */
+    fun next(elevation: Double, lux: Double?, commanded: Int? = null): Int {
         if (lux != null && lux.isFinite() && lux >= 0) {
             light.addLast(lux)
             while (light.size > rules.lightSeconds) light.removeFirst()
@@ -102,7 +114,7 @@ class Brightness(private val rules: BrightnessRules = BrightnessRules()) {
         }
         // The lower middle when even: in doubt, the dimmer side (never blinding).
         val middle = light.sorted().let { if (it.isEmpty()) null else it[(it.size - 1) / 2] }
-        val want = target(elevation, middle)
+        val want = commanded?.coerceIn(limits(elevation)) ?: target(elevation, middle)
         val now = current ?: want
         val step = (want - now).coerceIn(-rules.stepPerSecond, rules.stepPerSecond)
         return (now + step).coerceIn(1, 100).also { current = it }

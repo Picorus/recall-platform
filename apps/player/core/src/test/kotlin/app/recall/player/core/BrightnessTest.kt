@@ -67,6 +67,18 @@ class BrightnessTest {
     }
 
     @Test
+    fun `a brightness set from admin stays within the safe limits, and changes smoothly`() {
+        val b = Brightness()
+        assertEquals(30, b.next(-20.0, null))
+        assertEquals(35, b.next(-20.0, null, commanded = 100), "never blinding at night")
+        assertEquals(15, Brightness().next(-20.0, null, commanded = 1))
+        assertEquals(60, Brightness().next(40.0, null, commanded = 5), "readable by day while it counts")
+        val day = Brightness()
+        day.next(40.0, null)
+        assertEquals(listOf(95, 90, 85), (1..3).map { day.next(40.0, null, commanded = 70) })
+    }
+
+    @Test
     fun `settings that could blind or blank are refused`() {
         assertFailsWith<IllegalArgumentException> { BrightnessRules(nightCap = 80) }
         assertFailsWith<IllegalArgumentException> { BrightnessRules(nightFloor = 0) }

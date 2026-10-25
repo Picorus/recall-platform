@@ -72,10 +72,11 @@ class ConductorTest {
         bad: MutableList<String> = mutableListOf(),
         utc: (Long) -> Long? = time::utc,
         mark: PlayedMark = PlayedMark(),
+        covered: (Long) -> String? = { null },
     ): Pair<Conductor, Playout> {
         screen.time = time
         val playout = Playout(plans, ::fileOf)
-        val c = Conductor(playout, screen, utc, { time.mono }, time.waiter, { played += it }, { bad += it }, mark = mark)
+        val c = Conductor(playout, screen, utc, { time.mono }, time.waiter, { played += it }, { bad += it }, mark = mark, covered = covered)
         screen.c = c
         return c to playout
     }
@@ -201,6 +202,19 @@ class ConductorTest {
         val none = mutableListOf<Played>()
         conductor(Time(h0, stopAt = 30_000), quiet, played = none).first.run()
         assertTrue(none.none { it.ok || it.counts }, "no confirmation from the screen, no play")
+    }
+
+    @Test
+    fun `a spot covered by a blank for any part of it never counts, even one already showing`() {
+        val time = Time(h0, stopAt = 60_001)
+        var on = false
+        var ended = Long.MIN_VALUE
+        time.at[20_000L] = { on = true } // a blank arrives mid-spot (spot 1 is 15–30 s)
+        time.at[25_000L] = { on = false; ended = 25_000L }
+        val played = mutableListOf<Played>()
+        conductor(time, Screen(), played = played, covered = { since -> if (on || ended >= since) "blanked by a command" else null }).first.run()
+        assertEquals(listOf(true, false, true, true), played.take(4).map { it.counts })
+        assertEquals("blanked by a command", played[1].problem)
     }
 
     @Test

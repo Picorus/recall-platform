@@ -2,8 +2,9 @@
 // cloud's time (the box sets its clock from it, P2.3.1) and recorded as the last contact. An upload
 // is stored with storeUpload (P1.2.5: each numbered report once, minute summaries in order) and
 // answered with "stored up to N", so the box can forget those. A message refused whole is recorded
-// and not answered: nothing is lost, the box keeps it and sends it again.
-import { recordHello, recordRefusal, storeUpload } from '@recall/db';
+// and not answered: nothing is lost, the box keeps it and sends it again. Commands not yet answered
+// (P2.12) go again with every hello (the box says hello when its line opens and every 15 minutes).
+import { pendingCommands, recordHello, recordRefusal, storeUpload } from '@recall/db';
 import {
   ackText,
   downTopic,
@@ -57,7 +58,13 @@ export async function handleUp(
     }
     if (memory?.due(`h:${screenId}`, nowMs) ?? true)
       await recordHello(pool, screenId, h.app, nowMs);
-    return [{ topic: downTopic(screenId, 'time'), payload: timeText(nowMs, h.mono) }];
+    // P2.12: commands not yet answered go again each time the line opens (the box does each once).
+    // The time reply never waits on them: a failure here only delays commands to the next hello.
+    const commands = await pendingCommands(pool, screenId, nowMs).catch(() => [] as string[]);
+    return [
+      { topic: downTopic(screenId, 'time'), payload: timeText(nowMs, h.mono) },
+      ...commands.map((payload) => ({ topic: downTopic(screenId, 'command'), payload })),
+    ];
   }
   const u = parseUpload(payload);
   if ('problem' in u) {

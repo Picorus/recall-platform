@@ -81,7 +81,9 @@ object Playback {
     fun start(activity: Activity, root: FrameLayout) {
         owner?.let(::stop)
         owner = activity
-        val s = Screen(activity, root)
+        // A screen left blanked by a command stays dark after a restart (P2.12).
+        Remote.load(activity)
+        val s = Screen(activity, root, cover = Remote::coverReason, testPattern = Remote::testPatternOn)
         screen = s
         val log: (String) -> Unit = { m -> Log.i("RecallPlay", m) }
         val counted = mark ?: PlayedMark(markFile(activity).load()).also { mark = it }
@@ -94,10 +96,12 @@ object Playback {
                 mono = SystemClock::elapsedRealtime,
                 waiter = waiter,
                 played = { p ->
-                    if (!p.counts && p.spot.timed) notCounted.incrementAndGet()
+                    // Spots under a blank or test pattern are meant not to count: not a fault (review P2.12).
+                    val covered = Remote.isCover(p.problem)
+                    if (!p.counts && p.spot.timed && !covered) notCounted.incrementAndGet()
                     val planned = p.spot.planned
                     if (planned != null && planned.ad.isNotEmpty() && p.spot.shows != planned) missing.incrementAndGet()
-                    if (!p.counts && p.spot.timed) log("not counted: ${p.spot.shows?.ad ?: "slate"} at ${p.spot.startUtc}: ${p.problem ?: if (!p.whole) "not whole" else "no ad or no time"}")
+                    if (!p.counts && p.spot.timed && !covered) log("not counted: ${p.spot.shows?.ad ?: "slate"} at ${p.spot.startUtc}: ${p.problem ?: if (!p.whole) "not whole" else "no ad or no time"}")
                     if (p.counts) record(p, log)
                     // A mark left by a wrong clock (a faked GPS date) must not stop counting for good.
                     Line.clock.get().cloudNow(SystemClock.elapsedRealtime())?.let { now ->
@@ -107,11 +111,17 @@ object Playback {
                 badFile = { ad -> checks.execute { runCatching { Ads.store?.damaged(ad) } } },
                 log = log,
                 mark = mark,
+                covered = Remote::coveredSince,
             ).also {
                 s.reports = it
                 conductor = it
             }
         }, log, counted).also { it.start() }
+    }
+
+    /** The blank or test-pattern cover changed (P2.12): the screen shows it now (main thread). */
+    fun refreshCover() {
+        screen?.refreshCover()
     }
 
     /** Stops playback started by `activity` (an older screen going away never stops a newer one). */
