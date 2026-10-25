@@ -85,6 +85,9 @@ class AdStore(
     val noRoom: Long get() = roomless.get()
     /** Files no longer needed, cleared to make room. */
     val cleared: Long get() = clearedCount.get()
+    private val unplayableCount = AtomicLong()
+    /** Files intact (fingerprint matches) that the player could not play on this box. Health, P2.11. */
+    val unplayable: Long get() = unplayableCount.get()
 
     init {
         files.mkdirs()
@@ -147,14 +150,26 @@ class AdStore(
         return File(files, w.sha256).takeIf { it.length() == w.bytes }
     }
 
-    /** The player found this ad's file unplayable: drop it, so it is downloaded again. */
-    @Synchronized
-    fun damaged(ad: String) {
-        val sha = wanted[ad]?.sha256 ?: return
-        if (have.remove(sha)) {
+    /**
+     * The player found this ad's file unplayable. Its fingerprint is checked again (off the lock; it
+     * takes a moment for a large file): really damaged, it is dropped and downloaded again; intact,
+     * it is kept and counted as unplayable on this box (downloading the same bytes again would not
+     * help). Returns true when it was dropped. Call it off the main thread.
+     */
+    fun damaged(ad: String): Boolean {
+        val sha = synchronized(this) { wanted[ad]?.sha256?.takeIf { it in have } } ?: return false
+        val intact = runCatching { sha256(File(files, sha)) == sha }.getOrDefault(false)
+        synchronized(this) {
+            if (intact) {
+                unplayableCount.incrementAndGet()
+                log("ads: the file for $ad is intact but the box cannot play it")
+                return false
+            }
+            if (!have.remove(sha)) return false
             File(files, sha).delete()
             bad.incrementAndGet()
             log("ads: the file for $ad was damaged; downloading it again")
+            return true
         }
     }
 
