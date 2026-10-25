@@ -139,7 +139,7 @@ class PlayLogTest {
         var broken = true
         val box = Outbox(File(dir, "outbox"), seal = { _, r -> if (broken) error("keystore busy") else r })
         val logged = mutableListOf<String>()
-        val log = PlayLog(box, { null }, MarkFile(File(dir, "mark")), log = { logged += it })
+        val log = PlayLog(box, { null }, MarkFile(File(dir, "mark")), log = { logged += it }, pause = {})
         log.record(counted(t0))
         log.flush()
         broken = false
@@ -152,6 +152,51 @@ class PlayLogTest {
         // No position known: the cloud keeps the play but cannot count it.
         assertEquals(Where.NO_FIX_ACCURACY_M, l(r, "accuracyM"))
         assertEquals("outside", s(r, "place"))
+    }
+
+    @Test
+    fun `a busy keystore is tried again, and the mark is on storage before the record`() {
+        val markFile = MarkFile(File(dir, "mark"))
+        var tries = 0
+        val waits = mutableListOf<Long>()
+        val box = Outbox(File(dir, "outbox"), seal = { _, r ->
+            tries++
+            assertEquals(t0, markFile.load(), "the mark is saved first")
+            if (tries < 3) error("keystore busy") else r
+        })
+        val log = PlayLog(box, { null }, markFile, pause = { waits += it })
+        log.record(counted(t0))
+        log.flush()
+        assertEquals(1L, log.recorded)
+        assertEquals(0L, log.failed)
+        assertEquals(listOf(200L, 1_000L), waits)
+    }
+
+    @Test
+    fun `renumbering changes nothing when a play cannot be signed, and works when it can`() {
+        var broken = false
+        val box = Outbox(File(dir, "outbox"), seal = { seq, r ->
+            if (broken && seq > 900) error("keystore busy") else JsonObject(r + ("n" to JsonPrimitive(seq)))
+        })
+        repeat(3) { box.add(PlayRecord.report("recall", "", "r1", 1_793_628_015L + 15 * it, 15, Where.unknown()), 1_793_628_015L + 15 * it) }
+        broken = true
+        assertTrue(runCatching { box.renumberAfter(900) }.isFailure)
+        assertEquals(listOf(1L, 2L, 3L), box.nextBatch().map { it.seq }, "nothing renumbered, nothing lost")
+        assertEquals(3L, box.lastNumber())
+        broken = false
+        assertEquals(3, box.renumberAfter(900))
+        assertEquals(listOf(901L, 902L, 903L), stored(box).map { l(it.second, "n") })
+        assertEquals(listOf(901L, 902L, 903L), box.nextBatch().map { it.seq })
+    }
+
+    @Test
+    fun `a mark from a wrong clock is brought back to the cloud's time`() {
+        val mark = PlayedMark(t0 + 5L * 365 * 24 * 3_600_000) // a faked GPS date, years ahead
+        assertFalse(mark.claim(t0), "it would block every real play")
+        assertFalse(PlayedMark(t0 + 30_000).pullBack(t0), "a little ahead is left alone")
+        assertTrue(mark.pullBack(t0))
+        assertFalse(mark.claim(t0), "never the spot of the cloud's time itself again")
+        assertTrue(mark.claim(t0 + 15_000))
     }
 
     @Test
@@ -182,8 +227,12 @@ class PlayLogTest {
         s.onSecond(Second(t, FixVerdict.USED, LatLng(17.4475124, 78.3910436), area, true, false, true, accuracyM = 7.2))
         s.onSecond(Second(t + 1, FixVerdict.NO_FIX, null, area, true, false, true))
         assertEquals(Where(17_447_512, 78_391_044, 8, "inside:hyd-madhapur@3"), s.where(t))
-        assertEquals(Where.unknown("inside:hyd-madhapur@3"), s.where(t + 1), "no fix that second: no position")
-        assertEquals(Where.unknown("inside:hyd-madhapur@3"), s.where(t + 5), "not heard: the area now, no position")
+        assertEquals(Where(17_447_512, 78_391_044, 8, "inside:hyd-madhapur@3"), s.where(t + 1), "no fix that second: the nearest one")
+        assertEquals(Where(17_447_512, 78_391_044, 8, "inside:hyd-madhapur@3"), s.where(t + 5), "within 5 seconds")
+        assertEquals(Where.unknown("inside:hyd-madhapur@3"), s.where(t + 6), "further: no position")
+        s.onSecond(Second(t + 3, FixVerdict.USED, LatLng(17.45, 78.39), area, true, false, true, accuracyM = 4.0))
+        assertEquals(17_450_000L, s.where(t + 4).latE6, "the closest fix wins")
+        assertEquals(17_447_512L, s.where(t + 1).latE6)
         s.onSecond(Second(t + 200, FixVerdict.NO_FIX, null, Place.Outside, true, false, true))
         assertEquals(Where.unknown("outside"), s.where(t), "old seconds are let go")
         assertNull(Where.of(LatLng(1.0, 2.0), Double.NaN, Place.Outside).takeIf { it.accuracyM != Where.NO_FIX_ACCURACY_M })

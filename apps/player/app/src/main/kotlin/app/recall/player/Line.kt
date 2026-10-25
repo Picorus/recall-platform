@@ -12,7 +12,6 @@ import android.os.SystemClock
 import app.recall.player.core.DownKind
 import app.recall.player.core.Enrolment
 import app.recall.player.core.LineTls
-import app.recall.player.core.MarkFile
 import app.recall.player.core.Outbox
 import app.recall.player.core.PahoTransport
 import app.recall.player.core.PlayLog
@@ -47,36 +46,25 @@ object Line {
     fun start(context: Context) {
         if (line != null) return
         val app = context.applicationContext
+        val dir = File(app.filesDir, "line")
+        val need = listOf("screen-id", "broker", "cert.pem", "broker-ca.pem").map { File(dir, it) }
+        val vault = AndroidKeyVault()
+        // First, with the screen id alone: what to play where (P2.6) and the signed play log (P2.7),
+        // so no play counted early after a boot is lost (review P2.7).
+        val screenId = need[0].takeIf { it.exists() }?.readText()?.trim()
+        if (screenId != null) {
+            runCatching { Schedule.start(app, screenId) }.onFailure { CrashLog.record(app, "schedule not started: ${it.javaClass.simpleName}") }
+            runCatching { startPlays(app, screenId, vault) }.onFailure { CrashLog.record(app, "plays not started: ${it.javaClass.simpleName}") }
+        }
         // The ad files are kept and checked whether or not the line can open (P2.4). A problem
         // there must not keep the line (and so the play reports) from starting.
         runCatching { Ads.start(app) }.onFailure { CrashLog.record(app, "ads not started: ${it.javaClass.simpleName}") }
-        val dir = File(app.filesDir, "line")
-        val need = listOf("screen-id", "broker", "cert.pem", "broker-ca.pem").map { File(dir, it) }
-        if (need.any { !it.exists() }) {
+        val box = outbox
+        if (screenId == null || box == null || need.any { !it.exists() }) {
             CrashLog.record(app, "line not started: not set up at the warehouse")
             return
         }
-        val (screenId, broker, cert, brokerCa) = need.map { it.readText().trim() }
-        // What to play where (P2.6): from storage at once, even before the line opens.
-        runCatching { Schedule.start(app, screenId) }.onFailure { CrashLog.record(app, "schedule not started: ${it.javaClass.simpleName}") }
-        val vault = AndroidKeyVault()
-        // The outbox and the signed play log (P2.7) start whether or not the line can open: plays
-        // are kept on storage until it can. Plays are signed only with the key made at enrolment.
-        val signs = vault.has(Enrolment.PLAY_KEY)
-        val seal: (Long, JsonObject) -> JsonObject = if (signs) PlaySigner(screenId, vault)::seal else { _, r -> r }
-        // Once per process: a second start (the line could not open before) reuses them.
-        val box = outbox ?: Outbox(File(app.filesDir, "outbox"), seal = seal).also { outbox = it }
-        if (signs && Playback.playLog == null) {
-            Playback.playLog = PlayLog(
-                outbox = box,
-                places = { t -> Schedule.scheduler?.where(t) },
-                mark = Playback.markFile(app),
-                stored = ::nudge,
-                log = { android.util.Log.i("RecallPlays", it) },
-            )
-        } else if (!signs) {
-            CrashLog.record(app, "plays not recorded: the box has no play key (enrol it again)")
-        }
+        val (_, broker, cert, brokerCa) = need.map { it.readText().trim() }
         // The key must be the one enrolled, and the certificate must be for it: a box set up wrongly
         // says so here instead of failing every handshake quietly (review, P2.3.3).
         if (!vault.has(Enrolment.TLS_KEY)) {
@@ -107,6 +95,31 @@ object Line {
                 }
             },
         ).also { it.start() }
+    }
+
+    /**
+     * The outbox and the signed play log (P2.7), whether or not the line can open: plays are kept on
+     * storage until it can. Plays are signed only with the key made at enrolment. Once per process.
+     */
+    private fun startPlays(app: Context, screenId: String, vault: AndroidKeyVault) {
+        if (outbox != null) return
+        val signs = vault.has(Enrolment.PLAY_KEY)
+        val seal: (Long, JsonObject) -> JsonObject = if (signs) PlaySigner(screenId, vault)::seal else { _, r -> r }
+        val box = Outbox(File(app.filesDir, "outbox"), seal = seal)
+        outbox = box
+        if (!signs) {
+            CrashLog.record(app, "plays not recorded: the box has no play key (enrol it again)")
+            return
+        }
+        Playback.attach(
+            PlayLog(
+                outbox = box,
+                places = { t -> Schedule.scheduler?.where(t) },
+                mark = Playback.markFile(app),
+                stored = ::nudge,
+                log = { android.util.Log.i("RecallPlays", it) },
+            ),
+        )
     }
 
     /** A report was added to the outbox: send it soon. */

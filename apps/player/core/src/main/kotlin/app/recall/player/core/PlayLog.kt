@@ -142,6 +142,8 @@ class PlayLog(
     private val stored: () -> Unit = {},
     private val log: (String) -> Unit = {},
     private val worker: ExecutorService = Executors.newSingleThreadExecutor { Thread(it, "recall-plays").apply { isDaemon = true } },
+    /** Waits between tries (the play log's own thread). */
+    private val pause: (Long) -> Unit = { Thread.sleep(it) },
 ) {
     private val recordedCount = AtomicLong()
     private val failedCount = AtomicLong()
@@ -168,11 +170,28 @@ class PlayLog(
             worker.execute {
                 try {
                     mark.save(start)
-                    outbox.add(report, startS)
+                } catch (e: Exception) {
+                    // Kept in memory anyway: this run never counts it twice; the record still goes.
+                    log("plays: mark not saved: ${e.javaClass.simpleName}")
+                }
+                // The keystore can fail for a moment on a busy box: a real play is tried again
+                // before it is given up (review P2.7).
+                var problem: Exception? = null
+                for (wait in RETRY_MS) {
+                    if (problem != null) pause(wait)
+                    problem = try {
+                        outbox.add(report, startS)
+                        null
+                    } catch (e: Exception) {
+                        e
+                    }
+                    if (problem == null) break
+                }
+                if (problem == null) {
                     recordedCount.incrementAndGet()
                     runCatching(stored)
-                } catch (e: Exception) {
-                    fail("${shows.ad} at $startS not stored: ${e.javaClass.simpleName}: ${e.message}")
+                } else {
+                    fail("${shows.ad} at $startS not stored: ${problem.javaClass.simpleName}: ${problem.message}")
                 }
             }
         } catch (e: Exception) {
@@ -183,6 +202,11 @@ class PlayLog(
     private fun fail(problem: String) {
         failedCount.incrementAndGet()
         log("plays: $problem")
+    }
+
+    private companion object {
+        /** Before each try: none first, then a short wait, then a longer one. */
+        val RETRY_MS = listOf(0L, 200L, 1_000L)
     }
 
     /** Waits for the records handed on so far to be stored (tests, and before the app goes away). */

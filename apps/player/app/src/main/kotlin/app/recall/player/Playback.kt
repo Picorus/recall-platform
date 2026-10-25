@@ -14,6 +14,7 @@ import app.recall.player.core.Conductor
 import app.recall.player.core.MarkFile
 import app.recall.player.core.PlanSource
 import app.recall.player.core.PlayLog
+import app.recall.player.core.Played
 import app.recall.player.core.PlaybackThread
 import app.recall.player.core.PlayedMark
 import app.recall.player.core.Playout
@@ -26,6 +27,33 @@ object Playback {
 
     /** Where counted plays are signed and stored (P2.7); null until the line has started it. */
     @Volatile var playLog: PlayLog? = null
+        private set
+    /** Plays counted before the play log was there (just after a boot): handed on when it is. */
+    private val early = ArrayDeque<Played>()
+
+    /** The play log is ready: plays counted before it go to it first, in order. */
+    fun attach(log: PlayLog) {
+        synchronized(early) {
+            early.forEach(log::record)
+            early.clear()
+            playLog = log
+        }
+    }
+
+    private fun record(p: Played, log: (String) -> Unit) {
+        playLog?.let { return it.record(p) }
+        synchronized(early) {
+            val plays = playLog
+            when {
+                plays != null -> plays.record(p)
+                early.size < EARLY_MAX -> early.addLast(p)
+                else -> log("counted but not recorded (no play log): ${p.spot.shows?.ad} at ${p.spot.startUtc}")
+            }
+        }
+    }
+
+    /** About an hour of spots. */
+    private const val EARLY_MAX = 240
 
     /** The latest spot counted, read from storage once (P2.7): never counted twice across reboots. */
     private var mark: PlayedMark? = null
@@ -60,9 +88,11 @@ object Playback {
                 waiter = waiter,
                 played = { p ->
                     if (!p.counts && p.spot.timed) log("not counted: ${p.spot.shows?.ad ?: "slate"} at ${p.spot.startUtc}: ${p.problem ?: if (!p.whole) "not whole" else "no ad or no time"}")
-                    val plays = playLog
-                    if (p.counts && plays == null) log("counted but not recorded (no play log yet): ${p.spot.shows?.ad} at ${p.spot.startUtc}")
-                    plays?.record(p)
+                    if (p.counts) record(p, log)
+                    // A mark left by a wrong clock (a faked GPS date) must not stop counting for good.
+                    Line.clock.get().cloudNow(SystemClock.elapsedRealtime())?.let { now ->
+                        if (mark.pullBack(now)) log("play mark was ahead of the cloud's time: brought back")
+                    }
                 },
                 badFile = { ad -> checks.execute { runCatching { Ads.store?.damaged(ad) } } },
                 log = log,

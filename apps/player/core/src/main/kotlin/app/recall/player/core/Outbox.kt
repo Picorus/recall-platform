@@ -92,10 +92,13 @@ class Outbox(
      * when it was made, UTC seconds, from the trusted clock. Beyond the space limit the oldest go.
      */
     @Synchronized
-    fun add(report: JsonObject, at: Long): Queued {
+    fun add(report: JsonObject, at: Long): Queued = put(at) { seq -> seal(seq, report) }
+
+    /** Stores the report `make` gives for the next number. */
+    private fun put(at: Long, make: (Long) -> JsonObject): Queued {
         require(at >= 0) { "a report needs its time" }
         val seq = next
-        val text = ScreenLink.numberedText(seq, at, seal(seq, report))
+        val text = ScreenLink.numberedText(seq, at, make(seq))
         val line = "${crc(text)}\t$text\n"
         val size = line.toByteArray().size
         require(size <= MAX_REPORT_BYTES) { "a report must be under ${MAX_REPORT_BYTES / 1024} KB" }
@@ -203,14 +206,17 @@ class Outbox(
     fun renumberAfter(cloudUpTo: Long): Int {
         if (cloudUpTo <= next - 1) return 0
         val waiting = unconfirmed().toList()
+        // Every report finished (plays signed) for its new number first: a failure here (the
+        // keystore busy) changes nothing, and the next ack tries again (review P2.7).
+        val renumbered = waiting.mapIndexed { i, q ->
+            val body = q.text.substring(HEAD.find(q.text)!!.range.last + 1, q.text.length - 1)
+            seal(cloudUpTo + 1 + i, Json.parseToJsonElement(body).jsonObject)
+        }
         DiskFiles.writeAtomically(File(dir, "floor"), cloudUpTo.toString())
         next = cloudUpTo + 1
         val old = segments.toList()
         open = null
-        for (q in waiting) {
-            val body = q.text.substring(HEAD.find(q.text)!!.range.last + 1, q.text.length - 1)
-            add(Json.parseToJsonElement(body).jsonObject, q.at)
-        }
+        waiting.forEachIndexed { i, q -> put(q.at) { seq -> check(seq == cloudUpTo + 1 + i); renumbered[i] } }
         old.forEach(::delete)
         return waiting.size
     }

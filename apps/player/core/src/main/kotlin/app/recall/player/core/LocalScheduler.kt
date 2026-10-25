@@ -175,10 +175,19 @@ class LocalScheduler(
     }
 
     /**
-     * Where the bike was at `utcSecond`: that second's position and area (no position without a good
-     * fix that second). Without a second from the tracker then, no position, the area as it is now.
+     * Where the bike was at `utcSecond`: the nearest second with a good fix within a few seconds
+     * (GPS often misses one second), else that second's area without a position. Without any second
+     * from the tracker then, no position and the area as it is now (the cloud finds the area itself
+     * from the position; this one is for information).
      */
-    override fun where(utcSecond: Long): Where = seen[utcSecond] ?: Where.unknown(place.key)
+    override fun where(utcSecond: Long): Where {
+        for (d in 0..NEAR_SECONDS) {
+            for (t in if (d == 0L) listOf(utcSecond) else listOf(utcSecond - d, utcSecond + d)) {
+                seen[t]?.takeIf { it.accuracyM != Where.NO_FIX_ACCURACY_M }?.let { return it }
+            }
+        }
+        return seen[utcSecond] ?: Where.unknown(place.key)
+    }
 
     /** The areas in force, for the tracker. */
     fun areas(): List<AreaVersion> = state.areas.areas
@@ -214,6 +223,8 @@ class LocalScheduler(
         const val HOUR = 3600L
         /** Seconds of positions kept for play records (a play is recorded when its spot ends). */
         const val KEEP_SECONDS = 120L
+        /** A fix this many seconds from a play's start still gives its position. */
+        const val NEAR_SECONDS = 5L
         /** How far ahead of the trusted time a cloud message may be dated (the cloud's clock may be a little ahead). */
         const val AHEAD_MS = 5 * 60_000L
     }
