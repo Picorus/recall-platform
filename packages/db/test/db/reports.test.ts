@@ -1,4 +1,4 @@
-import { fakeMaps } from '@recall/adapters';
+import { fakeMaps, fakeMessages } from '@recall/adapters';
 import { generateKeyPairSync, sign } from 'node:crypto';
 import {
   launchAreas,
@@ -15,6 +15,7 @@ import type pg from 'pg';
 import { saveAreaVersion } from '../../src/areas.js';
 import { createBooking, moveBooking, savePriceBook } from '../../src/bookings.js';
 import { addScreenKey } from '../../src/plays.js';
+import { sendDueReports, setBrandContact } from '../../src/report-sends.js';
 import { buildDueReports, campaignReportFor, reportDueAt } from '../../src/reports.js';
 import { storeUpload } from '../../src/screen-reports.js';
 import { freshDatabase } from './fresh-db.js';
@@ -184,5 +185,58 @@ describe('the final report (P1.9.1)', () => {
     await expect(
       pool.query(`UPDATE campaign_reports SET report = '{}' WHERE booking_id = 'BK-R'`),
     ).rejects.toThrow();
+  });
+
+  it('is sent once on WhatsApp and email; a passing failure is tried again; then the booking is report-sent', async () => {
+    const now = lastEnds + 26 * 3600;
+    const failFor = new Map([
+      ['brand@example.in', { reason: 'mail server down', retryable: true }],
+    ]);
+    const messages = fakeMessages({ failFor });
+    const render = {
+      link: (id: string) => `https://brand.recall.example/campaigns/${id}/report`,
+      html: () => '<p>report</p>',
+      pdf: () => Promise.resolve(new Uint8Array([37, 80, 68, 70])),
+    };
+    expect(await sendDueReports(pool, messages, render, now)).toEqual({
+      sent: [],
+      noContact: ['BK-R'],
+      undelivered: [],
+    });
+    await expect(setBrandContact(pool, 'b-r', { phone: '98480 22338' }, 'priya')).rejects.toThrow(
+      'phone',
+    );
+    await setBrandContact(
+      pool,
+      'b-r',
+      { phone: '+919848022338', email: 'brand@example.in' },
+      'priya',
+    );
+    // WhatsApp goes; email fails for now: the booking waits.
+    expect((await sendDueReports(pool, messages, render, now + 60)).sent).toEqual([]);
+    failFor.clear();
+    expect((await sendDueReports(pool, messages, render, now + 120)).sent).toEqual(['BK-R']);
+    expect((await sendDueReports(pool, messages, render, now + 180)).sent).toEqual([]);
+    expect(messages.sent.map((m) => m.channel)).toEqual(['whatsapp', 'email']); // each once
+    const [wa, mail] = messages.sent;
+    expect(wa?.channel === 'whatsapp' && wa.params).toEqual([
+      'BK-R',
+      '30 Sep 2027',
+      '1,700 of 2,000 plays delivered (85%) on 5 different bikes.',
+      'https://brand.recall.example/campaigns/BK-R/report',
+    ]);
+    expect(mail?.channel === 'email' && mail.attachments[0]?.name).toBe('RECALL-report-BK-R.pdf');
+    const tries = await pool.query<{ channel: string; try: number; status: string }>(
+      `SELECT channel, try, status FROM report_sends WHERE booking_id = 'BK-R' ORDER BY channel, try`,
+    );
+    expect(tries.rows).toEqual([
+      { channel: 'email', try: 1, status: 'failed' },
+      { channel: 'email', try: 2, status: 'sent' },
+      { channel: 'whatsapp', try: 1, status: 'sent' },
+    ]);
+    const s = await pool.query<{ state: string }>(
+      `SELECT state FROM booking_events WHERE booking_id = 'BK-R' ORDER BY seq DESC LIMIT 1`,
+    );
+    expect(s.rows[0]?.state).toBe('report-sent');
   });
 });

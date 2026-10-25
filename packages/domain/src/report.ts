@@ -2,8 +2,9 @@
 // time to play (24 hours after the last hour, a setting), then kept as it was built. It shows what
 // the brand bought: plays delivered against plays promised, different bikes, a heat map of where the
 // plays happened, the busiest streets, make-ups, any refund, and people (approximate, never billed).
-import { cellToLatLng, latLngToCell } from 'h3-js';
-import type { PeopleEstimate } from './people.js';
+import { cellToBoundary, cellToLatLng, latLngToCell } from 'h3-js';
+import { formatRupees, paise } from './money.js';
+import { indianNumber, type PeopleEstimate } from './people.js';
 
 /** Settings for the final report (in the price book, versioned). */
 export interface ReportRules {
@@ -68,6 +69,9 @@ export function heatMap(plays: readonly PlacedPlay[], resolution: number): HeatC
     .sort((a, b) => b.plays - a.plays || (a.cell < b.cell ? -1 : a.cell > b.cell ? 1 : 0));
 }
 
+/** A hexagon's corners as [lat, lng] pairs, for drawing the heat map. */
+export const hexOutline = (cell: string): [number, number][] => cellToBoundary(cell);
+
 export interface Street {
   readonly name: string;
   readonly plays: number;
@@ -98,6 +102,8 @@ export type RefundStatus = 'under review' | 'approved' | 'rejected';
 export interface ReportLine {
   readonly lineId: string;
   readonly areaId: string;
+  /** The area's name as it was sold ("Madhapur"). */
+  readonly areaName: string;
   readonly date: string;
   readonly startHour: number;
   readonly bikes: number;
@@ -197,4 +203,43 @@ export function campaignReport(x: {
     streets: busiestStreets(cells, x.streetOf, x.rules.topStreets),
     people: x.people,
   };
+}
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+/** "30 Sep 2027" from "2027-09-30". */
+const dayText = (date: string) => {
+  const [y, m, d] = date.split('-').map(Number) as [number, number, number];
+  return `${d} ${MONTHS[m - 1] ?? '?'} ${y}`;
+};
+
+/** The campaign's business days: "30 Sep 2027" or "30 Sep 2027 – 2 Oct 2027". */
+export function reportPeriod(r: Pick<CampaignReport, 'lines'>): string {
+  const days = r.lines.map((l) => l.date).sort();
+  const first = days[0];
+  const last = days[days.length - 1];
+  if (first === undefined || last === undefined) return '';
+  return first === last ? dayText(first) : `${dayText(first)} – ${dayText(last)}`;
+}
+
+/** Delivered as a percentage with one decimal, never rounded up to 100% (8,549 bp → "85.4%"). */
+export const deliveredText = (bp: number) => `${Math.floor(bp / 10) / 10}%`;
+
+/** The report in a few plain lines, for messages and the top of the page. */
+export function reportSummary(r: CampaignReport): string[] {
+  const n = indianNumber;
+  const out = [
+    `${n(Math.min(r.delivered, r.promised))} of ${n(r.promised)} plays delivered (${deliveredText(r.deliveredBp)}) on ${n(r.bikes)} different bikes.`,
+  ];
+  if (r.delivered > r.promised) out.push(`Plus ${n(r.delivered - r.promised)} extra plays, free.`);
+  if (r.makeUps.plays > 0) out.push(`${n(r.makeUps.plays)} plays were made up in extra hours.`);
+  if (r.refund && r.refund.status !== 'rejected') {
+    const rupees = formatRupees(paise(r.refund.paise));
+    out.push(
+      r.refund.status === 'approved'
+        ? `${n(r.missing)} plays could not be made up: ${rupees} (plus GST) is refunded.`
+        : `${n(r.missing)} plays could not be made up: a refund of ${rupees} (plus GST) is being processed.`,
+    );
+  }
+  out.push(`People who saw the ads: ${r.people.text}.`);
+  return out;
 }

@@ -59,9 +59,12 @@ async function build(
 ): Promise<CampaignReport> {
   const book = books.find((x) => x.version === b.price_book_version);
   const rules = book?.report ?? DEFAULT_REPORT_RULES;
-  const lines = await pool.query<OpenLine & { bikes: number }>(
-    `SELECT booking_id, area_id, day::text AS day, start_hour, plays, paise, bikes
-       FROM booking_lines WHERE booking_id = $1 ORDER BY day, start_hour, area_id`,
+  const lines = await pool.query<OpenLine & { bikes: number; name: string }>(
+    `SELECT bl.booking_id, bl.area_id, bl.day::text AS day, bl.start_hour, bl.plays, bl.paise,
+            bl.bikes, a.name
+       FROM booking_lines bl
+       JOIN area_versions a ON a.area_id = bl.area_id AND a.version = bl.area_version
+      WHERE bl.booking_id = $1 ORDER BY bl.day, bl.start_hour, bl.area_id`,
     [b.booking_id],
   );
   const makeUps = await pool.query<{ make_up_id: string; line_id: string }>(
@@ -114,6 +117,7 @@ async function build(
       out.push({
         lineId,
         areaId: l.area_id,
+        areaName: l.name,
         date: l.day,
         startHour: l.start_hour,
         bikes: l.bikes,

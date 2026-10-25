@@ -23,6 +23,7 @@ const line = (
   ({
     lineId: `BK-1/hyd-madhapur/2027-09-01/${hour}`,
     areaId: 'hyd-madhapur',
+    areaName: 'Madhapur',
     date: '2027-09-01',
     startHour: hour,
     bikes: 5,

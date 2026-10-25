@@ -21,6 +21,8 @@ const ALLOWED = [
   'packages/db/src/people.ts',
   'packages/db/src/index.ts',
   'packages/db/src/reports.ts',
+  'services/workers/src/report-html.ts',
+  'services/workers/src/report-pdf.ts',
   // design system sample text ("People counts are approximate."), no numbers
   'packages/design/src/tokens.ts',
 ];

@@ -12,6 +12,8 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@recall/design": "workspace:*",
+    "@recall/domain": "workspace:*",
     "pdf-lib": "1.17.1"
   }
 }

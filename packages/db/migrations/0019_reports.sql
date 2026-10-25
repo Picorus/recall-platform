@@ -23,6 +23,8 @@ CREATE TABLE report_sends (
   try        integer     NOT NULL CHECK (try >= 1),
   sent_to    text        NOT NULL,
   status     text        NOT NULL CHECK (status IN ('sent', 'failed')),
+  -- A failure that may pass (provider down) is tried again; a wrong address is not.
+  retryable  boolean     NOT NULL DEFAULT false,
   detail     text        NOT NULL DEFAULT '',
   at         timestamptz NOT NULL,
   PRIMARY KEY (booking_id, channel, try)
