@@ -176,7 +176,7 @@ describe('counting per line (P1.5.3–4)', () => {
     expect([t.plays, t.inside, t.edge, t.edgeCounted]).toEqual([1050, 950, 150, 100]);
   });
 
-  it('different bikes, minutes inside and people (an estimate) are counted from counted plays', () => {
+  it('different bikes and minutes inside are counted from counted plays; no people in the totals', () => {
     const t = lineTotals(1000, [
       p('a', HOUR, 'inside', 4),
       p('a', HOUR + 15, 'inside', 2),
@@ -190,7 +190,6 @@ describe('counting per line (P1.5.3–4)', () => {
       edgeCounted: 1,
       bikes: 2,
       minutes: 2,
-      people: 17,
     });
   });
 

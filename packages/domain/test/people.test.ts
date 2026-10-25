@@ -46,6 +46,24 @@ describe('P1.8.1 only the number leaves the screen', () => {
     );
     expect(keptOfRejected('not an object')).toEqual({ notAReport: 'string' });
   });
+
+  it('found in review: an odd kind is refused instead of stopping the upload', () => {
+    for (const kind of ['toString', 'constructor', '__proto__', 'hasOwnProperty'])
+      expect(checkReport({ kind })).toBe('unknown kind');
+  });
+
+  it('found in review: picture bytes hidden in place names or field names are not kept', () => {
+    const piece = (i: number) => `${i}`.padStart(3, '0') + 'Z'.repeat(77);
+    const places = Object.fromEntries(Array.from({ length: 40 }, (_, i) => [piece(i), 1]));
+    const names = Object.fromEntries(Array.from({ length: 40 }, (_, i) => [`x${piece(i)}`, 1]));
+    const kept = keptOfRejected({ ...minute, secondsAt: places, clockAt: places, ...names });
+    expect(kept.secondsAt).toEqual({ places: 40, seconds: 40 });
+    expect(JSON.stringify(kept).length).toBeLessThan(700);
+    const play = Object.fromEntries(
+      ['keyId', 'slot', 'ref', 'adId', 'place', 'sig'].map((k) => [k, 'Z'.repeat(5_000)]),
+    );
+    expect(JSON.stringify(keptOfRejected({ kind: 'play', ...play })).length).toBeLessThan(400);
+  });
 });
 
 describe('P1.8.3 people are shown as a rounded range, marked approximate', () => {

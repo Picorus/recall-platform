@@ -283,8 +283,8 @@ export const REPORT_FIELDS = {
   ],
 } as const satisfies Record<Report['kind'], readonly string[]>;
 
-/** Longest text kept from one field of a report that failed its checks. */
-const MAX_KEPT_TEXT = 200;
+/** Longest text kept from one field (or field name) of a report that failed its checks. */
+const MAX_KEPT_TEXT = 40;
 
 /**
  * What is kept of a report that failed its checks, for a person to look at: the known fields only,
@@ -301,11 +301,11 @@ export function keptOfRejected(r: unknown): Record<string, unknown> {
   const cut = (v: unknown): unknown => {
     if (typeof v === 'string') return v.slice(0, MAX_KEPT_TEXT);
     if (typeof v === 'number' || typeof v === 'boolean' || v === null) return v;
+    // A map of places: only how many places and seconds, never the place names themselves.
     if (typeof v === 'object' && !Array.isArray(v)) {
-      const entries = Object.entries(v).slice(0, 20);
-      return Object.fromEntries(
-        entries.map(([k, s]) => [k.slice(0, MAX_PLACE_KEY), typeof s === 'number' ? s : '?']),
-      );
+      const values = Object.values(v);
+      const seconds = values.reduce<number>((t, s) => t + (typeof s === 'number' ? s : 0), 0);
+      return { places: values.length, seconds };
     }
     return '?';
   };
@@ -313,9 +313,9 @@ export function keptOfRejected(r: unknown): Record<string, unknown> {
   const others: string[] = [];
   for (const [k, v] of Object.entries(x)) {
     if (known.includes(k)) kept[k] = cut(v);
-    else others.push(k.slice(0, MAX_PLACE_KEY));
+    else others.push(k.slice(0, MAX_KEPT_TEXT));
   }
-  if (others.length > 0) kept.otherFields = others.slice(0, 20);
+  if (others.length > 0) kept.otherFields = others.slice(0, 5);
   return kept;
 }
 
@@ -347,9 +347,12 @@ export function checkReport(r: unknown): string | undefined {
   const x = r as Record<string, unknown>;
   // Only the fields below may travel (P1.8.1): a report carrying anything else, a picture from the
   // people counter for example, is refused and its extra fields are never stored.
-  const known = REPORT_FIELDS[x.kind as Report['kind']] as readonly string[] | undefined;
+  const known: readonly string[] | undefined =
+    typeof x.kind === 'string' && Object.hasOwn(REPORT_FIELDS, x.kind)
+      ? REPORT_FIELDS[x.kind as Report['kind']]
+      : undefined;
   const extra = known && Object.keys(x).find((k) => !known.includes(k));
-  if (extra !== undefined) return `unknown field: ${extra.slice(0, MAX_PLACE_KEY)}`;
+  if (extra !== undefined) return `unknown field: ${extra.slice(0, MAX_KEPT_TEXT)}`;
   if (x.kind === 'live') {
     if (!isInt(x.t, 0, 2 ** 32)) return 'bad time';
     if (typeof x.lat !== 'number' || !(Math.abs(x.lat) <= 90)) return 'bad latitude';
