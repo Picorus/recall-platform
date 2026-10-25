@@ -12,6 +12,9 @@ node {
 }
 cluster { name = recall, discovery_strategy = manual }
 dashboard { listeners.http { bind = 0 } }
+# One node: its cluster ports stay on the machine itself (the Erlang one too: run the container with
+# ERL_FLAGS="-kernel inet_dist_use_interface {127,0,0,1}", see brokerEnv()). Review, P2.3.2.
+rpc { listen_address = "127.0.0.1" }
 
 listeners.tcp.default { bind = "{{TCP_BIND}}" }
 listeners.ws.default { enable = false }
@@ -26,10 +29,23 @@ listeners.ssl.default {
     verify = verify_peer
     fail_if_no_peer_cert = true
     versions = ["tlsv1.3", "tlsv1.2"]
+    # Forward secrecy and authenticated encryption only (our keys are ECDSA P-256).
+    ciphers = [
+      "TLS_AES_256_GCM_SHA384", "TLS_AES_128_GCM_SHA256", "TLS_CHACHA20_POLY1305_SHA256",
+      "ECDHE-ECDSA-AES256-GCM-SHA384", "ECDHE-ECDSA-AES128-GCM-SHA256",
+      "ECDHE-ECDSA-CHACHA20-POLY1305"
+    ]
   }
+  # A box sends a hello and an upload every half minute or so: anything far above is cut back.
+  messages_rate = "5/s"
+  bytes_rate = "512KB/s"
+  max_conn_rate = "200/s"
 }
 # On the TLS port the user name is the certificate's fingerprint, so a screen cannot choose it.
-zones.screens { mqtt { peer_cert_as_username = md5, peer_cert_as_clientid = disabled } }
+# No retained messages from screens: nothing of theirs is kept on the broker to replay later.
+zones.screens {
+  mqtt { peer_cert_as_username = md5, peer_cert_as_clientid = disabled, retain_available = false }
+}
 mqtt { max_packet_size = 300KB }
 
 authentication = [{

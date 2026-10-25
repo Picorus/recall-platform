@@ -1,5 +1,5 @@
 import { fakeDeviceCa } from '@recall/adapters';
-import { certFingerprint } from '@recall/db';
+import { certFingerprint, revokeCertificate } from '@recall/db';
 import { freshDatabase } from '@recall/db/test-db';
 import { helloText, uploadText } from '@recall/domain';
 import { createServer, type Server } from 'node:http';
@@ -7,7 +7,7 @@ import type { AddressInfo } from 'node:net';
 import type pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { hookHandler, type HookConfig } from '../../src/hooks.js';
-import { handleUp } from '../../src/line.js';
+import { handleUp, LineMemory } from '../../src/line.js';
 import { enrolBox, live, type TestBox } from '../box.js';
 
 let db: Awaited<ReturnType<typeof freshDatabase>>;
@@ -142,5 +142,42 @@ describe('gateway (P2.3.2): hellos and uploads', () => {
       body: 'not json',
     });
     expect(await bad.json()).toEqual({ result: 'deny' });
+  });
+
+  it('a hello or refusal is recorded at most once a minute per box; the time is always sent', async () => {
+    const other = await enrolBox(pool, fakeDeviceCa(), 'GW-LINE-0002', NOW);
+    const memory = new LineMemory();
+    const up = `recall/v1/s/${other.screenId}/up/hello`;
+    for (let i = 0; i < 50; i++) {
+      const r = await handleUp(pool, up, bytes(helloText('0.1.0', i)), NOW * 1000 + i, memory);
+      expect(r).toHaveLength(1);
+      await handleUp(
+        pool,
+        `recall/v1/s/${other.screenId}/up/upload`,
+        bytes('{}'),
+        NOW * 1000 + i,
+        memory,
+      );
+    }
+    await handleUp(pool, up, bytes(helloText('0.1.0', 99)), NOW * 1000 + 60_000, memory);
+    const n = await pool.query<{ h: number; r: number }>(
+      `SELECT (SELECT count(*)::int FROM screen_hellos WHERE screen_id = $1) AS h,
+              (SELECT count(*)::int FROM screen_line_refusals WHERE screen_id = $1) AS r`,
+      [other.screenId],
+    );
+    expect(n.rows[0]).toEqual({ h: 2, r: 1 });
+  });
+
+  it('every message is checked again: a box revoked while connected loses its topics', async () => {
+    const third = await enrolBox(pool, fakeDeviceCa(), 'GW-LINE-0003', NOW);
+    const ask = {
+      clientid: third.screenId,
+      username: certFingerprint(third.certPem),
+      topic: `recall/v1/s/${third.screenId}/up/upload`,
+      action: 'publish',
+    };
+    expect(await hook('/emqx/authz', ask)).toMatchObject({ result: 'allow' });
+    await revokeCertificate(pool, third.certSerial, 'box reported stolen', 'ops-1', NOW);
+    expect(await hook('/emqx/authz', ask)).toMatchObject({ result: 'deny' });
   });
 });

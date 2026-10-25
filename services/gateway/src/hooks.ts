@@ -26,7 +26,8 @@ export const isGatewayClient = (cfg: HookConfig, clientId: string, username: str
 export const sameSecret = (a: string, b: string) =>
   timingSafeEqual(createHash('sha256').update(a).digest(), createHash('sha256').update(b).digest());
 
-const SHARED_UP = ['$share/gateway/recall/v1/s/+/up/+', 'recall/v1/s/+/up/+'];
+// The broker asks about a shared subscription ($share/gateway/…) by its plain topic.
+const SHARED_UP = ['recall/v1/s/+/up/+'];
 
 /** What the gateway's own client may do: read every up topic, write any screen's down topics. */
 export function gatewayTopicAllowed(topic: string, action: string): boolean {
@@ -51,14 +52,31 @@ export async function authn(pool: Pick<Pool, 'query'>, cfg: HookConfig, b: Body,
   return screenMayConnect(pool, { clientId, commonName, fingerprint: username }, now);
 }
 
-/** Decides one authz question. */
-export function authz(cfg: HookConfig, b: Body): boolean {
+/**
+ * Decides one authz question. For a screen, the certificate is checked again on every message and
+ * subscription (the broker passes its fingerprint as the user name): a box whose certificate is
+ * revoked, has run out, or that is reported lost while connected is cut off at its next message
+ * (the broker drops a line that is refused), not only at its next connection (review, P2.3.2).
+ */
+export async function authz(
+  pool: Pick<Pool, 'query'>,
+  cfg: HookConfig,
+  b: Body,
+  now: number,
+): Promise<boolean> {
   const clientId = text(b, 'clientid');
+  const username = text(b, 'username');
   const topic = text(b, 'topic');
   const action = text(b, 'action');
-  if (isGatewayClient(cfg, clientId, text(b, 'username')))
-    return gatewayTopicAllowed(topic, action);
-  return (action === 'publish' || action === 'subscribe') && topicAllowed(clientId, topic, action);
+  if (isGatewayClient(cfg, clientId, username)) return gatewayTopicAllowed(topic, action);
+  if (!((action === 'publish' || action === 'subscribe') && topicAllowed(clientId, topic, action)))
+    return false;
+  const still = await screenMayConnect(
+    pool,
+    { clientId, commonName: clientId, fingerprint: username },
+    now,
+  );
+  return still.ok;
 }
 
 const MAX_BODY = 8 * 1024;
@@ -104,7 +122,7 @@ export function hookHandler(
             if (!v.ok) log(`refused ${text(b, 'clientid').slice(0, 40)}: ${v.reason}`);
             reply(200, { result: v.ok ? 'allow' : 'deny', is_superuser: false });
           } else if (req.url === '/emqx/authz') {
-            const ok = authz(cfg, b);
+            const ok = await authz(pool, cfg, b, now());
             if (!ok)
               log(
                 `topic refused ${text(b, 'clientid').slice(0, 40)} ${text(b, 'action')} ${text(b, 'topic').slice(0, 120)}`,

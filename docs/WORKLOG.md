@@ -11,8 +11,14 @@ Newest first. Each entry: date · step id · what changed · tests · open issue
 - Migration 0021: certificate revocations, hellos, refused uploads (append-only).
 - **End to end on a real broker** (new CI step in the database job): EMQX 5.8 in Docker with these settings, the gateway, and enrolled boxes. Proven: a box gets the time, uploads, every report stored once even when sent twice; no line without a certificate, with a stranger's certificate, under another box's name, on the internal port with a copied fingerprint, or as the gateway with a guessed password; a box cannot listen to or send as another box (the broker drops its line); a revoked certificate is refused.
 - First trial found that EMQX does not escape line breaks when passing a whole certificate, so the fingerprint is used instead.
-- Tests: 3 database (who may connect, revoked and lost, hellos and refusals) + 4 gateway unit (topics, secrets, settings) + 4 gateway database (hello, upload once, refused upload, hooks over HTTP) + 4 end to end.
-- Open: a certificate revoked while its box is connected keeps that line until it drops (it cannot reconnect); cutting it at once comes with remote commands (P2.12). The laptop broker (docker compose) still runs without TLS for development; the production deployment uses this template (P6).
+- Second-agent security review: no way found to pass as a box without its key, or as the gateway without its password. Fixed from it:
+  - (high) a box revoked or reported lost while connected kept uploading. Now its certificate is checked again on every message and subscription; the broker drops its line at its next message;
+  - the broker's cluster ports now stay on the machine itself; secrets (hook token, node cookie, gateway password) must be at least 32 characters;
+  - limits per box (5 messages a second, 512 KB a second); the gateway handles 16 messages at once; a hello or refusal is recorded at most once a minute per box;
+  - screens may not leave retained messages on the broker;
+  - strong encryption only (forward secrecy, authenticated ciphers).
+- Tests: 3 database (who may connect, revoked and lost, hellos and refusals) + 4 gateway unit (topics, secrets, settings) + 6 gateway database (hello, upload once, refused upload, hooks over HTTP, recording limit, checked again on every message) + 6 end to end (incl. revoked while connected, retained messages, cluster ports).
+- Open: the laptop broker (docker compose) still runs without TLS for development; the production deployment uses this template (P6). When certificate renewal is built, the old certificate must be revoked. For P2.3.3: acks can arrive out of order (the box keeps the highest; the outbox already does), and the box must send unconfirmed uploads again on a timer, not only on reconnect.
 - Next: P2.3.3, the player's side (the line on the box with its key in the secure store, hello and time, uploads from the outbox, reconnects).
 
 ## 25 Oct 2026 · P2.3.1 · Screen line: messages, outbox, clock, reconnects

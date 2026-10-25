@@ -14,7 +14,7 @@ import { join } from 'node:path';
 import mqtt from 'mqtt';
 import type pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { renderEmqxConfig } from '../../src/emqx-config.js';
+import { brokerEnv, renderEmqxConfig } from '../../src/emqx-config.js';
 import { startGateway, type RunningGateway } from '../../src/gateway.js';
 import { enrolBox, live, type TestBox } from '../box.js';
 import { brokerCertificate } from './pki.js';
@@ -81,7 +81,7 @@ beforeAll(async () => {
       CERT_DIR: '/certs',
       HOOK_URL: `http://127.0.0.1:${gateway.hookPort}`,
       HOOK_TOKEN: TOKEN,
-      NODE_COOKIE: randomBytes(12).toString('hex'),
+      NODE_COOKIE: randomBytes(16).toString('hex'),
     }),
   );
   for (const f of ['screens-ca.pem', 'server.pem', 'server.key', 'emqx.conf'])
@@ -94,6 +94,7 @@ beforeAll(async () => {
     NAME,
     '--network',
     'host',
+    ...Object.entries(brokerEnv()).flatMap(([k, v]) => ['-e', `${k}=${v}`]),
     '-v',
     `${dir}:/certs:ro`,
     '-v',
@@ -261,10 +262,58 @@ describe('the screen line end to end (P2.3.2: EMQX over TLS + gateway + database
     expect(n.rows[0]?.n).toBe(3);
   }, 60_000);
 
-  it('a revoked certificate is refused from the next connection', async () => {
-    const first = await connect(c);
-    first.end();
+  it('a box revoked while connected is cut off at its next message, and cannot come back', async () => {
+    const cl = await connect(c);
+    const closed = new Promise<void>((ok) => cl.once('close', () => ok()));
     await revokeCertificate(pool, c.certSerial, 'box reported stolen', 'ops-1', NOW);
+    cl.publish(
+      `recall/v1/s/${c.screenId}/up/upload`,
+      uploadText([{ seq: 1, at: NOW, report: live(NOW + 1) }], 1),
+      { qos: 1 },
+    );
+    await closed;
+    await new Promise((ok) => setTimeout(ok, 1_000));
+    const n = await pool.query<{ n: number }>(
+      'SELECT count(*)::int AS n FROM screen_reports WHERE screen_id = $1',
+      [c.screenId],
+    );
+    expect(n.rows[0]?.n).toBe(0);
     expect(await refused(() => connect(c))).toBe(true);
   }, 60_000);
+
+  it('a box may not leave retained messages on the broker', async () => {
+    const cl = await connect(a);
+    const closed = new Promise<void>((ok) => cl.once('close', () => ok()));
+    cl.publish(`recall/v1/s/${a.screenId}/up/hello`, helloText('0.1.0', 1), {
+      qos: 1,
+      retain: true,
+    });
+    await closed;
+  }, 60_000);
+
+  it("the broker's cluster ports listen on the machine itself only", () => {
+    // Listening sockets inside the broker: address:port in hex, state 0A = listening.
+    const table = ['/proc/net/tcp', '/proc/net/tcp6']
+      .map((f) => {
+        try {
+          return execFileSync('docker', ['exec', NAME, 'cat', f]).toString();
+        } catch {
+          return ''; // no IPv6 on this machine
+        }
+      })
+      .join('\n')
+      .split('\n')
+      .map((l) => l.trim().split(/\s+/))
+      .filter((f) => f[3] === '0A')
+      .map((f) => f[1] ?? '');
+    const port = (p: number) => `:${p.toString(16).toUpperCase().padStart(4, '0')}`;
+    for (const p of [4370, 5369]) {
+      const open = table.filter((a) => a.endsWith(port(p)));
+      expect(open.length, `port ${p}`).toBeGreaterThan(0);
+      for (const a of open)
+        expect(a, `port ${p}`).toMatch(
+          /^(0100007F|0+10000000+1|0000000000000000FFFF00000100007F):/,
+        );
+    }
+  });
 });

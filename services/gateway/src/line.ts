@@ -14,6 +14,24 @@ import {
 } from '@recall/domain';
 import type { Pool } from 'pg';
 
+/**
+ * What the gateway remembers between messages so that a box sending far too often cannot fill the
+ * database: a hello or a refusal is recorded at most once a minute per box (review, P2.3.2). The
+ * reply (the time) is still sent every time.
+ */
+export class LineMemory {
+  private readonly seen = new Map<string, number>();
+  constructor(private readonly everyMs = 60_000) {}
+  /** True when this (box, what) was not recorded in the last minute; then it counts as recorded. */
+  due(key: string, nowMs: number): boolean {
+    const last = this.seen.get(key);
+    if (last !== undefined && nowMs - last < this.everyMs) return false;
+    this.seen.set(key, nowMs);
+    if (this.seen.size > 200_000) this.seen.clear(); // bounded: at worst a few extra rows
+    return true;
+  }
+}
+
 export interface Reply {
   readonly topic: string;
   readonly payload: string;
@@ -25,6 +43,7 @@ export async function handleUp(
   topic: string,
   payload: Uint8Array,
   nowMs: number,
+  memory?: LineMemory,
 ): Promise<Reply[]> {
   const where = parseUpTopic(topic);
   if (!where) return []; // the broker only lets screens send on their own up topics
@@ -32,15 +51,18 @@ export async function handleUp(
   if (kind === 'hello') {
     const h = parseHello(payload);
     if ('problem' in h) {
-      await recordRefusal(pool, screenId, kind, h.problem, payload.length, nowMs);
+      if (memory?.due(`r:${kind}:${screenId}`, nowMs) ?? true)
+        await recordRefusal(pool, screenId, kind, h.problem, payload.length, nowMs);
       return [];
     }
-    await recordHello(pool, screenId, h.app, nowMs);
+    if (memory?.due(`h:${screenId}`, nowMs) ?? true)
+      await recordHello(pool, screenId, h.app, nowMs);
     return [{ topic: downTopic(screenId, 'time'), payload: timeText(nowMs, h.mono) }];
   }
   const u = parseUpload(payload);
   if ('problem' in u) {
-    await recordRefusal(pool, screenId, kind, u.problem, payload.length, nowMs);
+    if (memory?.due(`r:${kind}:${screenId}`, nowMs) ?? true)
+      await recordRefusal(pool, screenId, kind, u.problem, payload.length, nowMs);
     return [];
   }
   const stored = await storeUpload(pool, screenId, u.batch, u.oldestHeld, Math.floor(nowMs / 1000));
