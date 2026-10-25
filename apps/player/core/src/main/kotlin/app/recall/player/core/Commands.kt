@@ -17,7 +17,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.long
 
 /** One command (or why it was refused, with its id when that could be read). */
-data class ScreenCommand(val id: String, val made: Long, val until: Long, val name: String, val value: Long?)
+data class ScreenCommand(val id: String, val screen: String, val made: Long, val until: Long, val name: String, val value: Long?)
 
 data class ParsedCommand(val command: ScreenCommand?, val problem: String?, val id: String? = null)
 
@@ -26,7 +26,7 @@ object ScreenCommands {
     const val MAX_LIFE_MS = 3_600_000L
     const val MAX_NOTE = 4_000
     private val ID = Regex("[A-Za-z0-9-]{8,64}")
-    private val KEYS = setOf("v", "id", "made", "until", "do", "value")
+    private val KEYS = setOf("v", "id", "screen", "made", "until", "do", "value")
     private const val MAX_SAFE = (1L shl 53) - 1
 
     /** A whole JSON number in range (as the cloud's Number.isSafeInteger takes it), else null. */
@@ -44,6 +44,7 @@ object ScreenCommands {
         fun no(problem: String) = ParsedCommand(null, problem, id)
         if (whole(x["v"], 1, 1) == null) return no("unknown version")
         if (id == null) return no("bad id")
+        val screen = (x["screen"] as? JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf(ScreenIdentity::isScreenId) ?: return no("bad screen")
         val made = whole(x["made"], 1) ?: return no("bad time")
         val until = whole(x["until"], 1)?.takeIf { it > made && it - made <= MAX_LIFE_MS } ?: return no("bad until")
         val name = (x["do"] as? JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf { it in NAMES } ?: return no("unknown command")
@@ -53,7 +54,7 @@ object ScreenCommands {
             "test-pattern" -> whole(raw, 5, 600) ?: return no("bad value")
             else -> if (raw is JsonNull) null else return no("bad value")
         }
-        return ParsedCommand(ScreenCommand(id, made, until, name, value), null, id)
+        return ParsedCommand(ScreenCommand(id, screen, made, until, name, value), null, id)
     }
 
     /** The box's answer to a command (a report through the outbox). */
@@ -73,7 +74,10 @@ object ScreenCommands {
 
 /** What the box can be told to do. Each returns normally when done, or throws when it failed. */
 interface CommandActions {
-    /** Restarts the box (after the answer is safely in the outbox). */
+    /**
+     * Arranges a restart a few seconds later (after the answer is in the outbox); throws at once,
+     * restarting nothing, when the box cannot restart.
+     */
     fun reboot()
     fun blank(on: Boolean)
     fun testPattern(seconds: Long)
@@ -86,6 +90,8 @@ interface CommandActions {
 
 class CommandRunner(
     private val dir: File,
+    /** This box: a command for another screen is refused. */
+    private val screenId: String,
     /** Trusted time now (UTC ms), or null while there is none. */
     private val nowMs: () -> Long?,
     private val actions: CommandActions,
@@ -129,21 +135,20 @@ class CommandRunner(
             return
         }
         when {
+            c.screen != screenId -> return finish(id, now, c.until, "refused", "not for this screen")
             // No trusted time yet: neither done nor answered; the cloud sends it again with the next
             // hello, by when the box has the cloud's time.
             now == null -> return log("command $id: waits for a trusted time")
             now >= c.until -> return finish(id, now, c.until, "refused", "expired")
             c.made > now + AHEAD_MS -> return finish(id, now, c.until, "refused", "dated ahead of the box's time")
         }
-        // Kept before it is carried out: a reboot never repeats after the reboot.
-        remember(id, c.until, now)
+        // Kept before it is carried out: a reboot never repeats after the reboot. When it cannot be
+        // kept (storage full), nothing is done: the cloud sends it again (review P2.12).
+        if (!remember(id, c.until)) return log("command $id: not done: the done list could not be kept")
         val (result, note) = try {
             when (c.name) {
-                "reboot" -> {
-                    answer(id, now, "done", "")
-                    actions.reboot()
-                    return
-                }
+                // Checked and arranged first (it fails if the box cannot reboot), answered, then done.
+                "reboot" -> actions.reboot()
                 "blank" -> actions.blank(true)
                 "unblank" -> actions.blank(false)
                 "test-pattern" -> actions.testPattern(c.value ?: 60)
@@ -152,7 +157,7 @@ class CommandRunner(
                 "clear-cache" -> actions.clearCache()
             }
             "done" to ""
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             "failed" to "${e.javaClass.simpleName}: ${e.message ?: ""}".take(200)
         }
         answer(id, now, result, note)
@@ -160,7 +165,7 @@ class CommandRunner(
 
     private fun finish(id: String, now: Long?, until: Long, result: String, note: String) {
         log("command $id: $result: $note")
-        remember(id, until, now)
+        remember(id, until)
         answer(id, now, result, note)
     }
 
@@ -170,17 +175,21 @@ class CommandRunner(
             .onFailure { log("command $id: answer not stored: ${it.javaClass.simpleName}") }
     }
 
-    private fun remember(id: String, until: Long, now: Long?) {
-        // Forgotten well after it expired: by then the cloud no longer sends it.
-        seen[id] = if (until == Long.MAX_VALUE) (now ?: 0) + ScreenCommands.MAX_LIFE_MS * 2 else until + ScreenCommands.MAX_LIFE_MS
-        now?.let { n -> seen.entries.removeIf { it.value < n } }
+    /** Adds an id to the done list on storage; false when it could not be kept. */
+    private fun remember(id: String, until: Long): Boolean {
+        // Only the newest 500 are kept (a few commands a day): never pruned by a clock that could be
+        // wrong, so a command still on its way back is never done twice (review P2.12).
+        seen[id] = until
         while (seen.size > MAX_KEPT) seen.remove(seen.keys.first())
-        runCatching {
+        return runCatching {
             DiskFiles.writeAtomically(
                 seenFile,
                 JsonArray(seen.map { (k, v) -> JsonObject(mapOf("id" to JsonPrimitive(k), "forget" to JsonPrimitive(v))) }).toString(),
             )
-        }.onFailure { log("command: done list not kept: ${it.javaClass.simpleName}") }
+        }.onFailure {
+            seen.remove(id)
+            log("command: done list not kept: ${it.javaClass.simpleName}")
+        }.isSuccess
     }
 
     private companion object {

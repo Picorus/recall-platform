@@ -6,9 +6,11 @@
 // A command carries its own id and how long it may be carried out (`until`, at most an hour after
 // it was made). The box refuses one that has expired or is dated ahead of its trusted time, and
 // carries out each id once: the cloud sends it again on every reconnect until the box answers.
-// Only the cloud can send on a screen's down topics (the broker's rules, P2.3), and the line is TLS
+// A command names its screen, and a box refuses one for another. Only the cloud can send on a screen's down topics (the broker's rules, P2.3), and the line is TLS
 // with the box's own certificate both ways. The Kotlin player reads the same text (shared cases
 // in test-vectors/screen-commands.json).
+
+import { isScreenId } from './screen-identity.js';
 
 export const COMMANDS = [
   'reboot',
@@ -24,6 +26,8 @@ export type CommandName = (typeof COMMANDS)[number];
 export interface ScreenCommand {
   /** Unique; the box carries out each id once. */
   readonly id: string;
+  /** The screen it is for: a box refuses a command for another (review P2.12). */
+  readonly screen: string;
   /** When it was made and until when it may be carried out (cloud ms). */
   readonly made: number;
   readonly until: number;
@@ -42,11 +46,12 @@ const isWhole = (x: unknown, min: number, max = Number.MAX_SAFE_INTEGER): x is n
 export function commandProblem(x: unknown): string | undefined {
   if (typeof x !== 'object' || x === null || Array.isArray(x)) return 'not a command';
   const c = x as Record<string, unknown>;
-  const keys = ['v', 'id', 'made', 'until', 'do', 'value'];
+  const keys = ['v', 'id', 'screen', 'made', 'until', 'do', 'value'];
   if (Object.keys(c).length !== keys.length || !keys.every((k) => Object.hasOwn(c, k)))
     return 'not a command';
   if (c.v !== 1) return 'unknown version';
   if (typeof c.id !== 'string' || !COMMAND_ID.test(c.id)) return 'bad id';
+  if (typeof c.screen !== 'string' || !isScreenId(c.screen)) return 'bad screen';
   if (!isWhole(c.made, 1)) return 'bad time';
   if (!isWhole(c.until, 1) || c.until <= c.made || c.until - c.made > MAX_COMMAND_LIFE_MS)
     return 'bad until';
@@ -63,6 +68,7 @@ export function commandText(c: ScreenCommand): string {
   const text = JSON.stringify({
     v: 1,
     id: c.id,
+    screen: c.screen,
     made: c.made,
     until: c.until,
     do: c.do,
@@ -83,7 +89,7 @@ export function parseCommand(text: string): ScreenCommand | { readonly problem: 
   const problem = commandProblem(x);
   if (problem) return { problem };
   const c = x as ScreenCommand;
-  return { id: c.id, made: c.made, until: c.until, do: c.do, value: c.value };
+  return { id: c.id, screen: c.screen, made: c.made, until: c.until, do: c.do, value: c.value };
 }
 
 // ---------------------------------------------------------------- the box's answer

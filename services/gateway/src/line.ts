@@ -59,7 +59,8 @@ export async function handleUp(
     if (memory?.due(`h:${screenId}`, nowMs) ?? true)
       await recordHello(pool, screenId, h.app, nowMs);
     // P2.12: commands not yet answered go again each time the line opens (the box does each once).
-    const commands = await pendingCommands(pool, screenId, nowMs);
+    // The time reply never waits on them: a failure here only delays commands to the next hello.
+    const commands = await pendingCommands(pool, screenId, nowMs).catch(() => [] as string[]);
     return [
       { topic: downTopic(screenId, 'time'), payload: timeText(nowMs, h.mono) },
       ...commands.map((payload) => ({ topic: downTopic(screenId, 'command'), payload })),

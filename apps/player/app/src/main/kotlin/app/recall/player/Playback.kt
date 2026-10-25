@@ -96,10 +96,12 @@ object Playback {
                 mono = SystemClock::elapsedRealtime,
                 waiter = waiter,
                 played = { p ->
-                    if (!p.counts && p.spot.timed) notCounted.incrementAndGet()
+                    // Spots under a blank or test pattern are meant not to count: not a fault (review P2.12).
+                    val covered = Remote.isCover(p.problem)
+                    if (!p.counts && p.spot.timed && !covered) notCounted.incrementAndGet()
                     val planned = p.spot.planned
                     if (planned != null && planned.ad.isNotEmpty() && p.spot.shows != planned) missing.incrementAndGet()
-                    if (!p.counts && p.spot.timed) log("not counted: ${p.spot.shows?.ad ?: "slate"} at ${p.spot.startUtc}: ${p.problem ?: if (!p.whole) "not whole" else "no ad or no time"}")
+                    if (!p.counts && p.spot.timed && !covered) log("not counted: ${p.spot.shows?.ad ?: "slate"} at ${p.spot.startUtc}: ${p.problem ?: if (!p.whole) "not whole" else "no ad or no time"}")
                     if (p.counts) record(p, log)
                     // A mark left by a wrong clock (a faked GPS date) must not stop counting for good.
                     Line.clock.get().cloudNow(SystemClock.elapsedRealtime())?.let { now ->
@@ -109,6 +111,7 @@ object Playback {
                 badFile = { ad -> checks.execute { runCatching { Ads.store?.damaged(ad) } } },
                 log = log,
                 mark = mark,
+                covered = Remote::coveredSince,
             ).also {
                 s.reports = it
                 conductor = it

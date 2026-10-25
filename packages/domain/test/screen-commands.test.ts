@@ -8,12 +8,15 @@ import {
   type CommandName,
   type ScreenCommand,
 } from '../src/screen-commands.js';
+import { newScreenId } from '../src/screen-identity.js';
 import { checkReport } from '../src/screen-reports.js';
 
 const FILE = new URL('../test-vectors/screen-commands.json', import.meta.url);
 const MADE = 1_793_620_000_000;
+const SCREEN = newScreenId([1, 2, 3, 4, 5, 6, 7]);
 const cmd = (d: CommandName, value: number | null, id = `c-${d}-0001`): ScreenCommand => ({
   id,
+  screen: SCREEN,
   made: MADE,
   until: MADE + 600_000,
   do: d,
@@ -38,6 +41,7 @@ const refused = [
   { text: text({ v: 2 }), problem: 'unknown version' },
   { text: text({ id: 'short' }), problem: 'bad id' },
   { text: text({ id: 'has space in it' }), problem: 'bad id' },
+  { text: text({ screen: 'SCR-1' }), problem: 'bad screen' },
   { text: text({ made: 0 }), problem: 'bad time' },
   { text: text({ until: MADE }), problem: 'bad until' },
   { text: text({ until: MADE + 3_600_001 }), problem: 'bad until' },
@@ -51,7 +55,7 @@ const refused = [
 ];
 
 describe('remote commands (P2.12)', () => {
-  const vectors = `${JSON.stringify({ taken, refused }, null, 2)}\n`;
+  const vectors = `${JSON.stringify({ screen: SCREEN, taken, refused }, null, 2)}\n`;
   if (process.env.UPDATE_VECTORS === '1' || !existsSync(FILE)) writeFileSync(FILE, vectors);
 
   it('shared cases are up to date', () => {

@@ -8,8 +8,20 @@ Newest first. Each entry: date · step id · what changed · tests · open issue
 - **Sent by the gateway** with every hello until answered (the box says hello when its line opens and every 15 minutes); admin will also send at once (P3).
 - **On the box** (`Commands.kt` core, `Remote.kt`): each id is kept on storage before anything is done, so a command sent again (or a reboot) never repeats; expired or future-dated ones are refused; without a trusted time a command waits for its resend. Blank and test pattern cover the ads, and nothing shown under them counts; a blank stays after a restart until unblanked. A commanded brightness overrides the automatic one (P2.10) until set back. Reboot is answered first, then the box restarts as device owner. App 0.10.0.
 - Tests: TypeScript (commands read back, 15 refusals shared with the box, answers checked); gateway database test (sent with every hello until answered, logged with its answer, expired ones not sent); Kotlin 6 (`CommandsTest`: the cloud's cases, once only across restarts, expired / ahead / unreadable / failed, waiting without time, reboot answered first, logs printable). Kotlin core 128.
+- Second-agent review: 12 findings, all fixed:
+  - a spot already showing when a blank or test pattern came still counted. Now playback asks, when each spot ends, whether the screen was covered at any moment of it (and the screen reports the spot in front at once);
+  - a reboot could repeat on every reconnect if storage was full (the done list not kept). Now nothing is done unless the id is safely kept;
+  - a reboot could be answered "done" and then "failed". Now the box checks it can reboot first, answers once, then restarts;
+  - a commanded brightness skipped the safety limits. Now it stays within them (never over 35% at night, never under 60% by day) and changes smoothly;
+  - one bad command row could stop the hello's time reply. Now the time never waits on commands, bad rows are skipped, and the database checks each command's value;
+  - an old blank could undo a newer unblank on reconnect. Now only the newest of blank/unblank (and of brightness) is sent;
+  - the blank was not surely on storage before "done"; a failed unblank was not noticed. Both fixed;
+  - a command names its screen, and a box refuses one for another screen;
+  - the done list is never pruned by a clock that could be wrong; a failing action (even out of memory) is answered "failed"; only the end of the log is read; covered spots do not count as faults in health.
+- Tests after the review: Kotlin 131 (`CommandsTest` 7, `ConductorTest` blank mid-spot, `BrightnessTest` commanded limits); gateway 8 (newest blank/unblank only).
+- Also in this PR, **P2.13.1, the rollout rules** for player updates (`packages/domain/src/updates.ts`): 1% → 10% → all, each stage after 24 hours with at least 20 screen-hours; rolls back by itself when the new version crashes more than 0.05 times a screen-hour, or twice the old version's rate (3 crashes or more before enough hours). Android never installs an older version, so each release comes with a rollback build: the last good code numbered above it. Tests: 7.
 - Open: admin screens to send commands and read the log (P3); the panel's own controls (blank, brightness, test pattern on the LED sending card) with the hardware.
-- Next: P2.13, our own update system.
+- Next: P2.13.2, the cloud's release records and rollout, then P2.13.3, installing on the box.
 
 ## 25 Oct 2026 · P2.11 · Health
 - **What a health report holds** (`packages/domain/src/screen-health.ts`, a new report kind in the screen's outbox): the minute, app version, time since start, battery charge, charging and temperature, the box's temperature, free storage, mobile signal, LED fault, tamper, clocks disagreeing, and the box's counters (spots not counted, plays not stored, messages refused, GPS seconds missed, ads missing). Unknown readings travel as null. Checked strictly like every report (no extra fields, ranges).

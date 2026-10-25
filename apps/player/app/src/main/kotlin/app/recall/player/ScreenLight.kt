@@ -46,9 +46,9 @@ class ScreenLight(private val activity: Activity) {
                 val now = Line.clock.get().now(mono) ?: System.currentTimeMillis()
                 // Light sensors report on change only: a steady room may not report for a while.
                 val reading = lux?.takeIf { mono - luxAt < 60_000 }?.toDouble()
-                val auto = brightness.next(Sun.elevation(now, Sun.HYDERABAD), reading)
-                // A brightness set by a command (P2.12) wins until it is set back to automatic.
-                panel.brightness(Remote.brightness ?: auto)
+                // A brightness set by a command (P2.12) wins until set back to automatic, always within
+                // the safe day and night limits and changed just as smoothly.
+                panel.brightness(brightness.next(Sun.elevation(now, Sun.HYDERABAD), reading, Remote.brightness))
             }
             main.postDelayed(this, 1_000)
         }

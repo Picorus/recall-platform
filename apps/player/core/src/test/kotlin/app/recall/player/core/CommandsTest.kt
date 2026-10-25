@@ -33,9 +33,10 @@ class CommandsTest {
     private val answers = mutableListOf<JsonObject>()
     private var now: Long? = made + 1_000
     private val fake = Fake()
-    private fun runner() = CommandRunner(dir, { now }, fake, { r, _ -> answers += r })
-    private fun text(name: String, value: Any?, id: String = "c-$name-0001", until: Long = made + 600_000) =
-        """{"v":1,"id":"$id","made":$made,"until":$until,"do":"$name","value":${value ?: "null"}}"""
+    private val me = v.getValue("screen").jsonPrimitive.content
+    private fun runner() = CommandRunner(dir, me, { now }, fake, { r, _ -> answers += r })
+    private fun text(name: String, value: Any?, id: String = "c-$name-0001", until: Long = made + 600_000, screen: String = me) =
+        """{"v":1,"id":"$id","screen":"$screen","made":$made,"until":$until,"do":"$name","value":${value ?: "null"}}"""
     private fun s(o: JsonObject, k: String) = o.getValue(k).jsonPrimitive.content
 
     @Test
@@ -44,7 +45,7 @@ class CommandsTest {
             val c = t.getValue("command").jsonObject
             val p = ScreenCommands.parse(t.getValue("text").jsonPrimitive.content)
             val value = c.getValue("value").takeIf { it !is JsonNull }?.jsonPrimitive?.long
-            assertEquals(ScreenCommand(s(c, "id"), c.getValue("made").jsonPrimitive.long, c.getValue("until").jsonPrimitive.long, s(c, "do"), value), p.command)
+            assertEquals(ScreenCommand(s(c, "id"), s(c, "screen"), c.getValue("made").jsonPrimitive.long, c.getValue("until").jsonPrimitive.long, s(c, "do"), value), p.command)
         }
         for (r in v.getValue("refused").jsonArray.map { it.jsonObject }) {
             val p = ScreenCommands.parse(r.getValue("text").jsonPrimitive.content)
@@ -87,6 +88,20 @@ class CommandsTest {
         assertTrue(s(answers[3], "note").contains("panel not answering"))
         assertEquals(1L, r.refusedUnread)
         assertTrue("reboot" !in fake.done)
+    }
+
+    @Test
+    fun `a command for another screen is refused, and one that cannot be kept is not done`() {
+        val r = runner()
+        r.onCommand(text("reboot", null, screen = "SCR-7654321M")) // another valid screen
+        assertEquals("not for this screen", s(answers.single(), "note"))
+        assertTrue(fake.done.isEmpty())
+        // Storage refuses the done list: nothing is done, nothing answered; the cloud sends it again.
+        val full = Files.createTempDirectory("full").toFile()
+        File(full, "commands-done.tmp").mkdirs() // the write cannot even begin
+        CommandRunner(full, me, { now }, fake, { r2, _ -> answers += r2 }).onCommand(text("reboot", null, id = "c-reboot-full"))
+        assertTrue(fake.done.isEmpty())
+        assertEquals(1, answers.size)
     }
 
     @Test

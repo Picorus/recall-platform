@@ -37,7 +37,14 @@ export async function issueCommand(
   const id = randomUUID();
   const until = o.nowMs + Math.min(o.lifeMs ?? 10 * 60_000, MAX_COMMAND_LIFE_MS);
   // Built first: a command the screen would refuse is never logged as sent.
-  const text = commandText({ id, made: o.nowMs, until, do: o.command, value: o.value });
+  const text = commandText({
+    id,
+    screen: o.screenId,
+    made: o.nowMs,
+    until,
+    do: o.command,
+    value: o.value,
+  });
   await inTransaction(pool, async (c) => {
     await c.query('INSERT INTO screen_inboxes (screen_id) VALUES ($1) ON CONFLICT DO NOTHING', [
       o.screenId,
@@ -51,7 +58,18 @@ export async function issueCommand(
   return { id, text };
 }
 
-/** Commands for a screen not yet answered and not expired: sent again when its line opens. */
+/** Commands where only the newest counts: an older blank must never undo a newer unblank. */
+const GROUP: Partial<Record<CommandName, string>> = {
+  blank: 'cover',
+  unblank: 'cover',
+  brightness: 'brightness',
+};
+
+/**
+ * Commands for a screen not yet answered and not expired: sent again when its line opens. Of blank
+ * and unblank only the newest goes, and of brightness only the newest (review P2.12). A row the
+ * screen would refuse is skipped, never allowed to stop the rest (or the hello's time reply).
+ */
 export async function pendingCommands(
   pool: Pick<Pool, 'query'>,
   screenId: string,
@@ -70,18 +88,33 @@ export async function pendingCommands(
        FROM screen_commands c
       WHERE c.screen_id = $1 AND c.until > to_timestamp($2 / 1000.0)
         AND NOT EXISTS (SELECT 1 FROM screen_command_results r WHERE r.id = c.id)
-      ORDER BY c.made_at, c.id`,
+      ORDER BY c.made_at DESC, c.id DESC`,
     [screenId, nowMs],
   );
-  return r.rows.map((x) =>
-    commandText({
-      id: x.id,
-      made: Number(x.made),
-      until: Number(x.until),
-      do: x.command,
-      value: x.value,
-    }),
-  );
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const x of r.rows) {
+    const group = GROUP[x.command];
+    if (group !== undefined) {
+      if (seen.has(group)) continue;
+      seen.add(group);
+    }
+    try {
+      out.push(
+        commandText({
+          id: x.id,
+          screen: screenId,
+          made: Number(x.made),
+          until: Number(x.until),
+          do: x.command,
+          value: x.value,
+        }),
+      );
+    } catch {
+      // Logged with the command; the box would refuse it anyway.
+    }
+  }
+  return out.reverse(); // oldest first, as they were sent
 }
 
 /**

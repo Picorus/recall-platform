@@ -186,6 +186,43 @@ describe('gateway (P2.3.2): hellos and uploads', () => {
     expect(await hook('/emqx/authz', ask)).toMatchObject({ result: 'deny' });
   });
 
+  it('of blank and unblank only the newest goes: an old blank never undoes a newer unblank', async () => {
+    const fifth = await enrolBox(pool, fakeDeviceCa(), 'GW-LINE-0005', NOW);
+    const at = NOW * 1000 + 200_000;
+    const blank = await issueCommand(pool, {
+      screenId: fifth.screenId,
+      command: 'blank',
+      value: null,
+      by: 'ops-1',
+      reason: 'cracked panel',
+      nowMs: at,
+      lifeMs: 3_600_000,
+    });
+    const unblank = await issueCommand(pool, {
+      screenId: fifth.screenId,
+      command: 'unblank',
+      value: null,
+      by: 'ops-1',
+      reason: 'panel replaced',
+      nowMs: at + 600_000,
+    });
+    const logs = await issueCommand(pool, {
+      screenId: fifth.screenId,
+      command: 'send-logs',
+      value: null,
+      by: 'ops-1',
+      reason: 'check crashes',
+      nowMs: at + 600_001,
+    });
+    const hello = `recall/v1/s/${fifth.screenId}/up/hello`;
+    const sent = (await handleUp(pool, hello, bytes(helloText('0.9.0', 1)), at + 700_000))
+      .filter((r) => r.topic.endsWith('/down/command'))
+      .map((r) => r.payload);
+    expect(sent).toEqual([unblank.text, logs.text]);
+    expect(sent).not.toContain(blank.text);
+    expect(JSON.parse(unblank.text)).toMatchObject({ screen: fifth.screenId });
+  });
+
   it('a command goes with every hello until the box answers it, and the answer is logged (P2.12)', async () => {
     const fourth = await enrolBox(pool, fakeDeviceCa(), 'GW-LINE-0004', NOW);
     const at = NOW * 1000 + 100_000;

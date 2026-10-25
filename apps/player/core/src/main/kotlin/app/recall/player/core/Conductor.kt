@@ -5,7 +5,8 @@
 //
 // Each spot shown is handed on (Played) for the signed play log (P2.7). It `counts` only when all of
 // this holds: shown by trusted time, from its first second to its last, the screen confirmed it
-// started (`started`) and reported no problem, an ad was shown (not the slate), and no spot at or after
+// started (`started`) and reported no problem, the screen was not covered at any moment of it (blank or
+// test pattern, P2.12), an ad was shown (not the slate), and no spot at or after
 // that time was counted before (a clock moved back never yields the same spot twice, review P2.5.1).
 package app.recall.player.core
 
@@ -108,6 +109,12 @@ class Conductor(
     private val log: (String) -> Unit = {},
     private val rules: ConductorRules = ConductorRules(),
     private val mark: PlayedMark = PlayedMark(),
+    /**
+     * Why the screen was covered (blanked, test pattern: P2.12) at any moment from counter `sinceMono`
+     * until now, or null. A spot covered for any part of it never counts, even one already showing
+     * when the cover came (review P2.12).
+     */
+    private val covered: (sinceMono: Long) -> String? = { null },
 ) : ScreenReports {
     /** What the screen said about one spot (from any thread). */
     private class Report {
@@ -115,7 +122,7 @@ class Conductor(
         @Volatile var problem: String? = null
     }
 
-    private class Showing(val spot: Spot, val report: Report, val endMono: Long, val fromStart: Boolean)
+    private class Showing(val spot: Spot, val report: Report, val startMono: Long, val endMono: Long, val fromStart: Boolean)
 
     /** Reports for the spot loading and the spot showing; matched by identity, never by value. */
     @Volatile private var loading: Pair<Spot, Report>? = null
@@ -191,17 +198,20 @@ class Conductor(
         // The report follows the spot from loading to showing, so a problem found while it was
         // loading still counts against it; set before showing, so one reported at once does too.
         val report = loading?.takeIf { it.first === spot }?.second ?: Report()
+        val startMono = mono()
         showing = spot to report
         val planned = spot.planned
         if (planned != null && planned.ad.isNotEmpty() && spot.shows != planned) missing.incrementAndGet()
         renderer.show(spot)
-        return Showing(spot, report, endMono, fromStart)
+        return Showing(spot, report, startMono, endMono, fromStart)
     }
 
     /** `ran`: the spot ran to its end (false: playback stopped part-way). */
     private fun finish(s: Showing, ran: Boolean) {
         val whole = s.fromStart && ran && mono() >= s.endMono - rules.wholeWithinMs
-        val problem = s.report.problem ?: if (!s.report.started) "the screen did not confirm it started" else null
+        val problem = s.report.problem
+            ?: runCatching { covered(s.startMono) }.getOrElse { "cover unknown" }
+            ?: if (!s.report.started) "the screen did not confirm it started" else null
         val ok = problem == null
         val start = s.spot.startUtc
         val counts = whole && ok && start != null && s.spot.shows != null && mark.claim(start)

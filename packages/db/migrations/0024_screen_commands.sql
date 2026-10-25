@@ -9,7 +9,10 @@ CREATE TABLE screen_commands (
   id        text        PRIMARY KEY CHECK (id ~ '^[A-Za-z0-9-]{8,64}$'),
   screen_id text        NOT NULL REFERENCES screen_inboxes (screen_id),
   command   text        NOT NULL CHECK (command IN ('reboot', 'blank', 'unblank', 'test-pattern', 'brightness', 'send-logs', 'clear-cache')),
-  value     integer,
+  value     integer     CHECK (CASE command
+                                 WHEN 'brightness' THEN value IS NULL OR value BETWEEN 1 AND 100
+                                 WHEN 'test-pattern' THEN value BETWEEN 5 AND 600
+                                 ELSE value IS NULL END),
   made_at   timestamptz NOT NULL,
   until     timestamptz NOT NULL CHECK (until > made_at AND until <= made_at + interval '1 hour'),
   by        text        NOT NULL CHECK (length(by) BETWEEN 1 AND 80),

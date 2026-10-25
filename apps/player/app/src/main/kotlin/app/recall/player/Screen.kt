@@ -95,6 +95,8 @@ class Screen(
         dark.visibility = if (reason != null && !test) View.VISIBLE else View.GONE
         dark.bringToFront()
         bars.bringToFront()
+        // The spot showing when a cover comes never counts either (the conductor checks too).
+        if (reason != null) decks[front].covered(reason)
     }
 
     /** Runs on the main thread, unless the screen has been released meanwhile. */
@@ -115,8 +117,7 @@ class Screen(
         decks[i].show()
         decks[1 - i].hide()
         refreshCover()
-        // Under a cover the spot was not seen: it never counts (P2.12).
-        cover()?.let { reason -> decks[i].covered(reason) }
+
     }
 
     /** Frees the video players and the decoder (when the screen goes away). */
@@ -239,9 +240,12 @@ class Screen(
         /** The spot showing is under a cover: reported as not shown, never confirmed. */
         fun covered(reason: String) {
             val s = spot ?: return
+            if (shownAt < 0 || coveredLoad == loads) return // not showing, or already reported
+            coveredLoad = loads
             confirmed = true
             reports?.failed(s, reason, fileFault = false)
         }
+        private var coveredLoad = -1
 
         fun hide() {
             shownAt = -1L
