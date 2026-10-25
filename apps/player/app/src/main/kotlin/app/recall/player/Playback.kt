@@ -52,6 +52,13 @@ object Playback {
         }
     }
 
+    private val notCounted = java.util.concurrent.atomic.AtomicLong()
+    private val missing = java.util.concurrent.atomic.AtomicLong()
+    /** Spots shown by trusted time that did not count (late, cut short, not confirmed). Health, P2.11. */
+    val spotsNotCounted: Long get() = notCounted.get()
+    /** Spots shown without their planned ad (not on the box). Health, P2.11. */
+    val adsMissing: Long get() = missing.get()
+
     /** About an hour of spots. */
     private const val EARLY_MAX = 240
 
@@ -87,6 +94,9 @@ object Playback {
                 mono = SystemClock::elapsedRealtime,
                 waiter = waiter,
                 played = { p ->
+                    if (!p.counts && p.spot.timed) notCounted.incrementAndGet()
+                    val planned = p.spot.planned
+                    if (planned != null && planned.ad.isNotEmpty() && p.spot.shows != planned) missing.incrementAndGet()
                     if (!p.counts && p.spot.timed) log("not counted: ${p.spot.shows?.ad ?: "slate"} at ${p.spot.startUtc}: ${p.problem ?: if (!p.whole) "not whole" else "no ad or no time"}")
                     if (p.counts) record(p, log)
                     // A mark left by a wrong clock (a faked GPS date) must not stop counting for good.

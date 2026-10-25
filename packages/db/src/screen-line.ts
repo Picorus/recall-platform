@@ -5,6 +5,7 @@
 // reported lost or stolen.
 import { createHash, X509Certificate } from 'node:crypto';
 import { isScreenId } from '@recall/domain';
+import { heardFrom } from './health.js';
 import type { Pool } from 'pg';
 import { inTransaction } from './makeups.js';
 
@@ -87,13 +88,16 @@ export async function recordHello(
   app: string,
   nowMs: number,
 ): Promise<void> {
-  await inTransaction(pool, (c) =>
-    c.query(
+  await inTransaction(pool, async (c) => {
+    await c.query(
       `INSERT INTO screen_hellos (screen_id, at, app)
        VALUES ($1, to_timestamp($2 / 1000.0), $3) ON CONFLICT DO NOTHING`,
       [screenId, nowMs, app],
-    ),
-  );
+    );
+    // P2.11: heard from again; a "no contact" alert clears (only screens with an inbox have alerts).
+    const inbox = await c.query('SELECT 1 FROM screen_inboxes WHERE screen_id = $1', [screenId]);
+    if (inbox.rowCount) await heardFrom(c, screenId, Math.floor(nowMs / 1000));
+  });
 }
 
 /** Records a message refused whole (it never counts; the box keeps sending it until fixed). */

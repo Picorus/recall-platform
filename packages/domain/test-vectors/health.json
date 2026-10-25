@@ -1,0 +1,73 @@
+{
+  "cases": [
+    {
+      "name": "a healthy box",
+      "report": {
+        "kind": "health",
+        "t": 1800000060,
+        "app": "0.9.0",
+        "upS": 3725,
+        "batteryPct": 81,
+        "charging": false,
+        "batteryC": 38,
+        "boxC": 54,
+        "freeMb": 9123,
+        "signalDbm": -87,
+        "ledFault": null,
+        "tamper": null,
+        "clockDisagree": false,
+        "spotsNotCounted": 3,
+        "playsNotStored": 0,
+        "messagesRefused": 1,
+        "gpsMissedSeconds": 12,
+        "adsMissing": 2
+      }
+    },
+    {
+      "name": "a box with nothing readable yet (no battery link, no modem, no sensors)",
+      "report": {
+        "kind": "health",
+        "t": 1800000060,
+        "app": "0.9.0",
+        "upS": 3725,
+        "batteryPct": null,
+        "charging": null,
+        "batteryC": null,
+        "boxC": null,
+        "freeMb": 9123,
+        "signalDbm": null,
+        "ledFault": null,
+        "tamper": null,
+        "clockDisagree": false,
+        "spotsNotCounted": 3,
+        "playsNotStored": 0,
+        "messagesRefused": 1,
+        "gpsMissedSeconds": 12,
+        "adsMissing": 2
+      }
+    },
+    {
+      "name": "a hot box, low battery, panel fault, opened case",
+      "report": {
+        "kind": "health",
+        "t": 1800000060,
+        "app": "0.9.0",
+        "upS": 3725,
+        "batteryPct": 7,
+        "charging": false,
+        "batteryC": 38,
+        "boxC": 81,
+        "freeMb": 9123,
+        "signalDbm": -87,
+        "ledFault": true,
+        "tamper": true,
+        "clockDisagree": true,
+        "spotsNotCounted": 3,
+        "playsNotStored": 0,
+        "messagesRefused": 1,
+        "gpsMissedSeconds": 12,
+        "adsMissing": 2
+      }
+    }
+  ]
+}
