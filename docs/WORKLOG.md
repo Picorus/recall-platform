@@ -2,6 +2,17 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 25 Oct 2026 · P1.9 · Final campaign report
+- P1.8 merged (PR #27).
+- **P1.9.1 Built once, kept as built.** `buildDueReports`: a booking's report is built at least 24 hours after its last hour (a setting), and only once every line has had its last check: the day of its last make-up (same hour next day) has closed and the refund for missing plays has been proposed. In practice about 48 hours after the last hour. The clock moves the booking to *done* first. Migration 0019 `campaign_reports` (one per booking, never changed).
+  - Contents: plays delivered vs promised (extras shown as a free bonus, never making up another hour), different bikes, heat map (H3 hexagons, about 0.1 km² each), busiest streets (street names for the busiest 40 hexagons through the new `maps` adapter; fake knows 16 main Hyderabad roads), make-ups, refund, people (approximate range).
+  - Refund: exactly as proposed (with any top-up), "being processed" until the super admin decides, then "refunded".
+- **P1.9.2 Shown and sent.** `services/workers`: the web page (Night Signal, works at phone width, all outside text escaped) and an A4 PDF (pdf-lib; the same file every time; "Rs." in the PDF because its font has no ₹). `sendDueReports`: WhatsApp (template with a link to the portal) and email (page + PDF), each channel once with a fixed key; passing failures tried again up to 3 times; wrong address given up; booking moves to *report-sent* once the report reached the brand. Brands with no contact and reports that reached no one are listed for staff. New `messages` adapter with a fake; brand contacts (`setBrandContact`, phone +91 or email, latest wins).
+- Review by a second agent found 3 real problems, all fixed with tests: the report was frozen a day before the refund check, so late uploads could make its refund wrong for good (now built after every line's last check, showing the refund actually proposed); a wrong address could never be retried after staff fixed it, and a short outage used up all 3 tries in 3 minutes (now tries count per address, 30 minutes apart, and the address is part of the send key); a maps outage stopped every report (now it goes out without street names). Also: the headline counted extra plays from one hour against another hour's shortfall (now "what made the promise", extras shown separately).
+- Tests: 7 domain, 3 database (full campaign end to end: due time, built once, refund, streets, people, done; sending with a failed email tried again 30 minutes later, each channel once, report-sent; a wrong address given up and a new one tried afresh), 4 workers, 2 adapters (page, PDF, unprintable text, heat map), guard test still holds.
+- Open: the report page inside the brand portal comes with P5 (the link points there); real WhatsApp and email providers need accounts (WhatsApp also needs the template approved); the PDF uses a plain font until the brand fonts are added (P5).
+- **Next:** P1.10 version 2 (real OpenStreetMap roads instead of the street grid), the last open part of P1; then P2.1 player on the emulator.
+
 ## 25 Oct 2026 · P1.8 · People counts
 - P1.7.9 merged (PR #26); P1.7 marked Done in the plan.
 - Already in place since P1.5: every play carries the number of people its screen faced while it ran, signed on the screen with the play, so it cannot be changed on the way.

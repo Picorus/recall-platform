@@ -1,4 +1,8 @@
 {
   "extends": "../../tsconfig.base.json",
-  "include": ["src"]
+  "compilerOptions": {
+    // @recall/design is imported from source, which uses .ts import paths.
+    "allowImportingTsExtensions": true
+  },
+  "include": ["src", "test"]
 }

@@ -4,6 +4,7 @@
 import { DEFAULT_MAKE_UP_RULES, type MakeUpRules } from './makeups.js';
 import { checkPeopleRules, DEFAULT_PEOPLE_RULES, type PeopleRules } from './people.js';
 import { DEFAULT_PLAY_RULES, type PlayRules } from './plays.js';
+import { checkReportRules, DEFAULT_REPORT_RULES, type ReportRules } from './report.js';
 import { checkRiderPayRules, DEFAULT_RIDER_PAY_RULES, type RiderPayRules } from './rider-pay.js';
 import { DEFAULT_CAPACITY_RULES, type CapacityRules } from './supply.js';
 import { parseUtcIso } from './time.js';
@@ -69,6 +70,8 @@ export interface PriceBook {
   readonly taxes: TaxRules;
   /** People counts (P1.8): an estimate shown as a range, never billed. */
   readonly people: PeopleRules;
+  /** The final campaign report (P1.9). */
+  readonly report: ReportRules;
 }
 
 /** GST settings (P1.7.9). */
@@ -121,6 +124,7 @@ export const PRICE_BOOK_V1: PriceBook = {
   riderPay: DEFAULT_RIDER_PAY_RULES,
   taxes: DEFAULT_TAX_RULES,
   people: DEFAULT_PEOPLE_RULES,
+  report: DEFAULT_REPORT_RULES,
 };
 
 /** Highest cut rate that can be given (50%, in basis points). */
@@ -211,6 +215,7 @@ export function checkPriceBook(b: PriceBook): PriceBookProblem[] {
     problems.push('make-up settings must be whole numbers; at most 4 next hours');
   problems.push(...checkRiderPayRules(b.riderPay));
   problems.push(...checkPeopleRules(b.people));
+  problems.push(...checkReportRules(b.report));
   const t = b.taxes;
   if (
     !/^\d{2}$/.test(t.supplierStateCode) ||

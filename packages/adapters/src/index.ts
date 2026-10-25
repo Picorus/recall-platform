@@ -1,2 +1,4 @@
 // Outside services behind adapters, each with a working fake (hard rule 4).
 export * from './payouts.js';
+export * from './maps.js';
+export * from './messages.js';
