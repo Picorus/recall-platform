@@ -8,6 +8,8 @@
 //  - reboot: the box restarts (as device owner), a few seconds after its answer is stored.
 //  - send logs: the end of the box's own log goes back in the answer.
 //  - clear cache: the app's cache (never the ads, plans, plays or outbox).
+//  - fitting check (P2.14): the test pattern while GPS, the line, the camera and the battery are
+//    checked; the fitting report follows through the outbox.
 package app.recall.player
 
 import android.app.admin.DevicePolicyManager
@@ -18,6 +20,8 @@ import android.os.SystemClock
 import android.util.Log
 import app.recall.player.core.CommandActions
 import app.recall.player.core.CommandRunner
+import app.recall.player.core.FittingCheck
+import app.recall.player.core.FittingProbes
 import app.recall.player.core.Outbox
 import java.io.File
 import java.io.FileOutputStream
@@ -153,6 +157,32 @@ object Remote {
 
         override fun clearCache() {
             app.cacheDir.listFiles()?.forEach { it.deleteRecursively() }
+        }
+
+        /** P2.14: the test pattern, and the checks on their own thread; the report follows. */
+        override fun fittingCheck(id: String, seconds: Long) {
+            val box = Line.outbox ?: error("no outbox: the box is not set up")
+            testPattern(seconds)
+            val probes = object : FittingProbes {
+                override fun gpsAccuracyM() = Gps.loop?.freshAccuracyM(SystemClock.elapsedRealtime())
+                override fun lineUp() = Line.connected()
+                override fun camera(): Boolean? = null // the camera link comes with the hardware (P2.9)
+                override fun batteryPct() = BoxHealth.read(app).batteryPct
+                override fun charging() = BoxHealth.read(app).charging
+            }
+            Thread({
+                runCatching {
+                    FittingCheck(
+                        probes,
+                        tick = { runCatching { Thread.sleep(1_000) }.isSuccess },
+                        nowMs = { Line.clock.get().now(SystemClock.elapsedRealtime()) },
+                        send = { r, at ->
+                            box.add(r, at)
+                            Line.nudge()
+                        },
+                    ).run(id, seconds)
+                }.onFailure { CrashLog.record(app, "fitting check failed: ${it.javaClass.simpleName}") }
+            }, "recall-fitting").apply { isDaemon = true }.start()
         }
     }
 }

@@ -43,7 +43,8 @@ class UpdatesTest {
         cutAt = null
         Fetched(from, body)
     }
-    private fun updater(own: Int = 10) = Updater(dir, own, fetcher, { f, u -> installed += f to u.versionCode }, run = { it.run() })
+    private var free = Long.MAX_VALUE
+    private fun updater(own: Int = 10) = Updater(dir, own, fetcher, { f, u -> installed += f to u.versionCode }, run = { it.run() }, freeBytes = { free })
 
     @Test
     fun `the box reads and refuses exactly as the cloud`() {
@@ -104,5 +105,22 @@ class UpdatesTest {
         u.onUpdate(msg(16, bytes = 1_000))
         assertTrue(installed.isEmpty())
         assertFalse(File(dir, "player-16.part").exists())
+    }
+
+    @Test
+    fun `a weak link never makes the box give up, and an update never takes the room ads need`() {
+        val u = updater()
+        repeat(5) {
+            cutAt = 10
+            u.onUpdate(msg(17))
+        }
+        assertTrue(installed.isEmpty())
+        u.onUpdate(msg(17))
+        assertEquals(17, installed.single().second, "carried on after 5 cuts")
+        free = 100_000_000 // 100 MB: less than the file plus the room kept free
+        val before = asked.size
+        assertTrue(u.onUpdate(msg(18)))
+        assertEquals(before, asked.size, "nothing downloaded")
+        assertFalse(File(dir, "player-17.apk").exists(), "older files cleared for the new offer")
     }
 }

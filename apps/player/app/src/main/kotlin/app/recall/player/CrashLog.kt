@@ -21,7 +21,6 @@ object CrashLog {
     fun install(context: Context) {
         val app = context.applicationContext
         Thread.setDefaultUncaughtExceptionHandler { _, error ->
-            runCatching { countCrash(app) }
             runCatching { record(app, "crash ${error.javaClass.name}: ${error.message?.take(200) ?: ""}") }
             Process.killProcess(Process.myPid())
             exitProcess(10)
@@ -30,16 +29,38 @@ object CrashLog {
 
     private fun countFile(context: Context) = File(context.filesDir, "crash-count")
 
-    /** Crashes since the box was set up (kept across restarts): updates are judged by them (P2.13). */
-    fun count(context: Context): Long =
-        runCatching { countFile(context).readText().trim().toLong() }.getOrDefault(0)
-
-    private fun countCrash(context: Context) {
+    /**
+     * Crashes of the player since the box was set up (kept across restarts): updates are judged by
+     * them (P2.13). Counted from Android's own record of why the player's process ended, so crashes
+     * in native code (the video decoder), freezes (not responding) and crashes before the player
+     * could note anything all count (review P2.13); the watchdog's process is not counted.
+     */
+    @Synchronized
+    fun count(context: Context): Long {
         val f = countFile(context)
-        java.io.FileOutputStream(f).use {
-            it.write((count(context) + 1).toString().toByteArray())
+        val (total, seen) = runCatching {
+            f.readText().trim().split(" ").let { it[0].toLong() to it[1].toLong() }
+        }.getOrDefault(0L to 0L)
+        val am = context.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+        val exits = runCatching { am.getHistoricalProcessExitReasons(context.packageName, 0, 0) }.getOrDefault(emptyList())
+        val fresh = exits.filter {
+            it.timestamp > seen && it.processName == context.packageName &&
+                it.reason in setOf(
+                    android.app.ApplicationExitInfo.REASON_CRASH,
+                    android.app.ApplicationExitInfo.REASON_CRASH_NATIVE,
+                    android.app.ApplicationExitInfo.REASON_ANR,
+                )
+        }
+        if (fresh.isEmpty()) return total
+        val now = total + fresh.size
+        // Written whole or not at all: a count is never lost to a power cut mid-write.
+        val tmp = File(f.parentFile, "crash-count.tmp")
+        java.io.FileOutputStream(tmp).use {
+            it.write("$now ${fresh.maxOf { e -> e.timestamp }}".toByteArray())
             it.fd.sync()
         }
+        tmp.renameTo(f)
+        return now
     }
 
     /** Adds a line (kept to the last 50). */

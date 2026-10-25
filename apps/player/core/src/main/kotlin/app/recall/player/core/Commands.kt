@@ -22,7 +22,7 @@ data class ScreenCommand(val id: String, val screen: String, val made: Long, val
 data class ParsedCommand(val command: ScreenCommand?, val problem: String?, val id: String? = null)
 
 object ScreenCommands {
-    val NAMES = setOf("reboot", "blank", "unblank", "test-pattern", "brightness", "send-logs", "clear-cache")
+    val NAMES = setOf("reboot", "blank", "unblank", "test-pattern", "brightness", "send-logs", "clear-cache", "fitting-check")
     const val MAX_LIFE_MS = 3_600_000L
     const val MAX_NOTE = 4_000
     private val ID = Regex("[A-Za-z0-9-]{8,64}")
@@ -52,6 +52,7 @@ object ScreenCommands {
         val value: Long? = when (name) {
             "brightness" -> if (raw is JsonNull) null else whole(raw, 1, 100) ?: return no("bad value")
             "test-pattern" -> whole(raw, 5, 600) ?: return no("bad value")
+            "fitting-check" -> whole(raw, 30, 600) ?: return no("bad value")
             else -> if (raw is JsonNull) null else return no("bad value")
         }
         return ParsedCommand(ScreenCommand(id, screen, made, until, name, value), null, id)
@@ -86,6 +87,12 @@ interface CommandActions {
     /** The end of the box's own log. */
     fun logs(): String
     fun clearCache()
+
+    /**
+     * Starts the fitting check (P2.14): the test pattern for `seconds` while GPS, the line, the camera
+     * and the battery are checked; the fitting report (for command `id`) follows through the outbox.
+     */
+    fun fittingCheck(id: String, seconds: Long)
 }
 
 class CommandRunner(
@@ -155,6 +162,7 @@ class CommandRunner(
                 "brightness" -> actions.brightness(c.value?.toInt())
                 "send-logs" -> return answer(id, now, "done", actions.logs())
                 "clear-cache" -> actions.clearCache()
+                "fitting-check" -> actions.fittingCheck(id, c.value ?: 120)
             }
             "done" to ""
         } catch (e: Throwable) {

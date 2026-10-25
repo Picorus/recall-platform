@@ -64,12 +64,13 @@ export async function handleUp(
       return [];
     }
     if (memory?.due(`h:${screenId}`, nowMs) ?? true)
-      await recordHello(pool, screenId, h.app, nowMs);
+      await recordHello(pool, screenId, h.app, nowMs, h.code);
     // P2.12: commands not yet answered go again each time the line opens (the box does each once).
     // The time reply never waits on them: a failure here only delays commands to the next hello.
     const commands = await pendingCommands(pool, screenId, nowMs).catch(() => [] as string[]);
     // P2.13: a new player version, when this screen is in the rollout's stage (or a rollback).
-    const update = await lastAppCode(pool, screenId)
+    // The version from the hello itself (older players send none: their last health report).
+    const update = await (h.code !== null ? Promise.resolve(h.code) : lastAppCode(pool, screenId))
       .then((code) => updateFor(pool, screenId, code, nowMs))
       .catch(() => undefined);
     return [

@@ -18,12 +18,16 @@ import java.io.File
 
 object Updates {
     @Volatile private var updater: Updater? = null
-    const val RESULT = "app.recall.player.INSTALL_RESULT"
 
     @Synchronized
     fun start(context: Context) {
         if (updater != null) return
         val app = context.applicationContext
+        // Install sessions left from before (a failed try, a power cut) hold a copy each: let them go.
+        runCatching {
+            val installer = app.packageManager.packageInstaller
+            installer.mySessions.forEach { runCatching { installer.abandonSession(it.sessionId) } }
+        }
         updater = Updater(
             dir = File(app.filesDir, "updates"),
             ownCode = BuildConfig.VERSION_CODE,
@@ -47,19 +51,25 @@ object Updates {
             setSize(file.length())
         }
         val id = installer.createSession(params)
-        installer.openSession(id).use { session ->
-            session.openWrite("player-${u.versionCode}.apk", 0, file.length()).use { out ->
-                file.inputStream().use { it.copyTo(out) }
-                session.fsync(out)
+        try {
+            installer.openSession(id).use { session ->
+                session.openWrite("player-${u.versionCode}.apk", 0, file.length()).use { out ->
+                    file.inputStream().use { it.copyTo(out) }
+                    session.fsync(out)
+                }
+                val result = PendingIntent.getBroadcast(
+                    app,
+                    id,
+                    Intent(app, InstallResult::class.java).putExtra("version", u.versionName),
+                    // The installer adds the outcome to the intent, so it must be able to fill it in.
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE,
+                )
+                session.commit(result.intentSender)
             }
-            val result = PendingIntent.getBroadcast(
-                app,
-                id,
-                Intent(RESULT).setPackage(app.packageName).putExtra("version", u.versionName),
-                // The installer adds the outcome to the intent, so it must be able to fill it in.
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE,
-            )
-            session.commit(result.intentSender)
+        } catch (e: Exception) {
+            // Never leave a half-written session (and its copy of the file) behind (review P2.13).
+            runCatching { installer.abandonSession(id) }
+            throw e
         }
     }
 }

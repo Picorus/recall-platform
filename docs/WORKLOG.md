@@ -2,12 +2,31 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 25 Oct 2026 · P2.14 · Fitting check
+- **What it checks** (`packages/domain/src/fitting.ts`, shared cases `test-vectors/fitting.json`): a technician starts it from the rider app (P4) as a `fitting-check` command (30–600 seconds). The box shows the colour bars (every part of the panel can be seen lighting up) and watches for its best GPS fix; at the end it reads the 4G line, the camera and the battery and sends a fitting report through its outbox.
+- **The cloud judges each part itself** (`fittingVerdict`): GPS fix within 50 m, line up, camera answering, battery at least 50% or charging. Ready only when every part passes; a part the box cannot check (the camera, until the hardware) is "unknown" and never passes. Each check is kept with its verdict (migration 0026, `packages/db/src/fitting.ts`); the latest says whether the bike is ready (`latestFitting`).
+- **On the box** (`Fitting.kt`, `Remote.kt`): the check runs on its own thread; the GPS service gives the accuracy of its latest fix; the line, battery and (later) camera are read at the end. App 0.12.0.
+- Tests: TypeScript 3 (each part, unknown never passes, refusals); database 2 (a passing check makes the bike ready, a later failing one takes it back; a fitting check needs its time); Kotlin 2 (`FittingTest`: the cloud's cases, best fix rounded up, a failing probe is unknown). Kotlin core 139.
+- Open: the rider app's screens to start it and confirm the pattern (P4); the camera link with the hardware (P2.9).
+- Next: P2 is done apart from P2.9 (people counter, needs the hardware sample). Next phase by the plan: P3, admin.
+
 ## 25 Oct 2026 · P2.13.2–P2.13.3 · Player updates: releases, rollout, installing on the box
 - **Releases and rollout in the database** (migration 0025, `packages/db/src/updates.ts`): each release is the new build and its rollback build; the rollout's life is its events (started, advanced, finished, rolled back, replaced), append-only. `updateFor` decides what a screen is offered when its line opens: the new build if it is in the current stage and older, the rollback build if it runs a release that was rolled back, else nothing. `driveRollout` (a worker every few minutes) moves the stage on or rolls back by the rules (P2.13.1), judging crashes and screen-hours per version from the health reports.
 - **Health reports now carry** the player's version code and the box's crash count since it was set up (kept across restarts): that is how a rollout is judged.
 - **Sent by the gateway** with the hello reply (`down/update`), like commands.
 - **On the box** (`Updates.kt` core and app): takes only a version above its own; downloads over HTTPS on its own thread, carrying on after a cut; checks size and SHA-256; installs through Android's package installer as device owner (nobody taps anything); Android restarts the player. A version that keeps failing is given up after 3 tries until a newer one comes. Leftover files of older versions are removed. App 0.11.0.
 - Tests: TypeScript shared update cases (`test-vectors/updates.json`); database 3 (first stage only, never to a screen on it or newer; holds then advances; rolls back on rising crashes and offers the rollback build); Kotlin 5 (`UpdatesTest`: the cloud's cases, newer only, resumed downloads, wrong files thrown away and given up after 3 tries, oversized files refused). Kotlin core 136.
+- Second-agent review: nothing could install a file the cloud did not offer or that does not match its fingerprint; 14 gaps found, all fixed:
+  - a version crashing before it can send health was never rolled back. Now the hello carries the version code; a version whose screens connect but send no health for 2 hours rolls back; admin can roll back by hand (`rollBack`);
+  - a rolled-back build stopped being answered once a newer release came. Now a screen on any rolled-back build always gets its rollback build;
+  - health from players before 0.11 (no version code or crash count) was refused. Now accepted;
+  - a weak link made the box give up on a version. Now only a wrong file or a refused install counts as a failed try;
+  - a failed install left its copy behind (up to 200 MB each). Now abandoned at once, and leftovers at start;
+  - downloads ignored free space and old partial files stayed. Now 300 MB is always left free, and other versions' files go;
+  - only crashes in Java code were counted. Now Android's own record of why the player ended counts native crashes and freezes too, written safely;
+  - a minute reported twice counted twice; one faulty box could roll back a release; a small fleet could stall at 1% with nobody in the stage; two releases added at once could both run. All fixed (at least 2 screens per stage, crashes from at least 2 screens, one release added at a time);
+  - an older offer still downloading is never installed once a newer one came; the install result goes to an explicit receiver.
+- Tests after the review: TypeScript 10 (`updates`); database 5 (rollback still answered after a newer release, silent version rolled back, by hand); Kotlin `UpdatesTest` 6. Kotlin core 139.
 - Open: the release pipeline in CI that builds each release and its rollback build and publishes both to storage (P7); a worker running `driveRollout` and admin screens to start a rollout (P3); trying an install on the real box hardware.
 - Next: P2.14, the fitting check.
 

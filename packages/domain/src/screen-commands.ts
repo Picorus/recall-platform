@@ -20,6 +20,7 @@ export const COMMANDS = [
   'brightness',
   'send-logs',
   'clear-cache',
+  'fitting-check',
 ] as const;
 export type CommandName = (typeof COMMANDS)[number];
 
@@ -32,7 +33,10 @@ export interface ScreenCommand {
   readonly made: number;
   readonly until: number;
   readonly do: CommandName;
-  /** brightness: percent 1–100, or null for automatic again; test-pattern: seconds 5–600. */
+  /**
+   * brightness: percent 1–100, or null for automatic again; test-pattern: seconds 5–600;
+   * fitting-check: seconds 30–600 to show the pattern and wait for a GPS fix (P2.14).
+   */
   readonly value: number | null;
 }
 
@@ -60,6 +64,7 @@ export function commandProblem(x: unknown): string | undefined {
   const v = c.value;
   if (c.do === 'brightness') return v === null || isWhole(v, 1, 100) ? undefined : 'bad value';
   if (c.do === 'test-pattern') return isWhole(v, 5, 600) ? undefined : 'bad value';
+  if (c.do === 'fitting-check') return isWhole(v, 30, 600) ? undefined : 'bad value';
   return v === null ? undefined : 'bad value';
 }
 

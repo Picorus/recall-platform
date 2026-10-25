@@ -1,7 +1,7 @@
 // P2.13: releases, which screens are offered an update, and the rollout moving on or rolling back.
 import {
   DEFAULT_ROLLOUT_RULES,
-  inStage,
+  stageScreens,
   type ApkFile,
   type HealthReport,
   type Numbered,
@@ -10,7 +10,12 @@ import {
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type pg from 'pg';
 import { storeUpload } from '../../src/screen-reports.js';
-import { addRelease, driveRollout, rolloutStatus, updateFor } from '../../src/updates.js';
+import { fakeDeviceCa } from '@recall/adapters';
+import { enrolmentBytes } from '@recall/domain';
+import { generateKeyPairSync, sign } from 'node:crypto';
+import { recordHello } from '../../src/screen-line.js';
+import { enrolScreen } from '../../src/screens.js';
+import { addRelease, driveRollout, rollBack, rolloutStatus, updateFor } from '../../src/updates.js';
 import { freshDatabase } from './fresh-db.js';
 
 let db: Awaited<ReturnType<typeof freshDatabase>>;
@@ -78,6 +83,11 @@ describe('player updates (P2.13)', () => {
   const screens = Array.from({ length: 400 }, (_, i) => `SCR-${String(i).padStart(7, '0')}A`);
 
   it('a release goes to its first stage only, and never to a screen already on it or newer', async () => {
+    for (const s of screens)
+      await pool.query(
+        'INSERT INTO screen_inboxes (screen_id) VALUES ($1) ON CONFLICT DO NOTHING',
+        [s],
+      );
     await addRelease(
       pool,
       { id: 'rel-11', apk: apk(110), rollback: apk(111) },
@@ -87,7 +97,11 @@ describe('player updates (P2.13)', () => {
     );
     const offered = [];
     for (const s of screens) if (await updateFor(pool, s, 100, T, RULES)) offered.push(s);
-    expect(offered).toEqual(screens.filter((s) => inStage(s, 'rel-11', 100)));
+    const fleet = (
+      await pool.query<{ screen_id: string }>('SELECT screen_id FROM screen_inboxes')
+    ).rows.map((x) => x.screen_id);
+    const stage = stageScreens(fleet, 'rel-11', 100);
+    expect(offered).toEqual(screens.filter((s) => stage.has(s)));
     expect(offered.length).toBeGreaterThan(0);
     const first = offered[0] as string;
     expect(JSON.parse((await updateFor(pool, first, 100, T, RULES)) as string)).toMatchObject({
@@ -115,8 +129,11 @@ describe('player updates (P2.13)', () => {
   });
 
   it('rolls back by itself when crashes rise, and offers the rollback build to screens on it', async () => {
-    // Stage 2 begins; the new version now crashes every 5 minutes.
+    // Stage 2 begins; the new version now crashes every 5 minutes on two screens (one faulty box
+    // alone never rolls a release back).
     await report('SCR-NEW0001', T + HOUR + 2 * 60_000, 30, 110, 5, 1_000);
+    expect(await driveRollout(pool, T + HOUR + 33 * 60_000, RULES)).toMatch(/^hold/);
+    await report('SCR-NEW0002', T + HOUR + 2 * 60_000, 30, 110, 5, 1_000);
     const step = await driveRollout(pool, T + HOUR + 33 * 60_000, RULES);
     expect(step).toBe('roll-back');
     expect(await rolloutStatus(pool)).toMatchObject({ state: 'rolled-back' });
@@ -126,5 +143,64 @@ describe('player updates (P2.13)', () => {
     expect(await updateFor(pool, 'SCR-OLD0001', 100, T, RULES)).toBeUndefined();
     expect(await updateFor(pool, 'SCR-NEW0001', 111, T, RULES)).toBeUndefined();
     expect(await driveRollout(pool, T + 2 * HOUR, RULES)).toBeUndefined(); // nothing running
+  });
+
+  it('a rolled-back build is still answered with its rollback after a newer release comes', async () => {
+    await addRelease(
+      pool,
+      { id: 'rel-12', apk: apk(120), rollback: apk(121) },
+      'ops-1',
+      'fix',
+      T + 3 * HOUR,
+    );
+    // A box off for days comes back on the bad build: it gets the rollback, not the stage lottery.
+    expect(
+      JSON.parse((await updateFor(pool, 'SCR-OFFLINE1', 110, T + 3 * HOUR, RULES)) as string),
+    ).toMatchObject({
+      versionCode: 111,
+    });
+  });
+
+  it('a version that connects but never reports is rolled back; admin can roll back by hand', async () => {
+    const since = T + 3 * HOUR;
+    // A real enrolled box (hellos are kept only for those) on the new version.
+    const tls = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+    const play = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+    const spki = (k: typeof tls.publicKey) =>
+      k.export({ format: 'der', type: 'spki' }).toString('base64');
+    const req = {
+      hardwareSerial: 'UPD-0001',
+      model: 'Test LED box',
+      tlsPublicKey: spki(tls.publicKey),
+      playPublicKey: spki(play.publicKey),
+      madeAt: Math.floor(since / 1000),
+    };
+    const bytes = Buffer.from(enrolmentBytes(req));
+    const box = await enrolScreen(
+      pool,
+      fakeDeviceCa(),
+      {
+        ...req,
+        tlsSignature: sign('sha256', bytes, tls.privateKey).toString('base64'),
+        playSignature: sign('sha256', bytes, play.privateKey).toString('base64'),
+      },
+      'test',
+      Math.floor(since / 1000),
+    );
+    await recordHello(pool, box.screenId, '0.120.0', since + 60_000, 120);
+    expect(await driveRollout(pool, since + HOUR, RULES)).toMatch(/^hold/);
+    expect(await driveRollout(pool, since + 2 * HOUR + 60_000, RULES)).toBe('roll-back');
+    await addRelease(
+      pool,
+      { id: 'rel-13', apk: apk(130), rollback: apk(131) },
+      'ops-1',
+      'fix 2',
+      since + 3 * HOUR,
+    );
+    expect(await rollBack(pool, 'ops-1', 'riders report black screens', since + 3 * HOUR + 1)).toBe(
+      true,
+    );
+    expect(await rolloutStatus(pool)).toMatchObject({ releaseId: 'rel-13', state: 'rolled-back' });
+    expect(await rollBack(pool, 'ops-1', 'again', since + 3 * HOUR + 2)).toBe(false);
   });
 });

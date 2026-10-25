@@ -65,7 +65,8 @@ object BoxHealth {
         crashes = appContext?.let(CrashLog::count) ?: 0,
     )
 
-    private fun read(app: Context): HealthReading {
+    /** What the box reads about itself now (also for the fitting check, P2.14). */
+    fun read(app: Context): HealthReading {
         val battery = runCatching { app.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED)) }.getOrNull()
         val level = battery?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
         val scale = battery?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1

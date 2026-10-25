@@ -8,6 +8,7 @@ import {
   inStage,
   nextStep,
   releaseProblem,
+  stageScreens,
   updateProblem,
   updateText,
   type ApkFile,
@@ -71,6 +72,27 @@ describe('when the rollout moves on, waits, or rolls back', () => {
     expect(nextStep({ ...base, stage: 2, fresh: { screenHours: 900, crashes: 5 } })).toEqual({
       do: 'finished',
     });
+  });
+
+  it('one faulty box never rolls a release back alone; a version that cannot report does', () => {
+    const one = { screenHours: 2, crashes: 5, crashScreens: 1 };
+    expect(nextStep({ ...base, now: HOUR, fresh: one }).do).toBe('hold');
+    expect(nextStep({ ...base, now: HOUR, fresh: { ...one, crashScreens: 2 } }).do).toBe(
+      'roll-back',
+    );
+    const silent = { ...base, fresh: { screenHours: 0, crashes: 0 }, connected: 2 };
+    expect(nextStep({ ...silent, now: HOUR }).do).toBe('hold');
+    expect(nextStep({ ...silent, now: 3 * HOUR })).toMatchObject({ do: 'roll-back' });
+  });
+
+  it('a small fleet never has an empty stage, and stages only grow', () => {
+    const fleet = screens.slice(0, 50);
+    const first = stageScreens(fleet, 'rel-9', 100);
+    expect(first.size).toBe(2);
+    const second = stageScreens(fleet, 'rel-9', 1_000);
+    for (const s of first) expect(second.has(s)).toBe(true);
+    expect(stageScreens(fleet, 'rel-9', 10_000).size).toBe(50);
+    expect(stageScreens([], 'rel-9', 100).size).toBe(0);
   });
 
   it('rolls back on crashes, at once when they are many', () => {

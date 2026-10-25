@@ -79,8 +79,8 @@ export async function storeHealth(
       h.messagesRefused,
       h.gpsMissedSeconds,
       h.adsMissing,
-      h.appCode,
-      h.crashes,
+      h.appCode ?? null,
+      h.crashes ?? null,
     ],
   );
   if (latestT !== null && latestT !== undefined && h.t < Number(latestT)) return;

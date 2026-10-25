@@ -38,10 +38,12 @@ export interface HealthReport {
   readonly messagesRefused: number;
   readonly gpsMissedSeconds: number;
   readonly adsMissing: number;
-  /** The player's version code (rising; what updates compare, P2.13). */
-  readonly appCode: number;
-  /** Crashes since the box was set up (kept across restarts): updates are judged by these (P2.13). */
-  readonly crashes: number;
+  /**
+   * The player's version code (rising; what updates compare, P2.13) and its crashes since the box was
+   * set up (kept across restarts). Players before 0.11 send neither: their health still counts.
+   */
+  readonly appCode?: number;
+  readonly crashes?: number;
 }
 
 export const HEALTH_FIELDS = [
@@ -90,10 +92,10 @@ export function checkHealthShape(x: Record<string, unknown>): string | undefined
     'messagesRefused',
     'gpsMissedSeconds',
     'adsMissing',
-    'crashes',
   ] as const)
     if (!isInt(x[k], 0, COUNTER_MAX)) return `bad counter ${k}`;
-  if (!isInt(x.appCode, 1, 2_100_000_000)) return 'bad app version';
+  if (x.crashes !== undefined && !isInt(x.crashes, 0, COUNTER_MAX)) return 'bad counter crashes';
+  if (x.appCode !== undefined && !isInt(x.appCode, 1, 2_100_000_000)) return 'bad app version';
   return undefined;
 }
 

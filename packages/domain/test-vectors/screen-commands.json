@@ -88,6 +88,17 @@
         "do": "clear-cache",
         "value": null
       }
+    },
+    {
+      "text": "{\"v\":1,\"id\":\"c-fitting-check-0001\",\"screen\":\"SCR-1234567M\",\"made\":1793620000000,\"until\":1793620600000,\"do\":\"fitting-check\",\"value\":120}",
+      "command": {
+        "id": "c-fitting-check-0001",
+        "screen": "SCR-1234567M",
+        "made": 1793620000000,
+        "until": 1793620600000,
+        "do": "fitting-check",
+        "value": 120
+      }
     }
   ],
   "refused": [
@@ -153,6 +164,14 @@
     },
     {
       "text": "{\"v\":1,\"id\":\"c-reboot-0001\",\"screen\":\"SCR-1234567M\",\"made\":1793620000000,\"until\":1793620600000,\"do\":\"test-pattern\",\"value\":4}",
+      "problem": "bad value"
+    },
+    {
+      "text": "{\"v\":1,\"id\":\"c-reboot-0001\",\"screen\":\"SCR-1234567M\",\"made\":1793620000000,\"until\":1793620600000,\"do\":\"fitting-check\",\"value\":null}",
+      "problem": "bad value"
+    },
+    {
+      "text": "{\"v\":1,\"id\":\"c-reboot-0001\",\"screen\":\"SCR-1234567M\",\"made\":1793620000000,\"until\":1793620600000,\"do\":\"fitting-check\",\"value\":29}",
       "problem": "bad value"
     }
   ]

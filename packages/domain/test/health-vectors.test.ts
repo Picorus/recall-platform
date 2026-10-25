@@ -77,6 +77,11 @@ describe('shared health cases', () => {
     expect(checkReport({ ...base, app: 'x y' })).toBe('bad app version');
     expect(checkReport({ ...base, adsMissing: -1 })).toBe('bad counter adsMissing');
     expect(checkReport({ ...base, appCode: 0 })).toBe('bad app version');
+    // A player before 0.11 sends neither the version code nor the crash count: still accepted.
+    const old: Record<string, unknown> = { ...base };
+    delete old.appCode;
+    delete old.crashes;
+    expect(checkReport(old)).toBeUndefined();
     expect(checkReport({ ...base, frame: 'jpeg' })).toBe('unknown field: frame');
   });
 });

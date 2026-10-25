@@ -9,6 +9,7 @@ import {
   COMMAND_RESULT_FIELDS,
   type CommandResult,
 } from './screen-commands.js';
+import { checkFittingShape, FITTING_FIELDS, type FittingReport } from './fitting.js';
 import { checkHealthShape, HEALTH_FIELDS, type HealthReport } from './screen-health.js';
 import { distanceMeters, type LatLng } from './geo.js';
 import { inPayZone, POC_PAY_ZONE, type PayZone } from './pay-zone.js';
@@ -54,7 +55,8 @@ export interface MinuteSummary {
 }
 
 /** Plays (P1.5) travel the same way: numbered, kept until confirmed, never stored twice. */
-export type Report = LivePosition | MinuteSummary | PlayReport | HealthReport | CommandResult;
+export type Report =
+  LivePosition | MinuteSummary | PlayReport | HealthReport | CommandResult | FittingReport;
 
 export interface MinuteBuilder {
   readonly minute: number | undefined;
@@ -293,6 +295,7 @@ export const REPORT_FIELDS = {
   ],
   health: HEALTH_FIELDS,
   command: COMMAND_RESULT_FIELDS,
+  fitting: FITTING_FIELDS,
 } as const satisfies Record<Report['kind'], readonly string[]>;
 
 /** Longest text kept from one field (or field name) of a report that failed its checks. */
@@ -400,5 +403,6 @@ export function checkReport(r: unknown): string | undefined {
   if (x.kind === 'play') return checkPlayShape(x);
   if (x.kind === 'health') return checkHealthShape(x);
   if (x.kind === 'command') return checkCommandResultShape(x);
+  if (x.kind === 'fitting') return checkFittingShape(x);
   return 'unknown kind';
 }

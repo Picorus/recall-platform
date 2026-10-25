@@ -3,8 +3,9 @@
 // or the rollback build when the version it runs was rolled back. The box takes only a version
 // numbered above its own (Android refuses lower ones anyway), downloads it over HTTPS on its own
 // thread (carrying on where a weak link cut it), checks the size and SHA-256 fingerprint, and has it
-// installed (device owner: nobody taps anything). An install that keeps failing is given up after 3
-// tries, until a newer version comes.
+// installed (device owner: nobody taps anything). A wrong file or a refused install counts as a
+// failed try; after 3 the version is given up until a newer one comes. A weak link never counts: the
+// download carries on with the next offer. It never takes the room ads and plays need.
 package app.recall.player.core
 
 import java.io.File
@@ -58,8 +59,12 @@ class Updater(
     private val log: (String) -> Unit = {},
     /** Runs the download (on the box: its own thread). */
     private val run: (Runnable) -> Unit = Executors.newSingleThreadExecutor { Thread(it, "recall-update").apply { isDaemon = true } }::execute,
+    /** Free space where updates are kept: an update never takes the room ads and plays need. */
+    private val freeBytes: () -> Long = { dir.usableSpace },
 ) {
-    private var busy: Int? = null
+    private val queued = HashSet<Int>()
+    /** The newest version offered: an older offer still downloading is never installed. */
+    private var newest = 0
     private val tries = HashMap<Int, Int>()
 
     init {
@@ -80,9 +85,10 @@ class Updater(
             return false
         }
         if (file.versionCode <= ownCode) return false // already this or newer
-        if (busy == file.versionCode) return false // on its way
+        if (file.versionCode in queued) return false // on its way
         if ((tries[file.versionCode] ?: 0) >= MAX_TRIES) return false // given up until a newer one
-        busy = file.versionCode
+        if (file.versionCode > newest) newest = file.versionCode
+        queued += file.versionCode
         run(Runnable { fetchAndInstall(file) })
         return true
     }
@@ -91,24 +97,41 @@ class Updater(
         val part = File(dir, "player-${f.versionCode}.part")
         val done = File(dir, "player-${f.versionCode}.apk")
         try {
+            if (synchronized(this) { f.versionCode != newest }) return // a newer one was offered
+            // Files of any other version are of no more use (rolled back, replaced).
+            dir.listFiles()?.filter { !it.name.startsWith("player-${f.versionCode}.") }?.forEach { it.delete() }
             if (!done.exists()) {
+                val have = if (part.exists()) part.length() else 0L
+                if (freeBytes() < f.bytes - have + SPARE_BYTES) {
+                    log("update ${f.versionName}: not enough room, waiting")
+                    return
+                }
                 download(f, part)
                 check(part.renameTo(done)) { "could not keep the file" }
             }
             checkFile(f, done)
-            synchronized(this) { tries[f.versionCode] = (tries[f.versionCode] ?: 0) + 1 }
+            if (synchronized(this) { f.versionCode != newest }) return
             log("update ${f.versionName}: installing")
             install(done, f)
+        } catch (e: BadFile) {
+            part.delete()
+            done.delete()
+            failed(f, done, e)
+        } catch (e: java.io.IOException) {
+            // A weak link, a server hiccup: not counted; carried on from where it stopped next time.
+            log("update ${f.versionName}: download paused: ${e.message}")
         } catch (e: Exception) {
-            if (e is BadFile) {
-                part.delete()
-                done.delete()
-            }
-            synchronized(this) { tries[f.versionCode] = (tries[f.versionCode] ?: 0) + 1 }
-            log("update ${f.versionName} failed: ${e.javaClass.simpleName}: ${e.message}")
+            failed(f, done, e) // the installer refused it
         } finally {
-            synchronized(this) { if (busy == f.versionCode) busy = null }
+            synchronized(this) { queued -= f.versionCode }
         }
+    }
+
+    /** One more failed try; after 3 the version is given up (and its file removed) until a newer one. */
+    private fun failed(f: UpdateFile, done: File, e: Exception) {
+        val n = synchronized(this) { (tries[f.versionCode] ?: 0) + 1 }.also { synchronized(this) { tries[f.versionCode] = it } }
+        if (n >= MAX_TRIES) done.delete()
+        log("update ${f.versionName} failed ($n of $MAX_TRIES): ${e.javaClass.simpleName}: ${e.message}")
     }
 
     /** Downloads into `part`, carrying on from what is there. */
@@ -151,5 +174,7 @@ class Updater(
 
     private companion object {
         const val MAX_TRIES = 3
+        /** Room always left free besides the update (ads, the play log). */
+        const val SPARE_BYTES = 300L * 1024 * 1024
     }
 }

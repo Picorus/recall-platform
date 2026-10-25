@@ -5,6 +5,8 @@
 ALTER TABLE screen_health ADD COLUMN app_code integer CHECK (app_code >= 1);
 ALTER TABLE screen_health ADD COLUMN crashes bigint CHECK (crashes >= 0);
 CREATE INDEX screen_health_app_code ON screen_health (app_code, t);
+-- The hello carries the version code too: a version too broken to send health still says hello.
+ALTER TABLE screen_hellos ADD COLUMN app_code integer CHECK (app_code >= 1);
 
 CREATE TABLE player_releases (
   id               text        PRIMARY KEY CHECK (id ~ '^[A-Za-z0-9._-]{3,40}$'),

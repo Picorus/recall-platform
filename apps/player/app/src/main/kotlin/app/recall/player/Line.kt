@@ -94,6 +94,7 @@ object Line {
         line = ScreenLine(
             screenId = screenId,
             appVersion = BuildConfig.VERSION_NAME,
+            appCode = BuildConfig.VERSION_CODE,
             outbox = box,
             transport = { PahoTransport(broker, screenId, factory) },
             clock = clock,
@@ -138,6 +139,9 @@ object Line {
             ),
         )
     }
+
+    /** The line to the cloud is up now (P2.14). */
+    fun connected(): Boolean = line?.connected == true
 
     /** A report was added to the outbox: send it soon. */
     fun nudge() = line?.nudge()

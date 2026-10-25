@@ -48,7 +48,17 @@ describe('screen line (P2.3): the shared cases the Kotlin player also passes', (
     for (const r of V.refused)
       expect([r.text, parseUpload(bytes(r.text))]).toEqual([r.text, { problem: r.problem }]);
     expect(helloText(V.hello.app, V.hello.mono)).toBe(V.hello.text);
-    expect(parseHello(bytes(V.hello.text))).toEqual({ app: V.hello.app, mono: V.hello.mono });
+    expect(parseHello(bytes(V.hello.text))).toEqual({
+      app: V.hello.app,
+      code: null,
+      mono: V.hello.mono,
+    });
+    const hc = V.helloCode as { app: string; code: number; mono: number; text: string };
+    expect(helloText(hc.app, hc.mono, hc.code)).toBe(hc.text);
+    expect(parseHello(bytes(hc.text))).toEqual({ app: hc.app, code: hc.code, mono: hc.mono });
+    expect(parseHello(bytes('{"v":1,"app":"1.0","code":0,"mono":1}'))).toEqual({
+      problem: 'bad app version',
+    });
     expect(ackText(V.ack.ack)).toBe(V.ack.text);
     expect(timeText(V.time.utcMs, V.time.echo)).toBe(V.time.text);
   });

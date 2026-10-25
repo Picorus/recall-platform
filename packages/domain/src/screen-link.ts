@@ -102,23 +102,41 @@ export function parseUpload(
   return { batch, oldestHeld: x.oldestHeld };
 }
 
-/** A hello: the app version and the box's own counter (ms), echoed back with the cloud's time. */
+/**
+ * A hello: the app version, its version code (from 0.11, P2.13: the update offered depends on it,
+ * and it is known even when that version is too broken to send health) and the box's own counter
+ * (ms), echoed back with the cloud's time. Older players send no code.
+ */
 export function parseHello(
   bytes: Uint8Array,
-): { readonly app: string; readonly mono: number } | { readonly problem: string } {
+):
+  | { readonly app: string; readonly code: number | null; readonly mono: number }
+  | { readonly problem: string } {
   if (bytes.length > 1024) return { problem: 'too big' };
   const x = readJson(bytes);
-  if (!isPlainObject(x) || !hasExactly(x, ['v', 'app', 'mono']) || x.v !== 1)
+  if (
+    !isPlainObject(x) ||
+    x.v !== 1 ||
+    !(hasExactly(x, ['v', 'app', 'mono']) || hasExactly(x, ['v', 'app', 'code', 'mono']))
+  )
     return { problem: 'not a hello' };
   if (typeof x.app !== 'string' || !/^[0-9A-Za-z.+-]{1,32}$/.test(x.app))
     return { problem: 'bad app version' };
+  const code = x.code ?? null;
+  if (
+    code !== null &&
+    !(typeof code === 'number' && Number.isSafeInteger(code) && code >= 1 && code <= 2_100_000_000)
+  )
+    return { problem: 'bad app version' };
   if (typeof x.mono !== 'number' || !Number.isSafeInteger(x.mono) || x.mono < 0)
     return { problem: 'bad counter' };
-  return { app: x.app, mono: x.mono };
+  return { app: x.app, code, mono: x.mono };
 }
 
-export const helloText = (app: string, mono: number) =>
-  `{"v":1,"app":${JSON.stringify(app)},"mono":${mono}}`;
+export const helloText = (app: string, mono: number, code?: number) =>
+  code === undefined
+    ? `{"v":1,"app":${JSON.stringify(app)},"mono":${mono}}`
+    : `{"v":1,"app":${JSON.stringify(app)},"code":${code},"mono":${mono}}`;
 
 /** The cloud's reply to an upload: everything up to `ack` is stored; the box may forget it. */
 export const ackText = (ack: number) => `{"ack":${ack}}`;
