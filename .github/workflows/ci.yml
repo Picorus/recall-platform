@@ -71,14 +71,38 @@ jobs:
         run: docker compose -f infra/docker-compose.yml down -v
 
   player:
-    name: Screen player (Kotlin)
+    name: Screen player (Kotlin, Android, kiosk on an emulator)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: apps/player
     steps:
       - uses: actions/checkout@v7
-      # The runner has a JDK already; the player is built for Java 17 bytecode (what Android runs).
-      - run: ./gradlew --no-daemon :core:test
-        working-directory: apps/player
+      # The runner has a JDK and the Android SDK; the player is built for Java 17 bytecode.
+      - name: Tests, build, Android lint
+        run: ./gradlew --no-daemon :core:test :app:assembleDebug :app:lintDebug
+      - name: Let the emulator use hardware acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Kiosk checks on Android 11 (device owner, locked, back within 5 s after a crash)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          arch: x86_64
+          target: default
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
+          working-directory: apps/player
+          script: sh ci/kiosk-check.sh
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: player-lint
+          path: apps/player/app/build/reports/
+          if-no-files-found: ignore
 
   secrets:
     name: Secret scan (gitleaks)

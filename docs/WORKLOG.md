@@ -2,6 +2,17 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 25 Oct 2026 · P2.2 · Kiosk mode and watchdog
+- P2.1 merged (PR #30, all 6 checks green including the new Kotlin job).
+- **Android app** (`apps/player/app`, Android 11+): the player is the box's device owner and its home screen. Every start it sets the box rules: only the player may run (lock task), no status bar, no lock screen, no factory reset, no safe mode, no new users, no USB files or SD cards, no clock changes; release builds also close the debugging port. Screen kept on, full screen.
+- **Watchdog** in its own process: checks the player's heartbeat every second and starts it again when it stops: within 5 seconds; after 3 quick restarts in 10 minutes, pauses grow (5, 10, 20, 40, 60 s) and the restarts are marked as a crash loop for the health report (P2.11). Every crash and restart is written to a small log on the box. The rules are in `core` (`Watchdog.kt`) and tested there.
+- **Proof on an emulator** (CI job "Screen player"): builds the app, runs Android lint, starts an Android 11 emulator, makes the player device owner, checks it is on screen and locked, that the home button stays on it, and that after a forced crash it is back within 5 seconds and the crash is logged.
+- Warehouse steps: `docs/RUNBOOKS/screen-setup.md`.
+- This sandbox cannot download Android's build kit, so the Android app is built and tested on GitHub's runners only; `core` builds anywhere.
+- Tests: 4 Kotlin (watchdog: alive left alone, back within 5 s, growing pauses and crash loop, crashes spread out never a loop) + the emulator checks.
+- Open: the real box may need its vendor's way to set the device owner (some boards ship with it pre-set for their own app); checked on the sample unit.
+- **Next: P2.3** connection: MQTT over TLS with the screen's certificate, reconnects, clock from network and GPS, store-and-forward.
+
 ## 25 Oct 2026 · P2.1 · Screen identity, enrolment and fitting
 - P1.10.1 v2 merged (PR #29); P1 complete. Answered Prateek's hardware question (components, specs, what the sample unit is for) in chat.
 - **Screen id and QR** (`packages/domain/src/screen-identity.ts`): `SCR-` + 7 random letters/digits + a check character (Crockford base32, Luhn mod 32: every single wrong character is caught). QR sticker text `RECALL1:SCR-…`. Number plates read in one form (state series and Bharat series).
