@@ -25,6 +25,8 @@ const ALLOWED = [
   'services/workers/src/report-pdf.ts',
   // the box's signed play record carries the count (P2.7), and the shared cases for it
   'apps/player/core/src/main/kotlin/app/recall/player/core/PlayLog.kt',
+  // the box's minute summary carries the count the same way (P2.8.1)
+  'apps/player/core/src/main/kotlin/app/recall/player/core/Minutes.kt',
   'packages/domain/scripts/play-vectors.ts',
   // design system sample text ("People counts are approximate."), no numbers
   'packages/design/src/tokens.ts',

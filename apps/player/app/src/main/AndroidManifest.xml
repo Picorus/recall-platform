@@ -10,6 +10,10 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- P2.3.3: the line to the cloud over 4G. -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- P2.8: GPS for the area, proof of where each play happened, moving hours. Granted by the
+         player itself as device owner (Kiosk). -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
     <application
         android:allowBackup="false"

@@ -2,6 +2,18 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 25 Oct 2026 · P2.8 · GPS service
+- **P2.8.1 Minute summaries and live positions** (`Minutes.kt`): the box's copy of the cloud's `addSecond` (P1.2.4): every minute, seconds at each place, seconds the moving-hour clock ran (and where, and inside the pay zone), seconds moving, distance, plays; a live position every 30 seconds. Rider pay comes from these minutes, so they match the cloud's exactly: the shared ride now also lists its 40 live positions, and the box matches all 22 minutes and 40 positions.
+- **P2.8.2 The GPS loop** (`GpsLoop.kt`) and the service on the box (`Gps.kt`):
+  - the GPS chip reports about once a second; each reading also sets the box's clock from GPS time (until the cloud answers);
+  - once a second by the trusted clock: the reading is cleaned and smoothed (the tracker, P2.6.1: poor fixes and jumps dropped, area held 15 s, moving-hour stopwatch, 10-minute stop rule); the area goes to the local scheduler (what to play, and where each play happened); minutes and live positions go to the outbox;
+  - an old reading (over 1.5 s) is no reading; seconds the box missed are stepped without a fix; a clock jump over 2 minutes starts afresh; the clock going back never does a second twice;
+  - plays recorded are added to the minute they are recorded in;
+  - the player gives itself location permission and turns location on, as device owner. App 0.7.0.
+- Tests: Kotlin 9 new (`MinutesTest` 2, `GpsLoopTest` 4: the shared ride read like a real chip gives the cloud's minutes, missed seconds, clock back and jumps, old and missing readings, plays per minute); 110 core tests in all. TypeScript: the shared ride's live positions.
+- Open: the pay zone is the POC one (15 km of Hitech City) until the cloud sends it as a setting; a real GPS test on the emulator (`adb emu geo fix`) and on the panel hardware; people counter (P2.9).
+- Next: P2.9, the people counter (needs the hardware sample for the AI chip), or P2.10 brightness first if the sample is not here.
+
 ## 25 Oct 2026 · P2.7 · Signed play log
 - **Every counted play is signed on the box and kept until the cloud has it** (`PlayLog.kt` in `apps/player/core`).
   - Which plays: only the ones playback counts (P2.5): shown by trusted time, from start to end, confirmed on screen, a real ad, never counted before.

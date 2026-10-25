@@ -55,6 +55,12 @@ object Line {
         if (screenId != null) {
             runCatching { Schedule.start(app, screenId) }.onFailure { CrashLog.record(app, "schedule not started: ${it.javaClass.simpleName}") }
             runCatching { startPlays(app, screenId, vault) }.onFailure { CrashLog.record(app, "plays not started: ${it.javaClass.simpleName}") }
+            // GPS (P2.8): the area each second, the minutes and live positions, GPS time.
+            val scheduler = Schedule.scheduler
+            val box = outbox
+            if (scheduler != null && box != null) {
+                runCatching { Gps.start(app, scheduler, box) }.onFailure { CrashLog.record(app, "gps not started: ${it.javaClass.simpleName}") }
+            }
         }
         // The ad files are kept and checked whether or not the line can open (P2.4). A problem
         // there must not keep the line (and so the play reports) from starting.
@@ -116,7 +122,10 @@ object Line {
                 outbox = box,
                 places = { t -> Schedule.scheduler?.where(t) },
                 mark = Playback.markFile(app),
-                stored = ::nudge,
+                stored = {
+                    nudge()
+                    Gps.loop?.played()
+                },
                 log = { android.util.Log.i("RecallPlays", it) },
             ),
         )

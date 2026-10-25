@@ -83,7 +83,11 @@ function expected(input: (GpsFix | null)[]) {
     reports.push(...a.reports);
   });
   reports.push(...flushMinute(b));
-  return { seconds, minutes: reports.filter((r) => r.kind === 'minute') };
+  return {
+    seconds,
+    minutes: reports.filter((r) => r.kind === 'minute'),
+    lives: reports.filter((r) => r.kind === 'live'),
+  };
 }
 
 const NOTES = [
@@ -131,5 +135,6 @@ describe('shared screen test cases', () => {
     // The push at 700 s happens before standby, the clock keeps its original stop.
     expect(e.slice(slept, 1000).every((x) => x.standby)).toBe(true);
     expect(vectors.expected.minutes.length).toBeGreaterThan(20);
+    expect(vectors.expected.lives.length).toBeGreaterThan(20);
   });
 });
