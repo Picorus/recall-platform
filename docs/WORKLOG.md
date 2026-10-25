@@ -2,6 +2,13 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 25 Oct 2026 · P1.7.8 · Screen loan record
+- Domain (`screen-loan.ts`): loan statuses that only move forward (applied → approved → disbursed → closed; or rejected; disbursed → defaulted → closed); EMI dates the same day each month (the last day of a shorter month); what the rider app shows: status, next EMI, EMIs left.
+- Database (migration 0017): `screen_loans` (bank, amount, EMI, months, first EMI date) and `screen_loan_events` (each status the bank reports, who, when). `recordScreenLoan`, `moveScreenLoan`, `riderLoans`. Nothing here touches the ledger: loans and EMIs are never on RECALL's books.
+- Tests: 3 domain, 3 database (including: no ledger entries at all).
+- Open: RECALL's 5% first-loss deposit with the bank (₹1,830 a new bike, model v5.2) is RECALL's own money and will be booked with P1.7.9.
+- **Next: P1.7.9** GST and books (monthly GST summary, invoice and credit-note registers, export for the accountant).
+
 ## 25 Oct 2026 · P1.7.7 · Monday payout run
 - P1.7.5–6 merged (PR #24).
 - `packages/adapters`: the first adapter, `payouts` (bank or UPI), with a working fake: same key → same answer (never pays twice), failures and pending on request.
