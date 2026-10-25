@@ -3,19 +3,27 @@
 package app.recall.player
 
 import android.content.Context
+import android.os.Process
 import java.io.File
+import kotlin.system.exitProcess
 
 object CrashLog {
     private const val KEEP = 50
 
     fun file(context: Context) = File(context.filesDir, "crashes.log")
 
+    /**
+     * After writing the crash down, the process ends itself at once. Android's own crash handler
+     * would ask the system to show a "has stopped" box and wait for an answer nobody gives on a
+     * kiosk; meanwhile the half-dead process stays alive, and the watchdog's restart lands in it
+     * and freezes until Android gives up (seen on the emulator: well over 5 seconds).
+     */
     fun install(context: Context) {
         val app = context.applicationContext
-        val previous = Thread.getDefaultUncaughtExceptionHandler()
-        Thread.setDefaultUncaughtExceptionHandler { thread, error ->
+        Thread.setDefaultUncaughtExceptionHandler { _, error ->
             runCatching { record(app, "crash ${error.javaClass.name}: ${error.message?.take(200) ?: ""}") }
-            previous?.uncaughtException(thread, error)
+            Process.killProcess(Process.myPid())
+            exitProcess(10)
         }
     }
 

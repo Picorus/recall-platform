@@ -36,6 +36,8 @@ class WatchdogService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        // A crash here must end this process at once too, so Android starts the watchdog again.
+        CrashLog.install(this)
         val nm = getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(
             NotificationChannel(CHANNEL, getString(R.string.watchdog_channel), NotificationManager.IMPORTANCE_MIN),
