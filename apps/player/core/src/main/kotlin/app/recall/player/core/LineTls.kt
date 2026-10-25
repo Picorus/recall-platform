@@ -19,27 +19,33 @@ import javax.net.ssl.X509ExtendedKeyManager
 object LineTls {
     private const val ALIAS = "recall-box"
 
-    fun certificate(pem: String): X509Certificate =
-        CertificateFactory.getInstance("X.509").generateCertificate(pem.byteInputStream()) as X509Certificate
+    fun certificate(pem: String): X509Certificate = certificates(pem).first()
+
+    /** Every certificate in a PEM text (a chain, or old and new authorities during a change). */
+    fun certificates(pem: String): List<X509Certificate> =
+        CertificateFactory.getInstance("X.509").generateCertificates(pem.byteInputStream()).map { it as X509Certificate }
 
     /**
      * A socket factory for the line: the box's key and certificate on our side, only `brokerCaPem`
      * trusted on the broker's side, TLS 1.2 or 1.3.
      */
     fun socketFactory(key: PrivateKey, certPem: String, brokerCaPem: String): SSLSocketFactory {
-        val cert = certificate(certPem)
+        val chain = certificates(certPem).toTypedArray()
+        require(chain.isNotEmpty()) { "no certificate for the box" }
         val keys = object : X509ExtendedKeyManager() {
             override fun getClientAliases(keyType: String?, issuers: Array<out Principal>?) = arrayOf(ALIAS)
             override fun chooseClientAlias(keyType: Array<out String>?, issuers: Array<out Principal>?, socket: Socket?) = ALIAS
             override fun chooseEngineClientAlias(keyType: Array<out String>?, issuers: Array<out Principal>?, engine: SSLEngine?) = ALIAS
             override fun getServerAliases(keyType: String?, issuers: Array<out Principal>?): Array<String>? = null
             override fun chooseServerAlias(keyType: String?, issuers: Array<out Principal>?, socket: Socket?): String? = null
-            override fun getCertificateChain(alias: String?) = arrayOf(cert)
+            override fun getCertificateChain(alias: String?) = chain
             override fun getPrivateKey(alias: String?) = key
         }
+        require(certificates(brokerCaPem).isNotEmpty()) { "no broker authority to trust" }
         val trusted = KeyStore.getInstance(KeyStore.getDefaultType()).apply {
             load(null, null)
-            setCertificateEntry("recall-broker-ca", certificate(brokerCaPem))
+            // All authorities in the file: during a change both the old and the new are trusted.
+            certificates(brokerCaPem).forEachIndexed { i, c -> setCertificateEntry("recall-broker-ca-$i", c) }
         }
         val trust = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm()).apply { init(trusted) }
         val context = SSLContext.getInstance("TLS").apply { init(arrayOf(keys), trust.trustManagers, null) }

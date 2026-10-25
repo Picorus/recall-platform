@@ -30,6 +30,9 @@ class AndroidKeyVault : KeyVault {
         KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_EC, STORE).apply { initialize(spec) }.generateKeyPair()
     }
 
+    /** True when the box already holds a key under `alias` (made at enrolment). */
+    fun has(alias: String): Boolean = store.containsAlias(alias)
+
     override fun publicKey(alias: String): String {
         ensure(alias)
         return Base64.getEncoder().encodeToString(store.getCertificate(alias).publicKey.encoded)

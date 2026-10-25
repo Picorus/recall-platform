@@ -17,6 +17,7 @@ import app.recall.player.core.ScreenLine
 import app.recall.player.core.TrustedClock
 import java.io.File
 import java.security.SecureRandom
+import java.util.Base64
 import java.util.concurrent.atomic.AtomicReference
 
 object Line {
@@ -25,6 +26,17 @@ object Line {
     @Volatile private var line: ScreenLine? = null
     @Volatile var outbox: Outbox? = null
         private set
+
+    /**
+     * Starts the line in the background: reading a large outbox and the keystore must never hold up
+     * the screen (a box back after days offline would freeze at boot, review P2.3.3).
+     */
+    fun startInBackground(context: Context) {
+        val app = context.applicationContext
+        Thread({
+            runCatching { start(app) }.onFailure { CrashLog.record(app, "line: ${it.javaClass.simpleName}") }
+        }, "recall-line-start").start()
+    }
 
     @Synchronized
     fun start(context: Context) {
@@ -37,8 +49,20 @@ object Line {
             return
         }
         val (screenId, broker, cert, brokerCa) = need.map { it.readText().trim() }
+        // The key must be the one enrolled, and the certificate must be for it: a box set up wrongly
+        // says so here instead of failing every handshake quietly (review, P2.3.3).
+        val vault = AndroidKeyVault()
+        if (!vault.has(Enrolment.TLS_KEY)) {
+            CrashLog.record(app, "line not started: the box has no line key (enrol it again)")
+            return
+        }
+        val certKey = Base64.getEncoder().encodeToString(LineTls.certificate(cert).publicKey.encoded)
+        if (certKey != vault.publicKey(Enrolment.TLS_KEY)) {
+            CrashLog.record(app, "line not started: the certificate is not for this box's key")
+            return
+        }
         val box = Outbox(File(app.filesDir, "outbox"))
-        val key = AndroidKeyVault().privateKey(Enrolment.TLS_KEY)
+        val key = vault.privateKey(Enrolment.TLS_KEY)
         val factory = LineTls.socketFactory(key, cert, brokerCa)
         val random = SecureRandom()
         outbox = box

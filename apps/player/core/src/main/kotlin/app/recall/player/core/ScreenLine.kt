@@ -40,7 +40,8 @@ class ScreenLine(
     private val backoffRules: BackoffRules = BackoffRules(),
 ) {
     private sealed interface Event {
-        data class Message(val topic: String, val payload: ByteArray) : Event
+        /** `at`: the counter when it arrived (not when the loop got to it, review P2.3.3). */
+        data class Message(val topic: String, val payload: ByteArray, val at: Long) : Event
         data class Lost(val cause: Throwable?) : Event
         data object Nudge : Event
         data object Stop : Event
@@ -50,8 +51,15 @@ class ScreenLine(
     @Volatile private var running = false
     @Volatile var connected = false
         private set
+    /** Reports renumbered because the cloud had their numbers already (should stay 0; health, P2.11). */
+    @Volatile var renumbered = 0L
+        private set
+    /** True while one upload has been sent many times without an ack (health alarm, P2.11). */
+    @Volatile var stuck = false
+        private set
     private var thread: Thread? = null
 
+    @Synchronized
     fun start() {
         if (running) return
         running = true
@@ -62,6 +70,7 @@ class ScreenLine(
     }
 
     /** Stops the line (waits for its thread up to `waitMs`). */
+    @Synchronized
     fun stop(waitMs: Long = 5_000) {
         running = false
         events.put(Event.Stop)
@@ -83,13 +92,14 @@ class ScreenLine(
             if (t != null) {
                 try {
                     events.clear()
-                    t.connect({ topic, payload -> events.put(Event.Message(topic, payload)) }, { events.put(Event.Lost(it)) })
+                    t.connect({ topic, payload -> events.put(Event.Message(topic, payload, mono())) }, { events.put(Event.Lost(it)) })
                     connected = true
                     backoff = backoff.connected(mono())
                     log("line: connected")
                     t.subscribe(ScreenLink.downFilter(screenId))
                     connectedLoop(t)
-                } catch (e: Exception) {
+                } catch (e: Throwable) {
+                    // Anything, even an Error: the line must keep trying, never die quietly.
                     log("line: ${e.javaClass.simpleName}: ${e.message}")
                 } finally {
                     connected = false
@@ -115,22 +125,33 @@ class ScreenLine(
     private fun connectedLoop(t: LineTransport) {
         var inFlightUpTo: Long? = null
         var sentAt = 0L
+        var sameFirst = 0L
+        var sends = 0
         var helloAt = Long.MIN_VALUE / 2
+        var helloMono: Long? = null
         while (running) {
             val now = mono()
             if (now - helloAt >= rules.helloEveryMs) {
                 t.publish(ScreenLink.upTopic(screenId, UpKind.HELLO), ScreenLink.helloText(appVersion, now).toByteArray())
                 helloAt = now
+                helloMono = now
             }
             if (inFlightUpTo == null || now - sentAt >= rules.resendMs) {
                 val batch = outbox.nextBatch()
                 if (batch.isNotEmpty()) {
                     val text = ScreenLink.uploadText(batch.map { it.text }, outbox.oldestHeld())
                     t.publish(ScreenLink.upTopic(screenId, UpKind.UPLOAD), text.toByteArray())
+                    // The same first report sent again and again: the cloud refuses it (health alarm).
+                    val first = batch.first().seq
+                    sends = if (first == sameFirst) sends + 1 else 1
+                    sameFirst = first
+                    if (sends == STUCK_AFTER) log("line: upload from $first sent $sends times without an ack")
+                    stuck = sends >= STUCK_AFTER
                     inFlightUpTo = batch.last().seq
                     sentAt = now
                 } else {
                     inFlightUpTo = null
+                    stuck = false
                 }
             }
             val wait = minOf(1_000L, rules.resendMs)
@@ -143,18 +164,33 @@ class ScreenLine(
                 }
                 is Event.Message -> when (ScreenLink.downKind(screenId, e.topic)) {
                     DownKind.ACK -> ScreenLink.parseAck(String(e.payload))?.let { n ->
-                        outbox.acknowledge(n)
-                        // Acks can come out of order: only the one covering what was sent frees the line.
-                        if (inFlightUpTo != null && n >= inFlightUpTo!!) inFlightUpTo = null
+                        if (outbox.acknowledge(n)) {
+                            // Acks can come out of order: only one covering what was sent frees the line.
+                            if (inFlightUpTo != null && n >= inFlightUpTo!!) inFlightUpTo = null
+                        } else if (n > outbox.lastNumber()) {
+                            // The cloud has numbers this box never gave: its numbering started again.
+                            val moved = outbox.renumberAfter(n)
+                            renumbered += moved
+                            log("line: the cloud is at $n, beyond this box's numbers: $moved reports renumbered")
+                            inFlightUpTo = null
+                        }
                     }
                     DownKind.TIME -> ScreenLink.parseTime(String(e.payload))?.let { (utcMs, echo) ->
-                        val c = clock.updateAndGet { it.withCloud(utcMs, sentMono = echo, receivedMono = mono()) }
-                        // Reports past 7 days are given up only by a time the cloud backs (P2.3.1).
-                        c.cloudNow(mono())?.let { ms -> outbox.trim(ms / 1000) }
+                        // Only the answer to the last hello (its counter echoed back) is used.
+                        if (echo == helloMono) {
+                            val c = clock.updateAndGet { it.withCloud(utcMs, sentMono = echo, receivedMono = e.at) }
+                            // Reports past 7 days are given up only by a time the cloud backs (P2.3.1).
+                            c.cloudNow(mono())?.let { ms -> outbox.trim(ms / 1000) }
+                        }
                     }
                     else -> {} // plans and commands: later steps (P2.6, P2.12)
                 }
             }
         }
+    }
+
+    private companion object {
+        /** Sends of the same upload without an ack before the alarm. */
+        const val STUCK_AFTER = 5
     }
 }

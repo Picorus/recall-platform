@@ -190,4 +190,26 @@ class OutboxTest {
     }
 
     private fun segs() = dir.list()!!.filter { it.startsWith("seg-") }.sorted()
+
+    @Test
+    fun `if the cloud is ahead of every number the box gave, waiting reports are numbered after it`() {
+        val box = open()
+        (1..3).forEach { box.add(report(it), t0 + it) }
+        assertEquals(false, box.acknowledge(5_000)) // never applied as an ack
+        assertEquals(3, box.waiting())
+        assertEquals(0, box.renumberAfter(3)) // not beyond: nothing to do
+        assertEquals(3, box.renumberAfter(5_000))
+        val held = box.nextBatch()
+        assertEquals(listOf(5_001L, 5_002L, 5_003L), seqs(held))
+        // Same reports, same times, in the same order.
+        assertEquals(listOf(t0 + 1, t0 + 2, t0 + 3), held.map { it.at })
+        assertTrue(held[1].text.endsWith(""""report":{"kind":"live","n":2}}"""))
+        assertEquals(5_001L, box.oldestHeld())
+        // Survives a restart, and new reports carry on after them.
+        val again = open()
+        assertEquals(listOf(5_001L, 5_002L, 5_003L), seqs(again.nextBatch()))
+        assertEquals(5_004L, again.add(report(4), t0).seq)
+        assertEquals(true, again.acknowledge(5_004))
+        assertEquals(0, again.waiting())
+    }
 }

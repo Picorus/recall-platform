@@ -36,6 +36,9 @@ class ScreenLineTest {
         val connects = AtomicInteger()
         @Volatile var refuseConnects = 0
         @Volatile var answer = true
+        /** What the cloud already holds for this screen (its inbox's "up to"). */
+        @Volatile var cloudUpTo = 0L
+        @Volatile var echoShift = 0L
         @Volatile var current: Conn? = null
 
         inner class Conn : LineTransport {
@@ -67,10 +70,12 @@ class ScreenLineTest {
                 val o = Json.parseToJsonElement(text).jsonObject
                 when {
                     topic.endsWith("/up/hello") ->
-                        onMessage("recall/v1/s/$me/down/time", """{"utcMs":${t0 * 1000},"echo":${o.getValue("mono").jsonPrimitive.long}}""".toByteArray())
+                        onMessage("recall/v1/s/$me/down/time", """{"utcMs":${t0 * 1000},"echo":${o.getValue("mono").jsonPrimitive.long + echoShift}}""".toByteArray())
                     topic.endsWith("/up/upload") -> {
                         val top = o.getValue("batch").jsonArray.maxOfOrNull { it.jsonObject.getValue("seq").jsonPrimitive.long } ?: return
-                        onMessage("recall/v1/s/$me/down/ack", """{"ack":$top}""".toByteArray())
+                        // Like storeUpload: numbers at or below what it holds are repeats.
+                        cloudUpTo = maxOf(cloudUpTo, top)
+                        onMessage("recall/v1/s/$me/down/ack", """{"ack":$cloudUpTo}""".toByteArray())
                     }
                 }
             }
@@ -168,5 +173,36 @@ class ScreenLineTest {
         val t = System.currentTimeMillis()
         l.stop()
         assertTrue(System.currentTimeMillis() - t < 2_000)
+    }
+
+    @Test
+    fun `a box whose numbering started again renumbers after the cloud instead of looping`() {
+        (1..3).forEach { outbox.add(report(it), t0) }
+        val broker = FakeBroker().apply { cloudUpTo = 5_000 }
+        val l = line(broker)
+        until("renumbered and acked") { outbox.waiting() == 0 }
+        assertEquals(3L, l.renumbered)
+        assertTrue(broker.uploads().size <= 3, "uploads: ${broker.uploads().size}")
+        assertEquals(5_003L, broker.cloudUpTo)
+    }
+
+    @Test
+    fun `a time reply not answering the last hello is not used`() {
+        val broker = FakeBroker().apply { echoShift = 7 }
+        line(broker)
+        until("hello sent") { broker.published.isNotEmpty() }
+        Thread.sleep(200)
+        assertEquals(null, clock.get().cloudNow(mono()))
+    }
+
+    @Test
+    fun `an upload never acked raises the stuck alarm`() {
+        outbox.add(report(1), t0)
+        val broker = FakeBroker().apply { answer = false }
+        val l = line(broker, LineRules(resendMs = 50))
+        until("stuck") { l.stuck }
+        broker.answer = true
+        until("acked") { outbox.waiting() == 0 }
+        until("no longer stuck") { !l.stuck }
     }
 }

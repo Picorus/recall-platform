@@ -29,7 +29,7 @@ class MainActivity : Activity() {
         CrashLog.install(this)
         Kiosk.applyPolicies(this)
         // The line to the cloud (P2.3.3): keeps itself open; a failure to start never stops the screen.
-        runCatching { Line.start(this) }.onFailure { CrashLog.record(this, "line: ${it.javaClass.simpleName}") }
+        Line.startInBackground(this)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         setContentView(
             TextView(this).apply {

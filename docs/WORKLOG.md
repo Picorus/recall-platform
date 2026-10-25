@@ -9,7 +9,15 @@ Newest first. Each entry: date · step id · what changed · tests · open issue
 - **Android**: keys in the Android Keystore (`AndroidKeyVault`); the line starts with the player (`Line.kt`) from files written at the warehouse (`files/line/`: screen id, broker address, certificate, broker authority; runbook step 6). A line that cannot start never stops the screen. App version 0.3.0.
 - **Proven against a real broker** (`ScreenLineBrokerTest`, in the CI player job): EMQX with the production settings in Docker, the box's code with its own key over TLS: hello and the cloud's time, five reports acked, the broker restarted, the box back by itself, three more reports acked.
 - Found on the way: a broker still starting refuses its first subscriptions (as in P2.3.2), so the stand-in cloud in the test retries like the real gateway; a broker key file must name its curve (PKCS#8).
-- Tests: 4 line logic (fake broker: hello, time, uploads acked, resend until acked, refused connections and drops, stop) + 1 real broker. All 33 core tests pass.
+- Second-agent review: 7 findings, all fixed:
+  - (high) if a box's outbox is lost while its keys survive, its numbers start again at 1; the cloud takes them as repeats and drops them, and the box re-sent in a tight loop. Now an ack beyond any number the box gave renumbers the waiting reports after it (on disk, safe across a power cut), counted for the health report;
+  - the line starts in the background (a box back after days offline no longer freezes at boot);
+  - the cloud's time is stamped when it arrives, and only the answer to the last hello is used;
+  - an upload sent 5 times without an ack raises a "stuck" flag for the health report;
+  - several authorities in the broker file are all trusted (for a change of authority), and certificate chains are sent whole;
+  - nothing, not even an Error, ends the line's thread quietly;
+  - a box whose key does not match its certificate says so instead of failing every handshake.
+- Tests: 7 line logic (fake broker: hello, time, uploads acked, resend until acked, refused connections and drops, stop, renumbering, an old time reply ignored, the stuck flag) + 1 real broker + 1 outbox renumbering. All 37 core tests pass.
 - Open: the warehouse tool that writes `files/line/` by itself comes with P2.14; GPS time with P2.8; the line on the Android emulator is not yet exercised (the core is the same code).
 - Next: P2.4, ad storage.
 
