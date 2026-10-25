@@ -94,10 +94,14 @@ class ScreenLineTest {
         fun uploads() = published.filter { it.first.endsWith("/up/upload") }.map { it.second }
     }
 
-    private fun line(broker: FakeBroker, rules: LineRules = LineRules(resendMs = 300)) =
+    private fun line(
+        broker: FakeBroker,
+        rules: LineRules = LineRules(resendMs = 300),
+        onMessage: (DownKind, ByteArray) -> Unit = { _, _ -> },
+    ) =
         ScreenLine(
             me, "0.3.0", outbox, { broker.Conn() }, clock, mono, random = { 0 },
-            rules = rules, backoffRules = BackoffRules(firstMs = 20, longestMs = 100),
+            onMessage = onMessage, rules = rules, backoffRules = BackoffRules(firstMs = 20, longestMs = 100),
         ).also {
             lines += it
             it.start()
@@ -204,5 +208,23 @@ class ScreenLineTest {
         broker.answer = true
         until("acked") { outbox.waiting() == 0 }
         until("no longer stuck") { !l.stuck }
+    }
+
+    @Test
+    fun `ad file lists go to the store, and a failure there never stops the line`() {
+        val got = CopyOnWriteArrayList<Pair<DownKind, String>>()
+        val broker = FakeBroker()
+        line(broker) { kind, payload ->
+            got += kind to String(payload)
+            error("the store fell over")
+        }
+        until("connected") { broker.current?.open == true && broker.subscribed.isNotEmpty() }
+        val c = assertNotNull(broker.current)
+        c.onMessage("recall/v1/s/$me/down/files", """{"v":1,"files":[]}""".toByteArray())
+        c.onMessage("recall/v1/s/SCR-00000000/down/files", "not mine".toByteArray())
+        until("handed over") { got.isNotEmpty() }
+        outbox.add(report(1), t0)
+        until("still uploading") { outbox.waiting() == 0 }
+        assertEquals(listOf(DownKind.FILES to """{"v":1,"files":[]}"""), got.toList())
     }
 }

@@ -2,6 +2,31 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 25 Oct 2026 · P2.4 · Ad storage on the box
+- P2.3.3 merged (PR #35, all checks green).
+- **The list** (`packages/domain/src/ad-files.ts`, Kotlin `AdFiles.kt`, shared cases `test-vectors/ad-files.json`): the cloud tells each screen which ad files to keep on a new topic `…/down/files`. Each entry: the ad, the file's SHA-256 fingerprint, its size (up to 64 MB), an HTTPS link, and keep-until (the end of the last booking using it, at most 400 days ahead). Each list is the whole list and carries the time it was made: an older list is ignored, and anything left off is no longer needed. Links must be HTTPS and plain ASCII; one file cannot be listed with two sizes. The cloud's builder refuses anything the box would refuse.
+- **The store** (`AdStore.kt`): downloads ahead over HTTPS, one file at a time, into a `.part` file; a download cut short by weak 4G carries on from where it stopped (range request) and is saved every 4 MB. Only a file whose size and fingerprint match is renamed into place, so a power cut never leaves a half file that looks finished, and only such a file is ever handed to the player (never a stream). Files found at start are checked again before they are played. A wrong file is thrown away and counted; failed downloads wait 1 minute, doubling up to 1 hour (not when it got further: that is just weak signal).
+- **Space**: ads use at most 4 GB and always leave 512 MB free. Ended files stay (a renewed booking needs no new download) until room is needed; then files no longer listed go first, then those that ended longest ago. A file still needed is never cleared: the new download waits and "no room" is counted. "Ended" is judged only by the cloud's time, or the last cloud time the box saw (kept across power cuts).
+- **On the box**: a downloader thread (`AdDownloader.kt`) checks the files at start, downloads when a list comes, and every minute anyway. The line hands lists over (`ScreenLine` `onMessage`); `Ads.kt` holds the store for playback (P2.5). An ad-store problem never stops the line. App version 0.4.0. The safe-write helpers moved from the outbox to `DiskFiles.kt` (same behaviour).
+- Second-agent review: 12 findings, all fixed:
+  - a list could never shorten a booking or drop a pulled ad, and a wrong date could lock storage for good. Now: whole list with its time; keep-until at most 400 days ahead;
+  - before the cloud's time arrived after power-on, ended ads were downloaded first and nothing could be cleared. Now the last cloud time is remembered;
+  - a weak link that makes progress was given ever longer waits. Now progress means no wait;
+  - files found at start could be played before they were checked. Now they are not;
+  - a phone's automatic unzipping could spoil resumed downloads. Now the plain bytes are always asked for;
+  - the TypeScript and Kotlin rules differed on rare links. Now both use plain ASCII;
+  - one file with two sizes is refused;
+  - an ad-store failure no longer stops the line;
+  - refused lists are counted, not written to the crash log;
+  - counters are safe across threads;
+  - downloads are saved every 4 MB.
+- Tests: TypeScript 4 (shared cases, topic rules, the builder's refusals, a property test that every list reads back exactly). Kotlin 24 new: the shared cases (3); the store (15: download and check, resume, server ignoring resume, wrong or too-big file, waits, keep-until and clearing order, never clearing a needed file, no-time rules, the last cloud time after a restart, whole-list rules, shared files, restart with damaged files, half download across a restart, player-reported damage, ended entries forgotten); real HTTPS (4: whole and resumed downloads, a server ignoring the range, refusing plain HTTP, an unknown certificate, a redirect to HTTP, an error); the downloader thread (1); the line hand-off (1). All 61 core tests pass.
+- Open:
+  - the cloud side that sends the list (on every change and in reply to every hello, so a box that was offline or whose links expired gets fresh ones) comes with the hour plan (P2.6), along with signed storage links;
+  - health reporting of `badFiles`, `noRoom`, `cleared`, refused lists (P2.11);
+  - "clear cache" command (P2.12).
+- Next: P2.5, playback.
+
 ## 25 Oct 2026 · P2.3.3 · Screen line: the box's side
 - P2.3.2 merged (PR #34, all checks green, including the real-broker test).
 - **The line on the box** (`ScreenLine.kt` in `apps/player/core`): one thread keeps it open by itself. It connects over TLS, listens on its own topics, says hello (the cloud's answer sets the box's clock), sends the oldest unconfirmed reports from the outbox one upload at a time, forgets them on the cloud's ack, sends an unacked upload again after 30 seconds, says hello again every 15 minutes, and after a drop tries again with growing waits (P2.3.1 backoff). Reports past 7 days are given up only by the cloud's time, never by GPS alone.

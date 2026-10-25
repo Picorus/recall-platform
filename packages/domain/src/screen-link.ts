@@ -12,8 +12,8 @@ export const TOPIC_ROOT = 'recall/v1/s';
 /** What a screen sends: a hello when the line opens (asks for the time), and uploads. */
 export const UP_KINDS = ['hello', 'upload'] as const;
 export type UpKind = (typeof UP_KINDS)[number];
-/** What the cloud sends to a screen. */
-export const DOWN_KINDS = ['ack', 'time', 'plan', 'command'] as const;
+/** What the cloud sends to a screen (`files`: the ad files to keep, P2.4, see ad-files.ts). */
+export const DOWN_KINDS = ['ack', 'time', 'files', 'plan', 'command'] as const;
 export type DownKind = (typeof DOWN_KINDS)[number];
 
 export const upTopic = (screenId: string, kind: UpKind) => `${TOPIC_ROOT}/${screenId}/up/${kind}`;

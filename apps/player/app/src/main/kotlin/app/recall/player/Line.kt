@@ -9,6 +9,7 @@ package app.recall.player
 
 import android.content.Context
 import android.os.SystemClock
+import app.recall.player.core.DownKind
 import app.recall.player.core.Enrolment
 import app.recall.player.core.LineTls
 import app.recall.player.core.Outbox
@@ -42,6 +43,9 @@ object Line {
     fun start(context: Context) {
         if (line != null) return
         val app = context.applicationContext
+        // The ad files are kept and checked whether or not the line can open (P2.4). A problem
+        // there must not keep the line (and so the play reports) from starting.
+        runCatching { Ads.start(app) }.onFailure { CrashLog.record(app, "ads not started: ${it.javaClass.simpleName}") }
         val dir = File(app.filesDir, "line")
         val need = listOf("screen-id", "broker", "cert.pem", "broker-ca.pem").map { File(dir, it) }
         if (need.any { !it.exists() }) {
@@ -75,6 +79,7 @@ object Line {
             mono = SystemClock::elapsedRealtime,
             random = { n -> (random.nextDouble() * n).toLong() },
             log = { android.util.Log.i("RecallLine", it) },
+            onMessage = { kind, payload -> if (kind == DownKind.FILES) Ads.onList(payload) },
         ).also { it.start() }
     }
 
