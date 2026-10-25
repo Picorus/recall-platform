@@ -1,0 +1,113 @@
+{
+  "comment": "P2.3: the screen line's topics and message text. The cloud (TypeScript) and the player (Kotlin) both pass these.",
+  "topics": [
+    {
+      "screenId": "SCR-0123456Z",
+      "kind": "upload",
+      "up": "recall/v1/s/SCR-0123456Z/up/upload"
+    },
+    {
+      "screenId": "SCR-0123456Z",
+      "kind": "hello",
+      "up": "recall/v1/s/SCR-0123456Z/up/hello"
+    }
+  ],
+  "downTopics": [
+    {
+      "screenId": "SCR-0123456Z",
+      "kind": "ack",
+      "down": "recall/v1/s/SCR-0123456Z/down/ack"
+    },
+    {
+      "screenId": "SCR-0123456Z",
+      "kind": "time",
+      "down": "recall/v1/s/SCR-0123456Z/down/time"
+    }
+  ],
+  "upload": {
+    "oldestHeld": 41,
+    "batch": [
+      {
+        "seq": 41,
+        "at": 1790000000,
+        "report": {
+          "kind": "live",
+          "t": 1790000000,
+          "lat": 17.4485,
+          "lng": 78.3908,
+          "place": "madhapur",
+          "moving": true
+        }
+      },
+      {
+        "seq": 42,
+        "at": 1790000030,
+        "report": {
+          "kind": "live",
+          "t": 1790000030,
+          "lat": 17.4491,
+          "lng": 78.3912,
+          "place": "madhapur \"west\"",
+          "moving": false
+        }
+      }
+    ],
+    "text": "{\"v\":1,\"oldestHeld\":41,\"batch\":[{\"seq\":41,\"at\":1790000000,\"report\":{\"kind\":\"live\",\"t\":1790000000,\"lat\":17.4485,\"lng\":78.3908,\"place\":\"madhapur\",\"moving\":true}},{\"seq\":42,\"at\":1790000030,\"report\":{\"kind\":\"live\",\"t\":1790000030,\"lat\":17.4491,\"lng\":78.3912,\"place\":\"madhapur \\\"west\\\"\",\"moving\":false}}]}"
+  },
+  "refused": [
+    {
+      "text": "not json",
+      "problem": "not a JSON object"
+    },
+    {
+      "text": "[1]",
+      "problem": "not a JSON object"
+    },
+    {
+      "text": "{\"v\":1,\"batch\":[]}",
+      "problem": "wrong fields"
+    },
+    {
+      "text": "{\"v\":2,\"oldestHeld\":1,\"batch\":[]}",
+      "problem": "unknown version"
+    },
+    {
+      "text": "{\"v\":1,\"oldestHeld\":0,\"batch\":[]}",
+      "problem": "bad oldestHeld"
+    },
+    {
+      "text": "{\"v\":1,\"oldestHeld\":1,\"batch\":{}}",
+      "problem": "bad batch"
+    },
+    {
+      "text": "{\"v\":1,\"oldestHeld\":1,\"batch\":[{\"seq\":\"1\",\"at\":1790000000,\"report\":{}}]}",
+      "problem": "bad report number"
+    },
+    {
+      "text": "{\"v\":1,\"oldestHeld\":1,\"batch\":[{\"seq\":1,\"at\":1790000000}]}",
+      "problem": "bad report number"
+    },
+    {
+      "text": "{\"v\":1,\"oldestHeld\":1,\"batch\":[{\"at,report\":0,\"seq\":5}]}",
+      "problem": "bad report number"
+    },
+    {
+      "text": "{\"v,oldestHeld\":1,\"batch\":[]}",
+      "problem": "wrong fields"
+    }
+  ],
+  "hello": {
+    "app": "0.1.0",
+    "mono": 45678,
+    "text": "{\"v\":1,\"app\":\"0.1.0\",\"mono\":45678}"
+  },
+  "ack": {
+    "ack": 42,
+    "text": "{\"ack\":42}"
+  },
+  "time": {
+    "utcMs": 1790000000123,
+    "echo": 45678,
+    "text": "{\"utcMs\":1790000000123,\"echo\":45678}"
+  }
+}
