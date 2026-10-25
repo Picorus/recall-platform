@@ -70,6 +70,16 @@ jobs:
       - if: always()
         run: docker compose -f infra/docker-compose.yml down -v
 
+  player:
+    name: Screen player (Kotlin)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      # The runner has a JDK already; the player is built for Java 17 bytecode (what Android runs).
+      - run: ./gradlew --no-daemon :core:test
+        working-directory: apps/player
+
   secrets:
     name: Secret scan (gitleaks)
     runs-on: ubuntu-latest

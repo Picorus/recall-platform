@@ -1,0 +1,259 @@
+{
+  "notes": [
+    "Screen ids: \"SCR-\" + 7 Crockford base32 characters (0-9, A-Z without I, L, O, U) + a Luhn mod 32 check character.",
+    "QR text: \"RECALL1:\" + screen id; spaces and line ends around it are ignored.",
+    "Number plates: upper case; only ASCII space, dot and dash removed; district padded to 2 digits and number to 4; state series or Bharat (BH, year 21+) series; a 0 district or number is refused (null).",
+    "QR text: only ASCII space, tab, CR and LF are trimmed.",
+    "Enrolment bytes: the fields joined by \"\\n\" after the header \"RECALL-ENROL-1\".",
+    "kotlinSigned: an enrolment request made and signed by the Kotlin player (SoftwareKeyVault); the cloud must accept both signatures."
+  ],
+  "ids": [
+    {
+      "random": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "id": "SCR-00000000"
+    },
+    {
+      "random": [
+        31,
+        31,
+        31,
+        31,
+        31,
+        31,
+        31
+      ],
+      "id": "SCR-ZZZZZZZ7"
+    },
+    {
+      "random": [
+        7,
+        19,
+        3,
+        20,
+        9,
+        25,
+        30
+      ],
+      "id": "SCR-7K3M9SYX"
+    },
+    {
+      "random": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "id": "SCR-1234567M"
+    },
+    {
+      "random": [
+        12,
+        20,
+        8,
+        29,
+        0,
+        17,
+        22
+      ],
+      "id": "SCR-CM8X0HP9"
+    }
+  ],
+  "checkCharacterOf": {
+    "body": "ABC1234",
+    "check": "S"
+  },
+  "checks": [
+    {
+      "text": "SCR-00000000",
+      "valid": true
+    },
+    {
+      "text": "SCR-ZZZZZZZ7",
+      "valid": true
+    },
+    {
+      "text": "SCR-7K3M9SYX",
+      "valid": true
+    },
+    {
+      "text": "SCR-1234567M",
+      "valid": true
+    },
+    {
+      "text": "SCR-CM8X0HP9",
+      "valid": true
+    },
+    {
+      "text": "SCR-73KM9SYX",
+      "valid": false
+    },
+    {
+      "text": "SCR-7KAM9SYX",
+      "valid": false
+    },
+    {
+      "text": "scr-7k3m9syx",
+      "valid": false
+    },
+    {
+      "text": "SCN-7K3M9SYX",
+      "valid": false
+    },
+    {
+      "text": "SCR-ILOU0000",
+      "valid": false
+    },
+    {
+      "text": "SCR-7K3M9SYX0",
+      "valid": false
+    }
+  ],
+  "qrs": [
+    {
+      "text": "RECALL1:SCR-7K3M9SYX",
+      "screenId": "SCR-7K3M9SYX"
+    },
+    {
+      "text": "  RECALL1:SCR-7K3M9SYX\n",
+      "screenId": "SCR-7K3M9SYX"
+    },
+    {
+      "text": "RECALL1:SCR-7KAM9SYX",
+      "screenId": null
+    },
+    {
+      "text": "RECALL2:SCR-7K3M9SYX",
+      "screenId": null
+    },
+    {
+      "text": "SCR-7K3M9SYX",
+      "screenId": null
+    },
+    {
+      "text": "https://example.com/?s=SCR-7K3M9SYX",
+      "screenId": null
+    },
+    {
+      "text": "\u0085RECALL1:SCR-7K3M9SYX",
+      "screenId": null
+    },
+    {
+      "text": "\u00a0RECALL1:SCR-7K3M9SYX",
+      "screenId": null
+    }
+  ],
+  "plates": [
+    {
+      "text": "TS09EA1234",
+      "plate": "TS09EA1234"
+    },
+    {
+      "text": "ts 09 ea 1234",
+      "plate": "TS09EA1234"
+    },
+    {
+      "text": "TS9EA1234",
+      "plate": "TS09EA1234"
+    },
+    {
+      "text": "TG-08-AB-9",
+      "plate": "TG08AB0009"
+    },
+    {
+      "text": "AP28C123",
+      "plate": "AP28C0123"
+    },
+    {
+      "text": "KA01MJ2023",
+      "plate": "KA01MJ2023"
+    },
+    {
+      "text": "22 BH 1234 AB",
+      "plate": "22BH1234AB"
+    },
+    {
+      "text": "TS09EA",
+      "plate": null
+    },
+    {
+      "text": "09EA1234",
+      "plate": null
+    },
+    {
+      "text": "TS09EA12345",
+      "plate": null
+    },
+    {
+      "text": "TSA9EA1234",
+      "plate": null
+    },
+    {
+      "text": "22BH12345A",
+      "plate": null
+    },
+    {
+      "text": "TS09",
+      "plate": null
+    },
+    {
+      "text": "TS0912",
+      "plate": null
+    },
+    {
+      "text": "TS00EA1234",
+      "plate": null
+    },
+    {
+      "text": "TS09EA0000",
+      "plate": null
+    },
+    {
+      "text": "00BH0000A",
+      "plate": null
+    },
+    {
+      "text": "20BH1234A",
+      "plate": null
+    },
+    {
+      "text": "TS\u00a009EA1234",
+      "plate": null
+    },
+    {
+      "text": "TS\t09EA1234",
+      "plate": null
+    }
+  ],
+  "enrolment": {
+    "request": {
+      "hardwareSerial": "RK3566-0A1B2C3D",
+      "model": "VendorX LED28 v1",
+      "tlsPublicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEtlsKEYtlsKEYtlsKEYtlsKEYtlsKEY",
+      "playPublicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEplayKEYplayKEYplayKEYplayKEY",
+      "madeAt": 1822278600
+    },
+    "bytes": "RECALL-ENROL-1\nRK3566-0A1B2C3D\nVendorX LED28 v1\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEtlsKEYtlsKEYtlsKEYtlsKEYtlsKEY\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEplayKEYplayKEYplayKEYplayKEY\n1822278600"
+  },
+  "kotlinSigned": {
+    "request": {
+      "hardwareSerial": "RK3566-KOTLIN01",
+      "model": "VendorX LED28 v1",
+      "tlsPublicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE09NtfY1Hc4lZTToRbs0WXLMvqAuyi6KFaGp/UdsjtuCUeE7CBrbf6lxESABhQ/ow42CJnjoBsNnKdnKbNWa/8Q==",
+      "playPublicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEwH6FVRcX3KdSU8dqCqDhp4ZGFzrDOErrunBRXbtXm4qJEzQnRRGqpntkgtpliNHX8OdSI9EhGudbKpZWxW7kzg==",
+      "madeAt": 1822278600
+    },
+    "tlsSignature": "MEQCIFaaxiGgUyYB95Lb3uBZ37rhaMIbfW+LaE1WLRZVW8pAAiBZnzEEjbxWCTkjqPAYxqipmRI50Yc23oKmLOQxG71PQw==",
+    "playSignature": "MEUCIQCxnG+CDXEQuzGjzTX6dsfD3zDo8A+l2pQDCf8q6EKyXwIgHtnus0pBmvfzD8q1Yb478XvWPUK0Fj0q2L6qNbX+sGg="
+  }
+}

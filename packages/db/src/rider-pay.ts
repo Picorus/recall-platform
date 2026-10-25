@@ -39,27 +39,42 @@ export async function assignScreen(
   from: number,
   by: string,
 ): Promise<void> {
-  if (riderId !== null && !RIDER.test(riderId)) throw new RangeError(`Bad rider id ${riderId}`);
   await inTransaction(pool, async (c) => {
-    await c.query("SELECT pg_advisory_xact_lock(hashtext('rider-screens'))");
-    // One screen per rider at a time: his hours and plays must come from one bike.
-    if (riderId !== null) {
-      const other = await c.query<{ screen_id: string }>(
-        `SELECT screen_id FROM (
-           SELECT DISTINCT ON (screen_id) screen_id, rider_id FROM rider_screens
-            WHERE from_at <= to_timestamp($2) ORDER BY screen_id, from_at DESC) x
-          WHERE rider_id = $1 AND screen_id <> $3`,
-        [riderId, from, screenId],
-      );
-      const busy = other.rows[0];
-      if (busy) throw new Error(`${riderId} is on ${busy.screen_id}: take him off it first`);
-    }
-    await c.query(
-      `INSERT INTO rider_screens (screen_id, from_at, rider_id, set_by)
-       VALUES ($1, to_timestamp($2), $3, $4)`,
-      [screenId, from, riderId, by],
-    );
+    // An enrolled screen (P2.1) moves only with its fitting, so fitting and pay never disagree.
+    const enrolled = await c.query('SELECT 1 FROM screens WHERE screen_id = $1', [screenId]);
+    if (enrolled.rowCount)
+      throw new Error(`${screenId} is fitted by QR: use fitScreen or unfitScreen to move it`);
+    await assignScreenIn(c, screenId, riderId, from, by);
   });
+}
+
+/** The same, inside a caller's transaction (fitting a screen, P2.1, does it with the fitting). */
+export async function assignScreenIn(
+  c: PoolClient,
+  screenId: string,
+  riderId: string | null,
+  from: number,
+  by: string,
+): Promise<void> {
+  if (riderId !== null && !RIDER.test(riderId)) throw new RangeError(`Bad rider id ${riderId}`);
+  await c.query("SELECT pg_advisory_xact_lock(hashtext('rider-screens'))");
+  // One screen per rider at a time: their hours and plays must come from one bike.
+  if (riderId !== null) {
+    const other = await c.query<{ screen_id: string }>(
+      `SELECT screen_id FROM (
+         SELECT DISTINCT ON (screen_id) screen_id, rider_id FROM rider_screens
+          WHERE from_at <= to_timestamp($2) ORDER BY screen_id, from_at DESC) x
+        WHERE rider_id = $1 AND screen_id <> $3`,
+      [riderId, from, screenId],
+    );
+    const busy = other.rows[0];
+    if (busy) throw new Error(`${riderId} is on ${busy.screen_id}: take them off it first`);
+  }
+  await c.query(
+    `INSERT INTO rider_screens (screen_id, from_at, rider_id, set_by)
+     VALUES ($1, to_timestamp($2), $3, $4)`,
+    [screenId, from, riderId, by],
+  );
 }
 
 /** UTC seconds: when a month's business days start, and when the last one ends (02:00 India). */

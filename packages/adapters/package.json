@@ -10,5 +10,9 @@
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@peculiar/x509": "2.1.0",
+    "reflect-metadata": "0.2.2"
   }
 }
