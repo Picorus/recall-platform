@@ -14,8 +14,8 @@ import kotlinx.serialization.json.longOrNull
 /** What a screen sends: a hello when the line opens (asks for the time), and uploads. */
 enum class UpKind { HELLO, UPLOAD }
 
-/** What the cloud sends to a screen (FILES: the ad files to keep, P2.4, see AdFiles). */
-enum class DownKind { ACK, TIME, FILES, PLAN, COMMAND }
+/** What the cloud sends to a screen: FILES the ad files to keep (P2.4); AREAS, PLAN, ASSIGN what to play where (P2.6). */
+enum class DownKind { ACK, TIME, FILES, AREAS, PLAN, ASSIGN, COMMAND }
 
 object ScreenLink {
     const val TOPIC_ROOT = "recall/v1/s"

@@ -2,6 +2,40 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 25 Oct 2026 · P2.6.3 · Local scheduler: the box chooses what to play
+- **The local scheduler** (`LocalScheduler.kt` in `apps/player/core`): keeps what the cloud sends (P2.6.2) and answers playback's question for any moment (P2.5): which plan, and what this bike carries.
+  - The area is the one the tracker settled on (P2.6.1, with its 15-second hold): inside an area or in its edge zone. Outside every area: RECALL's own ads.
+  - In an area-hour with the cloud's assignment, the bike carries that (the newest for that area-hour; a bike coming back into an area carries the same again, as in the simulator). Without one, the box's own pick (P1.4.3).
+  - Plans: per area-hour the highest revision. Ended hours are dropped by the cloud's own message times, never the box's clock.
+  - Everything is kept on storage: a box that starts with no signal still knows its areas, plans and assignments. Refused messages are counted for the health report (P2.11).
+- **On the box** (`Schedule.kt`): starts with the line's setup (it needs the screen id), from storage at once; the line hands it the three messages; playback asks it what to play.
+- Tests: 5 new (`LocalSchedulerTest`): the box's own pick in an area with a plan, the edge zone, no plan; the cloud's assignment winning (newest only) and coming back with the bike; plan revisions; everything kept across a restart and ended hours dropped; refused messages counted. All 88 core tests pass.
+- Second-agent review of P2.6.2 and P2.6.3: 10 findings, all fixed:
+  - a large plan message being saved could hold up playback, so a spot started late and a brand lost a counted play. Now playback reads a finished copy and never waits;
+  - the edge zone: the cloud only assigns bikes inside an area, and edge plays count only up to a share. Now a bike in an edge zone carries the area's booking only if it was inside that area earlier this hour (steady along a border); a bike that just stays near an area plays RECALL's ads (DECISIONS);
+  - the shared cases never tested a choice between several make-ups or aggregators for RECALL's spots, several make-ups or trials for a bike, a line with no bikes, the after-midnight hours or a re-sent plan. Now they do, with all the missing refusals; the generator is kept in the repository (`packages/domain/scripts/screen-plan-vectors.ts`);
+  - the box read some odd number forms the cloud refuses (`TRUE`, `78.4f`, `.5`, a leading zero) and refused some it takes (`1.0`, `1e12`). Now both take and refuse exactly the same;
+  - an area version too large for the box: now capped on both sides;
+  - plans kept on storage could grow past what the box reads back after a restart. Now ended hours go by the newest cloud time seen, the count is capped and the saved file is checked when written;
+  - a message dated far ahead (a cloud clock fault) could freeze every later list. Now one dated more than 5 minutes ahead of the trusted time is refused and counted;
+  - an assignment naming a line the box's plan does not know (a newer revision on its way) played nothing. Now that part falls back to the box's own pick, and it is counted;
+  - plans must start exactly on the India hour their date and hour name;
+  - every message is capped at 1 MB on both sides.
+- Tests now: TypeScript 6 (`screen-plan`), Kotlin 93 in all (the scheduler 8: also the edge zone, unknown lines, messages dated ahead).
+- Open: the GPS service that feeds the tracker every second is P2.8 (until then the box counts as outside every area and plays RECALL's own ads); the cloud sending areas, plans and assignments (on every change and every hello) comes with the scheduler service.
+- Next: P2.7, the signed play log.
+
+## 25 Oct 2026 · P2.6.2 · Local scheduler: what the cloud tells the box, and the box's own pick
+- **Three new messages from the cloud** (`packages/domain/src/screen-plan.ts`, Kotlin `PlanMessages.kt`, shared cases `test-vectors/screen-plan.json`), each on the screen's own down topics:
+  - `areas`: the city's area shapes in force now (corners, edge zone, on/off). The whole list with its time; the newest wins.
+  - `plan`: the hour plans for the next 2 hours, every area (P1.4.1), without brand names. Per area-hour the highest revision wins (a make-up opened re-sends it).
+  - `assign`: the cloud's live pick for this screen in one area-hour (P1.4.2): the booking line and what fills RECALL's spots, or nothing (RECALL's own ads). Per area-hour the newest wins.
+  - Hours must start on a half hour (UTC), ids are plain letters, digits, dashes; the cloud's builders refuse anything the box would refuse, so the cloud cannot send a message the box drops.
+- **The box's own pick** (`Fallback.kt`, P1.4.3): the cloud's formula in Kotlin (weighted rendezvous hashing on the screen's id and the hour): paid lines by bikes sold; make-ups and trials only without paid lines; RECALL's spots to make-ups owed, else aggregator ads. Every screen picks by itself, yet over the fleet each booking gets bikes in proportion, with no network.
+- Tests: TypeScript 4 (the shared cases, every refusal, the builders' refusals, the topics). Kotlin 3: the same messages read the same, the same 30 refusals for the same reasons, and the same pick as the cloud for 200 screens on 4 plans (paid, make-ups only, trial only, nothing sold). All 83 core tests pass.
+- Open: the cloud sending these (plans 2 hours ahead, the live assignment every minute, all of them again on every hello) comes with the scheduler service; the box keeping and using them is P2.6.3.
+- Next: P2.6.3, the local scheduler on the box.
+
 ## 25 Oct 2026 · P2.6.1 · Local scheduler: the area from GPS on the box
 - P2.5.2 merged (PR #38, all checks green, the playback checks passing on the Android 11 emulator).
 - P2.6 is split in three: P2.6.1 the tracker on the box (this step); P2.6.2 the messages from the cloud (hour plans, area shapes, the live assignment) and the box's own offline pick; P2.6.3 the local scheduler that tells playback which brand to show.
