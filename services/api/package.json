@@ -9,6 +9,19 @@
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests test/unit",
+    "test:db": "vitest run test/db",
+    "start": "tsx src/run.ts",
+    "first-admin": "tsx src/first-admin.ts"
+  },
+  "dependencies": {
+    "@recall/db": "workspace:*",
+    "@recall/domain": "workspace:*",
+    "pg": "8.23.1"
+  },
+  "devDependencies": {
+    "@types/pg": "8.23.1",
+    "tsx": "4.23.15",
+    "fast-check": "4.10.2"
   }
 }
