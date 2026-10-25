@@ -45,8 +45,9 @@ class WatchdogService : Service() {
             .setSmallIcon(android.R.drawable.ic_lock_idle_lock)
             .build()
         startForeground(1, note, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
-        // Give a starting player a moment before the first judgement.
-        handler.postDelayed(check, 3_000)
+        // Check at once: if the whole app went down (the watchdog too), Android restarts this service
+        // about a second later, and the player's heartbeat is already old by then.
+        handler.post(check)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
