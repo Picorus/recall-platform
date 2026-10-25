@@ -1,6 +1,7 @@
 import { generateKeyPairSync, sign } from 'node:crypto';
 import {
   launchAreas,
+  pocDayPaise,
   lineIdOf,
   lineStartsAt,
   playBytes,
@@ -11,17 +12,25 @@ import {
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type pg from 'pg';
 import { saveAreaVersion } from '../../src/areas.js';
+import { setBusinessMode } from '../../src/business-mode.js';
 import { createBooking, moveBooking, savePriceBook } from '../../src/bookings.js';
 import { accountTotals, trialBalance } from '../../src/ledger.js';
 import { addScreenKey } from '../../src/plays.js';
-import { accrueRiderPay, assignScreen, monthBounds, setPocBase } from '../../src/rider-pay.js';
+import {
+  accrueRiderPay,
+  assignScreen,
+  givePocBonus,
+  monthBounds,
+  pocBonusList,
+  pocFinishList,
+} from '../../src/rider-pay.js';
 import { storeUpload } from '../../src/screen-reports.js';
 import { freshDatabase } from './fresh-db.js';
 
 let db: Awaited<ReturnType<typeof freshDatabase>>;
 let pool: pg.Pool;
 const BOOKED = Date.UTC(2027, 6, 1, 4, 30) / 1000;
-const ADMIN = { id: 'priya', role: 'admin' } as const;
+const SUPER = { id: 'prateek', role: 'super-admin' } as const;
 const PLACE = 'inside:hyd-madhapur@1';
 
 /** India 08:00 on a day, in UTC seconds. */
@@ -114,8 +123,13 @@ beforeAll(async () => {
   pool = db.pool;
   for (const a of launchAreas('2026-11-01T00:00:00.000Z'))
     await saveAreaVersion(pool, { ...a, draft: false }, 'system');
+  // In this test the POC runs June–August 2027 (bases ₹2,000 / ₹4,000 / ₹6,000); September is after it.
   await savePriceBook(pool, { ...PRICE_BOOK_V1, minBookingPaise: 100_000 }, 'prateek');
-  // After the POC (from September 2027 in this test): ₹25 an hour + 25% of what his hours sold.
+  // The business is switched to the POC on 1 June 2027 and back to regular business on 1 September.
+  const SUPER_ADMIN = { id: 'prateek', role: 'super-admin' } as const;
+  await setBusinessMode(pool, 'poc', SUPER_ADMIN, 'POC starts', Date.UTC(2027, 5, 1, 6) / 1000);
+  await setBusinessMode(pool, 'regular', SUPER_ADMIN, 'POC over', Date.UTC(2027, 8, 1, 6) / 1000);
+  // A later price book (same rider pay), in force from September.
   await savePriceBook(
     pool,
     {
@@ -123,7 +137,6 @@ beforeAll(async () => {
       version: 2,
       validFrom: '2027-09-01T00:00:00.000Z',
       minBookingPaise: 100_000,
-      riderPay: { ...PRICE_BOOK_V1.riderPay, mode: 'standard' },
     },
     'prateek',
   );
@@ -136,7 +149,14 @@ describe('rider pay in the POC (P1.7.6)', () => {
 
   beforeAll(async () => {
     // R-AAA rides scr-a all month: 15 days × 10 h = 150 moving hours. R-BBB: 149 hours on scr-b.
-    await assignScreen(pool, 'scr-a', 'R-AAA', start, 'fitter');
+    // R-AAA first got a screen in July, so August is his second month.
+    await assignScreen(
+      pool,
+      'scr-a',
+      'R-AAA',
+      monthBounds('2027-07').start + 10 * 86_400,
+      'fitter',
+    );
     await assignScreen(pool, 'scr-b', 'R-BBB', start, 'fitter');
     await ride('scr-a', '2027-08-02', 15, 10);
     await ride('scr-b', '2027-08-02', 14, 10);
@@ -148,72 +168,107 @@ describe('rider pay in the POC (P1.7.6)', () => {
     // R-EEE rides outside the pay zone half of each minute: 150 h on the clock, 75 h counted.
     await assignScreen(pool, 'scr-e', 'R-EEE', start, 'fitter');
     await ride('scr-e', '2027-08-02', 15, 10, 30);
-    await setPocBase(pool, 'R-AAA', AUG, 600_000, ADMIN, 'founding rider, full base');
-    await setPocBase(pool, 'R-BBB', AUG, 200_000, ADMIN, 'founding rider, small base');
-    await setPocBase(pool, 'R-EEE', AUG, 400_000, ADMIN, 'founding rider, mid base');
+    // R-GGG rode in July only: nothing in August.
+    await assignScreen(pool, 'scr-g0', 'R-GGG', monthBounds('2027-07').start, 'fitter');
+    await assignScreen(pool, 'scr-g0', null, monthBounds('2027-07').start + 86_400, 'fitter');
   }, 60_000);
 
-  it('nothing is owed before the month ends: POC pay is paid once, after the month', async () => {
-    const r = await accrueRiderPay(pool, AUG, end - 60);
+  /** August is the POC's third month: the ₹6,000 base spread over its 31 days. */
+  const days = (from: number, to: number) => {
+    let n = 0;
+    for (let d = from; d <= to; d += 1) n += pocDayPaise(600_000, 31, d);
+    return n;
+  };
+  const tds = (gross: number) => Math.floor((gross * 100 + 5_000) / 10_000);
+
+  it('the base is paid as the days go, for the Monday payout: the first week is 7 days of ₹6,000 ÷ 31', async () => {
+    // 8 Aug 02:00 India time: days 1–7 have ended.
+    const r = await accrueRiderPay(pool, AUG, eightAm('2027-08-08') - 6 * 3600);
     expect(r.failed).toEqual([]);
-    expect(r.posted).toBe(0);
-    expect(await owed('R-AAA')).toBe(0);
+    expect(days(1, 7)).toBe(135_483);
+    expect(r.pay.find((p) => p.riderId === 'R-AAA')).toMatchObject({ poc: 135_483 });
+    expect(await owed('R-AAA')).toBe(135_483 - tds(135_483));
   });
 
-  it('after the month: the base, and the ₹6,000 bonus only at 150+ moving hours in the pay zone, less 1% TDS', async () => {
+  it("a full month is exactly the month's base; a rider gets it for the days he held a screen", async () => {
     const r = await accrueRiderPay(pool, AUG, end + 60);
     expect(r.failed).toEqual([]);
     const by = new Map(r.pay.map((p) => [p.riderId, p]));
-    expect(by.get('R-AAA')).toMatchObject({ base: 600_000, bonus: 600_000, gross: 1_200_000 });
-    expect(by.get('R-BBB')).toMatchObject({ base: 200_000, bonus: 0, gross: 200_000 });
-    expect(by.get('R-EEE')).toMatchObject({ countedSeconds: 75 * 3600, bonus: 0, gross: 400_000 });
-    // A screen that changed hands: each rider gets only the hours he rode it.
-    expect(by.get('R-CCC')?.countedSeconds).toBe(100 * 3600);
-    expect(by.get('R-DDD')?.countedSeconds).toBe(60 * 3600);
-    // No base set for R-DDD (open question 15): only the bonus could count, and he has no 150 h.
-    expect(by.get('R-DDD')?.gross).toBe(0);
-    expect(await owed('R-AAA')).toBe(1_200_000 - 12_000);
-    expect(await tdsOf('R-AAA')).toBe(12_000);
-    expect(await owed('R-BBB')).toBe(198_000);
-  });
-
-  it('running again changes nothing; late minutes are added and the pay moves with them', async () => {
+    // Hours do not change the base: R-EEE (75 h) gets it like R-AAA (150 h). No sales share.
+    for (const id of ['R-AAA', 'R-BBB', 'R-EEE'])
+      expect(by.get(id)).toMatchObject({ gross: 600_000, sold: 0 });
+    // A screen that changed hands on 12 Aug at 08:00: R-CCC to the 11th, R-DDD from the 12th.
+    expect(by.get('R-CCC')?.pocDays).toEqual(Array.from({ length: 11 }, (_, i) => i + 1));
+    expect(by.get('R-CCC')?.gross).toBe(days(1, 11));
+    expect(by.get('R-DDD')?.gross).toBe(days(12, 31));
+    expect(days(1, 11) + days(12, 31)).toBe(600_000);
+    // POC hours pay no hourly rate (they count for the founding bonus).
+    expect(by.get('R-AAA')).toMatchObject({ countedSeconds: 0, hourly: 0 });
+    expect(by.has('R-GGG')).toBe(false);
+    expect(await owed('R-AAA')).toBe(600_000 - 6_000);
+    expect(await tdsOf('R-AAA')).toBe(6_000);
+    // Running again changes nothing.
     expect((await accrueRiderPay(pool, AUG, end + 120)).posted).toBe(0);
-    // R-BBB's last hour arrives late (uploaded after the month): now 150 h, so the bonus is due.
-    await ride('scr-b', '2027-08-21', 1, 1);
-    const r = await accrueRiderPay(pool, AUG, end + 3600);
-    expect(r.posted).toBe(1);
-    expect(await owed('R-BBB')).toBe(800_000 - 8_000);
   });
 
-  it('a base pays only riders who rode a screen that month; 0 ends a base', async () => {
-    await setPocBase(pool, 'R-GONE', '2027-07', 600_000, ADMIN, 'left before August');
-    await setPocBase(pool, 'R-BBB', '2027-09', 0, ADMIN, 'left at the end of August');
-    const aug = await accrueRiderPay(pool, AUG, end + 7200);
-    expect(aug.pay.find((p) => p.riderId === 'R-GONE')).toBeUndefined();
-    expect(await owed('R-GONE')).toBe(0);
-    const sep = monthBounds('2027-09');
-    await assignScreen(pool, 'scr-b', null, sep.start, 'fitter');
-    await assignScreen(pool, 'scr-b', 'R-BBB', sep.start + 86_400, 'fitter');
-    const r = await accrueRiderPay(pool, '2027-09', sep.end + 60);
-    expect(r.pay.find((p) => p.riderId === 'R-BBB')?.base ?? 0).toBe(0);
+  it("the month's founding bonus: full at 150 h, in proportion from 100 h, none below; a super admin gives it once the month closes", async () => {
+    const closed = end + 49 * 3600;
+    await expect(givePocBonus(pool, 'R-AAA', AUG, SUPER, end + 60)).rejects.toThrow(/closed/);
+    const list = new Map((await pocBonusList(pool, AUG)).map((r) => [r.riderId, r]));
+    expect(list.get('R-AAA')).toMatchObject({ amountPaise: 600_000, given: false });
+    expect(list.get('R-BBB')).toMatchObject({ countedSeconds: 149 * 3600, amountPaise: 588_000 });
+    // A screen that changed hands: each rider's hours only while he rode it.
+    expect(list.get('R-CCC')).toMatchObject({ countedSeconds: 100 * 3600, amountPaise: 0 }); // starts above 100 h
+    expect(list.get('R-DDD')?.countedSeconds).toBe(60 * 3600);
+    expect(list.get('R-EEE')?.amountPaise).toBe(0); // half his minutes outside the 15 km zone
+    await expect(
+      givePocBonus(pool, 'R-AAA', AUG, { id: 'priya', role: 'admin' }, closed),
+    ).rejects.toThrow(/super admin/);
+    await expect(givePocBonus(pool, 'R-EEE', AUG, SUPER, closed)).rejects.toThrow(
+      /75 moving hours/,
+    );
+    expect(await givePocBonus(pool, 'R-AAA', AUG, SUPER, closed)).toBe(600_000);
+    expect(await owed('R-AAA')).toBe(594_000 + 594_000);
+    await expect(givePocBonus(pool, 'R-AAA', AUG, SUPER, closed)).rejects.toThrow(/already/);
+    // R-BBB's last hour arrives late: now 150 h, so his bonus is in full.
+    await ride('scr-b', '2027-08-21', 1, 1);
+    expect(await givePocBonus(pool, 'R-BBB', AUG, SUPER, closed + 60)).toBe(600_000);
+    await expect(givePocBonus(pool, 'R-AAA', '2027-09', SUPER, closed)).rejects.toThrow(
+      /not a POC month/,
+    );
+  });
+
+  it('₹3,000 more for riders who finish the POC and keep the screen (the POC ends with the switch)', async () => {
+    const closed = eightAm('2027-09-03'); // 48 hours after the switch back on 1 Sep, 08:00
+    await expect(givePocBonus(pool, 'R-AAA', undefined, SUPER, closed - 60)).rejects.toThrow(
+      /closed/,
+    );
+    // The POC ended with the switch on 1 September at 08:00; R-CCC had handed his screen on.
+    expect((await pocFinishList(pool)).map((r) => r.riderId)).toEqual([
+      'R-AAA',
+      'R-BBB',
+      'R-DDD',
+      'R-EEE',
+    ]);
+    expect(await givePocBonus(pool, 'R-AAA', undefined, SUPER, closed)).toBe(300_000);
+    expect(await owed('R-AAA')).toBe(594_000 + 594_000 + 297_000);
+    await expect(givePocBonus(pool, 'R-CCC', undefined, SUPER, closed)).rejects.toThrow(
+      /did not keep a screen/,
+    );
+  });
+
+  it('the switch: only a super admin, once a day, counted from that business day', async () => {
+    await expect(
+      setBusinessMode(pool, 'poc', { id: 'priya', role: 'admin' }, 'try it', end + 86_400 * 40),
+    ).rejects.toThrow(/super admin/);
+    await expect(
+      setBusinessMode(pool, 'regular', SUPER, 'again', end + 86_400 * 40),
+    ).rejects.toThrow(/already on regular/);
   });
 
   it('a rider is on one screen at a time', async () => {
     await expect(assignScreen(pool, 'scr-z', 'R-AAA', end - 86_400, 'fitter')).rejects.toThrow(
       /R-AAA is on scr-a/,
-    );
-  });
-
-  it('a base can only be one of the bases in the price book, set by an admin', async () => {
-    await expect(setPocBase(pool, 'R-XYZ', AUG, 500_000, ADMIN, 'not a real base')).rejects.toThrow(
-      /Base must be 0 or one of ₹2000, ₹4000, ₹6000/,
-    );
-    await expect(
-      setPocBase(pool, 'R-XYZ', AUG, 200_000, { id: 'r', role: 'rider' }, 'self-service'),
-    ).rejects.toThrow(/admin/);
-    await expect(setPocBase(pool, 'R-XYZ', '2027-13', 200_000, ADMIN, 'bad month')).rejects.toThrow(
-      /YYYY-MM/,
     );
   });
 });

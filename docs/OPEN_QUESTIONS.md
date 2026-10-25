@@ -12,11 +12,11 @@ Answer whenever you like; each answer moves to `docs/DECISIONS.md` and the row i
 | 6 | Support phone and WhatsApp numbers (hours: 10 am – 7 pm for now) | Rider Help; brand Help; admin Support | P3.15, P4.9 |
 | 7 | Charging steps for the screen, once the equipment is final (from the screen maker) | Rider Your screen | P4.8 |
 | 10b | TDS rate on rider pay and any gig-worker levy (ask your CA) | Admin Payouts; rider Payouts | P1.7.7 |
-| 15 | POC base: what decides whether a rider gets ₹2,000, ₹4,000 or ₹6,000 (hours promised, shift, something else)? And does a rider who joins mid-month get the full base? For now an admin picks it per rider, and the full base is paid | Admin Riders; rider Earnings | P1.7.6 |
 
 ## Answered 24 Oct 2026 (now in DECISIONS)
 | # | Answer |
 |---|---|
+| ~~15~~ | POC rider pay follows the model v5.2 table (base ₹2k/4k/6k + founding bonus on monthly hours, ₹3,000 for finishing); a super-admin switch between POC and regular business, counted from that day; POC month 1 = the month first switched on |
 | ~~13~~ | (a) Cuts are paid only on delivered money. (b) A cancellation refund not decided within 7 days counts as no refund |
 | ~~14~~ | TDS is held back from cuts (we pay the partner after cutting TDS); the partner's GST is claimed back; our per-booking rounding is what goes in the books |
 | ~~12~~ | Cancelled after paying: no refund by default; at least 72 hours before the first hour a super admin may refund 100%; later, no refund |

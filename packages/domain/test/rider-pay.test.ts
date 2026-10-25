@@ -4,50 +4,108 @@ import { balances, checkEntry, type Entry } from '../src/ledger.js';
 import { checkPriceBook, PRICE_BOOK_V1 } from '../src/price-book.js';
 import {
   checkRiderPayRules,
-  DEFAULT_RIDER_PAY_RULES as POC,
+  DEFAULT_RIDER_PAY_RULES as RULES,
+  pocBonusEntry,
+  pocDayPaise,
+  pocMonthBonus,
+  pocBaseOf,
+  pocMonthOf,
   riderPay,
   riderPayAccrued,
   soldShares,
 } from '../src/rider-pay.js';
 
-const STANDARD = { ...POC, mode: 'standard' as const };
 const H = 3600;
-const month = (countedHours: number, base?: number, soldPaise = 0) => ({
+const all = (n: number) => Array.from({ length: n }, (_, i) => i + 1);
+const month = (countedHours: number, soldPaise = 0, pocDays: number[] = [], daysInMonth = 30) => ({
   countedSeconds: countedHours * H,
   paidSeconds: Math.min(countedHours, 260) * H,
   soldPaise,
-  pocBasePaise: base,
+  pocDays,
+  daysInMonth,
 });
 
-describe('POC pay (P1.7.6)', () => {
-  it('nothing until the month ends; then base + ₹6,000 bonus at 150 hours, 1% TDS', () => {
-    expect(riderPay(POC, month(200, 600_000), false).gross).toBe(0);
-    expect(riderPay(POC, month(150, 600_000), true)).toEqual({
-      base: 600_000,
-      bonus: 600_000,
+describe('POC pay (P1.7.6): flat base each month, founding bonus on hours, finishing bonus', () => {
+  it('POC month 1 is the month the POC was first switched on; before it, none', () => {
+    expect(
+      ['2027-07', '2027-08', '2027-10', '2027-12'].map((m) => pocMonthOf('2027-08', m)),
+    ).toEqual([undefined, 1, 3, 5]);
+    expect(pocMonthOf(undefined, '2027-08')).toBeUndefined();
+    // Longer than planned: the last base carries on.
+    expect([1, 2, 3, 4].map((n) => pocBaseOf(RULES, n))).toEqual([
+      200_000, 400_000, 600_000, 600_000,
+    ]);
+  });
+
+  it('base ₹2,000 / ₹4,000 / ₹6,000 for a full month, exactly', () => {
+    expect(riderPay(RULES, 1, month(0, 0, all(31), 31)).gross).toBe(200_000);
+    expect(riderPay(RULES, 2, month(0, 0, all(30), 30)).gross).toBe(400_000);
+    expect(riderPay(RULES, 3, month(0, 0, all(31), 31))).toEqual({
+      poc: 600_000,
       hourly: 0,
       sold: 0,
-      gross: 1_200_000,
-      tds: 12_000,
-      net: 1_188_000,
+      gross: 600_000,
+      tds: 6_000,
+      net: 594_000,
     });
   });
 
-  it('no part bonus below 150 hours: one second short, no bonus', () => {
-    const p = riderPay(POC, { ...month(150, 200_000), countedSeconds: 150 * H - 1 }, true);
-    expect([p.bonus, p.gross]).toEqual([0, 200_000]);
+  it('a month the switch was flipped in: POC days get the base, regular days the hourly pay and sales share', () => {
+    // POC to the 20th of a 30-day month, regular from the 21st: 20 days of ₹6,000 ÷ 30, + 40 h at ₹25.
+    const p = riderPay(RULES, 3, month(40, 100_000, all(20), 30));
+    expect(p).toMatchObject({ poc: 400_000, hourly: 100_000, sold: 25_000, gross: 525_000 });
+  });
+
+  it('a week of the base is 7 days of the month: ₹451.61 in August (₹2,000 ÷ 31 × 7)', () => {
+    expect(riderPay(RULES, 1, month(0, 0, all(7), 31)).gross).toBe(45_161);
+  });
+
+  it('founding bonus: full at 150 h, in proportion from 100 h (125 h = ₹3,000, 140 h = ₹4,800), none below', () => {
+    expect([99, 100, 125, 140, 150, 200].map((h) => pocMonthBonus(RULES, h * H))).toEqual([
+      0, 0, 300_000, 480_000, 600_000, 600_000,
+    ]);
+    expect(pocMonthBonus(RULES, 150 * H - 1)).toBe(599_996); // rounded down, never more
+  });
+
+  it('property: the days always add up to exactly the month; the bonus never goes down with more hours', () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 0, max: 100_000_000 }),
+        fc.integer({ min: 28, max: 31 }),
+        fc.integer({ min: 0, max: 300 * H }),
+        (paise, n, seconds) => {
+          const sum = all(n).reduce((t, d) => t + pocDayPaise(paise, n, d), 0);
+          expect(sum).toBe(paise);
+          expect(pocMonthBonus(RULES, seconds + 1)).toBeGreaterThanOrEqual(
+            pocMonthBonus(RULES, seconds),
+          );
+        },
+      ),
+    );
+  });
+
+  it('a POC bonus a super admin gives, less 1% TDS, balances', () => {
+    const e = pocBonusEntry(RULES, 'R-A', 480_000, '2027-08', 0);
+    expect(checkEntry(e)).toEqual([]);
+    expect(e.entryId).toBe('poc-bonus:R-A:2027-08');
+    expect(e.postings.map((p) => [p.account, p.debit, p.credit])).toEqual([
+      ['rider-earnings', 480_000, 0],
+      ['rider-payable', 0, 475_200],
+      ['tds-payable', 0, 4_800],
+    ]);
+    expect(pocBonusEntry(RULES, 'R-A', 300_000, undefined, 0).entryId).toBe('poc-finish:R-A');
   });
 });
 
 describe('pay after the POC (P1.7.5)', () => {
   it('₹25 a moving hour on hours up to 260, + 25% of what his hours sold', () => {
-    const p = riderPay(STANDARD, month(270, undefined, 1_000_000), false);
+    const p = riderPay(RULES, undefined, month(270, 1_000_000));
     expect(p).toMatchObject({ hourly: 650_000, sold: 250_000, gross: 900_000, tds: 9_000 });
   });
 
-  it('part hours to the nearest paisa; no POC base or bonus', () => {
-    const p = riderPay(STANDARD, { ...month(0, 600_000), paidSeconds: 90 }, true);
-    expect(p).toMatchObject({ base: 0, bonus: 0, hourly: 63 }); // 90 s × ₹25/h = 62.5 paise
+  it('part hours to the nearest paisa; no POC pay after the POC', () => {
+    const p = riderPay(RULES, undefined, { ...month(0, 0, all(30)), paidSeconds: 90 });
+    expect(p).toMatchObject({ poc: 0, hourly: 63 }); // 90 s × ₹25/h = 62.5 paise; no POC pay
   });
 });
 
@@ -133,10 +191,10 @@ describe('rider pay in the ledger', () => {
 describe('rider pay settings', () => {
   it('are checked with the price book', () => {
     expect(checkPriceBook(PRICE_BOOK_V1)).toEqual([]);
-    expect(checkRiderPayRules({ ...POC, tdsBp: 3_500 })).toEqual([
+    expect(checkRiderPayRules({ ...RULES, tdsBp: 3_500 })).toEqual([
       'sold share must be at most 100% and TDS at most 30%',
     ]);
-    expect(checkRiderPayRules({ ...POC, perMovingHourPaise: 2.5 })).toEqual([
+    expect(checkRiderPayRules({ ...RULES, perMovingHourPaise: 2.5 })).toEqual([
       'rider pay settings must be whole numbers',
     ]);
   });

@@ -2,25 +2,26 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
-## 24 Oct 2026 · P1.7.5–6 · Rider pay
+## 24 Oct 2026 · P1.7.5–6 · Rider pay and the business switch
 - P1.7.4 merged (PR #23).
-- Domain (`rider-pay.ts`, settings `riderPay` in the price book):
-  - POC: base (₹2,000 / ₹4,000 / ₹6,000, set per rider) + ₹6,000 bonus at 150+ moving hours in the pay zone, none below; worked out after the month ends.
-  - After the POC: ₹25 a moving hour (capped at 260 a month) + 25% of what his hours sold.
-  - TDS 1% for now (a setting; CA to confirm).
-  - `soldShares`: a line's money shared by counted plays (each play = paid ÷ promised), never more than the line was paid.
-  - `riderPayAccrued`: rider earnings, owed to the rider less TDS, TDS owed to the government; up or down by the difference.
-  - `countedPlays` split out of `lineTotals`, so pay and play totals count the same plays.
-- Database (migration 0014): `rider_screens` (who rides which screen from when; append-only) and `rider_poc_bases`. `accrueRiderPay(month, now)`: every rider's hours (only while he rode each screen), what his plays sold, and the ledger brought up to date. Safe to rerun; one rider failing doesn't stop the others.
-- Tests: 235 domain (property tests: shares never more than paid; pay entries always balance and land on the figure), 12 new database tests (POC bonus at exactly 150 h and not at 149; a screen changing hands; pay-zone seconds only; late minutes; ₹25/h + 25% sold; 260 h cap; ledger balances).
+- **Business switch** (Prateek): `business-mode.ts` + migration 0015 `business_modes`. A super admin flips POC ↔ regular business (`setBusinessMode`); it counts from the start of that business day; one switch a day; append-only with who and why. The month the POC is first switched on is POC month 1. Rider pay follows it; the brand side will read it later.
+- **POC pay** (model v5.2 table, Prateek):
+  - Flat base ₹2,000 / ₹4,000 / ₹6,000 in POC months 1 / 2 / 3, earned day by day (`pocDayPaise`: a full month adds up exactly) for the Monday payouts.
+  - Founding bonus each month (`pocMonthBonus`): full ₹6,000 at 150+ verified hours in the 15 km zone, in proportion from 100, none below. `pocBonusList(month)` for the portal; `givePocBonus` by a super admin once the month has closed, once.
+  - ₹3,000 for finishing the POC and keeping the screen: `pocFinishList` (riders holding a screen when the POC was switched off), given by a super admin.
+  - No sales share in the POC.
+- **Regular business pay:** ₹25 a moving hour (capped at 260 a month) + 25% of what his plays sold. Only hours and plays under regular business count; a month with a switch in it has both parts.
+- TDS 1% for now on all rider pay (a setting; CA to confirm).
+- `soldShares`: a line's money shared by counted plays (each play = paid ÷ promised), never more than the line was paid. `countedPlays` split out of `lineTotals`, so pay and play totals count the same plays.
+- `riderPayAccrued`: rider earnings, owed to the rider less TDS, TDS owed to the government; up or down by the difference. Bonuses are their own entries.
+- Database (migration 0014): `rider_screens` (who rides which screen from when; one screen per rider at a time). `accrueRiderPay(month, now)`: safe to rerun; one rider failing doesn't stop the others.
 - Review by a second agent found 3 real problems, all fixed with tests:
   - A last-day line's make-up plays the next day: its sales went to nobody if the screen changed hands after 03:00 on the 1st. Now riders are looked up for 2 days after the month, and a rider whose plays sold is always in the run.
-  - A POC base was paid every month for ever, even with no screen, and could not be ended. Now only riders who rode a screen that month are paid, and a base of 0 ends it (checked against that month's price book).
+  - Pay could go to riders with no screen that month. Now only riders who rode (or whose plays sold) are paid.
   - A closed month could still change. Now, once closed (48 h after the month), late changes are not posted; they come back in `late` for finance to settle by hand.
-  - Also: a rider can be on only one screen at a time; screen lookups grouped by screen (faster).
+- Tests: 243 domain (property tests: a month's days add up exactly; the bonus never falls with more hours; shares never more than paid; pay entries always balance), 104 database (a POC week; a full month exact; a screen changing hands; bonus full / in proportion / none; given once, only by a super admin, only after the month closes; finishing bonus; the switch; ₹25/h + 25% sold; 260 h cap; a closed month stays closed; make-up sales after the month).
 - Open (speed, before real volumes): the monthly run is one transaction with per-line queries; fine for the POC (200 bikes), to be split up before scale. A price book saved later with a back-dated start can change an unpaid month's rates: saving books will check this with the admin tools (P3).
-- Open for Prateek: question 15 (what decides a rider's POC base; does a rider who joins mid-month get the full base?).
-- Open: the day-90 ₹3,000 bonus towards the screen loan comes with P1.7.8 (screen loan).
+- Open: POC brand package (₹2.5 lakh a month + GST, invoiced and paid before each month starts) on the brand side (P5) reads the same switch.
 - **Next: P1.7.7** Monday payout run (finance approves, payout adapter with a fake, retries).
 
 ## 24 Oct 2026 · P1.7.4 · Review fixes: cuts and cancellation

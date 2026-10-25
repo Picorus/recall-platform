@@ -12,6 +12,7 @@ import {
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type pg from 'pg';
 import { saveAreaVersion } from '../../src/areas.js';
+import { setBusinessMode } from '../../src/business-mode.js';
 import { createBooking, moveBooking, savePriceBook } from '../../src/bookings.js';
 import { addScreenKey } from '../../src/plays.js';
 import { accrueRiderPay, assignScreen, monthBounds } from '../../src/rider-pay.js';
@@ -72,6 +73,10 @@ beforeAll(async () => {
   for (const a of launchAreas('2026-11-01T00:00:00.000Z'))
     await saveAreaVersion(pool, { ...a, draft: false }, 'system');
   await savePriceBook(pool, { ...PRICE_BOOK_V1, minBookingPaise: 100_000 }, 'prateek');
+  // The business is switched to the POC on 1 June 2027 and back to regular business on 1 September.
+  const SUPER_ADMIN = { id: 'prateek', role: 'super-admin' } as const;
+  await setBusinessMode(pool, 'poc', SUPER_ADMIN, 'POC starts', Date.UTC(2027, 5, 1, 6) / 1000);
+  await setBusinessMode(pool, 'regular', SUPER_ADMIN, 'POC over', Date.UTC(2027, 8, 1, 6) / 1000);
   await savePriceBook(
     pool,
     {
@@ -79,14 +84,13 @@ beforeAll(async () => {
       version: 2,
       validFrom: '2027-09-01T00:00:00.000Z',
       minBookingPaise: 100_000,
-      riderPay: { ...PRICE_BOOK_V1.riderPay, mode: 'standard' },
     },
     'prateek',
   );
 }, 120_000);
 afterAll(async () => db.drop());
 
-describe('repro', () => {
+describe('rider pay and make-ups', () => {
   const SEP = '2027-09';
   const DAY = '2027-09-30';
   const LINE = lineIdOf('BK-X', 'hyd-madhapur', DAY, 10);
