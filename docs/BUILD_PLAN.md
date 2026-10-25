@@ -163,7 +163,7 @@ The scheduler answers one question every minute: which booking does each bike in
 
 ### P1.9 Final report
 
-1. **P1.9.1** Built 24 hours after a campaign's last hour: plays delivered vs promised, different bikes, heat map (H3 hexagons of play positions), busiest streets, make-ups, any refund, people (approximate).
+1. **P1.9.1** Built 48 hours after a campaign's last hour (once every line's make-ups and refund check are done): plays delivered vs promised, different bikes, heat map (H3 hexagons of play positions), busiest streets, make-ups, any refund, people (approximate).
 2. **P1.9.2** Shown on the web, as a PDF, and sent on WhatsApp and email.
 
 ### P1.10 Fleet simulator

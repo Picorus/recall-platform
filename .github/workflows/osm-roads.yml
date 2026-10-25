@@ -1,0 +1,38 @@
+name: OSM roads
+
+# Downloads the simulator's road map from OpenStreetMap (P1.10.1) and commits it to the branch it ran
+# on. The cloud sandboxes cannot reach OpenStreetMap; GitHub's runners can.
+on:
+  workflow_dispatch:
+  push:
+    branches: ['claude/**']
+    paths:
+      - tools/simulator/scripts/fetch-osm-roads.ts
+      - tools/simulator/src/osm.ts
+      - .github/workflows/osm-roads.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fetch:
+    name: Download roads and commit
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @recall/simulator exec tsx scripts/fetch-osm-roads.ts
+      - name: Commit the road map if it changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tools/simulator/data/west-hyderabad-roads.json.gz
+          if git diff --cached --quiet; then echo "no change"; exit 0; fi
+          git commit -m "P1.10.1: OpenStreetMap roads for west Hyderabad (downloaded by the OSM roads job)"
+          git push
