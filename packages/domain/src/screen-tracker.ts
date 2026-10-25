@@ -149,6 +149,9 @@ function windowKmh(
   return (distanceMeters(first, last) / (last.t - first.t)) * 3.6;
 }
 
+/** After a GPS gap longer than this (seconds), smoothing starts afresh (as minute distances do). */
+export const FRESH_AFTER_GAP_SECONDS = 10;
+
 /**
  * Advance one second. `t` must grow by whole seconds; a missing `fix` means no GPS this second.
  * `areas` are the areas that are on, in the versions in force now.
@@ -166,9 +169,12 @@ export function step(
   let { lastGood, recent, track } = s;
   if ((verdict === 'used' || verdict === 'reset') && fix) {
     const p = { t, lat: fix.lat, lng: fix.lng };
-    const reset = verdict === 'reset';
+    // After a reset the old positions were the bad ones; after a long gap they are stale (averaged
+    // in, they would add a distance never ridden, review P2.8): start the average and track afresh.
+    const reset =
+      verdict === 'reset' ||
+      (s.lastGood !== undefined && t - s.lastGood.t > FRESH_AFTER_GAP_SECONDS);
     lastGood = p;
-    // After a reset the old positions were the bad ones: start the average and the track afresh.
     recent = reset ? [p] : [...recent, p].slice(-rules.smoothOver);
     const smooth = {
       t,

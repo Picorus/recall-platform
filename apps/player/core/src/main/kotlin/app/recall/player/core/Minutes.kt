@@ -9,6 +9,10 @@ package app.recall.player.core
 
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.double
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.long
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
 
@@ -112,14 +116,70 @@ class Minutes(private val zone: PayZone = PayZone.POC) {
             put("payClockSeconds", payClockSeconds)
             put("movingSeconds", movingSeconds)
             put("distanceM", Math.round(distance))
-            put("plays", plays)
+            // At most 60 (what the cloud accepts): plays saved up while the box was stuck must not get
+            // a minute, and its pay seconds, refused (review P2.8).
+            put("plays", minOf(plays, MAX_MINUTE_PLAYS))
             put("people", people)
         }
     }
+
+    /** The minute in progress (UTC second it starts), or null. */
+    val current: Long? get() = minute
+
+    /** The minute in progress as it stands, to keep on storage (null when none). */
+    fun snapshot(): JsonObject? {
+        val m = minute ?: return null
+        return buildJsonObject {
+            put("minute", m)
+            putJsonObject("secondsAt") { secondsAt.forEach { (k, v) -> put(k, v) } }
+            put("clockSeconds", clockSeconds)
+            putJsonObject("clockAt") { clockAt.forEach { (k, v) -> put(k, v) } }
+            put("payClockSeconds", payClockSeconds)
+            put("movingSeconds", movingSeconds)
+            put("distance", distance)
+            put("plays", plays)
+            put("people", people)
+            last?.let { (p, t) ->
+                put("lastLat", p.lat)
+                put("lastLng", p.lng)
+                put("lastT", t)
+            }
+        }
+    }
+
+    /** Takes back a minute kept by `snapshot` (after a restart). False when it cannot be read. */
+    fun restore(x: JsonObject): Boolean = runCatching {
+        fun l(k: String) = x.getValue(k).jsonPrimitive.long
+        fun counts(k: String) = LinkedHashMap(x.getValue(k).jsonObject.mapValues { it.value.jsonPrimitive.long })
+        val m = l("minute")
+        require(Math.floorMod(m, 60L) == 0L)
+        val sAt = counts("secondsAt")
+        val cAt = counts("clockAt")
+        val c = l("clockSeconds")
+        val pay = l("payClockSeconds")
+        val moving = l("movingSeconds")
+        val d = x.getValue("distance").jsonPrimitive.double
+        val pl = l("plays")
+        val pe = l("people")
+        require(sAt.values.sum() in 0..60 && cAt.values.sum() == c && pay in 0..c && moving in 0..60 && d >= 0 && pl >= 0 && pe >= 0)
+        val lastT = x["lastT"]?.jsonPrimitive?.long
+        minute = m
+        secondsAt = sAt
+        clockSeconds = c
+        clockAt = cAt
+        payClockSeconds = pay
+        movingSeconds = moving
+        distance = d
+        plays = pl
+        people = pe
+        last = lastT?.let { LatLng(x.getValue("lastLat").jsonPrimitive.double, x.getValue("lastLng").jsonPrimitive.double) to it }
+    }.isSuccess
 
     companion object {
         const val LIVE_EVERY_SECONDS = 30L
         /** Distance is only added between positions at most this many seconds apart. */
         const val MAX_DISTANCE_GAP_SECONDS = 10L
+        /** Most plays one minute summary can hold (the cloud's limit). */
+        const val MAX_MINUTE_PLAYS = 60L
     }
 }

@@ -15,6 +15,7 @@ import kotlinx.serialization.json.long
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /** P2.8.1: minute summaries and live positions, against the cloud's shared ride (screen-tracker.json). */
@@ -48,14 +49,24 @@ class MinutesTest {
         val t0 = expected.getValue("seconds").jsonArray.first().jsonObject.getValue("t").jsonPrimitive.long
         var state = TrackerState()
         val minutes = Minutes()
+        val zone = expected.getValue("zone").jsonObject.let { z ->
+            PayZone.Circle(z.getValue("centre").jsonObject.let { LatLng(num(it, "lat"), num(it, "lng")) }, num(z, "radiusM"))
+        }
+        val small = Minutes(zone)
         val reports = mutableListOf<JsonObject>()
+        val zoneReports = mutableListOf<JsonObject>()
         input.forEachIndexed { i, raw ->
             val fix = if (raw is JsonNull) null else raw.jsonObject.let { GpsFix(it.getValue("t").jsonPrimitive.long, num(it, "lat"), num(it, "lng"), num(it, "accuracyM")) }
             val (next, s) = Tracker.step(state, t0 + i, fix, areas, rules)
             state = next
-            reports += minutes.add(s)
+            // A play every 15 seconds, as the cloud's generator feeds them.
+            val plays = if (i % 15 == 0) 1L else 0L
+            reports += minutes.add(s, plays)
+            zoneReports += small.add(s, plays)
         }
         reports += minutes.flush()
+        zoneReports += small.flush()
+        assertEquals(expected.getValue("zoneMinutes").jsonArray.map { it.jsonObject }, zoneReports.filter { it.getValue("kind").jsonPrimitive.content == "minute" }, "a pay zone the ride leaves")
         val kind = { o: JsonObject -> o.getValue("kind").jsonPrimitive.content }
         val wantMinutes = expected.getValue("minutes").jsonArray.map { it.jsonObject }
         assertEquals(wantMinutes, reports.filter { kind(it) == "minute" })
@@ -67,6 +78,22 @@ class MinutesTest {
             for (k in listOf("lat", "lng")) assertTrue(abs(num(want, k) - num(got, k)) < 1e-9, "$k at ${want["t"]}")
         }
         assertTrue(minutes.flush().isEmpty(), "flushed once")
+    }
+
+    @Test
+    fun `a minute kept on storage comes back the same`() {
+        val m = Minutes()
+        val inside = Place.Inside("hyd-madhapur", 1)
+        m.add(Second(1_800_000_000, FixVerdict.USED, LatLng(17.45, 78.39), inside, true, false, true), playsNow = 2)
+        m.add(Second(1_800_000_001, FixVerdict.USED, LatLng(17.4501, 78.39), inside, true, false, true))
+        val kept = assertNotNull(m.snapshot())
+        val back = Minutes()
+        assertTrue(back.restore(kept))
+        val next = Second(1_800_000_002, FixVerdict.USED, LatLng(17.4502, 78.39), inside, true, false, true)
+        m.add(next)
+        back.add(next)
+        assertEquals(m.flush(), back.flush())
+        assertFalse(Minutes().restore(JsonObject(emptyMap())), "nothing readable: refused")
     }
 
     @Test
@@ -85,6 +112,10 @@ class MinutesTest {
         assertEquals(1L, r.getValue("payClockSeconds").jsonPrimitive.long, "far away, and a gap after it, do not count")
         assertEquals(2L, r.getValue("movingSeconds").jsonPrimitive.long)
         assertEquals(3L, r.getValue("plays").jsonPrimitive.long)
+
+        val many = Minutes()
+        many.add(Second(1_800_000_000, FixVerdict.NO_FIX, null, inside, false, false, true), playsNow = 75)
+        assertEquals(60L, many.flush().single().getValue("plays").jsonPrimitive.long, "never more than the cloud accepts")
 
         val areasZone = PayZone.Areas(setOf("hyd-madhapur"), withEdge = false)
         assertTrue(areasZone.counts(null, inside))

@@ -4,6 +4,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { launchAreas } from '../src/launch-areas.js';
+import type { PayZone } from '../src/pay-zone.js';
 import {
   addSecond,
   EMPTY_MINUTE,
@@ -57,13 +58,18 @@ function scenario(): (GpsFix | null)[] {
 }
 
 const round7 = (x: number) => Math.round(x * 1e7) / 1e7;
+const playsAt = (i: number) => (i % 15 === 0 ? 1 : 0);
+const SMALL_ZONE: PayZone = { kind: 'circle', centre: { lat: 17.447, lng: 78.378 }, radiusM: 500 };
 
 function expected(input: (GpsFix | null)[]) {
   const areas = launchAreas();
   let s: TrackerState = START;
   let b: MinuteBuilder = EMPTY_MINUTE;
+  // The same ride scored against a small pay zone it leaves (500 m round its start).
+  let small: MinuteBuilder = EMPTY_MINUTE;
   const seconds: unknown[] = [];
   const reports: Report[] = [];
+  const zoneMinutes: Report[] = [];
   input.forEach((fix, i) => {
     const r = step(s, T + i, fix ?? undefined, areas);
     s = r.state;
@@ -78,15 +84,22 @@ function expected(input: (GpsFix | null)[]) {
       standby: sec.standby,
       clockRuns: sec.clockRuns,
     });
-    const a = addSecond(b, sec);
+    // A play recorded every 15 seconds (plays count in the minute they are recorded in).
+    const a = addSecond(b, sec, playsAt(i));
     b = a.builder;
     reports.push(...a.reports);
+    const z = addSecond(small, sec, playsAt(i), 0, SMALL_ZONE);
+    small = z.builder;
+    zoneMinutes.push(...z.reports.filter((r) => r.kind === 'minute'));
   });
   reports.push(...flushMinute(b));
+  zoneMinutes.push(...flushMinute(small));
   return {
     seconds,
     minutes: reports.filter((r) => r.kind === 'minute'),
     lives: reports.filter((r) => r.kind === 'live'),
+    zone: SMALL_ZONE,
+    zoneMinutes,
   };
 }
 
@@ -136,5 +149,12 @@ describe('shared screen test cases', () => {
     expect(e.slice(slept, 1000).every((x) => x.standby)).toBe(true);
     expect(vectors.expected.minutes.length).toBeGreaterThan(20);
     expect(vectors.expected.lives.length).toBeGreaterThan(20);
+    // Money paths: the pay clock stops outside the small zone; plays add up; a long gap's distance.
+    const zm = vectors.expected.zoneMinutes as { payClockSeconds: number; clockSeconds: number }[];
+    expect(zm.some((m) => m.payClockSeconds < m.clockSeconds)).toBe(true);
+    expect(zm.some((m) => m.payClockSeconds > 0)).toBe(true);
+    const ms = vectors.expected.minutes as { plays: number; distanceM: number }[];
+    expect(ms.every((m) => m.plays <= 4 && m.distanceM <= 3000)).toBe(true);
+    expect(ms.reduce((n, m) => n + m.plays, 0)).toBe(87);
   });
 });

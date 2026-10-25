@@ -43,7 +43,9 @@ object Kiosk {
         // P2.8: the box reads GPS for areas and proof; nobody is there to tap "allow".
         runCatching {
             for (p in listOf(android.Manifest.permission.ACCESS_FINE_LOCATION, android.Manifest.permission.ACCESS_COARSE_LOCATION)) {
-                dpm.setPermissionGrantState(admin, context.packageName, p, DevicePolicyManager.PERMISSION_GRANT_STATE_GRANTED)
+                if (!dpm.setPermissionGrantState(admin, context.packageName, p, DevicePolicyManager.PERMISSION_GRANT_STATE_GRANTED)) {
+                    CrashLog.record(context, "location not granted: $p")
+                }
             }
             dpm.setLocationEnabled(admin, true)
         }.onFailure { CrashLog.record(context, "location not granted: ${it.javaClass.simpleName}") }

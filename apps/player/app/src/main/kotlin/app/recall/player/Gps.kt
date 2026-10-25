@@ -19,6 +19,7 @@ import android.util.Log
 import app.recall.player.core.GpsLoop
 import app.recall.player.core.LocalScheduler
 import app.recall.player.core.Outbox
+import java.io.File
 
 object Gps {
     @Volatile var loop: GpsLoop? = null
@@ -37,40 +38,53 @@ object Gps {
             },
             areas = scheduler::areas,
             onSecond = scheduler::onSecond,
+            // The minute in progress, kept: the box loses power whenever the bike is switched off.
+            keep = File(app.filesDir, "gps-minute"),
             log = log,
         )
         loop = g
         val thread = HandlerThread("recall-gps").apply { start() }
         val handler = Handler(thread.looper)
-        listen(app, g, handler)
-        handler.post(Ticker(g, handler))
+        handler.post(Ticker(app, g, handler))
     }
 
     // The permission is checked just below (lint does not follow it through the early return).
     @SuppressLint("MissingPermission")
-    private fun listen(app: Context, g: GpsLoop, handler: Handler) {
-        // As device owner the player grants itself location (Kiosk); elsewhere it may not have it.
-        if (app.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-            CrashLog.record(app, "gps not started: no location permission")
-            return
-        }
+    /** Starts listening to the GPS chip; false when it cannot yet (tried again later). */
+    private fun listen(app: Context, g: GpsLoop, handler: Handler): Boolean {
+        // As device owner the player grants itself location (Kiosk); it may come after the start.
+        if (app.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) return false
         val lm = app.getSystemService(Context.LOCATION_SERVICE) as LocationManager
         val listener = LocationListener { loc: Location ->
             val mono = loc.elapsedRealtimeNanos / 1_000_000
             Line.clock.updateAndGet { it.withGps(loc.time, mono) }
-            g.onFix(loc.latitude, loc.longitude, if (loc.hasAccuracy()) loc.accuracy.toDouble() else null, SystemClock.elapsedRealtime())
+            // When the fix was taken, not when it reached us: a late one is not taken as fresh.
+            g.onFix(loc.latitude, loc.longitude, if (loc.hasAccuracy()) loc.accuracy.toDouble() else null, mono)
         }
-        try {
+        return try {
             lm.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1_000L, 0f, listener, handler.looper)
+            true
         } catch (e: Exception) {
-            CrashLog.record(app, "gps not started: ${e.javaClass.simpleName}")
+            Log.w("RecallGps", "gps not started: ${e.javaClass.simpleName}")
+            false
         }
     }
 
     /** Ticks at the start of every second of the trusted time. */
-    private class Ticker(private val g: GpsLoop, private val handler: Handler) : Runnable {
+    private class Ticker(private val app: Context, private val g: GpsLoop, private val handler: Handler) : Runnable {
+        private var listening = false
+        private var nextTry = 0L
+
         override fun run() {
             val mono = SystemClock.elapsedRealtime()
+            // Until GPS listens (no permission yet, or no GPS chip answered): tried again every 30 s.
+            if (!listening && mono >= nextTry) {
+                listening = runCatching { Gps.listen(app, g, handler) }.getOrDefault(false)
+                if (!listening) {
+                    if (nextTry == 0L) CrashLog.record(app, "gps not listening yet: trying every 30 s")
+                    nextTry = mono + 30_000
+                }
+            }
             val now = Line.clock.get().now(mono)
             var wait = 1_000L
             if (now != null) {

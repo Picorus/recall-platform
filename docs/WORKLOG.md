@@ -23,7 +23,18 @@ Newest first. Each entry: date · step id · what changed · tests · open issue
   - the player gives itself location permission and turns location on, as device owner. App 0.7.0.
 - Tests: Kotlin 9 new (`MinutesTest` 2, `GpsLoopTest` 4: the shared ride read like a real chip gives the cloud's minutes, missed seconds, clock back and jumps, old and missing readings, plays per minute); 110 core tests in all. TypeScript: the shared ride's live positions.
 - Prateek confirmed the pay zone: 15 km around Hitech City (the cloud can still send a new zone as a setting later).
-- Open: a real GPS test on the emulator (`adb emu geo fix`) and on the panel hardware; people counter (P2.9).
+- Second-agent review of P2.8: no mismatch with the cloud found; 11 findings, fixed except where noted:
+  - after a long GPS gap the smoothing mixed old and new positions, adding distance never ridden (one test minute reached 3.2 km and was refused, with its pay). Now, on the cloud and the box alike, smoothing starts afresh after a gap of over 10 seconds;
+  - a clock pulled far back (a wrong GPS time corrected by the cloud) stalled areas, minutes and pay until real time caught up. Now a jump of over 2 minutes either way starts afresh at once;
+  - plays saved up during a stall could get a minute refused. Now a minute holds at most 60 plays (cloud and box), and saved-up plays are dropped on a jump;
+  - the minute in progress was lost at every power cut (up to a minute of pay each time the bike is switched off). Now it is kept on storage every 10 seconds and goes on or out after a restart, never twice;
+  - GPS never started if location permission came after the app started. Now it tries again every 30 seconds, and a refused grant is recorded;
+  - a reading delivered late was taken as fresh. Now freshness is from when the fix was taken;
+  - a reading could be lost between threads. Now taken once, safely;
+  - the shared ride now also tests the money paths against the cloud: a pay zone the ride leaves, plays, and the long gap; live positions are compared value by value;
+  - not done: the tracker rules and pay zone are the box's own defaults until the cloud sends them as settings (open below); area ids are already capped at 48 (P2.7); plays recorded before GPS starts are not in minute counts (only an estimate, never billed).
+- Tests after the review: Kotlin 119 in all (`GpsLoopTest` 6, `MinutesTest` 3).
+- Open: the tracker rules and the pay zone are the box's own defaults until the cloud sends them as versioned settings (and the box reports which version it uses, P2.11); a real GPS test on the emulator (`adb emu geo fix`) and on the panel hardware; people counter (P2.9).
 - Next: P2.9, the people counter (needs the hardware sample for the AI chip), or P2.10 brightness first if the sample is not here.
 
 ## 25 Oct 2026 · P2.7 · Signed play log
