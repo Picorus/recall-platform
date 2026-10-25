@@ -5,6 +5,7 @@ The app that runs on the screen's controller box: plays ads, reads GPS, counts p
 Built in P2 (see `docs/BUILD_PLAN.md`). It is a Gradle project, not part of the pnpm workspace.
 
 - `core/`: plain Kotlin, the rules the box follows (screen id and QR, number plates, the enrolment request). Tested on any computer against the same shared cases as the cloud (`packages/domain/test-vectors/`).
-- The Android app (kiosk mode, playback) is added from P2.2.
+- `app/`: the Android app (P2.2 on: kiosk mode as device owner, watchdog). Built where the Android SDK is installed (`ANDROID_HOME` set): `./gradlew :app:assembleDebug`. CI also runs it on an Android 11 emulator (`ci/kiosk-check.sh`).
+- Setting up a box at the warehouse: `docs/RUNBOOKS/screen-setup.md`.
 
 Run the tests (Java 17 or newer): `./gradlew :core:test`
