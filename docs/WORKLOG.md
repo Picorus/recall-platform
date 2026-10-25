@@ -2,6 +2,27 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 25 Oct 2026 · P2.3.2 · Screen line: the broker and the gateway
+- P2.3.1 merged (PR #32), and the vendor questions for ready-made screens are saved in `docs/OPEN_QUESTIONS.md` (PR #33).
+- **Broker settings** (`infra/emqx/emqx.conf.template`, filled by `renderEmqxConfig`): screens connect only over TLS with a certificate from our screen authority (both sides checked, TLS 1.2/1.3). On that port the user name is the certificate's fingerprint, so a box cannot choose it. The gateway uses an internal port with a password. Every connection and every topic is decided by the gateway; anything not allowed is refused.
+- **Who may connect** (`packages/db/src/screen-line.ts`, `screenMayConnect`): the certificate must be one we issued to this very screen (its name and fingerprint), in date, not revoked (`revokeCertificate`, new), and the screen not reported lost or stolen. No TLS, no line.
+- **Which topics** (`services/gateway/src/hooks.ts`): a screen only its own topics (P2.3.1 rule); the gateway reads every screen's up topics and writes their down topics. The broker must show a secret token to ask; a wrong token, bad request or error is a refusal.
+- **What the gateway does** (`line.ts`, `gateway.ts`): a hello is answered with the cloud's time and kept as the last contact; an upload is stored with `storeUpload` (P1.2.5, unchanged) and answered with "stored up to N"; an upload refused whole is recorded and not answered (the box keeps it). Several gateways can share the work.
+- Migration 0021: certificate revocations, hellos, refused uploads (append-only).
+- **End to end on a real broker** (new CI step in the database job): EMQX 5.8 in Docker with these settings, the gateway, and enrolled boxes. Proven: a box gets the time, uploads, every report stored once even when sent twice; no line without a certificate, with a stranger's certificate, under another box's name, on the internal port with a copied fingerprint, or as the gateway with a guessed password; a box cannot listen to or send as another box (the broker drops its line); a revoked certificate is refused.
+- First trial found that EMQX does not escape line breaks when passing a whole certificate, so the fingerprint is used instead.
+- Second-agent security review: no way found to pass as a box without its key, or as the gateway without its password. Fixed from it:
+  - (high) a box revoked or reported lost while connected kept uploading. Now its certificate is checked again on every message and subscription; the broker drops its line at its next message;
+  - the broker's cluster ports now stay on the machine itself; secrets (hook token, node cookie, gateway password) must be at least 32 characters;
+  - limits per box (5 messages a second, 512 KB a second); the gateway handles 16 messages at once; a hello or refusal is recorded at most once a minute per box;
+  - screens may not leave retained messages on the broker;
+  - strong encryption only (forward secrecy, authenticated ciphers).
+- Found by CI: a broker still starting refuses the gateway's first login, and the MQTT library never tries again after a refusal. The gateway now tries again every 2 seconds (reproduced with a broker that refuses the first login, then fixed), and retries its first subscription too. The end-to-end test gives up on each setup step after a minute and prints the broker's and gateway's logs.
+- Found by CI next: on a slow machine the broker lost the hook's "allow" for the gateway's subscription, and the MQTT library silently skipped the retries. Reproduced here by giving the broker a third of a CPU. Now the gateway (password, internal port only) is the broker's superuser, so its topics never depend on the hook; retries really resend. All 6 end-to-end tests pass on the slowed broker too (boxes' checks included).
+- Tests: 3 database (who may connect, revoked and lost, hellos and refusals) + 4 gateway unit (topics, secrets, settings) + 6 gateway database (hello, upload once, refused upload, hooks over HTTP, recording limit, checked again on every message) + 6 end to end (incl. revoked while connected, retained messages, cluster ports).
+- Open: the laptop broker (docker compose) still runs without TLS for development; the production deployment uses this template (P6). When certificate renewal is built, the old certificate must be revoked. For P2.3.3: acks can arrive out of order (the box keeps the highest; the outbox already does), and the box must send unconfirmed uploads again on a timer, not only on reconnect.
+- Next: P2.3.3, the player's side (the line on the box with its key in the secure store, hello and time, uploads from the outbox, reconnects).
+
 ## 25 Oct 2026 · P2.3.1 · Screen line: messages, outbox, clock, reconnects
 - P2.2 merged (PR #31, all checks green, kiosk proven on the emulator).
 - P2.3 is split in three: **P2.3.1** the message format and the box's own logic (this entry), **P2.3.2** the cloud gateway (EMQX over TLS that lets in only certificates we issued; stores messages and acks them), **P2.3.3** the Android wiring (the line itself, GPS time).

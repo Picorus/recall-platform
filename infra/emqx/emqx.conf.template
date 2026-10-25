@@ -1,0 +1,76 @@
+# P2.3.2: the broker for the screen line (EMQX 5). Rendered by renderEmqxConfig() in
+# services/gateway/src/emqx-config.ts; the values in double braces come from the environment.
+#  - Screens connect only over TLS (port {{SSL_PORT}}) with a certificate from RECALL's screen
+#    certificate authority ({{CERT_DIR}}/screens-ca.pem); the broker passes the certificate's MD5
+#    fingerprint and name to the gateway, which checks it is one we issued and still valid.
+#  - The gateway connects on the internal port ({{TCP_BIND}}), never reachable from outside.
+#  - Every connection and every topic is decided by the gateway (HTTP hooks); no match = refused.
+node {
+  name = "emqx@127.0.0.1"
+  cookie = "{{NODE_COOKIE}}"
+  data_dir = "data"
+}
+cluster { name = recall, discovery_strategy = manual }
+dashboard { listeners.http { bind = 0 } }
+# One node: its cluster ports stay on the machine itself (the Erlang one too: run the container with
+# ERL_FLAGS="-kernel inet_dist_use_interface {127,0,0,1}", see brokerEnv()). Review, P2.3.2.
+rpc { listen_address = "127.0.0.1" }
+
+listeners.tcp.default { bind = "{{TCP_BIND}}" }
+listeners.ws.default { enable = false }
+listeners.wss.default { enable = false }
+listeners.ssl.default {
+  bind = "0.0.0.0:{{SSL_PORT}}"
+  zone = screens
+  ssl_options {
+    cacertfile = "{{CERT_DIR}}/screens-ca.pem"
+    certfile = "{{CERT_DIR}}/server.pem"
+    keyfile = "{{CERT_DIR}}/server.key"
+    verify = verify_peer
+    fail_if_no_peer_cert = true
+    versions = ["tlsv1.3", "tlsv1.2"]
+    # Forward secrecy and authenticated encryption only (our keys are ECDSA P-256).
+    ciphers = [
+      "TLS_AES_256_GCM_SHA384", "TLS_AES_128_GCM_SHA256", "TLS_CHACHA20_POLY1305_SHA256",
+      "ECDHE-ECDSA-AES256-GCM-SHA384", "ECDHE-ECDSA-AES128-GCM-SHA256",
+      "ECDHE-ECDSA-CHACHA20-POLY1305"
+    ]
+  }
+  # A box sends a hello and an upload every half minute or so: anything far above is cut back.
+  messages_rate = "5/s"
+  bytes_rate = "512KB/s"
+  max_conn_rate = "200/s"
+}
+# On the TLS port the user name is the certificate's fingerprint, so a screen cannot choose it.
+# No retained messages from screens: nothing of theirs is kept on the broker to replay later.
+zones.screens {
+  mqtt { peer_cert_as_username = md5, peer_cert_as_clientid = disabled, retain_available = false }
+}
+mqtt { max_packet_size = 300KB }
+
+authentication = [{
+  mechanism = password_based
+  backend = http
+  method = post
+  url = "{{HOOK_URL}}/emqx/authn"
+  headers { "content-type" = "application/json", "authorization" = "Bearer {{HOOK_TOKEN}}" }
+  body {
+    clientid = "${clientid}"
+    username = "${username}"
+    password = "${password}"
+    cert_common_name = "${cert_common_name}"
+  }
+}]
+
+authorization {
+  no_match = deny
+  deny_action = disconnect
+  cache { enable = false }
+  sources = [{
+    type = http
+    method = post
+    url = "{{HOOK_URL}}/emqx/authz"
+    headers { "content-type" = "application/json", "authorization" = "Bearer {{HOOK_TOKEN}}" }
+    body { clientid = "${clientid}", username = "${username}", topic = "${topic}", action = "${action}" }
+  }]
+}
