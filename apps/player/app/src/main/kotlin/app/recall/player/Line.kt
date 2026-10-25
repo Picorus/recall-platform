@@ -53,6 +53,8 @@ object Line {
             return
         }
         val (screenId, broker, cert, brokerCa) = need.map { it.readText().trim() }
+        // What to play where (P2.6): from storage at once, even before the line opens.
+        runCatching { Schedule.start(app, screenId) }.onFailure { CrashLog.record(app, "schedule not started: ${it.javaClass.simpleName}") }
         // The key must be the one enrolled, and the certificate must be for it: a box set up wrongly
         // says so here instead of failing every handshake quietly (review, P2.3.3).
         val vault = AndroidKeyVault()
@@ -79,7 +81,12 @@ object Line {
             mono = SystemClock::elapsedRealtime,
             random = { n -> (random.nextDouble() * n).toLong() },
             log = { android.util.Log.i("RecallLine", it) },
-            onMessage = { kind, payload -> if (kind == DownKind.FILES) Ads.onList(payload) },
+            onMessage = { kind, payload ->
+                when (kind) {
+                    DownKind.FILES -> Ads.onList(payload)
+                    else -> Schedule.onMessage(kind, payload)
+                }
+            },
         ).also { it.start() }
     }
 

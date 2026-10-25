@@ -11,7 +11,12 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.add
+import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.longOrNull
 
@@ -129,6 +134,39 @@ object PlanMessages {
         }
         return HourPlan(area, startsAt, lines, demands, recallAds, date, startHour.toInt(), revision)
     }
+
+    /** Plans back to the cloud's text (the screen keeps what it took on storage, read again with `plans`). */
+    fun plansText(plans: List<HourPlan>, made: Long): String = buildJsonObject {
+        put("v", 1)
+        put("made", made)
+        putJsonArray("plans") {
+            for (p in plans) addJsonObject {
+                put("areaId", p.areaId)
+                put("date", p.date)
+                put("startHour", p.startHour)
+                put("startsAt", p.startsAt)
+                put("revision", p.revision)
+                putJsonArray("lines") {
+                    for (l in p.lines) addJsonObject {
+                        put("lineId", l.lineId)
+                        put("kind", l.kind)
+                        putJsonArray("ads") { l.ads.forEach { add(it) } }
+                        put("plays", l.plays)
+                        put("bikes", l.bikes)
+                    }
+                }
+                putJsonArray("spotDemands") {
+                    for (d in p.spotDemands) addJsonObject {
+                        put("id", d.id)
+                        put("kind", d.kind)
+                        putJsonArray("ads") { d.ads.forEach { add(it) } }
+                        put("plays", d.plays)
+                    }
+                }
+                putJsonArray("recallAds") { p.recallAds.forEach { add(it) } }
+            }
+        }
+    }.toString()
 
     fun assign(text: String): Assignment = try {
         val (x, made) = head(text, setOf("v", "made", "areaId", "startsAt", "lineId", "spotId"), "not an assignment", "bad time")

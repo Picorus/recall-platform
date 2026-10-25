@@ -2,6 +2,17 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 25 Oct 2026 · P2.6.3 · Local scheduler: the box chooses what to play
+- **The local scheduler** (`LocalScheduler.kt` in `apps/player/core`): keeps what the cloud sends (P2.6.2) and answers playback's question for any moment (P2.5): which plan, and what this bike carries.
+  - The area is the one the tracker settled on (P2.6.1, with its 15-second hold): inside an area or in its edge zone. Outside every area: RECALL's own ads.
+  - In an area-hour with the cloud's assignment, the bike carries that (the newest for that area-hour; a bike coming back into an area carries the same again, as in the simulator). Without one, the box's own pick (P1.4.3).
+  - Plans: per area-hour the highest revision. Ended hours are dropped by the cloud's own message times, never the box's clock.
+  - Everything is kept on storage: a box that starts with no signal still knows its areas, plans and assignments. Refused messages are counted for the health report (P2.11).
+- **On the box** (`Schedule.kt`): starts with the line's setup (it needs the screen id), from storage at once; the line hands it the three messages; playback asks it what to play.
+- Tests: 5 new (`LocalSchedulerTest`): the box's own pick in an area with a plan, the edge zone, no plan; the cloud's assignment winning (newest only) and coming back with the bike; plan revisions; everything kept across a restart and ended hours dropped; refused messages counted. All 88 core tests pass.
+- Open: the GPS service that feeds the tracker every second is P2.8 (until then the box counts as outside every area and plays RECALL's own ads); the cloud sending areas, plans and assignments (on every change and every hello) comes with the scheduler service.
+- Next: P2.7, the signed play log.
+
 ## 25 Oct 2026 · P2.6.2 · Local scheduler: what the cloud tells the box, and the box's own pick
 - **Three new messages from the cloud** (`packages/domain/src/screen-plan.ts`, Kotlin `PlanMessages.kt`, shared cases `test-vectors/screen-plan.json`), each on the screen's own down topics:
   - `areas`: the city's area shapes in force now (corners, edge zone, on/off). The whole list with its time; the newest wins.
