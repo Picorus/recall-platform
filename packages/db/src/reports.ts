@@ -1,5 +1,6 @@
-// P1.9.1: building each booking's final report once its last make-up has had time to play, and
-// keeping it exactly as built. Read-only on money: refunds are shown as they stand, never decided.
+// P1.9.1: building each booking's final report once every line has had its last check (make-ups
+// played, late uploads in, refund proposed or not), and keeping it exactly as built. Read-only on
+// money: refunds are shown as they stand, never decided here.
 import type { MapsAdapter } from '@recall/adapters';
 import {
   campaignReport,
@@ -8,7 +9,6 @@ import {
   heatMap,
   lineIdOf,
   makeUpWindows,
-  refundPaise,
   type CampaignReport,
   type LineForReport,
   type PriceBook,
@@ -16,14 +16,16 @@ import {
 } from '@recall/domain';
 import type { Pool } from 'pg';
 import { moveBooking, priceBooks } from './bookings.js';
-import { inTransaction, paidForLine, type OpenLine } from './makeups.js';
+import { inTransaction } from './makeups.js';
 import { bookingPeople } from './people.js';
 import { countedPlaysFor } from './plays.js';
 
 /** Bookings whose report may be built: they ran (or were set to run) and are not cancelled. */
 const REPORTABLE = ['ads-approved', 'running', 'done'];
 
-interface Candidate extends Omit<OpenLine, 'area_id' | 'day' | 'start_hour' | 'plays' | 'paise'> {
+interface Candidate {
+  readonly booking_id: string;
+  readonly price_book_version: number;
   readonly brand_id: string;
   readonly state: string;
   readonly first: string;
@@ -32,7 +34,9 @@ interface Candidate extends Omit<OpenLine, 'area_id' | 'day' | 'start_hour' | 'p
 
 /**
  * When a booking's report is due: `afterHours` after its last hour, and never before every line's
- * last make-up window (the same hour the next day) has ended and its late uploads have come in.
+ * last check, when the day of its last make-up closes (the same hour the next day, plus a day for
+ * late uploads). That is when the refund for missing plays is proposed, so the report shows it as
+ * it really is. In practice: about 48 hours after the last hour.
  */
 export function reportDueAt(
   lines: readonly { readonly areaId: string; readonly date: string; readonly startHour: number }[],
@@ -44,7 +48,7 @@ export function reportDueAt(
   let due = lastHourEndsAt + after;
   for (const l of lines) {
     const w = makeUpWindows({ lineId: '', ...l }, rules);
-    due = Math.max(due, w.second.until + rules.closeAfterSeconds);
+    due = Math.max(due, w.second.until + rules.dayCloseSeconds);
   }
   return due;
 }
@@ -59,9 +63,15 @@ async function build(
 ): Promise<CampaignReport> {
   const book = books.find((x) => x.version === b.price_book_version);
   const rules = book?.report ?? DEFAULT_REPORT_RULES;
-  const lines = await pool.query<OpenLine & { bikes: number; name: string }>(
-    `SELECT bl.booking_id, bl.area_id, bl.day::text AS day, bl.start_hour, bl.plays, bl.paise,
-            bl.bikes, a.name
+  const lines = await pool.query<{
+    area_id: string;
+    day: string;
+    start_hour: number;
+    plays: number;
+    bikes: number;
+    name: string;
+  }>(
+    `SELECT bl.area_id, bl.day::text AS day, bl.start_hour, bl.plays, bl.bikes, a.name
        FROM booking_lines bl
        JOIN area_versions a ON a.area_id = bl.area_id AND a.version = bl.area_version
       WHERE bl.booking_id = $1 ORDER BY bl.day, bl.start_hour, bl.area_id`,
@@ -76,59 +86,41 @@ async function build(
     base_paise: string;
     decision: string | null;
   }>(
-    `SELECT r.line_id, r.base_paise, d.decision FROM refunds r
-       LEFT JOIN refund_decisions d USING (refund_id) WHERE r.booking_id = $1`,
+    `SELECT r.line_id, r.base_paise + coalesce(t.base_paise, 0) AS base_paise, d.decision
+       FROM refunds r
+       LEFT JOIN refund_decisions d USING (refund_id)
+       LEFT JOIN refund_topups t USING (refund_id)
+      WHERE r.booking_id = $1`,
     [b.booking_id],
   );
-  const c = await pool.connect();
   const out: LineForReport[] = [];
-  let estimated = 0;
-  try {
-    for (const l of lines.rows) {
-      const lineId = lineIdOf(b.booking_id, l.area_id, l.day, l.start_hour);
-      const hourPlays = await countedPlaysFor(pool, lineId, books);
-      const makeUpPlays = (
-        await Promise.all(
-          makeUps.rows
-            .filter((m) => m.line_id === lineId)
-            .map((m) => countedPlaysFor(pool, m.make_up_id, books)),
-        )
-      ).flat();
-      const missing = Math.max(0, l.plays - hourPlays.length - makeUpPlays.length);
-      const r = refunds.rows.find((x) => x.line_id === lineId);
-      let refund: { paise: number; status: RefundStatus } | undefined;
-      if (r) {
-        refund = {
-          paise: Number(r.base_paise),
-          status:
-            r.decision === 'approved' || r.decision === 'rejected' ? r.decision : 'under review',
-        };
-      } else if (missing > 0 && book && !b.trial) {
-        // Not proposed yet (that happens when the day closes): the same sum the proposal will use,
-        // never more than the bill.
-        const paid = await paidForLine(c, { ...b, ...l }, book);
-        const paise = Math.min(
-          refundPaise(missing, l.plays, paid),
-          Number(b.subtotal_paise) - estimated,
-        );
-        estimated += paise;
-        if (paise > 0) refund = { paise, status: 'under review' };
-      }
-      out.push({
-        lineId,
-        areaId: l.area_id,
-        areaName: l.name,
-        date: l.day,
-        startHour: l.start_hour,
-        bikes: l.bikes,
-        promised: l.plays,
-        hourPlays,
-        makeUpPlays,
-        ...(refund ? { refund } : {}),
-      });
-    }
-  } finally {
-    c.release();
+  for (const l of lines.rows) {
+    const lineId = lineIdOf(b.booking_id, l.area_id, l.day, l.start_hour);
+    const hourPlays = await countedPlaysFor(pool, lineId, books);
+    const makeUpPlays = (
+      await Promise.all(
+        makeUps.rows
+          .filter((m) => m.line_id === lineId)
+          .map((m) => countedPlaysFor(pool, m.make_up_id, books)),
+      )
+    ).flat();
+    const r = refunds.rows.find((x) => x.line_id === lineId);
+    const refund: { paise: number; status: RefundStatus } | undefined = r && {
+      paise: Number(r.base_paise),
+      status: r.decision === 'approved' || r.decision === 'rejected' ? r.decision : 'under review',
+    };
+    out.push({
+      lineId,
+      areaId: l.area_id,
+      areaName: l.name,
+      date: l.day,
+      startHour: l.start_hour,
+      bikes: l.bikes,
+      promised: l.plays,
+      hourPlays,
+      makeUpPlays,
+      ...(refund ? { refund } : {}),
+    });
   }
   // Street names for the busiest hexagons only (each is a maps call).
   const cells = heatMap(
@@ -136,9 +128,14 @@ async function build(
     rules.h3Resolution,
   ).slice(0, rules.streetCells);
   const streetOf = new Map<string, string>();
-  for (const cell of cells) {
-    const name = await maps.streetAt(cell.lat, cell.lng);
-    if (name !== undefined) streetOf.set(cell.cell, name);
+  try {
+    for (const cell of cells) {
+      const name = await maps.streetAt(cell.lat, cell.lng);
+      if (name !== undefined) streetOf.set(cell.cell, name);
+    }
+  } catch {
+    // Street names are a nice-to-have: with maps down, the report goes out without them.
+    streetOf.clear();
   }
   const people = await bookingPeople(pool, b.booking_id);
   if (!people) throw new Error(`No booking ${b.booking_id}`);
@@ -174,8 +171,7 @@ export async function buildDueReports(
 ): Promise<ReportsBuilt> {
   const books = await priceBooks(pool);
   const due = await pool.query<Candidate>(
-    `SELECT b.booking_id, b.brand_id, b.trial, b.discount_paise, b.subtotal_paise, b.gst_paise,
-            b.price_book_version, s.state,
+    `SELECT b.booking_id, b.brand_id, b.price_book_version, s.state,
             extract(epoch FROM b.first_hour_at)::bigint AS first,
             extract(epoch FROM b.last_hour_ends_at)::bigint AS last
        FROM bookings b
@@ -200,6 +196,13 @@ export async function buildDueReports(
         books.find((x) => x.version === b.price_book_version),
       );
       if (now < dueAt) continue;
+      // Every line must have had its last check (the make-up job may run late).
+      const checked = await pool.query<{ n: string }>(
+        `SELECT count(*) AS n FROM line_settlements
+          WHERE step = 'refund' AND line_id = ANY($1)`,
+        [lines.rows.map((l) => lineIdOf(b.booking_id, l.area_id, l.day, l.start_hour))],
+      );
+      if (Number(checked.rows[0]?.n ?? 0) < lines.rows.length) continue;
       const who = { by: 'system', actor: 'system' } as const;
       if (b.state === 'ads-approved') await moveBooking(pool, b.booking_id, 'running', who, now);
       if (b.state !== 'done') await moveBooking(pool, b.booking_id, 'done', who, now);

@@ -15,6 +15,7 @@ import type pg from 'pg';
 import { saveAreaVersion } from '../../src/areas.js';
 import { createBooking, moveBooking, savePriceBook } from '../../src/bookings.js';
 import { addScreenKey } from '../../src/plays.js';
+import { settleDue } from '../../src/makeups.js';
 import { sendDueReports, setBrandContact } from '../../src/report-sends.js';
 import { buildDueReports, campaignReportFor, reportDueAt } from '../../src/reports.js';
 import { storeUpload } from '../../src/screen-reports.js';
@@ -113,15 +114,9 @@ describe('the final report (P1.9.1)', () => {
     const t10 = lineStartsAt({ date: DAY, startHour: 10 });
     const t11 = t10 + 3600;
     const t11next = lineStartsAt({ date: '2027-10-01', startHour: 11 });
-    await pool.query(
-      `INSERT INTO make_ups (make_up_id, line_id, booking_id, area_id, stage, day, hours,
-        window_from, window_until, plays) VALUES ($1,$2,'BK-R','hyd-madhapur',2,'2027-10-01','{11}',
-        to_timestamp($3), to_timestamp($3 + 3600), 400)`,
-      [`${L11}#2`, L11, t11next],
-    );
-    for (const [i, s] of SCREENS.entries()) {
+    for (const s of SCREENS) {
       await screenKey(s);
-      // 10:00 in full (5 × 200); 11:00 short (5 × 120 = 600); the make-up brings 100 (5 × 20).
+      // 10:00 in full (5 × 200); 11:00 short (5 × 120 = 600).
       await storeUpload(
         pool,
         s,
@@ -136,6 +131,12 @@ describe('the final report (P1.9.1)', () => {
         201,
         t11 + 3500,
       );
+    }
+    // The make-up job: 11:00 owes 400; nothing comes in the next two hours; then the same hour
+    // next day, where the make-up brings 100 (5 × 20).
+    await settleDue(pool, t11 + 3600 + 600);
+    await settleDue(pool, t11 + 3 * 3600 + 600);
+    for (const [i, s] of SCREENS.entries())
       await storeUpload(
         pool,
         s,
@@ -143,9 +144,9 @@ describe('the final report (P1.9.1)', () => {
         321,
         t11next + 3500,
       );
-    }
 
-    // Due when the next-day make-up of 11:00 has ended and late uploads came in: 24 h 10 min.
+    // Due when the day of the next-day make-up of 11:00 has closed (found in review: the refund is
+    // proposed then, and late uploads still count until then): 48 hours.
     const due = reportDueAt(
       [
         { areaId: 'hyd-madhapur', date: DAY, startHour: 10 },
@@ -154,9 +155,14 @@ describe('the final report (P1.9.1)', () => {
       lastEnds,
       PRICE_BOOK_V1,
     );
-    expect(due).toBe(lastEnds + 24 * 3600 + 600);
+    expect(due).toBe(lastEnds + 48 * 3600);
     expect((await buildDueReports(pool, maps, due - 1)).built).toEqual([]);
-    expect(await buildDueReports(pool, maps, due)).toEqual({ built: ['BK-R'], failed: [] });
+    // Not before every line has had its last check (the make-up job may run late).
+    expect((await buildDueReports(pool, maps, due)).built).toEqual([]);
+    expect((await settleDue(pool, due)).failed).toEqual([]);
+    // A maps outage: the report still goes out, without street names.
+    const down = { streetAt: () => Promise.reject(new Error('maps down')) };
+    expect(await buildDueReports(pool, down, due)).toEqual({ built: ['BK-R'], failed: [] });
     expect((await buildDueReports(pool, maps, due + 3600)).built).toEqual([]); // once
 
     const r = await campaignReportFor(pool, 'BK-R');
@@ -167,15 +173,14 @@ describe('the final report (P1.9.1)', () => {
       missing: 300,
       deliveredBp: 8_500,
       bikes: 5,
-      makeUps: { opened: 1, plays: 100 },
+      makeUps: { opened: 2, plays: 100 },
       // 300 missing of 1,000 × ₹1,250 paid for 11:00 (5 bikes × ₹250, Normal band): ₹375, being reviewed
       refund: { paise: refundPaise(300, 1_000, 125_000), status: 'under review' },
-      streets: [{ name: 'Madhapur Main Road', plays: 1_700 }],
+      streets: [],
     });
     expect(r?.refund?.paise).toBe(37_500);
     expect(r?.people.text).toBe('14,000–20,000 people (approximate)'); // 17,000 counted
     expect(r?.heatMap.reduce((n, c) => n + c.plays, 0)).toBe(1_700);
-    expect(maps.calls()).toBeLessThanOrEqual(PRICE_BOOK_V1.report.streetCells);
 
     // The clock moved the booking on to done.
     const s = await pool.query<{ state: string }>(
@@ -188,7 +193,7 @@ describe('the final report (P1.9.1)', () => {
   });
 
   it('is sent once on WhatsApp and email; a passing failure is tried again; then the booking is report-sent', async () => {
-    const now = lastEnds + 26 * 3600;
+    const now = lastEnds + 50 * 3600;
     const failFor = new Map([
       ['brand@example.in', { reason: 'mail server down', retryable: true }],
     ]);
@@ -215,8 +220,10 @@ describe('the final report (P1.9.1)', () => {
     // WhatsApp goes; email fails for now: the booking waits.
     expect((await sendDueReports(pool, messages, render, now + 60)).sent).toEqual([]);
     failFor.clear();
-    expect((await sendDueReports(pool, messages, render, now + 120)).sent).toEqual(['BK-R']);
-    expect((await sendDueReports(pool, messages, render, now + 180)).sent).toEqual([]);
+    // Found in review: not tried again at once, so a short outage does not use up the tries.
+    expect((await sendDueReports(pool, messages, render, now + 120)).sent).toEqual([]);
+    expect((await sendDueReports(pool, messages, render, now + 60 + 1800)).sent).toEqual(['BK-R']);
+    expect((await sendDueReports(pool, messages, render, now + 4000)).sent).toEqual([]);
     expect(messages.sent.map((m) => m.channel)).toEqual(['whatsapp', 'email']); // each once
     const [wa, mail] = messages.sent;
     expect(wa?.channel === 'whatsapp' && wa.params).toEqual([
@@ -238,5 +245,53 @@ describe('the final report (P1.9.1)', () => {
       `SELECT state FROM booking_events WHERE booking_id = 'BK-R' ORDER BY seq DESC LIMIT 1`,
     );
     expect(s.rows[0]?.state).toBe('report-sent');
+  });
+
+  it('found in review: a wrong address is given up, and a new address set by staff is tried afresh', async () => {
+    const day = '2027-10-20';
+    await createBooking(
+      pool,
+      {
+        bookingId: 'BK-T',
+        brandId: 'b-t',
+        request: {
+          lines: [{ areaId: 'hyd-madhapur', date: day, startHour: 10, bikes: 5 }],
+          repeatMonths: 1,
+          channel: 'admin',
+        },
+        by: 'priya',
+      },
+      BOOKED,
+    );
+    const ends = lineStartsAt({ date: day, startHour: 10 }) + 3600;
+    const who = { by: 'priya', actor: 'admin' } as const;
+    await moveBooking(pool, 'BK-T', 'awaiting-payment', who, BOOKED);
+    await moveBooking(pool, 'BK-T', 'paid', { by: 'gateway', actor: 'system' }, BOOKED + 60);
+    await moveBooking(pool, 'BK-T', 'ads-approved', who, BOOKED + 120);
+    await moveBooking(pool, 'BK-T', 'running', { by: 'system', actor: 'system' }, ends - 3600);
+    await moveBooking(pool, 'BK-T', 'done', { by: 'system', actor: 'system' }, ends);
+    const r = await campaignReportFor(pool, 'BK-R');
+    await pool.query(
+      `INSERT INTO campaign_reports (booking_id, built_at, report) VALUES ('BK-T', to_timestamp($1), $2)`,
+      [ends + 48 * 3600, JSON.stringify({ ...r, bookingId: 'BK-T', brandId: 'b-t' })],
+    );
+    await setBrandContact(pool, 'b-t', { email: 'wrong@example.in' }, 'priya');
+    const messages = fakeMessages({
+      failFor: new Map([['wrong@example.in', { reason: 'no such mailbox', retryable: false }]]),
+    });
+    const render = {
+      link: (id: string) => `https://brand.recall.example/campaigns/${id}/report`,
+      html: () => '<p>report</p>',
+      pdf: () => Promise.resolve(new Uint8Array([37, 80, 68, 70])),
+    };
+    const t = ends + 49 * 3600;
+    expect((await sendDueReports(pool, messages, render, t)).undelivered).toEqual(['BK-T']);
+    expect((await sendDueReports(pool, messages, render, t + 7200)).undelivered).toEqual(['BK-T']);
+    expect(messages.sent).toEqual([]);
+    await setBrandContact(pool, 'b-t', { email: 'right@example.in' }, 'priya');
+    expect((await sendDueReports(pool, messages, render, t + 7300)).sent).toEqual(['BK-T']);
+    expect(messages.sent.map((m) => [m.to, m.key])).toEqual([
+      ['right@example.in', 'report:BK-T:email:right@example.in'],
+    ]);
   });
 });

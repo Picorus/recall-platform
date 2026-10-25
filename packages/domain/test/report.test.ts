@@ -7,6 +7,7 @@ import {
   checkReportRules,
   DEFAULT_REPORT_RULES as RULES,
   heatMap,
+  reportSummary,
   type LineForReport,
   type PlacedPlay,
 } from '../src/report.js';
@@ -87,6 +88,9 @@ describe('final report (P1.9.1)', () => {
       makeUps: { opened: 1, plays: 100 },
       refund: { paise: 45_000, status: 'under review' },
     });
+    // Found in review: the headline counts what made the promise, not extras from another hour.
+    expect(reportSummary(r)[0]).toBe('1,700 of 2,000 plays delivered (85%) on 2 different bikes.');
+    expect(reportSummary(r)[1]).toBe('Plus 50 extra plays, free.');
     expect(r.lines.map((l) => [l.delivered, l.madeUp, l.missing])).toEqual([
       [1_050, 0, 0],
       [600, 100, 300],

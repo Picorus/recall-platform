@@ -228,9 +228,10 @@ export const deliveredText = (bp: number) => `${Math.floor(bp / 10) / 10}%`;
 export function reportSummary(r: CampaignReport): string[] {
   const n = indianNumber;
   const out = [
-    `${n(Math.min(r.delivered, r.promised))} of ${n(r.promised)} plays delivered (${deliveredText(r.deliveredBp)}) on ${n(r.bikes)} different bikes.`,
+    `${n(r.promised - r.missing)} of ${n(r.promised)} plays delivered (${deliveredText(r.deliveredBp)}) on ${n(r.bikes)} different bikes.`,
   ];
-  if (r.delivered > r.promised) out.push(`Plus ${n(r.delivered - r.promised)} extra plays, free.`);
+  const extra = r.delivered - (r.promised - r.missing);
+  if (extra > 0) out.push(`Plus ${n(extra)} extra plays, free.`);
   if (r.makeUps.plays > 0) out.push(`${n(r.makeUps.plays)} plays were made up in extra hours.`);
   if (r.refund && r.refund.status !== 'rejected') {
     const rupees = formatRupees(paise(r.refund.paise));

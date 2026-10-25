@@ -81,7 +81,7 @@ export async function renderReportPdf(r: CampaignReport): Promise<Uint8Array> {
   const tiles: [string, string, string][] = [
     [
       'Plays delivered',
-      `${indianNumber(Math.min(r.delivered, r.promised))} / ${indianNumber(r.promised)}`,
+      `${indianNumber(r.promised - r.missing)} / ${indianNumber(r.promised)}`,
       deliveredText(r.deliveredBp),
     ],
     ['Different bikes', indianNumber(r.bikes), ''],

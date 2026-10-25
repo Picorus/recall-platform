@@ -1,7 +1,8 @@
 // P1.9.2: sending each final report to the brand on WhatsApp (a link) and email (the page and the
-// PDF), once. Each channel is sent with the same key every try, so it never arrives twice; a passing
-// failure is tried again, up to 3 tries; a wrong address is not. Once every channel the brand has has
-// been sent, or given up with at least one sent, the booking moves to report-sent.
+// PDF), once. Each channel and address is sent with the same key every try, so it never arrives
+// twice; a passing failure is tried again 30 minutes later, up to 3 tries; a wrong address is not,
+// until staff set a new one (which gets its own tries). Once every channel has been sent, or given
+// up with at least one sent, the booking moves to report-sent.
 import type { MessagesAdapter } from '@recall/adapters';
 import { reportPeriod, reportSummary, type CampaignReport } from '@recall/domain';
 import type { Pool } from 'pg';
@@ -9,6 +10,8 @@ import { moveBooking } from './bookings.js';
 import { inTransaction } from './makeups.js';
 
 export const MAX_REPORT_TRIES = 3;
+/** A passing failure is tried again after this long, so a short outage does not use up the tries. */
+export const REPORT_RETRY_SECONDS = 30 * 60;
 const PHONE = /^\+91[6-9]\d{9}$/;
 const EMAIL = /^[^@\s]{1,64}@[^@\s]{1,190}\.[A-Za-z]{2,24}$/;
 
@@ -96,18 +99,30 @@ export async function sendDueReports(
         email: 'given up',
       };
       for (const ch of channels) {
-        const tries = await pool.query<{ try: number; status: string; retryable: boolean }>(
-          `SELECT try, status, retryable FROM report_sends
-            WHERE booking_id = $1 AND channel = $2 ORDER BY try`,
+        const address = to[ch] ?? '';
+        const tries = await pool.query<{
+          try: number;
+          status: string;
+          retryable: boolean;
+          sent_to: string;
+          at: string;
+        }>(
+          `SELECT try, status, retryable, sent_to, extract(epoch FROM at)::bigint AS at
+             FROM report_sends WHERE booking_id = $1 AND channel = $2 ORDER BY try`,
           [d.booking_id, ch],
         );
-        const last = tries.rows[tries.rows.length - 1];
         if (tries.rows.some((t) => t.status === 'sent')) {
           state[ch] = 'sent';
           continue;
         }
-        if (last && (!last.retryable || tries.rows.length >= MAX_REPORT_TRIES)) continue;
-        const address = to[ch] ?? '';
+        // Tries count per address: a new address set by staff starts again.
+        const mine = tries.rows.filter((t) => t.sent_to === address);
+        const last = mine[mine.length - 1];
+        if (last && (!last.retryable || mine.length >= MAX_REPORT_TRIES)) continue;
+        if (last && now < Number(last.at) + REPORT_RETRY_SECONDS) {
+          state[ch] = 'open';
+          continue;
+        }
         const result = await send(messages, ch, address, d.report, render).catch(
           (e: unknown) =>
             ({
@@ -135,7 +150,7 @@ export async function sendDueReports(
         state[ch] =
           result.status === 'sent'
             ? 'sent'
-            : result.retryable && tries.rows.length + 1 < MAX_REPORT_TRIES
+            : result.retryable && mine.length + 1 < MAX_REPORT_TRIES
               ? 'open'
               : 'given up';
       }
@@ -166,7 +181,8 @@ async function send(
   r: CampaignReport,
   render: ReportRender,
 ) {
-  const key = `report:${r.bookingId}:${channel}`;
+  // The address is part of the key: a new address is a new message, never the old one replayed.
+  const key = `report:${r.bookingId}:${channel}:${to}`;
   const link = render.link(r.bookingId);
   const summary = reportSummary(r);
   if (channel === 'whatsapp')

@@ -92,7 +92,7 @@ export function renderReportHtml(r: CampaignReport): string {
   <div class="muted">${e(r.bookingId)} · ${e(reportPeriod(r))}</div>
   <p>${reportSummary(r).map(e).join('<br>')}</p>
   <div class="tiles">
-    ${tile('Plays delivered', `${indianNumber(Math.min(r.delivered, r.promised))} / ${indianNumber(r.promised)}`, deliveredText(r.deliveredBp))}
+    ${tile('Plays delivered', `${indianNumber(r.promised - r.missing)} / ${indianNumber(r.promised)}`, deliveredText(r.deliveredBp))}
     ${tile('Different bikes', indianNumber(r.bikes))}
     ${tile('Made-up plays', indianNumber(r.makeUps.plays))}
     ${tile('People (approximate)', `${indianNumber(r.people.low)}–${indianNumber(r.people.high)}`, 'estimate, never billed')}
