@@ -13,6 +13,18 @@ Answer whenever you like; each answer moves to `docs/DECISIONS.md` and the row i
 | 7 | Charging steps for the screen, once the equipment is final (from the screen maker) | Rider Your screen | P4.8 |
 | 10b | TDS rate on rider pay and any gig-worker levy (ask your CA) | Admin Payouts; rider Payouts | P1.7.7 |
 
+## To ask screen vendors before buying a sample (added 25 Oct 2026)
+For a ready-made screen with its own Android box and receiving card. If all five answers are yes, our player app runs on it as it is (only the brightness link to the vendor's toolkit is extra work, about a week). If the box is locked to the vendor's own app or cloud, it can still play our ads and we read its play log, but we lose plays signed inside the box (our protection against fake counts) and people counting needs a separate small AI camera (about ₹2,500); about 2–3 weeks of work.
+
+| # | Question for the vendor | Why it matters |
+|---|---|---|
+| V1 | Can we install our own Android app and make it the only app on the box (kiosk / "device owner")? Will you give ADB access, or a factory reset that allows it? | Our app must be the only app, start on power-up and never be closed (P2.2) |
+| V2 | Which Android version does the box run? | Android 11 or newer is easiest; 8–10 works after a few days of changes |
+| V3 | Does it have secure key storage (Android hardware keystore)? | Each play is signed inside the box with a key that cannot be copied (P2.1, P2.7) |
+| V4 | Can our app read the GPS and use the 4G connection? | Area decisions, proof of where ads played, and the line to our cloud (P2.3, P2.8) |
+| V5 | Can our app set the LED brightness, through your toolkit (SDK)? | Night dimming, never blinding riders behind (P2.10) |
+| V6 | Can your own cloud be switched off, so the box takes orders only from RECALL? | No one else can change what plays |
+
 ## Answered 24 Oct 2026 (now in DECISIONS)
 | # | Answer |
 |---|---|
