@@ -2,6 +2,16 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 25 Oct 2026 · P1.9 · Final campaign report
+- P1.8 merged (PR #27).
+- **P1.9.1 Built once, kept as built.** `buildDueReports`: a booking's report is built 24 hours after its last hour (a setting), never before the last make-up (same hour next day) has ended and late uploads have come in, so in practice 24 h 10 min. The clock moves the booking to *done* first. Migration 0019 `campaign_reports` (one per booking, never changed).
+  - Contents: plays delivered vs promised (extras shown as a free bonus, never making up another hour), different bikes, heat map (H3 hexagons, about 0.1 km² each), busiest streets (street names for the busiest 40 hexagons through the new `maps` adapter; fake knows 16 main Hyderabad roads), make-ups, refund, people (approximate range).
+  - Refund: as proposed and decided by the super admin when there is one; before the day-close check, the same sum the proposal will use, marked "being processed".
+- **P1.9.2 Shown and sent.** `services/workers`: the web page (Night Signal, works at phone width, all outside text escaped) and an A4 PDF (pdf-lib; the same file every time; "Rs." in the PDF because its font has no ₹). `sendDueReports`: WhatsApp (template with a link to the portal) and email (page + PDF), each channel once with a fixed key; passing failures tried again up to 3 times; wrong address given up; booking moves to *report-sent* once the report reached the brand. Brands with no contact and reports that reached no one are listed for staff. New `messages` adapter with a fake; brand contacts (`setBrandContact`, phone +91 or email, latest wins).
+- Tests: 6 domain, 2 database (full campaign end to end: due time, built once, refund, streets, people, done; sending with a failed email tried again, each channel once, report-sent), 4 workers (page, PDF, unprintable text, heat map), guard test still holds.
+- Open: the report page inside the brand portal comes with P5 (the link points there); real WhatsApp and email providers need accounts (WhatsApp also needs the template approved); the PDF uses a plain font until the brand fonts are added (P5).
+- **Next:** P1.10 version 2 (real OpenStreetMap roads instead of the street grid), the last open part of P1; then P2.1 player on the emulator.
+
 ## 25 Oct 2026 · P1.8 · People counts
 - P1.7.9 merged (PR #26); P1.7 marked Done in the plan.
 - Already in place since P1.5: every play carries the number of people its screen faced while it ran, signed on the screen with the play, so it cannot be changed on the way.
