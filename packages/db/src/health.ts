@@ -57,8 +57,8 @@ export async function storeHealth(
   await c.query(
     `INSERT INTO screen_health (screen_id, t, seq, app, up_s, battery_pct, charging, battery_c, box_c,
        free_mb, signal_dbm, led_fault, tamper, clock_disagree, spots_not_counted, plays_not_stored,
-       messages_refused, gps_missed_seconds, ads_missing)
-     VALUES ($1, to_timestamp($2), $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
+       messages_refused, gps_missed_seconds, ads_missing, app_code, crashes)
+     VALUES ($1, to_timestamp($2), $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)`,
     [
       screenId,
       h.t,
@@ -79,6 +79,8 @@ export async function storeHealth(
       h.messagesRefused,
       h.gpsMissedSeconds,
       h.adsMissing,
+      h.appCode,
+      h.crashes,
     ],
   );
   if (latestT !== null && latestT !== undefined && h.t < Number(latestT)) return;

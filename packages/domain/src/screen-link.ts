@@ -14,9 +14,19 @@ export const UP_KINDS = ['hello', 'upload'] as const;
 export type UpKind = (typeof UP_KINDS)[number];
 /**
  * What the cloud sends to a screen: `files` the ad files to keep (P2.4, ad-files.ts); `areas`, `plan`
- * and `assign` what to play where (P2.6, screen-plan.ts).
+ * and `assign` what to play where (P2.6, screen-plan.ts); `command` remote commands (P2.12); `update`
+ * a new player version to install (P2.13).
  */
-export const DOWN_KINDS = ['ack', 'time', 'files', 'areas', 'plan', 'assign', 'command'] as const;
+export const DOWN_KINDS = [
+  'ack',
+  'time',
+  'files',
+  'areas',
+  'plan',
+  'assign',
+  'command',
+  'update',
+] as const;
 export type DownKind = (typeof DOWN_KINDS)[number];
 
 export const upTopic = (screenId: string, kind: UpKind) => `${TOPIC_ROOT}/${screenId}/up/${kind}`;

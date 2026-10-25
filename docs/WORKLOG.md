@@ -2,6 +2,15 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 25 Oct 2026 · P2.13.2–P2.13.3 · Player updates: releases, rollout, installing on the box
+- **Releases and rollout in the database** (migration 0025, `packages/db/src/updates.ts`): each release is the new build and its rollback build; the rollout's life is its events (started, advanced, finished, rolled back, replaced), append-only. `updateFor` decides what a screen is offered when its line opens: the new build if it is in the current stage and older, the rollback build if it runs a release that was rolled back, else nothing. `driveRollout` (a worker every few minutes) moves the stage on or rolls back by the rules (P2.13.1), judging crashes and screen-hours per version from the health reports.
+- **Health reports now carry** the player's version code and the box's crash count since it was set up (kept across restarts): that is how a rollout is judged.
+- **Sent by the gateway** with the hello reply (`down/update`), like commands.
+- **On the box** (`Updates.kt` core and app): takes only a version above its own; downloads over HTTPS on its own thread, carrying on after a cut; checks size and SHA-256; installs through Android's package installer as device owner (nobody taps anything); Android restarts the player. A version that keeps failing is given up after 3 tries until a newer one comes. Leftover files of older versions are removed. App 0.11.0.
+- Tests: TypeScript shared update cases (`test-vectors/updates.json`); database 3 (first stage only, never to a screen on it or newer; holds then advances; rolls back on rising crashes and offers the rollback build); Kotlin 5 (`UpdatesTest`: the cloud's cases, newer only, resumed downloads, wrong files thrown away and given up after 3 tries, oversized files refused). Kotlin core 136.
+- Open: the release pipeline in CI that builds each release and its rollback build and publishes both to storage (P7); a worker running `driveRollout` and admin screens to start a rollout (P3); trying an install on the real box hardware.
+- Next: P2.14, the fitting check.
+
 ## 25 Oct 2026 · P2.12 · Remote commands
 - **What a command is** (`packages/domain/src/screen-commands.ts`, shared cases `test-vectors/screen-commands.json`): reboot, blank, unblank, test pattern (5–600 seconds), brightness (1–100, or automatic), send logs, clear cache. Each has its own id and may be carried out for at most an hour. The box's answer (done, refused, failed, with a note; for send-logs the end of its log) is a new report kind through the outbox.
 - **Logged in the database** (migration 0024, `packages/db/src/commands.ts`): `issueCommand` logs who sent it and why before it goes; `pendingCommands` (not answered, not expired); answers stored from uploads; `commandLog` gives admin the list with how each ended (done, refused, failed, waiting, expired).

@@ -20,7 +20,9 @@
         "playsNotStored": 0,
         "messagesRefused": 1,
         "gpsMissedSeconds": 12,
-        "adsMissing": 2
+        "adsMissing": 2,
+        "appCode": 10,
+        "crashes": 1
       }
     },
     {
@@ -43,7 +45,9 @@
         "playsNotStored": 0,
         "messagesRefused": 1,
         "gpsMissedSeconds": 12,
-        "adsMissing": 2
+        "adsMissing": 2,
+        "appCode": 10,
+        "crashes": 1
       }
     },
     {
@@ -66,7 +70,9 @@
         "playsNotStored": 0,
         "messagesRefused": 1,
         "gpsMissedSeconds": 12,
-        "adsMissing": 2
+        "adsMissing": 2,
+        "appCode": 10,
+        "crashes": 1
       }
     }
   ]

@@ -4,7 +4,14 @@
 // answered with "stored up to N", so the box can forget those. A message refused whole is recorded
 // and not answered: nothing is lost, the box keeps it and sends it again. Commands not yet answered
 // (P2.12) go again with every hello (the box says hello when its line opens and every 15 minutes).
-import { pendingCommands, recordHello, recordRefusal, storeUpload } from '@recall/db';
+import {
+  lastAppCode,
+  pendingCommands,
+  recordHello,
+  recordRefusal,
+  storeUpload,
+  updateFor,
+} from '@recall/db';
 import {
   ackText,
   downTopic,
@@ -61,9 +68,14 @@ export async function handleUp(
     // P2.12: commands not yet answered go again each time the line opens (the box does each once).
     // The time reply never waits on them: a failure here only delays commands to the next hello.
     const commands = await pendingCommands(pool, screenId, nowMs).catch(() => [] as string[]);
+    // P2.13: a new player version, when this screen is in the rollout's stage (or a rollback).
+    const update = await lastAppCode(pool, screenId)
+      .then((code) => updateFor(pool, screenId, code, nowMs))
+      .catch(() => undefined);
     return [
       { topic: downTopic(screenId, 'time'), payload: timeText(nowMs, h.mono) },
       ...commands.map((payload) => ({ topic: downTopic(screenId, 'command'), payload })),
+      ...(update ? [{ topic: downTopic(screenId, 'update'), payload: update }] : []),
     ];
   }
   const u = parseUpload(payload);

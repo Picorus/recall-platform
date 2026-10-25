@@ -27,6 +27,8 @@ data class HealthCounters(
     val messagesRefused: Long = 0,
     val gpsMissedSeconds: Long = 0,
     val adsMissing: Long = 0,
+    /** Crashes since the box was set up (kept across restarts): updates are judged by them (P2.13). */
+    val crashes: Long = 0,
 )
 
 object Health {
@@ -34,7 +36,7 @@ object Health {
     private fun b(v: Boolean?) = if (v == null) JsonNull else JsonPrimitive(v)
 
     /** The health report for minute `t` (UTC seconds, a whole minute). */
-    fun report(t: Long, app: String, upS: Long, r: HealthReading, c: HealthCounters, clockDisagree: Boolean): JsonObject {
+    fun report(t: Long, app: String, upS: Long, r: HealthReading, c: HealthCounters, clockDisagree: Boolean, appCode: Int = 1): JsonObject {
         require(Math.floorMod(t, 60L) == 0L) { "health is for a whole minute" }
         // Out of range is no reading (a sensor gone wrong), never a number the cloud refuses.
         return JsonObject(
@@ -57,6 +59,8 @@ object Health {
                 "messagesRefused" to JsonPrimitive(c.messagesRefused),
                 "gpsMissedSeconds" to JsonPrimitive(c.gpsMissedSeconds),
                 "adsMissing" to JsonPrimitive(c.adsMissing),
+                "appCode" to JsonPrimitive(appCode.coerceAtLeast(1)),
+                "crashes" to JsonPrimitive(maxOf(0, c.crashes)),
             ),
         )
     }
@@ -70,6 +74,8 @@ class HealthReporter(
     private val clockDisagree: () -> Boolean,
     private val send: (JsonObject, Long) -> Unit,
     private val log: (String) -> Unit = {},
+    /** The player's version code (BuildConfig.VERSION_CODE on the box). */
+    private val appCode: Int = 1,
 ) {
     private var lastMinute: Long? = null
 
@@ -82,7 +88,7 @@ class HealthReporter(
         lastMinute = minute
         return runCatching {
             val reading = runCatching(read).getOrElse { HealthReading() }
-            send(Health.report(minute, app, upS, reading, counters(), clockDisagree()), nowS)
+            send(Health.report(minute, app, upS, reading, counters(), clockDisagree(), appCode), nowS)
         }.onFailure { log("health: not sent: ${it.javaClass.simpleName}: ${it.message}") }.isSuccess
     }
 }

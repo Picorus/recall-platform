@@ -21,9 +21,24 @@ object CrashLog {
     fun install(context: Context) {
         val app = context.applicationContext
         Thread.setDefaultUncaughtExceptionHandler { _, error ->
+            runCatching { countCrash(app) }
             runCatching { record(app, "crash ${error.javaClass.name}: ${error.message?.take(200) ?: ""}") }
             Process.killProcess(Process.myPid())
             exitProcess(10)
+        }
+    }
+
+    private fun countFile(context: Context) = File(context.filesDir, "crash-count")
+
+    /** Crashes since the box was set up (kept across restarts): updates are judged by them (P2.13). */
+    fun count(context: Context): Long =
+        runCatching { countFile(context).readText().trim().toLong() }.getOrDefault(0)
+
+    private fun countCrash(context: Context) {
+        val f = countFile(context)
+        java.io.FileOutputStream(f).use {
+            it.write((count(context) + 1).toString().toByteArray())
+            it.fd.sync()
         }
     }
 

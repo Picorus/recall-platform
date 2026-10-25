@@ -68,6 +68,8 @@ object Line {
         }
         // The ad files are kept and checked whether or not the line can open (P2.4). A problem
         // there must not keep the line (and so the play reports) from starting.
+        // Updates (P2.13) are taken whether or not the rest is set up: the way a fix reaches the box.
+        runCatching { Updates.start(app) }.onFailure { CrashLog.record(app, "updates not started: ${it.javaClass.simpleName}") }
         runCatching { Ads.start(app) }.onFailure { CrashLog.record(app, "ads not started: ${it.javaClass.simpleName}") }
         val box = outbox
         if (screenId == null || box == null || need.any { !it.exists() }) {
@@ -102,6 +104,7 @@ object Line {
                 when (kind) {
                     DownKind.FILES -> Ads.onList(payload)
                     DownKind.COMMAND -> Remote.onCommand(payload)
+                    DownKind.UPDATE -> Updates.onUpdate(payload)
                     else -> Schedule.onMessage(kind, payload)
                 }
             },

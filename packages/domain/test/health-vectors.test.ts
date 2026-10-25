@@ -27,6 +27,8 @@ const base: HealthReport = {
   messagesRefused: 1,
   gpsMissedSeconds: 12,
   adsMissing: 2,
+  appCode: 10,
+  crashes: 1,
 };
 const cases: { name: string; report: HealthReport }[] = [
   { name: 'a healthy box', report: base },
@@ -74,6 +76,7 @@ describe('shared health cases', () => {
     expect(checkReport({ ...base, boxC: 20.5 })).toBe('bad temperature');
     expect(checkReport({ ...base, app: 'x y' })).toBe('bad app version');
     expect(checkReport({ ...base, adsMissing: -1 })).toBe('bad counter adsMissing');
+    expect(checkReport({ ...base, appCode: 0 })).toBe('bad app version');
     expect(checkReport({ ...base, frame: 'jpeg' })).toBe('unknown field: frame');
   });
 });

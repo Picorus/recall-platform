@@ -33,8 +33,9 @@ class HealthTest {
                     intOrNull(r, "batteryPct"), boolOrNull(r, "charging"), intOrNull(r, "batteryC"), intOrNull(r, "boxC"),
                     l(r, "freeMb"), intOrNull(r, "signalDbm"), boolOrNull(r, "ledFault"), boolOrNull(r, "tamper"),
                 ),
-                HealthCounters(l(r, "spotsNotCounted"), l(r, "playsNotStored"), l(r, "messagesRefused"), l(r, "gpsMissedSeconds"), l(r, "adsMissing")),
+                HealthCounters(l(r, "spotsNotCounted"), l(r, "playsNotStored"), l(r, "messagesRefused"), l(r, "gpsMissedSeconds"), l(r, "adsMissing"), l(r, "crashes")),
                 r.getValue("clockDisagree").jsonPrimitive.boolean,
+                r.getValue("appCode").jsonPrimitive.int,
             )
             assertEquals(r, built, c.getValue("name").jsonPrimitive.content)
         }

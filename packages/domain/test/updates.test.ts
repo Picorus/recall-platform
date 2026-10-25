@@ -1,4 +1,5 @@
 // P2.13: rollout stages, automatic rollback, and the update message.
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import {
@@ -114,5 +115,43 @@ describe('the update message', () => {
   it('a release needs a rollback build numbered above it', () => {
     expect(releaseProblem({ id: 'rel-12', apk: apk(120), rollback: apk(121) })).toBeUndefined();
     expect(releaseProblem({ id: 'rel-12', apk: apk(120), rollback: apk(119) })).toMatch(/rollback/);
+  });
+});
+
+describe('shared update cases (test-vectors/updates.json, the box passes them)', () => {
+  const FILE = new URL('../test-vectors/updates.json', import.meta.url);
+  const text = updateText(apk(12), 1_793_620_000_000);
+  const with_ = (o: object) => JSON.stringify({ ...JSON.parse(text), ...o });
+  const vectors = {
+    taken: [{ text, file: { ...apk(12), made: 1_793_620_000_000 } }],
+    refused: [
+      { text: 'nope', problem: 'not an update' },
+      { text: with_({ extra: 1 }), problem: 'not an update' },
+      { text: with_({ v: 2 }), problem: 'unknown version' },
+      { text: with_({ made: 0 }), problem: 'bad time' },
+      { text: with_({ versionCode: 0 }), problem: 'bad version code' },
+      { text: with_({ versionCode: 2_100_000_001 }), problem: 'bad version code' },
+      { text: with_({ versionName: 'a b' }), problem: 'bad version name' },
+      { text: with_({ sha256: 'A'.repeat(64) }), problem: 'bad fingerprint' },
+      { text: with_({ bytes: 0 }), problem: 'bad size' },
+      { text: with_({ bytes: 200 * 1024 * 1024 + 1 }), problem: 'bad size' },
+      { text: with_({ url: 'http://files.recall.example/x.apk' }), problem: 'bad link' },
+      { text: with_({ url: 'https://files.recall.example/a b.apk' }), problem: 'bad link' },
+    ],
+  };
+  const out = `${JSON.stringify(vectors, null, 2)}\n`;
+  if (process.env.UPDATE_VECTORS === '1' || !existsSync(FILE)) writeFileSync(FILE, out);
+
+  it('are up to date and match the rules', () => {
+    expect(readFileSync(FILE, 'utf8')).toBe(out);
+    for (const r of vectors.refused) {
+      let x: unknown;
+      try {
+        x = JSON.parse(r.text);
+      } catch {
+        x = undefined;
+      }
+      expect(updateProblem(x)).toBe(r.problem);
+    }
   });
 });
