@@ -15,10 +15,12 @@ const ALLOWED = [
   'packages/domain/src/people.ts',
   'packages/domain/src/price-book.ts',
   'packages/domain/src/index.ts',
+  'packages/domain/src/report.ts',
   'packages/db/src/plays.ts',
   'packages/db/src/screen-reports.ts',
   'packages/db/src/people.ts',
   'packages/db/src/index.ts',
+  'packages/db/src/reports.ts',
   // design system sample text ("People counts are approximate."), no numbers
   'packages/design/src/tokens.ts',
 ];

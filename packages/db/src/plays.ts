@@ -251,20 +251,29 @@ export async function judgePlays(
   return out;
 }
 
+/** A stored play that may count, with where it started (for heat maps, P1.9). */
+export interface StoredPlay extends CountedPlay {
+  readonly latE6: number;
+  readonly lngE6: number;
+}
+
 /** The stored plays of a line or make-up that may count, and the rules it was sold on. */
 async function playsOf(
   pool: Pick<Pool, 'query'>,
   lineId: string,
   books?: readonly PriceBook[],
-): Promise<{ promised: number; plays: CountedPlay[]; rules: PlayRules }> {
+): Promise<{ promised: number; plays: StoredPlay[]; rules: PlayRules }> {
   const info = await targetInfo(pool, lineId);
   const r = await pool.query<{
     screen_id: string;
     t: string;
     counts: 'inside' | 'edge';
     people: number;
+    lat_e6: number;
+    lng_e6: number;
   }>(
-    `SELECT p.screen_id, extract(epoch FROM p.start_at)::bigint AS t, p.counts, p.people
+    `SELECT p.screen_id, extract(epoch FROM p.start_at)::bigint AS t, p.counts, p.people,
+            p.lat_e6, p.lng_e6
        FROM plays p
        LEFT JOIN screen_key_revocations r ON r.screen_id = p.screen_id AND r.key_id = p.key_id
       WHERE p.line_id = $1 AND p.counts <> 'no' AND (r.key_id IS NULL OR p.start_at < r.plays_until)`,
@@ -277,6 +286,8 @@ async function playsOf(
       startAt: Number(x.t),
       counts: x.counts,
       people: x.people,
+      latE6: x.lat_e6,
+      lngE6: x.lng_e6,
     })),
     rules: info
       ? rulesOf(books ?? (await priceBooks(pool)), { version: info.priceBookVersion })
@@ -304,7 +315,7 @@ export async function countedPlaysFor(
   pool: Pick<Pool, 'query'>,
   lineId: string,
   books?: readonly PriceBook[],
-): Promise<CountedPlay[]> {
+): Promise<StoredPlay[]> {
   const x = await playsOf(pool, lineId, books);
   return countedPlays(x.promised, x.plays, x.rules);
 }
