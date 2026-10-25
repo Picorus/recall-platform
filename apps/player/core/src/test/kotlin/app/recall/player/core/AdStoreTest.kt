@@ -272,13 +272,21 @@ class AdStoreTest {
     }
 
     @Test
-    fun `the player can report a damaged file, which is downloaded again`() {
+    fun `a file the player cannot play is dropped only when really damaged`() {
         val a = bytes(2_000, 21)
         val s = store()
         s.want(t0 * 1000, listOf(ad("A", a)))
         s.fetchMissing(FakeStorage(mapOf("A" to a)), t0, 0)
-        s.damaged("A")
+        // Intact (the box just cannot play it): kept, counted, never downloaded again in a loop.
+        assertTrue(!s.damaged("A"))
+        assertNotNull(s.file("A"))
+        assertEquals(1L, s.unplayable)
+        assertEquals(0L, s.badFiles)
+        // Really damaged: dropped and downloaded again.
+        assertNotNull(s.file("A")).writeBytes(bytes(2_000, 77))
+        assertTrue(s.damaged("A"))
         assertNull(s.file("A"))
+        assertEquals(1L, s.badFiles)
         assertEquals(1, s.fetchMissing(FakeStorage(mapOf("A" to a)), t0, 0))
         assertNotNull(s.file("A"))
     }

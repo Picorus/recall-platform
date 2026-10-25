@@ -103,7 +103,10 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
           working-directory: apps/player
           # Playback first: the kiosk check makes the player device owner, which cannot be uninstalled.
+          # The emulator's display stays on and unlocked: a screen that is off draws no frames.
           script: |
+            adb shell svc power stayon true
+            adb shell wm dismiss-keyguard
             ./gradlew --no-daemon :app:connectedDebugAndroidTest
             sh ci/kiosk-check.sh
       - if: failure()

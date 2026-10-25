@@ -26,9 +26,9 @@ tasks.test {
     useJUnitPlatform()
     // The shared cases live with the cloud's code, so both sides always test the same thing.
     systemProperty("recall.vectors", rootProject.file("../../packages/domain/test-vectors").absolutePath)
-    // The broker's production settings, for the line test against a real broker (RECALL_BROKER_TEST=1).
     // The test media the emulator check also uses (P2.5.2).
     systemProperty("recall.androidTestAssets", rootProject.file("app/src/androidTest/assets").absolutePath)
+    // The broker's production settings, for the line test against a real broker (RECALL_BROKER_TEST=1).
     systemProperty("recall.emqxTemplate", rootProject.file("../../infra/emqx/emqx.conf.template").absolutePath)
     environment("RECALL_BROKER_TEST", System.getenv("RECALL_BROKER_TEST") ?: "")
 }

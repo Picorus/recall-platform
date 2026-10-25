@@ -19,7 +19,8 @@ import org.junit.runner.RunWith
 /**
  * P2.5.2 on a real Android: the screen loads the next spot behind the one showing and swaps at once.
  * Each spot is loaded 2 s ahead (as the conductor does), then shown; it must be confirmed on screen
- * within 150 ms of the swap (one or two frames), video and picture alike. A broken file is reported.
+ * within 150 ms of the swap (a few frames), video and picture alike; later than 500 ms the screen
+ * itself reports a late start (never counted). A broken file is reported as the file's fault.
  */
 @RunWith(AndroidJUnit4::class)
 class ScreenTest {
@@ -58,8 +59,8 @@ class ScreenTest {
 
     @After
     fun close() {
-        screen.release()
-        scenario.close()
+        if (::screen.isInitialized) screen.release()
+        if (::scenario.isInitialized) scenario.close()
     }
 
     /** Loads ahead, shows, and returns how long after the swap the spot was confirmed on screen. */
@@ -83,6 +84,9 @@ class ScreenTest {
     fun videoPictureVideoAndSlateSwapWithoutGaps() {
         val video = asset("ad-video.mp4")
         val picture = asset("ad-picture.png")
+        // Warm up: the very first video on a fresh (software-drawn) emulator also sets up its decoders.
+        screen.prepare(spot("warm-up", video))
+        SystemClock.sleep(5_000)
         val delays = listOf(
             loadAndShow(spot("video", video)),
             loadAndShow(spot("picture", picture)),

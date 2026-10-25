@@ -13,6 +13,7 @@ import app.recall.player.core.PlanSource
 import app.recall.player.core.PlaybackThread
 import app.recall.player.core.PlayedMark
 import app.recall.player.core.Playout
+import java.util.concurrent.Executors
 
 object Playback {
     /** The plan and what the bike carries at a time (P2.6). */
@@ -20,6 +21,9 @@ object Playback {
 
     /** The latest spot counted (P2.7 keeps it on storage across reboots). */
     val mark = PlayedMark()
+
+    /** Checks of files the screen could not play (a fingerprint takes a moment: never on the main thread). */
+    private val checks = Executors.newSingleThreadExecutor { Thread(it, "recall-check").apply { isDaemon = true } }
 
     private var owner: Activity? = null
     private var screen: Screen? = null
@@ -44,7 +48,7 @@ object Playback {
                 mono = SystemClock::elapsedRealtime,
                 waiter = waiter,
                 played = { p -> log("played ${p.spot.shows?.ad ?: "slate"} at ${p.spot.startUtc} whole=${p.whole} ok=${p.ok} counts=${p.counts}") },
-                badFile = { ad -> Ads.store?.damaged(ad) },
+                badFile = { ad -> checks.execute { runCatching { Ads.store?.damaged(ad) } } },
                 log = log,
                 mark = mark,
             ).also {
@@ -59,7 +63,9 @@ object Playback {
     fun stop(activity: Activity) {
         if (activity !== owner) return
         owner = null
-        thread?.stop()
+        // Never hold up the main thread: the playback thread ends at its next wait; the screen
+        // ignores anything it still sends after its release.
+        thread?.stop(waitMs = 200)
         thread = null
         screen?.release()
         screen = null
