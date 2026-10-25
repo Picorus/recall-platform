@@ -2,6 +2,7 @@
 // admin changes them in admin → Prices and rules, each change is a new version from a date, and a
 // booking keeps the version it was sold on.
 import { DEFAULT_MAKE_UP_RULES, type MakeUpRules } from './makeups.js';
+import { checkPeopleRules, DEFAULT_PEOPLE_RULES, type PeopleRules } from './people.js';
 import { DEFAULT_PLAY_RULES, type PlayRules } from './plays.js';
 import { checkRiderPayRules, DEFAULT_RIDER_PAY_RULES, type RiderPayRules } from './rider-pay.js';
 import { DEFAULT_CAPACITY_RULES, type CapacityRules } from './supply.js';
@@ -66,6 +67,8 @@ export interface PriceBook {
   readonly riderPay: RiderPayRules;
   /** GST and the books (P1.7.9). */
   readonly taxes: TaxRules;
+  /** People counts (P1.8): an estimate shown as a range, never billed. */
+  readonly people: PeopleRules;
 }
 
 /** GST settings (P1.7.9). */
@@ -117,6 +120,7 @@ export const PRICE_BOOK_V1: PriceBook = {
   cutTdsBp: 200,
   riderPay: DEFAULT_RIDER_PAY_RULES,
   taxes: DEFAULT_TAX_RULES,
+  people: DEFAULT_PEOPLE_RULES,
 };
 
 /** Highest cut rate that can be given (50%, in basis points). */
@@ -206,6 +210,7 @@ export function checkPriceBook(b: PriceBook): PriceBookProblem[] {
   if (![m.closeAfterSeconds, m.nextHours, m.dayCloseSeconds].every(whole) || m.nextHours > 4)
     problems.push('make-up settings must be whole numbers; at most 4 next hours');
   problems.push(...checkRiderPayRules(b.riderPay));
+  problems.push(...checkPeopleRules(b.people));
   const t = b.taxes;
   if (
     !/^\d{2}$/.test(t.supplierStateCode) ||

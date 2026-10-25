@@ -251,6 +251,74 @@ export function receive(
 
 // ---------------------------------------------------------------- checking what arrives
 
+/** Every field each kind of report may carry, and nothing else (P1.8.1: only numbers leave the chip). */
+export const REPORT_FIELDS = {
+  live: ['kind', 't', 'lat', 'lng', 'place', 'moving'],
+  minute: [
+    'kind',
+    'minute',
+    'secondsAt',
+    'clockSeconds',
+    'clockAt',
+    'payClockSeconds',
+    'movingSeconds',
+    'distanceM',
+    'plays',
+    'people',
+  ],
+  play: [
+    'kind',
+    'keyId',
+    'slot',
+    'ref',
+    'adId',
+    'startAt',
+    'lengthS',
+    'latE6',
+    'lngE6',
+    'accuracyM',
+    'place',
+    'people',
+    'sig',
+  ],
+} as const satisfies Record<Report['kind'], readonly string[]>;
+
+/** Longest text kept from one field of a report that failed its checks. */
+const MAX_KEPT_TEXT = 200;
+
+/**
+ * What is kept of a report that failed its checks, for a person to look at: the known fields only,
+ * each text cut short, and the names (never the values) of any other fields. So a picture sent by
+ * mistake, or on purpose, is never stored, not even in part.
+ */
+export function keptOfRejected(r: unknown): Record<string, unknown> {
+  if (typeof r !== 'object' || r === null || Array.isArray(r)) return { notAReport: typeof r };
+  const x = r as Record<string, unknown>;
+  const known: readonly string[] =
+    typeof x.kind === 'string' && Object.hasOwn(REPORT_FIELDS, x.kind)
+      ? REPORT_FIELDS[x.kind as Report['kind']]
+      : ['kind'];
+  const cut = (v: unknown): unknown => {
+    if (typeof v === 'string') return v.slice(0, MAX_KEPT_TEXT);
+    if (typeof v === 'number' || typeof v === 'boolean' || v === null) return v;
+    if (typeof v === 'object' && !Array.isArray(v)) {
+      const entries = Object.entries(v).slice(0, 20);
+      return Object.fromEntries(
+        entries.map(([k, s]) => [k.slice(0, MAX_PLACE_KEY), typeof s === 'number' ? s : '?']),
+      );
+    }
+    return '?';
+  };
+  const kept: Record<string, unknown> = {};
+  const others: string[] = [];
+  for (const [k, v] of Object.entries(x)) {
+    if (known.includes(k)) kept[k] = cut(v);
+    else others.push(k.slice(0, MAX_PLACE_KEY));
+  }
+  if (others.length > 0) kept.otherFields = others.slice(0, 20);
+  return kept;
+}
+
 /** Most metres a bike can cover in a minute at the jump limit (150 km/h), with room to spare. */
 export const MAX_MINUTE_DISTANCE_M = 3_000;
 const MAX_PLACE_KEY = 80;
@@ -275,8 +343,13 @@ function secondsMap(v: unknown): string | undefined {
  * so one bad report cannot block a screen's uploads.
  */
 export function checkReport(r: unknown): string | undefined {
-  if (typeof r !== 'object' || r === null) return 'not a report';
+  if (typeof r !== 'object' || r === null || Array.isArray(r)) return 'not a report';
   const x = r as Record<string, unknown>;
+  // Only the fields below may travel (P1.8.1): a report carrying anything else, a picture from the
+  // people counter for example, is refused and its extra fields are never stored.
+  const known = REPORT_FIELDS[x.kind as Report['kind']] as readonly string[] | undefined;
+  const extra = known && Object.keys(x).find((k) => !known.includes(k));
+  if (extra !== undefined) return `unknown field: ${extra.slice(0, MAX_PLACE_KEY)}`;
   if (x.kind === 'live') {
     if (!isInt(x.t, 0, 2 ** 32)) return 'bad time';
     if (typeof x.lat !== 'number' || !(Math.abs(x.lat) <= 90)) return 'bad latitude';

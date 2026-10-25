@@ -3,6 +3,7 @@
 // sent and in whatever order batches arrive.
 import {
   checkReport,
+  keptOfRejected,
   receive,
   type Inbox,
   type MinuteSummary,
@@ -19,15 +20,9 @@ function problemWith(n: Numbered): string | undefined {
   return checkReport(n.report);
 }
 
-/** A short, storable copy of a report that failed its checks, for a person to look at. */
+/** A short, storable copy of a report that failed its checks, for a person to look at (P1.8.1). */
 function rawCopy(report: unknown): string {
-  let text: string;
-  try {
-    text = JSON.stringify(report) ?? String(report);
-  } catch {
-    text = '(could not be read)';
-  }
-  return text.replaceAll('\\u0000', '').slice(0, 4000);
+  return JSON.stringify(keptOfRejected(report)).replaceAll('\\u0000', '').slice(0, 4000);
 }
 
 export interface Stored {
