@@ -192,7 +192,7 @@ export async function storeUpload(
 
 /** Minute summaries stored for a screen between two times (UTC seconds), oldest first. */
 export async function minutesOf(
-  pool: Pool,
+  pool: Pick<Pool, 'query'>,
   screenId: string,
   from: number,
   to: number,

@@ -16,6 +16,7 @@ Answer whenever you like; each answer moves to `docs/DECISIONS.md` and the row i
 ## Answered 24 Oct 2026 (now in DECISIONS)
 | # | Answer |
 |---|---|
+| ~~15~~ | POC rider pay follows the model v5.2 table (base ₹2k/4k/6k + founding bonus on monthly hours, ₹3,000 for finishing); a super-admin switch between POC and regular business, counted from that day; POC month 1 = the month first switched on |
 | ~~13~~ | (a) Cuts are paid only on delivered money. (b) A cancellation refund not decided within 7 days counts as no refund |
 | ~~14~~ | TDS is held back from cuts (we pay the partner after cutting TDS); the partner's GST is claimed back; our per-booking rounding is what goes in the books |
 | ~~12~~ | Cancelled after paying: no refund by default; at least 72 hours before the first hour a super admin may refund 100%; later, no refund |

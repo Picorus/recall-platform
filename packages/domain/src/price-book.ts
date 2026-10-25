@@ -3,6 +3,7 @@
 // booking keeps the version it was sold on.
 import { DEFAULT_MAKE_UP_RULES, type MakeUpRules } from './makeups.js';
 import { DEFAULT_PLAY_RULES, type PlayRules } from './plays.js';
+import { checkRiderPayRules, DEFAULT_RIDER_PAY_RULES, type RiderPayRules } from './rider-pay.js';
 import { DEFAULT_CAPACITY_RULES, type CapacityRules } from './supply.js';
 import { parseUtcIso } from './time.js';
 
@@ -61,6 +62,8 @@ export interface PriceBook {
   readonly cuts: { readonly agency: number; readonly aggregator: number };
   /** TDS held back from a cut (basis points; 2% under section 194H, to confirm with the CA). */
   readonly cutTdsBp: number;
+  /** Rider pay (P1.7.5–6): POC or after the POC, rates, TDS. */
+  readonly riderPay: RiderPayRules;
 }
 
 /** The book in force from 22 Oct 2026: rulebook v5.4 and Prateek's decisions of 21–22 Oct. */
@@ -91,6 +94,7 @@ export const PRICE_BOOK_V1: PriceBook = {
   cancelRefundDecideHours: 168,
   cuts: { agency: 1_000, aggregator: 200 },
   cutTdsBp: 200,
+  riderPay: DEFAULT_RIDER_PAY_RULES,
 };
 
 /** Highest cut rate that can be given (50%, in basis points). */
@@ -179,6 +183,7 @@ export function checkPriceBook(b: PriceBook): PriceBookProblem[] {
   const m = b.makeUps;
   if (![m.closeAfterSeconds, m.nextHours, m.dayCloseSeconds].every(whole) || m.nextHours > 4)
     problems.push('make-up settings must be whole numbers; at most 4 next hours');
+  problems.push(...checkRiderPayRules(b.riderPay));
   return problems;
 }
 

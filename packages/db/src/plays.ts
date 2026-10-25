@@ -6,14 +6,17 @@ import {
   judgePlay,
   lineIdOf,
   lineStartsAt,
+  countedPlays,
   lineTotals,
   playBytes,
   priceBookAt,
   type AreaVersion,
+  type CountedPlay,
   type LineForPlays,
   type LineTotals,
   type PlayCount,
   type PlayRefusal,
+  type PlayRules,
   type PlayReport,
   type PriceBook,
 } from '@recall/domain';
@@ -248,17 +251,12 @@ export async function judgePlays(
   return out;
 }
 
-/**
- * Totals for one booking line, or one make-up, from its stored plays (P1.5.3–4), by the rules of the price book it
- * was sold on, so they never change when prices or rules change later. Plays signed with a key
- * after it was given up are left out.
- */
-export async function lineTotalsFor(
+/** The stored plays of a line or make-up that may count, and the rules it was sold on. */
+async function playsOf(
   pool: Pick<Pool, 'query'>,
   lineId: string,
-  /** Price books, when the caller has them already. */
   books?: readonly PriceBook[],
-): Promise<LineTotals> {
+): Promise<{ promised: number; plays: CountedPlay[]; rules: PlayRules }> {
   const info = await targetInfo(pool, lineId);
   const r = await pool.query<{
     screen_id: string;
@@ -272,16 +270,41 @@ export async function lineTotalsFor(
       WHERE p.line_id = $1 AND p.counts <> 'no' AND (r.key_id IS NULL OR p.start_at < r.plays_until)`,
     [lineId],
   );
-  return lineTotals(
-    info?.line.plays ?? 0,
-    r.rows.map((x) => ({
+  return {
+    promised: info?.line.plays ?? 0,
+    plays: r.rows.map((x) => ({
       screenId: x.screen_id,
       startAt: Number(x.t),
       counts: x.counts,
       people: x.people,
     })),
-    info
+    rules: info
       ? rulesOf(books ?? (await priceBooks(pool)), { version: info.priceBookVersion })
       : DEFAULT_PLAY_RULES,
-  );
+  };
+}
+
+/**
+ * Totals for one booking line, or one make-up, from its stored plays (P1.5.3–4), by the rules of
+ * the price book it was sold on, so they never change when prices or rules change later. Plays
+ * signed with a key after it was given up are left out.
+ */
+export async function lineTotalsFor(
+  pool: Pick<Pool, 'query'>,
+  lineId: string,
+  /** Price books, when the caller has them already. */
+  books?: readonly PriceBook[],
+): Promise<LineTotals> {
+  const x = await playsOf(pool, lineId, books);
+  return lineTotals(x.promised, x.plays, x.rules);
+}
+
+/** The plays that count for a line or make-up (which screen, when), by the same rules. */
+export async function countedPlaysFor(
+  pool: Pick<Pool, 'query'>,
+  lineId: string,
+  books?: readonly PriceBook[],
+): Promise<CountedPlay[]> {
+  const x = await playsOf(pool, lineId, books);
+  return countedPlays(x.promised, x.plays, x.rules);
 }
