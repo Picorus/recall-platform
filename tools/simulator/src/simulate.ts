@@ -33,7 +33,8 @@ import {
   type Bike,
   type BikeHabits,
 } from './bike.js';
-import { WEST_HYDERABAD, type RoadGrid } from './roads.js';
+import { defaultRoads } from './road-graph.js';
+import type { RoadMap } from './roads.js';
 import { seeded } from './rng.js';
 
 export interface Scenario {
@@ -77,7 +78,8 @@ export interface RunOptions {
   /** First second (UTC). Default: Mon 23 Aug 2027, 10:00 India time. */
   readonly start?: number;
   readonly areas?: readonly AreaVersion[];
-  readonly grid?: RoadGrid;
+  /** Default: the real roads when downloaded (data/README.md), else the street grid. */
+  readonly roads?: RoadMap;
 }
 
 export interface RunResult {
@@ -117,7 +119,7 @@ interface Screen {
 }
 
 export function simulate(o: RunOptions): RunResult {
-  const grid = o.grid ?? WEST_HYDERABAD;
+  const roads = o.roads ?? defaultRoads();
   const areas = o.areas ?? launchAreas();
   const start = o.start ?? Date.UTC(2027, 7, 23, 4, 30) / 1000;
   const world = seeded(o.seed);
@@ -126,7 +128,7 @@ export function simulate(o: RunOptions): RunResult {
   for (let i = 0; i < o.bikes; i++) {
     if (!world.chance(s.onDuty)) continue;
     screens.push({
-      bike: newBike(`sim-${i}`, grid, s.habits, world, start),
+      bike: newBike(`sim-${i}`, roads, s.habits, world, start),
       tracker: START,
       minute: EMPTY_MINUTE,
       outbox: EMPTY_OUTBOX,
@@ -161,10 +163,10 @@ export function simulate(o: RunOptions): RunResult {
   for (let i = 0; i < o.seconds; i++) {
     const t = start + i;
     screens.forEach((sc, k) => {
-      sc.bike = tick(grid, sc.bike, s.habits, world, t);
-      const truth = truthOf(grid, sc.bike, t);
+      sc.bike = tick(roads, sc.bike, s.habits, world, t);
+      const truth = truthOf(roads, sc.bike, t);
       if (!truth.screenOn) return;
-      const fix = gpsOf(grid, sc.bike, s.habits, world, t);
+      const fix = gpsOf(roads, sc.bike, s.habits, world, t);
       const r = step(sc.tracker, t, fix, areas);
       sc.tracker = r.state;
       const a = addSecond(sc.minute, r.second);

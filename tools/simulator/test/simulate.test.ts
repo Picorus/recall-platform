@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { nodeToLatLng, route, WEST_HYDERABAD } from '../src/roads.js';
+import { osmRoads } from '../src/road-graph.js';
+import { gridMap, nodeToLatLng, route, WEST_HYDERABAD } from '../src/roads.js';
 import { seeded } from '../src/rng.js';
 import { SCENARIOS, simulate } from '../src/simulate.js';
 
@@ -41,9 +42,15 @@ function scenarioNamed(name: string) {
   return s;
 }
 
-describe('fleet runs (P1.10.3)', () => {
+const maps = [
+  { name: 'street grid', roads: gridMap(), bikes: 20 },
+  // More bikes on the real roads: they spread wider, so 20 leave too few seconds in the areas to judge.
+  ...(osmRoads() ? [{ name: 'real roads', roads: osmRoads() ?? gridMap(), bikes: 40 }] : []),
+];
+
+describe.each(maps)('fleet runs on the $name (P1.10.3)', ({ roads, bikes }) => {
   const run = (name: string, seed = 11) =>
-    simulate({ scenario: scenarioNamed(name), bikes: 20, seconds: 40 * 60, seed });
+    simulate({ scenario: scenarioNamed(name), bikes, seconds: 40 * 60, seed, roads });
 
   it('are repeatable from a seed', () => {
     expect(run('normal', 3)).toEqual(run('normal', 3));

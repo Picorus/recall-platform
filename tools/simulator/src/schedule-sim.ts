@@ -22,7 +22,8 @@ import {
 } from '@recall/domain';
 import { NORMAL_HABITS, newBike, tick, truthOf, type Bike, type BikeHabits } from './bike.js';
 import { seeded } from './rng.js';
-import { WEST_HYDERABAD, type RoadGrid } from './roads.js';
+import { defaultRoads } from './road-graph.js';
+import type { RoadMap } from './roads.js';
 
 export interface ScheduleOptions {
   readonly bikes: number;
@@ -44,7 +45,8 @@ export interface ScheduleOptions {
   readonly start?: number;
   readonly habits?: BikeHabits;
   readonly areas?: readonly AreaVersion[];
-  readonly grid?: RoadGrid;
+  /** Default: the real roads when downloaded (data/README.md), else the street grid. */
+  readonly roads?: RoadMap;
 }
 
 export interface LineResult {
@@ -88,7 +90,7 @@ function ride(
   seed: number,
   visit: (second: number, positions: readonly (string | undefined)[]) => void,
 ): void {
-  const grid = o.grid ?? WEST_HYDERABAD;
+  const roads = o.roads ?? defaultRoads();
   const areas = o.areas ?? launchAreas();
   const habits = o.habits ?? NORMAL_HABITS;
   const start = startOf(o);
@@ -96,16 +98,16 @@ function ride(
   // Start each bike a little before the hour so the fleet is spread over the roads.
   const warm = 600;
   let bikes: Bike[] = Array.from({ length: o.bikes }, (_, i) =>
-    newBike(`sim-${i}`, grid, habits, world, start - warm),
+    newBike(`sim-${i}`, roads, habits, world, start - warm),
   );
   const at: (string | undefined)[] = new Array<string | undefined>(o.bikes);
   for (let s = -warm; s < HOUR; s++) {
     const t = start + s;
-    bikes = bikes.map((b) => tick(grid, b, habits, world, t));
+    bikes = bikes.map((b) => tick(roads, b, habits, world, t));
     if (s < 0) continue;
     for (let i = 0; i < bikes.length; i++) {
       const b = bikes[i] as Bike;
-      const truth = truthOf(grid, b, t);
+      const truth = truthOf(roads, b, t);
       const p = truth.screenOn ? locate(truth.position, areas) : undefined;
       at[i] = p?.kind === 'inside' ? p.areaId : undefined;
     }

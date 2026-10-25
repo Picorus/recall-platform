@@ -1,20 +1,26 @@
 import { describe, expect, it } from 'vitest';
+import { osmRoads } from '../src/road-graph.js';
+import { gridMap } from '../src/roads.js';
 import { simulateSchedule } from '../src/schedule-sim.js';
+
+// The proofs run on the street grid (version 1), a fixed, even world, so they test the scheduler and
+// nothing else; the real roads have their own runs below.
+const grid = gridMap();
 
 // P1.4.7: sell 90% of what each area really carried (the forecast keeps 10% for make-ups) and
 // check every line gets all its plays on at least as many different bikes as were sold.
 describe('the scheduler delivers (P1.4.7)', () => {
   it('200 bikes, three seeds: every line fully delivered with the cloud assigning every minute', () => {
     for (const seed of [1, 2, 3]) {
-      const r = simulateSchedule({ bikes: 200, seed, mode: 'live', sellShare: 0.9 });
+      const r = simulateSchedule({ bikes: 200, seed, mode: 'live', sellShare: 0.9, roads: grid });
       expect(r.lines.length).toBeGreaterThan(0);
       expect(r.linesMet).toBe(r.lines.length);
     }
   }, 120_000);
 
   it('the same seed gives exactly the same run', () => {
-    const a = simulateSchedule({ bikes: 100, seed: 5, mode: 'live', sellShare: 0.9 });
-    const b = simulateSchedule({ bikes: 100, seed: 5, mode: 'live', sellShare: 0.9 });
+    const a = simulateSchedule({ bikes: 100, seed: 5, mode: 'live', sellShare: 0.9, roads: grid });
+    const b = simulateSchedule({ bikes: 100, seed: 5, mode: 'live', sellShare: 0.9, roads: grid });
     expect(a).toEqual(b);
   }, 60_000);
 
@@ -26,12 +32,19 @@ describe('the scheduler delivers (P1.4.7)', () => {
       sellShare: 0.9,
       makeUpShare: 0.05,
       aggregatorSpots: 2000,
+      roads: grid,
     });
     expect(live.lines.length).toBeGreaterThan(10);
     expect(live.linesMet).toBe(live.lines.length);
     expect(live.makeUpsDelivered).toBe(live.makeUpsOwed);
     expect(live.aggregatorPlayed).toBeGreaterThan(0);
-    const offline = simulateSchedule({ bikes: 2000, seed: 7, mode: 'offline', sellShare: 0.9 });
+    const offline = simulateSchedule({
+      bikes: 2000,
+      seed: 7,
+      mode: 'offline',
+      sellShare: 0.9,
+      roads: grid,
+    });
     expect(offline.playsDelivered / offline.playsSold).toBeGreaterThan(0.97);
   }, 300_000);
 
@@ -42,7 +55,32 @@ describe('the scheduler delivers (P1.4.7)', () => {
       forecastSeed: 99,
       mode: 'live',
       sellShare: 0.9,
+      roads: grid,
     });
     expect(r.playsDelivered / r.playsSold).toBeGreaterThan(0.995);
+  }, 300_000);
+});
+
+const real = osmRoads() ?? grid;
+const downloaded = osmRoads() !== undefined;
+describe.runIf(downloaded)('the scheduler on the real roads (P1.10.1 version 2)', () => {
+  it('500 bikes, two seeds: every line fully delivered with the cloud assigning every minute', () => {
+    for (const seed of [1, 2]) {
+      const r = simulateSchedule({ bikes: 500, seed, mode: 'live', sellShare: 0.9, roads: real });
+      expect(r.lines.length).toBeGreaterThan(0);
+      expect(r.linesMet).toBe(r.lines.length);
+    }
+  }, 120_000);
+
+  it('sold from a different day: 97%+ of plays (bikes vary more from day to day on real roads; make-ups carry the rest)', () => {
+    const r = simulateSchedule({
+      bikes: 1000,
+      seed: 7,
+      forecastSeed: 99,
+      mode: 'live',
+      sellShare: 0.9,
+      roads: real,
+    });
+    expect(r.playsDelivered / r.playsSold).toBeGreaterThan(0.97);
   }, 300_000);
 });

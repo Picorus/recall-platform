@@ -386,7 +386,7 @@ Phases overlap on purpose: each starts once the part it depends on is stable, no
 | P0.1 | This build plan | Done | Oct 2026 |
 | P0.2 | Repository, automatic checks, record files | Done | Oct 2026 |
 | P0.3 | Night Signal design system, logo, screens redrawn | Done | Oct 2026 |
-| P1.10 | Fleet simulator (built alongside the engine) | Doing | Nov 2026 onward |
+| P1.10 | Fleet simulator (built alongside the engine) | Done | Nov 2026 onward |
 | P1.1–P1.2 | Areas and GPS | Done | Nov 2026 |
 | P1.3 | Inventory, prices, bookings | Done | Dec 2026 |
 | P1.4 | Ad scheduler | Done | Dec 2026 – Jan 2027 |

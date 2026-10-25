@@ -4,3 +4,5 @@ export * from './rng.js';
 export * from './roads.js';
 export * from './schedule-sim.js';
 export * from './simulate.js';
+export * from './road-graph.js';
+export * from './osm.js';
