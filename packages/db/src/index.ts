@@ -14,3 +14,4 @@ export * from './business-mode.js';
 export * from './payouts.js';
 export * from './screen-loans.js';
 export * from './gst.js';
+export * from './people.js';

@@ -2,6 +2,18 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 25 Oct 2026 · P1.8 · People counts
+- P1.7.9 merged (PR #26); P1.7 marked Done in the plan.
+- Already in place since P1.5: every play carries the number of people its screen faced while it ran, signed on the screen with the play, so it cannot be changed on the way.
+- **P1.8.1 Only the number leaves the screen.** Each kind of report may carry only its own fields (`REPORT_FIELDS`); a report with anything else (a picture, say) is refused. What is kept of a refused report for staff to look at is now only its known fields, each text cut short, plus the names of any other fields. Before, up to 4,000 characters of the raw report were kept, which could have held part of a picture.
+- **P1.8.2 Tied to the booking line.** `bookingPeople(bookingId)`: for each line, the people during the plays that count for it (inside its area; edge plays up to their 10% share) plus its make-ups' plays; plays signed with a key after it was given up are left out (same rule as play counting). A count above 150 for one play (a faulty chip) is taken as 150 and flagged.
+- **P1.8.3 Shown as an approximate range.** `peopleEstimate`: ±15%, rounded outwards to two figures, in Indian words: 2,40,000 → "2.0–2.8 lakh people (approximate)". The exact count is never handed out. Range and per-play limit are settings in the price book.
+- Never billed: a test fails if any file other than the counting and reporting ones reads a people count (hard rule 7).
+- Review by a second agent found 3 problems, all fixed with tests: a report with an odd kind ("toString") crashed the whole upload and blocked the screen (now refused like any unknown kind); place names, field names and long texts of a refused report could still hold pieces of a picture (now only counts of places and seconds, 40 characters per text, 5 field names); line totals carried the exact people count into money code (removed; the guard test now scans every source file in the repository).
+- Tests: 7 domain (refused fields, nothing of a picture kept, ranges, property: the true count is always inside the range and it is never wider than ±30%, the limit per play), 2 database (a line and its make-up with one faulty play; a report with a picture set aside and the picture not stored), 1 guard.
+- Open: the chip itself and its counting model come with the screen player (P2); the minute summaries' people number is kept but not yet shown anywhere.
+- **Next: P1.9** final campaign report.
+
 ## 25 Oct 2026 · P1.7.9 · GST and the books
 - P1.7.7–8 merged (PR #25).
 - Domain (`gst.ts`): financial years (April–March), document numbers (`RC/27-28/000001`, `CN/…`, at most 16 characters), GSTIN check (shape and check digit), CGST + SGST or IGST split, CSV files safe for spreadsheets (no formulas run), rupees with paise. Tax settings in the price book: RECALL's state (36, Telangana), e-invoicing limit (₹5 crore) and warning (80%).

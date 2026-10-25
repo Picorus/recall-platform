@@ -12,7 +12,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type pg from 'pg';
 import { saveAreaVersion } from '../../src/areas.js';
 import { createBooking, moveBooking, savePriceBook } from '../../src/bookings.js';
-import { addScreenKey, lineTotalsFor, revokeScreenKey } from '../../src/plays.js';
+import { addScreenKey, countedPlaysFor, lineTotalsFor, revokeScreenKey } from '../../src/plays.js';
 import { storeUpload } from '../../src/screen-reports.js';
 import { freshDatabase } from './fresh-db.js';
 
@@ -104,7 +104,8 @@ describe('plays in the database (P1.5)', () => {
     await upload('scr-a', batch);
     await upload('scr-a', [...batch].reverse());
     const t = await totals();
-    expect([t.plays, t.bikes, t.people]).toEqual([20, 1, 40]);
+    expect([t.plays, t.bikes]).toEqual([20, 1]);
+    expect((await countedPlaysFor(pool, LINE)).reduce((n, p) => n + p.people, 0)).toBe(40);
   });
 
   it('a forged or altered play is refused and set aside; the rest of the upload still counts', async () => {

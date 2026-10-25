@@ -210,8 +210,7 @@ export interface LineTotals {
   readonly bikes: number;
   /** Different screen-minutes with a counted play inside the area. */
   readonly minutes: number;
-  /** People counted during counted plays: an estimate, never billed. */
-  readonly people: number;
+  // No people here: totals reach money code. People are only read as a range (people.ts, P1.8).
 }
 
 const byTime = <T extends CountedPlay>(plays: readonly T[]): T[] =>
@@ -263,6 +262,5 @@ export function lineTotals(
         .filter((p) => p.counts === 'inside')
         .map((p) => `${p.screenId}|${Math.floor(p.startAt / 60)}`),
     ).size,
-    people: counted.reduce((n, p) => n + p.people, 0),
   };
 }

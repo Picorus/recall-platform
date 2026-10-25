@@ -6,6 +6,7 @@ import {
   bookingPaid,
   DEFAULT_MAKE_UP_RULES,
   DEFAULT_RIDER_PAY_RULES,
+  DEFAULT_PEOPLE_RULES,
   DEFAULT_TAX_RULES,
   DEFAULT_PLAY_RULES,
   capacityProblems,
@@ -95,6 +96,7 @@ export async function priceBooks(pool: Pick<Pool, 'query'>): Promise<PriceBook[]
     cutTdsBp: x.book.cutTdsBp ?? 200,
     riderPay: x.book.riderPay ?? DEFAULT_RIDER_PAY_RULES,
     taxes: { ...DEFAULT_TAX_RULES, ...x.book.taxes },
+    people: { ...DEFAULT_PEOPLE_RULES, ...x.book.people },
   }));
 }
 
