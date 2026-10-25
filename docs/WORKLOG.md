@@ -17,8 +17,15 @@ Newest first. Each entry: date · step id · what changed · tests · open issue
   - `approvePayoutRun`: finance or a super admin, once, not the person who prepared it.
   - `sendPayoutRun`: pays through the adapter; one sender at a time; retries up to 3; a wrong account is given up and shown; a paid line moves the money from "owed to the rider" to the bank in the ledger. Safe to call again.
   - `payoutRunStatus` for admin.
-- Tests: 3 adapter, 8 database (only on its Monday; the week's amounts; no account; approval rules; paid once, retried, given up; next Monday picks up what was not paid; an unpaid run is never listed twice; ledger balances; account checks).
-- Open: bank details are stored as entered; they will be encrypted at rest with the real servers (P7). Depositing TDS to the government comes with P1.7.9.
+- Tests: 3 adapter, 13 database (only on its Monday; the week's amounts; no account; approval rules; paid once, retried, given up; next Monday picks up what was not paid; an unpaid run is never listed twice; ledger balances; account checks).
+- Review by a second agent found 5 real problems, all fixed with tests (`payouts-edges.test.ts`):
+  - A run could pay more than a rider was owed after a late correction. Now each line is checked against what he is owed when it is sent; if he is owed less, the line is cancelled and the right amount goes in the next run.
+  - A run could not be cancelled, so its money was stuck. Now finance can cancel what is left of a run (`cancelPayoutRun`); the money comes back in the next run.
+  - Pending payouts counted as tries. Now only failures count; a pending one is asked again and never given up by itself (it may already be paid).
+  - A provider that did not answer stopped the whole run and the try was not kept. Now it is kept as pending (same key next time) and the other riders are still paid.
+  - The run hung with a one-connection pool. Now all its work goes through one connection.
+  - Also: a rider whose pay could not be updated, and late changes in closed months, are shown to finance with the run instead of stopping it.
+- Open: bank details are stored as entered; they will be encrypted at rest with the real servers (P7). Depositing TDS to the government comes with P1.7.9. A real provider may replay a first "failed" answer for the same key; the real adapter (P6) will retry with a new key only after the provider confirms the first one is dead.
 - **Next: P1.7.8** screen loan record, then **P1.7.9** GST and books.
 
 ## 24 Oct 2026 · P1.7.5–6 · Rider pay and the business switch

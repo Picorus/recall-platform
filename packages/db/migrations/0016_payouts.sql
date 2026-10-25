@@ -30,12 +30,15 @@ CREATE TABLE payout_approvals (
   approved_by text        NOT NULL,
   approved_at timestamptz NOT NULL
 );
--- Each try to pay a line, as the provider answered.
+-- Each try to pay a line, as the provider answered (or no answer: pending), and a line given up
+-- (failed too often) or cancelled (run cancelled, or the rider is now owed less): its money comes
+-- back into the next run.
 CREATE TABLE payout_attempts (
   run_id       date        NOT NULL,
   rider_id     text        NOT NULL,
   attempt      integer     NOT NULL CHECK (attempt > 0),
-  status       text        NOT NULL CHECK (status IN ('paid', 'pending', 'failed', 'given up')),
+  status       text        NOT NULL CHECK (status IN
+                 ('paid', 'pending', 'failed', 'given up', 'cancelled')),
   provider_ref text,
   reason       text,
   at           timestamptz NOT NULL,
