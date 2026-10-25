@@ -2,6 +2,18 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 25 Oct 2026 · P1.7.7 · Monday payout run
+- P1.7.5–6 merged (PR #24).
+- `packages/adapters`: the first adapter, `payouts` (bank or UPI), with a working fake: same key → same answer (never pays twice), failures and pending on request.
+- Database (migration 0016): payout accounts (latest wins), runs, lines (amount and destination as prepared), approvals, every try. All append-only.
+  - `preparePayoutRun(monday)`: brings rider pay up to date, then lists each rider's amount owed (less what earlier runs are still paying); riders with no account listed apart.
+  - `approvePayoutRun`: finance or a super admin, once, not the person who prepared it.
+  - `sendPayoutRun`: pays through the adapter; one sender at a time; retries up to 3; a wrong account is given up and shown; a paid line moves the money from "owed to the rider" to the bank in the ledger. Safe to call again.
+  - `payoutRunStatus` for admin.
+- Tests: 3 adapter, 8 database (only on its Monday; the week's amounts; no account; approval rules; paid once, retried, given up; next Monday picks up what was not paid; an unpaid run is never listed twice; ledger balances; account checks).
+- Open: bank details are stored as entered; they will be encrypted at rest with the real servers (P7). Depositing TDS to the government comes with P1.7.9.
+- **Next: P1.7.8** screen loan record, then **P1.7.9** GST and books.
+
 ## 24 Oct 2026 · P1.7.5–6 · Rider pay and the business switch
 - P1.7.4 merged (PR #23).
 - **Business switch** (Prateek): `business-mode.ts` + migration 0015 `business_modes`. A super admin flips POC ↔ regular business (`setBusinessMode`); it counts from the start of that business day; one switch a day; append-only with who and why. Switching the POC on counts from the 1st of a month (so month 1 is full). The POC runs once: after it is switched off it can never come back (`canSwitch` tells the portal; after the POC it shows as a record, view only, to the super admin). Demo copy for investors (Prateek, 25 Oct): `markDemoCopy` (only an empty database) lets the super admin flip POC on and off freely there. The month the POC is first switched on is POC month 1. Rider pay follows it; the brand side will read it later.
