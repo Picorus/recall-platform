@@ -10,7 +10,9 @@ package app.recall.player.core
 /** How an hour on a screen is cut up (settings, from the price book). */
 data class SpotRules(val spotSeconds: Int = 15, val brandPlaysPerRecallSpot: Int = 5) {
     init {
-        require(spotSeconds > 0 && brandPlaysPerRecallSpot > 0)
+        // Hours start on :00 or :30 UTC (India is UTC+5:30): a spot must divide half an hour, so
+        // one grid lines up with every hour.
+        require(spotSeconds > 0 && 1800 % spotSeconds == 0 && brandPlaysPerRecallSpot > 0)
     }
 
     val spotsPerHour: Int get() = HOUR_SECONDS / spotSeconds
@@ -58,6 +60,7 @@ object Spots {
 
     /** The ad for spot `index` of the hour on a bike carrying `carry` (ads take turns). */
     fun spotAt(plan: HourPlan, carry: Carry, index: Int, rules: SpotRules = SpotRules()): SpotChoice {
+        require(index >= 0) { "spot $index: spots count from 0" }
         val recall = SpotChoice("recall", null, nth(plan.recallAds, index) ?: "")
         val group = rules.brandPlaysPerRecallSpot + 1
         if (rules.isRecallSpot(index)) {

@@ -40,6 +40,7 @@ class Playout(
     /** The checked file for an ad, or null when it is not on the box (AdStore.file). */
     private val fileOf: (String) -> File?,
     private val rules: SpotRules = SpotRules(),
+    private val log: (String) -> Unit = {},
 ) {
     val spotMs: Long = rules.spotSeconds * 1000L
 
@@ -52,7 +53,11 @@ class Playout(
         // grid from 1970 lines up with every plan.
         val start = Math.floorDiv(utcMs, spotMs) * spotMs
         val end = start + spotMs
-        val planned = plans.at(start)
+        // A plan that cannot be read, or is off the grid, is no plan: RECALL's ads, never a dark screen.
+        val planned = runCatching { plans.at(start) }.onFailure { log("play: no plan: ${it.message}") }.getOrNull()
+            ?.takeIf { (plan, _) ->
+                (plan.startsAt * 1000 % spotMs == 0L).also { ok -> if (!ok) log("play: plan for ${plan.areaId} is off the spot grid") }
+            }
         if (planned != null) {
             val (plan, carry) = planned
             recallAds = plan.recallAds

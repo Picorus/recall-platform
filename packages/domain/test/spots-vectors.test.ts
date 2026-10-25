@@ -49,6 +49,12 @@ describe('spots (P2.5): the shared cases the Kotlin player also passes', () => {
       expect(ads.filter((a) => a === ad).length).toBeGreaterThanOrEqual(66);
   });
 
+  it('spots count from 0: a negative or broken spot number is refused (as on the box)', () => {
+    const c = { lineId: 'L-paid', spotId: undefined };
+    expect(() => spotAt(plan, c, -1)).toThrow(/count from 0/);
+    expect(() => spotAt(plan, c, 1.5)).toThrow(/count from 0/);
+  });
+
   it('no RECALL ads in the plan: an empty ad (the screen shows its own slate)', () => {
     const empty = { ...plan, recallAds: [] };
     const got = Array.from({ length: 12 }, (_, i) =>
