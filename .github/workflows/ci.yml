@@ -63,6 +63,9 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: docker compose -f infra/docker-compose.yml up -d --wait db
       - run: pnpm --filter @recall/db test:db
+      - run: pnpm --filter @recall/gateway test:db
+      - name: Screen line end to end (EMQX over TLS, gateway, database)
+        run: pnpm --filter @recall/gateway test:emqx
       - name: Migrations apply to the laptop database
         run: pnpm --filter @recall/db migrate && pnpm --filter @recall/db migrate
       - if: failure()

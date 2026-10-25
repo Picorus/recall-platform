@@ -5,7 +5,8 @@
   "type": "module",
   "description": "The database: migrations (plain SQL) and the code that reads and writes RECALL's tables.",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./test-db": "./test/db/fresh-db.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
