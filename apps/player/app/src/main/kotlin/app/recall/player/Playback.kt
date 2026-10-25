@@ -34,7 +34,7 @@ object Playback {
         owner = activity
         val s = Screen(activity, root)
         screen = s
-        val log = { m: String -> Log.i("RecallPlay", m) }
+        val log: (String) -> Unit = { m -> Log.i("RecallPlay", m) }
         thread = PlaybackThread(SystemClock::elapsedRealtime, { waiter, mark ->
             val playout = Playout({ t -> plans.at(t) }, { ad -> Ads.store?.file(ad) }, log = log)
             Conductor(
