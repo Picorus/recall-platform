@@ -6,6 +6,7 @@ import {
   bookingPaid,
   DEFAULT_MAKE_UP_RULES,
   DEFAULT_RIDER_PAY_RULES,
+  DEFAULT_TAX_RULES,
   DEFAULT_PLAY_RULES,
   capacityProblems,
   checkPriceBook,
@@ -30,6 +31,7 @@ import {
 } from '@recall/domain';
 import type { Pool, PoolClient } from 'pg';
 import { allAreaVersions } from './areas.js';
+import { issueGstDocument } from './gst.js';
 import { postEntry } from './ledger.js';
 import { forecastLimits } from './supply.js';
 
@@ -92,6 +94,7 @@ export async function priceBooks(pool: Pick<Pool, 'query'>): Promise<PriceBook[]
     cuts: x.book.cuts ?? { agency: 1_000, aggregator: 200 },
     cutTdsBp: x.book.cutTdsBp ?? 200,
     riderPay: x.book.riderPay ?? DEFAULT_RIDER_PAY_RULES,
+    taxes: { ...DEFAULT_TAX_RULES, ...x.book.taxes },
   }));
 }
 
@@ -475,19 +478,26 @@ export async function moveBooking(
         [bookingId],
       );
       const b = m.rows[0];
-      if (b && Number(b.subtotal) + Number(b.gst) > 0)
-        await postEntry(
-          c,
-          bookingPaid({
-            bookingId,
-            brandId: b.brand_id,
-            subtotal: Number(b.subtotal),
-            gst: Number(b.gst),
-            paymentId: who.paymentId ?? 'advance',
-            at: now,
-          }),
-          who.by,
-        );
+      if (b && Number(b.subtotal) + Number(b.gst) > 0) {
+        const entry = bookingPaid({
+          bookingId,
+          brandId: b.brand_id,
+          subtotal: Number(b.subtotal),
+          gst: Number(b.gst),
+          paymentId: who.paymentId ?? 'advance',
+          at: now,
+        });
+        await postEntry(c, entry, who.by);
+        // P1.7.9: the tax invoice is issued at once, in the same step.
+        await issueGstDocument(c, {
+          kind: 'invoice',
+          sourceEntry: entry.entryId,
+          bookingId,
+          taxable: Number(b.subtotal),
+          gst: Number(b.gst),
+          at: now,
+        });
+      }
     }
   });
 }

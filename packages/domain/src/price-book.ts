@@ -64,7 +64,28 @@ export interface PriceBook {
   readonly cutTdsBp: number;
   /** Rider pay (P1.7.5–6): POC or after the POC, rates, TDS. */
   readonly riderPay: RiderPayRules;
+  /** GST and the books (P1.7.9). */
+  readonly taxes: TaxRules;
 }
+
+/** GST settings (P1.7.9). */
+export interface TaxRules {
+  /** RECALL's state for GST (Telangana: 36). Same state as the brand: CGST + SGST; else IGST. */
+  readonly supplierStateCode: string;
+  /** E-invoicing is needed above this turnover in a financial year (₹5 crore today). */
+  readonly eInvoiceTurnoverPaise: number;
+  /** Warn this share of the way there (basis points), so it is switched on in time. */
+  readonly eInvoiceWarnBp: number;
+  /** The service code printed on invoices (advertising space or time: 998365). */
+  readonly sacCode: string;
+}
+
+export const DEFAULT_TAX_RULES: TaxRules = {
+  supplierStateCode: '36',
+  eInvoiceTurnoverPaise: 5_000_000_000,
+  eInvoiceWarnBp: 8_000,
+  sacCode: '998365',
+};
 
 /** The book in force from 22 Oct 2026: rulebook v5.4 and Prateek's decisions of 21–22 Oct. */
 export const PRICE_BOOK_V1: PriceBook = {
@@ -95,6 +116,7 @@ export const PRICE_BOOK_V1: PriceBook = {
   cuts: { agency: 1_000, aggregator: 200 },
   cutTdsBp: 200,
   riderPay: DEFAULT_RIDER_PAY_RULES,
+  taxes: DEFAULT_TAX_RULES,
 };
 
 /** Highest cut rate that can be given (50%, in basis points). */
@@ -184,6 +206,19 @@ export function checkPriceBook(b: PriceBook): PriceBookProblem[] {
   if (![m.closeAfterSeconds, m.nextHours, m.dayCloseSeconds].every(whole) || m.nextHours > 4)
     problems.push('make-up settings must be whole numbers; at most 4 next hours');
   problems.push(...checkRiderPayRules(b.riderPay));
+  const t = b.taxes;
+  if (
+    !/^\d{2}$/.test(t.supplierStateCode) ||
+    !/^\d{6}$/.test(t.sacCode) ||
+    !Number.isSafeInteger(t.eInvoiceTurnoverPaise) ||
+    t.eInvoiceTurnoverPaise <= 0 ||
+    !Number.isSafeInteger(t.eInvoiceWarnBp) ||
+    t.eInvoiceWarnBp < 0 ||
+    t.eInvoiceWarnBp > 10_000
+  )
+    problems.push(
+      'tax settings: a 2-digit state code, a 6-digit service code, a turnover above 0, a warning share 0–100%',
+    );
   return problems;
 }
 
