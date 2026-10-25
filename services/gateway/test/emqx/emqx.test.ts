@@ -34,6 +34,35 @@ let a: TestBox;
 let b: TestBox;
 let c: TestBox;
 const clients: mqtt.MqttClient[] = [];
+const gatewayLog: string[] = [];
+
+/** What the broker and the gateway said, for a failure message. */
+const brokerStory = () => {
+  let broker: string;
+  try {
+    broker = execFileSync('docker', ['logs', '--tail', '80', NAME], { stdio: 'pipe' }).toString();
+  } catch (e) {
+    broker = `(no broker log: ${(e as Error).message})`;
+  }
+  return `\n--- broker ---\n${broker}\n--- gateway ---\n${gatewayLog.slice(-40).join('\n')}`;
+};
+
+/** Gives up on a step after `ms`, saying which step and what the broker and gateway said. */
+const step = async <T>(what: string, p: Promise<T>, ms: number): Promise<T> => {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      p,
+      new Promise<never>((_, fail) => {
+        timer = setTimeout(() => fail(new Error(`${what}: no answer in ${ms / 1000} s`)), ms);
+      }),
+    ]);
+  } catch (e) {
+    throw new Error(`${(e as Error).message}${brokerStory()}`, { cause: e });
+  } finally {
+    clearTimeout(timer);
+  }
+};
 
 const portOpen = (port: number) =>
   new Promise<boolean>((ok) => {
@@ -45,7 +74,7 @@ const portOpen = (port: number) =>
   });
 
 beforeAll(async () => {
-  db = await freshDatabase();
+  db = await step('a fresh database', freshDatabase(), 60_000);
   pool = db.pool;
   const ca = fakeDeviceCa();
   [a, b, c] = [
@@ -63,6 +92,7 @@ beforeAll(async () => {
       hookPort: 0,
     },
     (l) => {
+      gatewayLog.push(l);
       if (process.env.EMQX_TEST_LOG) console.log(l);
     },
   );
@@ -103,10 +133,10 @@ beforeAll(async () => {
   ]);
   const until = Date.now() + 120_000;
   while (!((await portOpen(SSL_PORT)) && (await portOpen(TCP_PORT)))) {
-    if (Date.now() > until) throw new Error(execFileSync('docker', ['logs', NAME]).toString());
+    if (Date.now() > until) throw new Error(`the broker did not open its ports${brokerStory()}`);
     await new Promise((ok) => setTimeout(ok, 1_000));
   }
-  await gateway.connect();
+  await step('the gateway connecting to the broker', gateway.connect(), 60_000);
 }, 240_000);
 
 afterAll(async () => {
