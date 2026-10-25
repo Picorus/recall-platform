@@ -94,10 +94,15 @@ class Screen(private val context: Context, private val root: FrameLayout) : Rend
     private inner class Deck {
         val view = FrameLayout(context).apply { setBackgroundColor(MIDNIGHT) }
         private val texture = TextureView(context)
-        private val picture = ImageView(context).apply { scaleType = ImageView.ScaleType.FIT_CENTER }
+        // On its own ground, so nothing of the video layer under it shows round a picture.
+        private val picture = ImageView(context).apply {
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            setBackgroundColor(MIDNIGHT)
+        }
         private val slate = TextView(context).apply {
             text = context.getString(R.string.app_name)
             setTextColor(VOLT)
+            setBackgroundColor(MIDNIGHT)
             gravity = Gravity.CENTER
             textSize = 32f
         }
@@ -112,6 +117,7 @@ class Screen(private val context: Context, private val root: FrameLayout) : Rend
         private var confirmed = false
 
         init {
+            // Bottom to top: video, picture, slate.
             listOf(texture, picture, slate).forEach { view.addView(it, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT)) }
             only(slate)
         }
@@ -225,7 +231,15 @@ class Screen(private val context: Context, private val root: FrameLayout) : Rend
             reports?.failed(s, problem, fileFault)
         }
 
-        private fun only(v: View) = listOf(texture, picture, slate).forEach { it.visibility = if (it === v) View.VISIBLE else View.INVISIBLE }
+        /**
+         * Shows one of the three. The video layer stays visible underneath at all times (Android makes
+         * its drawing surface only once it is visible: hidden, a video could never draw its first frame);
+         * the picture or the slate cover it until the video's own first frame is there.
+         */
+        private fun only(v: View) {
+            picture.visibility = if (v === picture) View.VISIBLE else View.INVISIBLE
+            slate.visibility = if (v === slate) View.VISIBLE else View.INVISIBLE
+        }
 
         /**
          * The picture, scaled down to the screen if larger (never up). A String says why the box could
