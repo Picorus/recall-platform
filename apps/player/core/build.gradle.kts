@@ -15,7 +15,8 @@ kotlin {
 
 dependencies {
     testImplementation(kotlin("test"))
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
+    // Reports are JSON in the core's own calls (Outbox, PlaySigner), so the app sees it too.
+    api("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
     // MQTT client (Eclipse Paho, plain Java: runs the same on the box and in tests).
     implementation("org.eclipse.paho:org.eclipse.paho.client.mqttv3:1.2.5")
     // Test certificates for the secure line (tests only).

@@ -2,6 +2,7 @@
 // to choose what to play, their refusals, and the screen's own pick for 200 screens. The Kotlin player
 // must pass the same file. Run from packages/domain: npx tsx scripts/screen-plan-vectors.ts
 import { writeFileSync } from 'node:fs';
+import { lineIdOf } from '../src/plays.js';
 import { buildHourPlan, fallbackPick, fnv1a32, hash32, type HourPlan } from '../src/scheduler.js';
 import {
   areasText,
@@ -47,6 +48,12 @@ const areas = [
   },
 ];
 
+// Ids exactly as the cloud names them and plays name them back (P2.7): "booking/area/date/hour" and
+// a make-up "<line id>#1".
+const CLOUD_LINE = lineIdOf('BK-0007', 'hyd-madhapur', DATE, 18);
+const CLOUD_MAKEUP = `${lineIdOf('BK-0003', 'hyd-madhapur', '2026-11-01', 20)}#1`;
+const LATE_LINE = lineIdOf('BK-0012', 'hyd-kondapur', DATE, 25);
+
 type In = Parameters<typeof buildHourPlan>[0];
 const plan = (areaId: string, startHour: number, o: Partial<In>, revision = 1): HourPlan => ({
   ...buildHourPlan({
@@ -73,11 +80,12 @@ const plans = [
         { lineId: 'L-ponnu', brandId: 'B1', ads: ['a1', 'a2', 'a3'], bikes: 3 },
         { lineId: 'L-chai', brandId: 'B2', ads: ['c1', 'c2'], bikes: 1 },
         { lineId: 'L-none', brandId: 'B6', ads: ['n1', 'n2'], bikes: 0 },
+        { lineId: CLOUD_LINE, brandId: 'B13', ads: ['k1', 'k2'], bikes: 2 },
         { lineId: 'L-big', brandId: 'B5', ads: ['g1', 'g2', 'g3', 'g4', 'g5'], bikes: 6 },
       ],
       makeUps: [
         { lineId: 'M-old', brandId: 'B3', ads: ['m1'], plays: 120 },
-        { lineId: 'M-two', brandId: 'B7', ads: ['m2', 'm3'], plays: 40 },
+        { lineId: CLOUD_MAKEUP, brandId: 'B7', ads: ['m2', 'm3'], plays: 40 },
         { lineId: 'M-zero', brandId: 'B8', ads: ['m4'], plays: 0 },
       ],
       trials: [{ lineId: 'T-try', brandId: 'B4', ads: ['t1', 't2'], bikes: 1 }],
@@ -113,7 +121,7 @@ const plans = [
   // After midnight (00:00 and 01:00 belong to the day before): nothing sold, then one line.
   plan('hyd-kondapur', 24, {}),
   plan('hyd-kondapur', 25, {
-    paid: [{ lineId: 'L-late', brandId: 'B12', ads: ['l1', 'l2'], bikes: 1 }],
+    paid: [{ lineId: LATE_LINE, brandId: 'B12', ads: ['l1', 'l2'], bikes: 1 }],
     aggregator: [
       { id: 'G-p', ads: ['x1'], plays: 5 },
       { id: 'G-q', ads: ['x2'], plays: 15 },
@@ -200,6 +208,8 @@ const refused = [
   r('plan', planWith({ lines: [{ ...pl.lines[0], extra: 1 }] }), 'wrong line fields'),
   r('plan', planWith({ lines: [{ ...pl.lines[0], kind: 'gift' }] }), 'bad line kind'),
   r('plan', planWith({ lines: [pl.lines[0], pl.lines[0]] }), 'bad line id'),
+  r('plan', planWith({ lines: [{ ...pl.lines[0], lineId: 'BK-1/x y' }] }), 'bad line id'),
+  r('plan', planWith({ recallAds: ['r/1'] }), 'bad RECALL ads'),
   r('plan', planWith({ lines: [{ ...pl.lines[0], ads: [] }] }), 'bad line ads'),
   r('plan', planWith({ lines: [{ ...pl.lines[0], bikes: -1 }] }), 'bad line numbers'),
   r('plan', planWith({ spotDemands: [{ ...pl.spotDemands[0], extra: 1 }] }), 'wrong spot fields'),
@@ -214,6 +224,9 @@ const refused = [
   r('plan', JSON.stringify({ v: 1, made: MADE, plans: [pl, pl] }), 'an area-hour listed twice'),
   r('assign', 'nope', 'not an assignment'),
   r('assign', assignJson(',"lineId":"L 1","spotId":null'), 'bad line id'),
+  r('assign', assignJson(`,"lineId":"${'L'.repeat(121)}","spotId":null`), 'bad line id'),
+  r('assign', assignJson(',"lineId":"BK-1/a.b","spotId":null'), 'bad line id'),
+  r('assign', assignJson(',"lineId":null,"spotId":"M|1"'), 'bad spot id'),
   r('assign', assignJson(',"lineId":null,"spotId":7'), 'bad spot id'),
   r(
     'assign',

@@ -2,6 +2,29 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 25 Oct 2026 · P2.7 · Signed play log
+- **Every counted play is signed on the box and kept until the cloud has it** (`PlayLog.kt` in `apps/player/core`).
+  - Which plays: only the ones playback counts (P2.5): shown by trusted time, from start to end, confirmed on screen, a real ad, never counted before.
+  - The record is the one the cloud already checks (P1.5, `packages/domain/src/plays.ts`): what played (brand line, make-up, aggregator or RECALL), the ad, start and length, where the bike was (position, accuracy, area), people (0 until P2.9).
+  - Signed with the box's play key, made at enrolment inside the Android Keystore (the private half never leaves it), over exactly the cloud's bytes, including the record's number in the outbox. The outbox (P2.3) keeps it on storage until the cloud confirms; if the outbox ever renumbers, the play is signed again for its new number.
+  - Signing and saving run on their own thread: the next spot is never held up.
+  - The latest counted spot is saved to storage before its record, and read back at start: a restart (or a clock going back) never counts a spot twice. A power cut at the wrong moment can lose one play, never add one.
+  - Where the bike was: the local scheduler remembers the tracker's last 2 minutes, second by second. No GPS fix: the record says so honestly, and the cloud keeps it without counting it.
+- **A gap from P2.6 fixed**: plans only allowed short line ids, but the cloud names lines `BK-0007/hyd-madhapur/2026-11-02/18` (make-ups `…#1`). Both sides now accept these, so a play names its line exactly as the cloud counts it. Shared cases updated with real ids and new refusals.
+- **On the box**: the line starts the outbox and play log as soon as it has the screen id, even if the secure line cannot open yet; playback hands every spot to the play log. App 0.6.0.
+- Tests: Kotlin 7 new (`PlayLogTest`: the cloud's own cases and signatures, signed for its number and re-signed on renumbering, only counted plays recorded, failures counted, bad records never signed, the mark across a restart, positions); 101 core tests in all. TypeScript: shared play cases (`test-vectors/plays.json`, generator `packages/domain/scripts/play-vectors.ts`), 4 tests. The people-count guard now lists the box's play record (it carries the signed count, never billed).
+- Second-agent review: 9 findings, nothing blocking; all fixed except one test gap (below):
+  - a faked GPS date years ahead, saved as the last counted spot, would have stopped every later play from counting, even after a reboot. Now the mark is brought back as soon as the cloud's own time is known;
+  - a play only got a position if GPS had a fix in exactly its first second. Now the nearest good fix within 5 seconds is used;
+  - renumbering the outbox could lose reports if signing failed half-way. Now everything is signed first; a failure changes nothing and is tried again;
+  - a keystore hiccup lost a real play. Now it is tried 3 times before it is given up (and counted);
+  - a lost play key would have quietly made a new one the cloud does not know. Now signing never makes a key: it fails loudly;
+  - plays counted just after a boot, before the play log started, were dropped. Now the play log starts first, and up to an hour of early plays wait for it;
+  - area ids are now at most 48 characters (database), so a line id always fits the 120 a plan and a play allow;
+  - more tests: retries, the mark saved before the record, renumbering when signing fails, the nearest fix, the mark pulled back. Kotlin core now 104.
+- Open: GPS service (P2.8) feeds positions, and must number seconds by the trusted clock; people counter (P2.9); health counters for spots not counted and plays not stored (P2.11). Test gap: no test yet sends a report written by the Kotlin side through the cloud's own checks (today the box's report is checked field by field against the cloud's cases).
+- Next: P2.8, the GPS service.
+
 ## 25 Oct 2026 · P2.6.3 · Local scheduler: the box chooses what to play
 - **The local scheduler** (`LocalScheduler.kt` in `apps/player/core`): keeps what the cloud sends (P2.6.2) and answers playback's question for any moment (P2.5): which plan, and what this bike carries.
   - The area is the one the tracker settled on (P2.6.1, with its 15-second hold): inside an area or in its edge zone. Outside every area: RECALL's own ads.

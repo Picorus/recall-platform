@@ -1,0 +1,89 @@
+{
+  "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEqBwfUPSYdbnsTUzPAPJYuyKzcZC430XpAab/6nO7sd6qnE2vbMIvI7jvYEsWKkigGR4XNbH4tJqy2HsIFU490g==",
+  "cases": [
+    {
+      "name": "a brand play inside its area",
+      "screenId": "SCR-0001234K",
+      "seq": 1,
+      "play": {
+        "kind": "play",
+        "keyId": "k1",
+        "slot": "brand",
+        "ref": "BK-0007/hyd-madhapur/2026-11-02/18",
+        "adId": "a1",
+        "startAt": 1793628015,
+        "lengthS": 15,
+        "latE6": 17447512,
+        "lngE6": 78391044,
+        "accuracyM": 8,
+        "place": "inside:hyd-madhapur@3",
+        "people": 0
+      },
+      "bytes": "RECALL-PLAY-1\nSCR-0001234K\n1\nk1\nbrand\nBK-0007/hyd-madhapur/2026-11-02/18\na1\n1793628015\n15\n17447512\n78391044\n8\ninside:hyd-madhapur@3\n0",
+      "sig": "MEUCIAwTwINHwdH/I6Abo+H3bYxExo2NFNj2xhYNtZt93cfxAiEA9QWfZ0cOz0Vxlzwe0YZJBqW0tCdxCrw+TP0jh40YzVg="
+    },
+    {
+      "name": "a make-up play in a RECALL spot",
+      "screenId": "SCR-0001234K",
+      "seq": 4000000001,
+      "play": {
+        "kind": "play",
+        "keyId": "k1",
+        "slot": "make-up",
+        "ref": "BK-0003/hyd-madhapur/2026-11-01/20#1",
+        "adId": "m1",
+        "startAt": 1793628015,
+        "lengthS": 15,
+        "latE6": 17447512,
+        "lngE6": 78391044,
+        "accuracyM": 8,
+        "place": "edge:hyd-madhapur@3",
+        "people": 0
+      },
+      "bytes": "RECALL-PLAY-1\nSCR-0001234K\n4000000001\nk1\nmake-up\nBK-0003/hyd-madhapur/2026-11-01/20#1\nm1\n1793628015\n15\n17447512\n78391044\n8\nedge:hyd-madhapur@3\n0",
+      "sig": "MEQCIFR39kr1fHXIlxpDCHAPTtSQeJIRAr1EVHTGxGfKHQYyAiBhTyvihV5S1RJVDm7zKan+5MUul7V0y7WcH8YIhAMkZQ=="
+    },
+    {
+      "name": "RECALL's own ad, no position (no GPS fix)",
+      "screenId": "SCR-9999999Z",
+      "seq": 77,
+      "play": {
+        "kind": "play",
+        "keyId": "k1",
+        "slot": "recall",
+        "ref": "",
+        "adId": "r1",
+        "startAt": 1793628015,
+        "lengthS": 15,
+        "latE6": 0,
+        "lngE6": 0,
+        "accuracyM": 100000,
+        "place": "outside",
+        "people": 0
+      },
+      "bytes": "RECALL-PLAY-1\nSCR-9999999Z\n77\nk1\nrecall\n\nr1\n1793628015\n15\n0\n0\n100000\noutside\n0",
+      "sig": "MEUCIEWueISlWI/9E0JWoNjD/WrrNLknao7A2eZqT+LNKgU5AiEAjhAbzSlUAv02pz7oJmrCVssciQIAkpF/1UNsOEuFYFc="
+    },
+    {
+      "name": "an aggregator spot, south-west of zero",
+      "screenId": "SCR-0000001A",
+      "seq": 12,
+      "play": {
+        "kind": "play",
+        "keyId": "k1",
+        "slot": "aggregator",
+        "ref": "G-agg",
+        "adId": "x1",
+        "startAt": 1793628015,
+        "lengthS": 15,
+        "latE6": -33868820,
+        "lngE6": -151209290,
+        "accuracyM": 8,
+        "place": "inside:hyd-madhapur@3",
+        "people": 0
+      },
+      "bytes": "RECALL-PLAY-1\nSCR-0000001A\n12\nk1\naggregator\nG-agg\nx1\n1793628015\n15\n-33868820\n-151209290\n8\ninside:hyd-madhapur@3\n0",
+      "sig": "MEYCIQC7GWVcfPLSKwUBpQCLUlhBs/lsMW9Cb2DN+ibfcLTW4AIhAOabUjZkDt2JgmDSgFtMOWDCi7CZzGJ6COk5mVlIbZG0"
+    }
+  ]
+}

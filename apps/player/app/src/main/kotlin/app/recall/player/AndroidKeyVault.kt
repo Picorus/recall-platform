@@ -44,8 +44,11 @@ class AndroidKeyVault : KeyVault {
     }
 
     override fun sign(alias: String, bytes: ByteArray): String {
+        // Never makes a key here: a key lost from the store must fail loudly, not sign every play
+        // with a new key the cloud does not know (review P2.7). Keys are made at enrolment.
+        val key = store.getKey(alias, null) as? PrivateKey ?: error("the box has no key $alias")
         val s = Signature.getInstance("SHA256withECDSA")
-        s.initSign(privateKey(alias))
+        s.initSign(key)
         s.update(bytes)
         return Base64.getEncoder().encodeToString(s.sign())
     }

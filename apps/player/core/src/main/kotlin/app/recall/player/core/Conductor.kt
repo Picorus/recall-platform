@@ -80,6 +80,19 @@ class PlayedMark(initial: Long = Long.MIN_VALUE) {
             if (last.compareAndSet(v, startUtc)) return true
         }
     }
+
+    /**
+     * A mark well ahead of the cloud's own time (`cloudNowMs`) came from a wrong clock (a faked GPS
+     * date): it would stop every real play from counting, even across reboots. Brought back to the
+     * cloud's time; true when it was. The cloud still refuses two plays closer than one spot (review P2.7).
+     */
+    fun pullBack(cloudNowMs: Long, aheadMs: Long = 60_000): Boolean {
+        while (true) {
+            val v = last.get()
+            if (v <= cloudNowMs + aheadMs) return false
+            if (last.compareAndSet(v, cloudNowMs)) return true
+        }
+    }
 }
 
 class Conductor(

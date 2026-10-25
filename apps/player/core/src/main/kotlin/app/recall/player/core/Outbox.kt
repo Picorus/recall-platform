@@ -40,7 +40,15 @@ data class OutboxRules(
 /** A report waiting in the outbox: its number, when it was made (UTC seconds) and its exact text. */
 data class Queued(val seq: Long, val at: Long, val text: String)
 
-class Outbox(private val dir: File, private val rules: OutboxRules = OutboxRules()) {
+class Outbox(
+    private val dir: File,
+    private val rules: OutboxRules = OutboxRules(),
+    /**
+     * Finishes a report once its number is known, before it is stored: plays are signed here, over
+     * their number (PlaySigner, P2.7). Applied again when reports are renumbered.
+     */
+    private val seal: (Long, JsonObject) -> JsonObject = { _, r -> r },
+) {
     private class Entry(val seq: Long, val at: Long)
     private class Segment(val file: File, val entries: MutableList<Entry> = mutableListOf(), var bytes: Long = 0)
 
@@ -84,10 +92,13 @@ class Outbox(private val dir: File, private val rules: OutboxRules = OutboxRules
      * when it was made, UTC seconds, from the trusted clock. Beyond the space limit the oldest go.
      */
     @Synchronized
-    fun add(report: JsonObject, at: Long): Queued {
+    fun add(report: JsonObject, at: Long): Queued = put(at) { seq -> seal(seq, report) }
+
+    /** Stores the report `make` gives for the next number. */
+    private fun put(at: Long, make: (Long) -> JsonObject): Queued {
         require(at >= 0) { "a report needs its time" }
         val seq = next
-        val text = ScreenLink.numberedText(seq, at, report)
+        val text = ScreenLink.numberedText(seq, at, make(seq))
         val line = "${crc(text)}\t$text\n"
         val size = line.toByteArray().size
         require(size <= MAX_REPORT_BYTES) { "a report must be under ${MAX_REPORT_BYTES / 1024} KB" }
@@ -187,7 +198,7 @@ class Outbox(private val dir: File, private val rules: OutboxRules = OutboxRules
      * The cloud says it has every number up to `cloudUpTo`, beyond any this box ever handed out: the
      * box's numbering started again (its outbox was lost while its keys survived). The cloud would
      * take the reports still waiting as repeats and drop them, so they are numbered again after
-     * `cloudUpTo` (review, P2.3.3). Safe across a power cut: the new numbers are recorded first, the
+     * `cloudUpTo` (review, P2.3.3); plays are signed again for their new numbers (`seal`). Safe across a power cut: the new numbers are recorded first, the
      * copies written, then the old lines deleted (an old line left behind is taken as a repeat).
      * Returns how many reports were renumbered.
      */
@@ -195,14 +206,17 @@ class Outbox(private val dir: File, private val rules: OutboxRules = OutboxRules
     fun renumberAfter(cloudUpTo: Long): Int {
         if (cloudUpTo <= next - 1) return 0
         val waiting = unconfirmed().toList()
+        // Every report finished (plays signed) for its new number first: a failure here (the
+        // keystore busy) changes nothing, and the next ack tries again (review P2.7).
+        val renumbered = waiting.mapIndexed { i, q ->
+            val body = q.text.substring(HEAD.find(q.text)!!.range.last + 1, q.text.length - 1)
+            seal(cloudUpTo + 1 + i, Json.parseToJsonElement(body).jsonObject)
+        }
         DiskFiles.writeAtomically(File(dir, "floor"), cloudUpTo.toString())
         next = cloudUpTo + 1
         val old = segments.toList()
         open = null
-        for (q in waiting) {
-            val body = q.text.substring(HEAD.find(q.text)!!.range.last + 1, q.text.length - 1)
-            add(Json.parseToJsonElement(body).jsonObject, q.at)
-        }
+        waiting.forEachIndexed { i, q -> put(q.at) { seq -> check(seq == cloudUpTo + 1 + i); renumbered[i] } }
         old.forEach(::delete)
         return waiting.size
     }
