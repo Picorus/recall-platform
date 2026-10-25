@@ -4,6 +4,7 @@
 //  - everything numbered and kept on the screen until the cloud confirms it (up to 7 days).
 import { placeKey } from './areas.js';
 import { checkPlayShape, type PlayReport } from './plays.js';
+import { checkHealthShape, HEALTH_FIELDS, type HealthReport } from './screen-health.js';
 import { distanceMeters, type LatLng } from './geo.js';
 import { inPayZone, POC_PAY_ZONE, type PayZone } from './pay-zone.js';
 import type { Second } from './screen-tracker.js';
@@ -48,7 +49,7 @@ export interface MinuteSummary {
 }
 
 /** Plays (P1.5) travel the same way: numbered, kept until confirmed, never stored twice. */
-export type Report = LivePosition | MinuteSummary | PlayReport;
+export type Report = LivePosition | MinuteSummary | PlayReport | HealthReport;
 
 export interface MinuteBuilder {
   readonly minute: number | undefined;
@@ -285,6 +286,7 @@ export const REPORT_FIELDS = {
     'people',
     'sig',
   ],
+  health: HEALTH_FIELDS,
 } as const satisfies Record<Report['kind'], readonly string[]>;
 
 /** Longest text kept from one field (or field name) of a report that failed its checks. */
@@ -390,5 +392,6 @@ export function checkReport(r: unknown): string | undefined {
     return clockTotal === x.clockSeconds ? undefined : 'clockAt does not add up to clock seconds';
   }
   if (x.kind === 'play') return checkPlayShape(x);
+  if (x.kind === 'health') return checkHealthShape(x);
   return 'unknown kind';
 }

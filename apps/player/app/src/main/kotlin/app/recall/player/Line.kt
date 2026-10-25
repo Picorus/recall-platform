@@ -61,6 +61,8 @@ object Line {
             if (scheduler != null && box != null) {
                 runCatching { Gps.start(app, scheduler, box) }.onFailure { CrashLog.record(app, "gps not started: ${it.javaClass.simpleName}") }
             }
+            // Health (P2.11): once a minute through the outbox.
+            if (box != null) runCatching { BoxHealth.start(app, box) }.onFailure { CrashLog.record(app, "health not started: ${it.javaClass.simpleName}") }
         }
         // The ad files are kept and checked whether or not the line can open (P2.4). A problem
         // there must not keep the line (and so the play reports) from starting.

@@ -12,6 +12,7 @@ import {
 } from '@recall/domain';
 import type { Pool } from 'pg';
 import { allAreaVersions } from './areas.js';
+import { heardFrom, storeHealth } from './health.js';
 import { judgePlays, type PlayJudgement } from './plays.js';
 
 /** Why a numbered report was set aside instead of stored, or undefined when it is fine. */
@@ -147,6 +148,12 @@ export async function storeUpload(
         );
       }
     }
+    // P2.11: health reports, in the order they are numbered, and the alerts they decide.
+    for (const n of result.accepted) {
+      if (setAside.has(n.seq) || n.report.kind !== 'health') continue;
+      await storeHealth(c, screenId, n.seq, n.report);
+    }
+    await heardFrom(c, screenId, now);
     let minutesCounted = 0;
     for (const n of result.accepted) {
       if (setAside.has(n.seq) || n.report.kind !== 'minute') continue;

@@ -2,6 +2,15 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 25 Oct 2026 · P2.11 · Health
+- **What a health report holds** (`packages/domain/src/screen-health.ts`, a new report kind in the screen's outbox): the minute, app version, time since start, battery charge, charging and temperature, the box's temperature, free storage, mobile signal, LED fault, tamper, clocks disagreeing, and the box's counters (spots not counted, plays not stored, messages refused, GPS seconds missed, ads missing). Unknown readings travel as null. Checked strictly like every report (no extra fields, ranges).
+- **Alerts** (`healthAlerts`, settings `DEFAULT_HEALTH_RULES`): overheating (box ≥ 75 °C, battery ≥ 55 °C), low battery (≤ 15%, not charging), tamper, LED fault, low storage (< 500 MB), and no contact for 30 minutes.
+- **In the database** (migration 0023, `packages/db/src/health.ts`): each report stored (`screen_health`, by time); alerts as events, raised and cleared (`screen_alert_events`, append-only). A report that arrives late is kept but changes no alert. Any upload or hello clears "no contact"; `raiseSilentAlerts` (to run every minute from a worker) raises it once per silence. `openAlerts` lists what is open, for the admin health view (P3).
+- **On the box** (`Health.kt`, `BoxHealth.kt`): once a minute by the trusted time: battery from Android, the processor's temperature where the system shows it, free storage, signal strength, and the player's counters (playback now counts spots not counted and ads missing). LED fault and tamper come with the panel hardware. App 0.9.0.
+- Tests: TypeScript shared health cases (`test-vectors/health.json`) and refusals; database 4 (alerts raised and cleared, late reports, bad reports set aside, silence raised once and cleared); Kotlin 3 (`HealthTest`: the cloud's cases, sensors gone wrong, one report a minute). Kotlin core 122 in all.
+- Open: a worker to run `raiseSilentAlerts` every minute and send alerts to the operations team (WhatsApp/SMS adapters, P6); LED fault and tamper with the panel hardware; the health view in admin (P3).
+- Next: P2.12, remote commands.
+
 ## 25 Oct 2026 · P2.10 · Brightness
 - P2.9 (people counter) waits for the screen hardware sample (its AI chip), so P2.10 came first.
 - **Brightness** (`Brightness.kt` in `apps/player/core`, `ScreenLight.kt` on the box): once a second, from the sun's height over Hyderabad and the light sensor (where the box has one).
