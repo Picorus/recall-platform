@@ -2,6 +2,17 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 25 Oct 2026 · P2.10 · Brightness
+- P2.9 (people counter) waits for the screen hardware sample (its AI chip), so P2.10 came first.
+- **Brightness** (`Brightness.kt` in `apps/player/core`, `ScreenLight.kt` on the box): once a second, from the sun's height over Hyderabad and the light sensor (where the box has one).
+  - Without a sensor: 100% by day, 30% at night, smoothly between at dusk and dawn.
+  - With a sensor: never under 60% by day (a covered or dirty sensor cannot hide the ad), never over 35% at night (a headlight on the sensor cannot make it blinding).
+  - A passing headlight is ignored (the lower middle of the last 10 seconds); the screen changes at most 5 points a second, never a flicker. A sensor that stops is no longer followed after 10 seconds.
+  - The panel is set through one call (`Panel`): today the Android display's brightness; with the hardware, the LED sending card's own control. App 0.8.0.
+- Tests: Kotlin 6 new (`BrightnessTest`: the sun at noon, midnight, sunrise and sunset in Hyderabad; with and without a sensor; limits; smoothing and headlights; a stopped sensor; unsafe settings refused); 116 core tests in all.
+- Open: the LED sending card's SDK (with the hardware sample); remote "set brightness" comes with P2.12.
+- Next: P2.11, health.
+
 ## 25 Oct 2026 · P2.8 · GPS service
 - **P2.8.1 Minute summaries and live positions** (`Minutes.kt`): the box's copy of the cloud's `addSecond` (P1.2.4): every minute, seconds at each place, seconds the moving-hour clock ran (and where, and inside the pay zone), seconds moving, distance, plays; a live position every 30 seconds. Rider pay comes from these minutes, so they match the cloud's exactly: the shared ride now also lists its 40 live positions, and the box matches all 22 minutes and 40 positions.
 - **P2.8.2 The GPS loop** (`GpsLoop.kt`) and the service on the box (`Gps.kt`):
@@ -11,7 +22,8 @@ Newest first. Each entry: date · step id · what changed · tests · open issue
   - plays recorded are added to the minute they are recorded in;
   - the player gives itself location permission and turns location on, as device owner. App 0.7.0.
 - Tests: Kotlin 9 new (`MinutesTest` 2, `GpsLoopTest` 4: the shared ride read like a real chip gives the cloud's minutes, missed seconds, clock back and jumps, old and missing readings, plays per minute); 110 core tests in all. TypeScript: the shared ride's live positions.
-- Open: the pay zone is the POC one (15 km of Hitech City) until the cloud sends it as a setting; a real GPS test on the emulator (`adb emu geo fix`) and on the panel hardware; people counter (P2.9).
+- Prateek confirmed the pay zone: 15 km around Hitech City (the cloud can still send a new zone as a setting later).
+- Open: a real GPS test on the emulator (`adb emu geo fix`) and on the panel hardware; people counter (P2.9).
 - Next: P2.9, the people counter (needs the hardware sample for the AI chip), or P2.10 brightness first if the sample is not here.
 
 ## 25 Oct 2026 · P2.7 · Signed play log

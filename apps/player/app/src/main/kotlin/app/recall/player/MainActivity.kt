@@ -1,5 +1,6 @@
 // P2.2: the player's one screen. Full screen, kept on, locked to the player; it beats every second so
-// the watchdog knows it is alive. It also starts the line to the cloud (P2.3.3) and playback (P2.5).
+// the watchdog knows it is alive. It also starts the line to the cloud (P2.3.3), playback (P2.5)
+// and the brightness control (P2.10).
 package app.recall.player
 
 import android.app.Activity
@@ -14,6 +15,8 @@ import android.widget.FrameLayout
 
 class MainActivity : Activity() {
     private val main = Handler(Looper.getMainLooper())
+    /** Brightness by the sun and the light around the box (P2.10). */
+    private var light: ScreenLight? = null
     private val beat = object : Runnable {
         override fun run() {
             Heartbeat.beat(this@MainActivity)
@@ -32,6 +35,7 @@ class MainActivity : Activity() {
         setContentView(root)
         // Playback (P2.5): RECALL's slate until there is something to play; never a dark screen.
         Playback.start(this, root)
+        light = ScreenLight(this).also { it.start() }
     }
 
     override fun onResume() {
@@ -48,6 +52,7 @@ class MainActivity : Activity() {
 
     override fun onDestroy() {
         main.removeCallbacks(beat)
+        light?.stop()
         Playback.stop(this)
         super.onDestroy()
     }
