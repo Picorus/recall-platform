@@ -18,8 +18,20 @@ interface Renderer {
     /** Load this spot behind the one showing, so it can be shown at once. */
     fun prepare(spot: Spot)
 
-    /** Show the prepared spot now, from its start. Calls `Conductor.started` once it is on screen. */
+    /** Show the prepared spot now, from its start. Reports `started` once it is really on screen. */
     fun show(spot: Spot)
+}
+
+/** What the screen says about each spot (from any thread); the conductor listens. */
+interface ScreenReports {
+    /** This spot is on screen (its first frame or picture is showing). */
+    fun started(spot: Spot)
+
+    /**
+     * The screen could not load or show `spot`. With `fileFault`, the ad's file itself is bad (it is
+     * dropped and downloaded again); otherwise it was the screen.
+     */
+    fun failed(spot: Spot, problem: String, fileFault: Boolean)
 }
 
 /** One spot as it was shown: for the signed play log (P2.7) and health (P2.11). */
@@ -83,7 +95,7 @@ class Conductor(
     private val log: (String) -> Unit = {},
     private val rules: ConductorRules = ConductorRules(),
     private val mark: PlayedMark = PlayedMark(),
-) {
+) : ScreenReports {
     /** What the screen said about one spot (from any thread). */
     private class Report {
         @Volatile var started = false
@@ -104,16 +116,11 @@ class Conductor(
     private fun reportFor(spot: Spot): Report? =
         showing?.takeIf { it.first === spot }?.second ?: loading?.takeIf { it.first === spot }?.second
 
-    /** The screen has this spot on screen (any thread). */
-    fun started(spot: Spot) {
+    override fun started(spot: Spot) {
         reportFor(spot)?.started = true
     }
 
-    /**
-     * The screen could not load or show `spot` (any thread). With `fileFault`, the ad's file itself
-     * is bad (it is dropped and downloaded again); otherwise it was the screen.
-     */
-    fun failed(spot: Spot, problem: String, fileFault: Boolean) {
+    override fun failed(spot: Spot, problem: String, fileFault: Boolean) {
         reportFor(spot)?.let { if (it.problem == null) it.problem = problem }
         log("play: ${spot.shows?.ad ?: "slate"}: $problem")
         if (fileFault) spot.shows?.ad?.let(badFile)

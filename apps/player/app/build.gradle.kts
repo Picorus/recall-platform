@@ -14,8 +14,10 @@ android {
         // Android 11 and newer (the controller box, docs/BUILD_PLAN.md).
         minSdk = 30
         targetSdk = 35
-        versionCode = 3
-        versionName = "0.4.0"
+        versionCode = 4
+        versionName = "0.5.0"
+        // Checks on a real Android (the CI emulator): the screen plays and swaps without gaps (P2.5.2).
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     compileOptions {
@@ -39,4 +41,11 @@ kotlin {
 
 dependencies {
     implementation(project(":core"))
+    // Video playback (Media3 ExoPlayer, Google's player for Android): same behaviour on every box.
+    implementation("androidx.media3:media3-exoplayer:1.4.1")
+
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test:core:1.6.1")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("junit:junit:4.13.2")
 }

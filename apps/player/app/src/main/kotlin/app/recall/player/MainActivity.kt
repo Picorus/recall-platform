@@ -1,19 +1,16 @@
 // P2.2: the player's one screen. Full screen, kept on, locked to the player; it beats every second so
-// the watchdog knows it is alive. It also starts the line to the cloud (P2.3.3). Playback comes in
-// P2.5; for now it shows the screen is up.
+// the watchdog knows it is alive. It also starts the line to the cloud (P2.3.3) and playback (P2.5).
 package app.recall.player
 
 import android.app.Activity
 import android.content.Intent
-import android.graphics.Color
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.view.Gravity
 import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.WindowManager
-import android.widget.TextView
+import android.widget.FrameLayout
 
 class MainActivity : Activity() {
     private val main = Handler(Looper.getMainLooper())
@@ -31,15 +28,10 @@ class MainActivity : Activity() {
         // The line to the cloud (P2.3.3): keeps itself open; a failure to start never stops the screen.
         Line.startInBackground(this)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        setContentView(
-            TextView(this).apply {
-                text = getString(R.string.app_name)
-                setTextColor(Color.rgb(0xC8, 0xF5, 0x4A)) // Night Signal volt
-                setBackgroundColor(Color.rgb(0x0A, 0x0E, 0x17)) // midnight
-                gravity = Gravity.CENTER
-                textSize = 32f
-            },
-        )
+        val root = FrameLayout(this).apply { setBackgroundColor(Screen.MIDNIGHT) }
+        setContentView(root)
+        // Playback (P2.5): RECALL's slate until there is something to play; never a dark screen.
+        Playback.start(this, root)
     }
 
     override fun onResume() {
@@ -56,6 +48,7 @@ class MainActivity : Activity() {
 
     override fun onDestroy() {
         main.removeCallbacks(beat)
+        Playback.stop(this)
         super.onDestroy()
     }
 }

@@ -2,6 +2,16 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 25 Oct 2026 · P2.5.2 · Playback: the screen
+- P2.5.1 merged (PR #37, all checks green).
+- **The screen** (`Screen.kt` in the Android app): two full-screen layers. The next spot loads behind the one showing (a video is opened and its first frame drawn, a picture decoded), and at the spot's second the back layer comes to the front and the video starts, so the swap takes a frame: no gap, no black. Pictures fill the spot; videos play without sound; a video shorter than the spot holds its last frame. Each spot is confirmed only once it is really on screen (P2.5.1 counts only confirmed spots). A file the player cannot read is reported as the file's fault and downloaded again (P2.4). The slate is RECALL's wordmark on midnight.
+- **Picture or video** (`MediaKinds`, core): ad files carry no name (stored by fingerprint), so the first bytes decide: PNG, JPEG, WebP are pictures, anything else goes to the video player.
+- **Playback on the box** (`Playback.kt`): starts with the player's screen, spots on the trusted clock, ads from the ad store, the plan from the local scheduler when it comes (P2.6; until then RECALL's ads or the slate). Played spots are logged for now (signed log: P2.7). Video player: Media3 ExoPlayer (Google's). App version 0.5.0.
+- **Proven on the Android 11 emulator in CI** (new, before the kiosk checks): video, picture, video, slate, video, each loaded 2 s ahead, each confirmed on screen within 150 ms of the swap; a broken file reported as the file's fault, and the screen carrying on.
+- Tests: core 1 new (picture or video by first bytes; 77 core tests pass); emulator 2 (`ScreenTest`). Test media in `app/src/androidTest/assets` (a 3-second video, a picture, a broken file; 50 KB in all).
+- Open: the plan and what the bike carries (P2.6); signing and keeping plays and the "latest spot counted" mark across reboots (P2.7); the real panel and its controller when a sample comes (open question).
+- Next: P2.6, the local scheduler.
+
 ## 25 Oct 2026 · P2.5.1 · Playback: what plays when
 - P2.4 merged (PR #36, all checks green, the Android app built in CI).
 - P2.5 is split like P2.3: P2.5.1 decides what each spot shows and when (plain Kotlin, tested on any computer); P2.5.2 puts it on the screen without gaps (Android, proven on the emulator).
