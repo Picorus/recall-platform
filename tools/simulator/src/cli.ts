@@ -1,6 +1,8 @@
 // Run a simulation from the command line, e.g.
 //   pnpm --filter @recall/simulator start -- --scenario rain --bikes 200 --minutes 60 --seed 7
 import { parseArgs } from 'node:util';
+import { defaultRoads } from './road-graph.js';
+import { gridMap } from './roads.js';
 import { SCENARIOS, simulate } from './simulate.js';
 
 const { values } = parseArgs({
@@ -10,6 +12,7 @@ const { values } = parseArgs({
     bikes: { type: 'string', default: '200' },
     minutes: { type: 'string', default: '60' },
     seed: { type: 'string', default: '1' },
+    roads: { type: 'string', default: 'osm' },
   },
 });
 const scenario = SCENARIOS[values.scenario];
@@ -17,15 +20,19 @@ if (!scenario) {
   console.error(`Unknown scenario. Pick one of: ${Object.keys(SCENARIOS).join(', ')}`);
   process.exit(1);
 }
+const roads = values.roads === 'grid' ? gridMap() : defaultRoads();
 const started = Date.now();
 const r = simulate({
+  roads,
   scenario,
   bikes: Number(values.bikes),
   seconds: Number(values.minutes) * 60,
   seed: Number(values.seed),
 });
 const pct = (a: number, b: number) => (b === 0 ? '—' : `${((100 * a) / b).toFixed(1)}%`);
-console.log(`Scenario: ${r.scenario} · ${r.bikes} bikes riding · ${r.seconds / 60} minutes`);
+console.log(
+  `Scenario: ${r.scenario} · ${r.bikes} bikes riding · ${r.seconds / 60} minutes · roads: ${roads.name}`,
+);
 console.log(
   `Moving-hour clock: ${(r.clockSeconds / 3600).toFixed(1)} h counted vs ${(r.truthClockSeconds / 3600).toFixed(1)} h true (${pct(r.clockSeconds, r.truthClockSeconds)})`,
 );

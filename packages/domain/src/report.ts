@@ -1,5 +1,5 @@
-// P1.9.1: the final campaign report. One report per booking, built once its last make-up has had
-// time to play (24 hours after the last hour, a setting), then kept as it was built. It shows what
+// P1.9.1: the final campaign report. One report per booking, built 48 hours after the last hour (a
+// setting; Prateek, 25 Oct 2026) once every line has had its last check, then kept as it was built. It shows what
 // the brand bought: plays delivered against plays promised, different bikes, a heat map of where the
 // plays happened, the busiest streets, make-ups, any refund, and people (approximate, never billed).
 import { cellToBoundary, cellToLatLng, latLngToCell } from 'h3-js';
@@ -19,7 +19,7 @@ export interface ReportRules {
 }
 
 export const DEFAULT_REPORT_RULES: ReportRules = {
-  afterHours: 24,
+  afterHours: 48,
   h3Resolution: 9,
   topStreets: 5,
   streetCells: 40,

@@ -2,6 +2,16 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 25 Oct 2026 · P1.10.1 v2 · Real roads in the simulator; final report at 48 hours
+- P1.9 merged (PR #28). Prateek: the final report is built 48 hours after the last hour (setting changed from 24; plan and DECISIONS updated).
+- **Real roads.** OpenStreetMap is blocked from the cloud sandbox, so a GitHub job (**OSM roads**, `.github/workflows/osm-roads.yml`) downloads west Hyderabad's roads (17.38–17.50 N, 78.31–78.48 E; roads a delivery bike uses, no footpaths) and commits them: 1,14,377 road points, 1,30,780 road pieces, 1 MB (`tools/simulator/data/`, © OpenStreetMap contributors, ODbL). Only the largest connected part is kept, so every trip has a way.
+- The simulator now rides any `RoadMap`: the grid (version 1) or the real roads (`road-graph.ts`: shortest way by A* search, nearest road point, signals only where roads meet). `--roads osm|grid`; real roads by default.
+- Results on real roads (1,000 bikes, 30 min): clock 96.3% of the truth (never over), area agreement 96.6%, every report stored once, none lost; 22 s, the same speed as the grid.
+- Finding: on real roads bikes spread wider and vary more from day to day than on the even grid. Selling from another day's numbers delivered 97.3–97.5% of plays (99.9% on the grid); the rest goes to make-ups, which the forecast's 10% margin covers. Worth watching in the POC: the forecast may need a bigger margin in thin areas.
+- Tests: 8 new (Overpass answer → road map; shortest way checked against a plain search on the real map; nearest point is truly nearest (property); signals only at crossings; fleet runs on both maps; scheduler on real roads). Scheduler proofs stay on the grid.
+- Open: one-way streets ignored; trips spread evenly rather than around restaurants (tune with POC rides).
+- **Next:** P1 is complete. P2.1 — the screen player on an Android emulator (Kotlin), following the plan.
+
 ## 25 Oct 2026 · P1.9 · Final campaign report
 - P1.8 merged (PR #27).
 - **P1.9.1 Built once, kept as built.** `buildDueReports`: a booking's report is built at least 24 hours after its last hour (a setting), and only once every line has had its last check: the day of its last make-up (same hour next day) has closed and the refund for missing plays has been proposed. In practice about 48 hours after the last hour. The clock moves the booking to *done* first. Migration 0019 `campaign_reports` (one per booking, never changed).
