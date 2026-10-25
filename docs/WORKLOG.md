@@ -2,6 +2,17 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 25 Oct 2026 · P2.6.2 · Local scheduler: what the cloud tells the box, and the box's own pick
+- **Three new messages from the cloud** (`packages/domain/src/screen-plan.ts`, Kotlin `PlanMessages.kt`, shared cases `test-vectors/screen-plan.json`), each on the screen's own down topics:
+  - `areas`: the city's area shapes in force now (corners, edge zone, on/off). The whole list with its time; the newest wins.
+  - `plan`: the hour plans for the next 2 hours, every area (P1.4.1), without brand names. Per area-hour the highest revision wins (a make-up opened re-sends it).
+  - `assign`: the cloud's live pick for this screen in one area-hour (P1.4.2): the booking line and what fills RECALL's spots, or nothing (RECALL's own ads). Per area-hour the newest wins.
+  - Hours must start on a half hour (UTC), ids are plain letters, digits, dashes; the cloud's builders refuse anything the box would refuse, so the cloud cannot send a message the box drops.
+- **The box's own pick** (`Fallback.kt`, P1.4.3): the cloud's formula in Kotlin (weighted rendezvous hashing on the screen's id and the hour): paid lines by bikes sold; make-ups and trials only without paid lines; RECALL's spots to make-ups owed, else aggregator ads. Every screen picks by itself, yet over the fleet each booking gets bikes in proportion, with no network.
+- Tests: TypeScript 4 (the shared cases, every refusal, the builders' refusals, the topics). Kotlin 3: the same messages read the same, the same 30 refusals for the same reasons, and the same pick as the cloud for 200 screens on 4 plans (paid, make-ups only, trial only, nothing sold). All 83 core tests pass.
+- Open: the cloud sending these (plans 2 hours ahead, the live assignment every minute, all of them again on every hello) comes with the scheduler service; the box keeping and using them is P2.6.3.
+- Next: P2.6.3, the local scheduler on the box.
+
 ## 25 Oct 2026 · P2.6.1 · Local scheduler: the area from GPS on the box
 - P2.5.2 merged (PR #38, all checks green, the playback checks passing on the Android 11 emulator).
 - P2.6 is split in three: P2.6.1 the tracker on the box (this step); P2.6.2 the messages from the cloud (hour plans, area shapes, the live assignment) and the box's own offline pick; P2.6.3 the local scheduler that tells playback which brand to show.

@@ -25,11 +25,14 @@ data class SpotRules(val spotSeconds: Int = 15, val brandPlaysPerRecallSpot: Int
     }
 }
 
-/** A booking line in an area-hour, as the screen needs it: the brand's ads, played in turn. */
-data class PlanLine(val lineId: String, val kind: String, val ads: List<String>)
+/**
+ * A booking line in an area-hour, as the screen needs it: the brand's ads, played in turn. `plays`
+ * and `bikes` weigh the screen's own pick when no assignment comes (P1.4.3).
+ */
+data class PlanLine(val lineId: String, val kind: String, val ads: List<String>, val plays: Long = 0, val bikes: Long = 0)
 
-/** Something that fills RECALL's spots: a make-up owed, or an aggregator ad. */
-data class SpotDemand(val id: String, val kind: String, val ads: List<String>)
+/** Something that fills RECALL's spots: a make-up owed, or an aggregator ad (`plays`: spots wanted). */
+data class SpotDemand(val id: String, val kind: String, val ads: List<String>, val plays: Long = 0)
 
 /** The hour plan for one area-hour (P1.4.1), as far as playback needs it. */
 data class HourPlan(
@@ -40,6 +43,11 @@ data class HourPlan(
     val spotDemands: List<SpotDemand>,
     /** RECALL's own ads: whatever is left. */
     val recallAds: List<String>,
+    /** Business date and start hour (24 and 25 are 00:00 and 01:00 after the date): the pick's key. */
+    val date: String = "",
+    val startHour: Int = 0,
+    /** Goes up each time the plan is re-sent (a make-up opened): screens keep the highest. */
+    val revision: Long = 1,
 )
 
 /** What the bike carries in this area-hour: its line, and what fills its RECALL spots (null: RECALL's). */
