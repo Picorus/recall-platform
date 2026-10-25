@@ -40,6 +40,15 @@ object Kiosk {
         // Release builds also close the debugging port; test builds keep it for the emulator checks.
         if (!BuildConfig.DEBUG) restrictions += UserManager.DISALLOW_DEBUGGING_FEATURES
         restrictions.forEach { dpm.addUserRestriction(admin, it) }
+        // P2.8: the box reads GPS for areas and proof; nobody is there to tap "allow".
+        runCatching {
+            for (p in listOf(android.Manifest.permission.ACCESS_FINE_LOCATION, android.Manifest.permission.ACCESS_COARSE_LOCATION)) {
+                if (!dpm.setPermissionGrantState(admin, context.packageName, p, DevicePolicyManager.PERMISSION_GRANT_STATE_GRANTED)) {
+                    CrashLog.record(context, "location not granted: $p")
+                }
+            }
+            dpm.setLocationEnabled(admin, true)
+        }.onFailure { CrashLog.record(context, "location not granted: ${it.javaClass.simpleName}") }
         // Always our home screen, whatever else is installed.
         val home = IntentFilter(Intent.ACTION_MAIN).apply {
             addCategory(Intent.CATEGORY_HOME)

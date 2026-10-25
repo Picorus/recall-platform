@@ -76,6 +76,9 @@ data class Second(
 )
 
 object Tracker {
+    /** After a GPS gap longer than this (seconds), smoothing starts afresh (as minute distances do). */
+    const val FRESH_AFTER_GAP_SECONDS = 10L
+
     private fun samePlace(a: Place, b: Place) = a.key == b.key
 
     private fun kmhBetween(a: TimedPoint, b: TimedPoint) =
@@ -94,9 +97,10 @@ object Tracker {
         var track = s.track
         if ((verdict == FixVerdict.USED || verdict == FixVerdict.RESET) && fix != null) {
             val p = TimedPoint(t, fix.lat, fix.lng)
-            val reset = verdict == FixVerdict.RESET
+            // After a reset the old positions were the bad ones; after a long gap they are stale (averaged
+            // in, they would add a distance never ridden, review P2.8): the average and track start afresh.
+            val reset = verdict == FixVerdict.RESET || s.lastGood?.let { t - it.t > FRESH_AFTER_GAP_SECONDS } == true
             lastGood = p
-            // After a reset the old positions were the bad ones: the average and the track start afresh.
             recent = if (reset) listOf(p) else (recent + p).takeLast(rules.smoothOver)
             val smooth = TimedPoint(t, recent.sumOf { it.lat } / recent.size, recent.sumOf { it.lng } / recent.size)
             track = if (reset) listOf(smooth) else track + smooth

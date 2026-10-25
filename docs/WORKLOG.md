@@ -2,6 +2,41 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 25 Oct 2026 · P2.10 · Brightness
+- P2.9 (people counter) waits for the screen hardware sample (its AI chip), so P2.10 came first.
+- **Brightness** (`Brightness.kt` in `apps/player/core`, `ScreenLight.kt` on the box): once a second, from the sun's height over Hyderabad and the light sensor (where the box has one).
+  - Without a sensor: 100% by day, 30% at night, smoothly between at dusk and dawn.
+  - With a sensor: never under 60% by day (a covered or dirty sensor cannot hide the ad), never over 35% at night (a headlight on the sensor cannot make it blinding).
+  - A passing headlight is ignored (the lower middle of the last 10 seconds); the screen changes at most 5 points a second, never a flicker. A sensor that stops is no longer followed after 10 seconds.
+  - The panel is set through one call (`Panel`): today the Android display's brightness; with the hardware, the LED sending card's own control. App 0.8.0.
+- Tests: Kotlin 6 new (`BrightnessTest`: the sun at noon, midnight, sunrise and sunset in Hyderabad; with and without a sensor; limits; smoothing and headlights; a stopped sensor; unsafe settings refused); 116 core tests in all.
+- Open: the LED sending card's SDK (with the hardware sample); remote "set brightness" comes with P2.12.
+- Next: P2.11, health.
+
+## 25 Oct 2026 · P2.8 · GPS service
+- **P2.8.1 Minute summaries and live positions** (`Minutes.kt`): the box's copy of the cloud's `addSecond` (P1.2.4): every minute, seconds at each place, seconds the moving-hour clock ran (and where, and inside the pay zone), seconds moving, distance, plays; a live position every 30 seconds. Rider pay comes from these minutes, so they match the cloud's exactly: the shared ride now also lists its 40 live positions, and the box matches all 22 minutes and 40 positions.
+- **P2.8.2 The GPS loop** (`GpsLoop.kt`) and the service on the box (`Gps.kt`):
+  - the GPS chip reports about once a second; each reading also sets the box's clock from GPS time (until the cloud answers);
+  - once a second by the trusted clock: the reading is cleaned and smoothed (the tracker, P2.6.1: poor fixes and jumps dropped, area held 15 s, moving-hour stopwatch, 10-minute stop rule); the area goes to the local scheduler (what to play, and where each play happened); minutes and live positions go to the outbox;
+  - an old reading (over 1.5 s) is no reading; seconds the box missed are stepped without a fix; a clock jump over 2 minutes starts afresh; the clock going back never does a second twice;
+  - plays recorded are added to the minute they are recorded in;
+  - the player gives itself location permission and turns location on, as device owner. App 0.7.0.
+- Tests: Kotlin 9 new (`MinutesTest` 2, `GpsLoopTest` 4: the shared ride read like a real chip gives the cloud's minutes, missed seconds, clock back and jumps, old and missing readings, plays per minute); 110 core tests in all. TypeScript: the shared ride's live positions.
+- Prateek confirmed the pay zone: 15 km around Hitech City (the cloud can still send a new zone as a setting later).
+- Second-agent review of P2.8: no mismatch with the cloud found; 11 findings, fixed except where noted:
+  - after a long GPS gap the smoothing mixed old and new positions, adding distance never ridden (one test minute reached 3.2 km and was refused, with its pay). Now, on the cloud and the box alike, smoothing starts afresh after a gap of over 10 seconds;
+  - a clock pulled far back (a wrong GPS time corrected by the cloud) stalled areas, minutes and pay until real time caught up. Now a jump of over 2 minutes either way starts afresh at once;
+  - plays saved up during a stall could get a minute refused. Now a minute holds at most 60 plays (cloud and box), and saved-up plays are dropped on a jump;
+  - the minute in progress was lost at every power cut (up to a minute of pay each time the bike is switched off). Now it is kept on storage every 10 seconds and goes on or out after a restart, never twice;
+  - GPS never started if location permission came after the app started. Now it tries again every 30 seconds, and a refused grant is recorded;
+  - a reading delivered late was taken as fresh. Now freshness is from when the fix was taken;
+  - a reading could be lost between threads. Now taken once, safely;
+  - the shared ride now also tests the money paths against the cloud: a pay zone the ride leaves, plays, and the long gap; live positions are compared value by value;
+  - not done: the tracker rules and pay zone are the box's own defaults until the cloud sends them as settings (open below); area ids are already capped at 48 (P2.7); plays recorded before GPS starts are not in minute counts (only an estimate, never billed).
+- Tests after the review: Kotlin 119 in all (`GpsLoopTest` 6, `MinutesTest` 3).
+- Open: the tracker rules and the pay zone are the box's own defaults until the cloud sends them as versioned settings (and the box reports which version it uses, P2.11); a real GPS test on the emulator (`adb emu geo fix`) and on the panel hardware; people counter (P2.9).
+- Next: P2.9, the people counter (needs the hardware sample for the AI chip), or P2.10 brightness first if the sample is not here.
+
 ## 25 Oct 2026 · P2.7 · Signed play log
 - **Every counted play is signed on the box and kept until the cloud has it** (`PlayLog.kt` in `apps/player/core`).
   - Which plays: only the ones playback counts (P2.5): shown by trusted time, from start to end, confirmed on screen, a real ad, never counted before.

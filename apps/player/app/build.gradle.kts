@@ -14,8 +14,8 @@ android {
         // Android 11 and newer (the controller box, docs/BUILD_PLAN.md).
         minSdk = 30
         targetSdk = 35
-        versionCode = 5
-        versionName = "0.6.0"
+        versionCode = 7
+        versionName = "0.8.0"
         // Checks on a real Android (the CI emulator): the screen plays and swaps without gaps (P2.5.2).
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

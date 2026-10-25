@@ -10,6 +10,8 @@ import type { Second } from './screen-tracker.js';
 
 export const LIVE_EVERY_SECONDS = 30;
 export const KEEP_UNSENT_SECONDS = 7 * 24 * 3600;
+/** Most plays one minute summary can hold. */
+export const MAX_MINUTE_PLAYS = 60;
 /** Distance is only added between positions at most this many seconds apart. */
 export const MAX_DISTANCE_GAP_SECONDS = 10;
 
@@ -86,7 +88,9 @@ function close(b: MinuteBuilder): MinuteSummary | undefined {
     payClockSeconds: b.payClockSeconds,
     movingSeconds: b.movingSeconds,
     distanceM: Math.round(b.distance),
-    plays: b.plays,
+    // A minute holds at most 60 plays (what the cloud accepts): plays saved up while the box was
+    // stuck must not get a minute, and its pay seconds, refused (review P2.8).
+    plays: Math.min(b.plays, MAX_MINUTE_PLAYS),
     people: b.people,
   };
 }
@@ -373,7 +377,7 @@ export function checkReport(r: unknown): string | undefined {
     if (!isInt(x.payClockSeconds, 0, x.clockSeconds)) return 'pay seconds out of range';
     if (!isInt(x.movingSeconds, 0, 60)) return 'moving seconds out of range';
     if (!isInt(x.distanceM, 0, MAX_MINUTE_DISTANCE_M)) return 'distance out of range';
-    if (!isInt(x.plays, 0, 60) || !isInt(x.people, 0, 100_000))
+    if (!isInt(x.plays, 0, MAX_MINUTE_PLAYS) || !isInt(x.people, 0, 100_000))
       return 'plays or people out of range';
     const at = secondsMap(x.secondsAt);
     if (at) return `secondsAt: ${at}`;
