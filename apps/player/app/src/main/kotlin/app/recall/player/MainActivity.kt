@@ -1,5 +1,6 @@
 // P2.2: the player's one screen. Full screen, kept on, locked to the player; it beats every second so
-// the watchdog knows it is alive. Playback comes in P2.5; for now it shows the screen is up.
+// the watchdog knows it is alive. It also starts the line to the cloud (P2.3.3). Playback comes in
+// P2.5; for now it shows the screen is up.
 package app.recall.player
 
 import android.app.Activity
@@ -27,6 +28,8 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         CrashLog.install(this)
         Kiosk.applyPolicies(this)
+        // The line to the cloud (P2.3.3): keeps itself open; a failure to start never stops the screen.
+        runCatching { Line.start(this) }.onFailure { CrashLog.record(this, "line: ${it.javaClass.simpleName}") }
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         setContentView(
             TextView(this).apply {

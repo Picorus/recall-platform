@@ -2,6 +2,17 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 25 Oct 2026 · P2.3.3 · Screen line: the box's side
+- P2.3.2 merged (PR #34, all checks green, including the real-broker test).
+- **The line on the box** (`ScreenLine.kt` in `apps/player/core`): one thread keeps it open by itself. It connects over TLS, listens on its own topics, says hello (the cloud's answer sets the box's clock), sends the oldest unconfirmed reports from the outbox one upload at a time, forgets them on the cloud's ack, sends an unacked upload again after 30 seconds, says hello again every 15 minutes, and after a drop tries again with growing waits (P2.3.1 backoff). Reports past 7 days are given up only by the cloud's time, never by GPS alone.
+- **The handshake** (`LineTls.kt`): the box shows the certificate from the warehouse and proves its key, which stays in the secure store (the handshake asks the store to sign). It trusts only RECALL's broker authority, not the public list, and speaks TLS 1.2/1.3 only. MQTT client: Eclipse Paho (plain Java, same on the box and in tests).
+- **Android**: keys in the Android Keystore (`AndroidKeyVault`); the line starts with the player (`Line.kt`) from files written at the warehouse (`files/line/`: screen id, broker address, certificate, broker authority; runbook step 6). A line that cannot start never stops the screen. App version 0.3.0.
+- **Proven against a real broker** (`ScreenLineBrokerTest`, in the CI player job): EMQX with the production settings in Docker, the box's code with its own key over TLS: hello and the cloud's time, five reports acked, the broker restarted, the box back by itself, three more reports acked.
+- Found on the way: a broker still starting refuses its first subscriptions (as in P2.3.2), so the stand-in cloud in the test retries like the real gateway; a broker key file must name its curve (PKCS#8).
+- Tests: 4 line logic (fake broker: hello, time, uploads acked, resend until acked, refused connections and drops, stop) + 1 real broker. All 33 core tests pass.
+- Open: the warehouse tool that writes `files/line/` by itself comes with P2.14; GPS time with P2.8; the line on the Android emulator is not yet exercised (the core is the same code).
+- Next: P2.4, ad storage.
+
 ## 25 Oct 2026 · P2.3.2 · Screen line: the broker and the gateway
 - P2.3.1 merged (PR #32), and the vendor questions for ready-made screens are saved in `docs/OPEN_QUESTIONS.md` (PR #33).
 - **Broker settings** (`infra/emqx/emqx.conf.template`, filled by `renderEmqxConfig`): screens connect only over TLS with a certificate from our screen authority (both sides checked, TLS 1.2/1.3). On that port the user name is the certificate's fingerprint, so a box cannot choose it. The gateway uses an internal port with a password. Every connection and every topic is decided by the gateway; anything not allowed is refused.
