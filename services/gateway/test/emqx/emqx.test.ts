@@ -120,6 +120,7 @@ beforeAll(async () => {
   execFileSync('docker', [
     'run',
     '-d',
+    ...(process.env.EMQX_TEST_CPUS ? ['--cpus', process.env.EMQX_TEST_CPUS] : []),
     '--name',
     NAME,
     '--network',
@@ -136,8 +137,12 @@ beforeAll(async () => {
     if (Date.now() > until) throw new Error(`the broker did not open its ports${brokerStory()}`);
     await new Promise((ok) => setTimeout(ok, 1_000));
   }
-  await step('the gateway connecting to the broker', gateway.connect(), 60_000);
-}, 240_000);
+  await step(
+    'the gateway connecting to the broker',
+    gateway.connect(),
+    Number(process.env.EMQX_TEST_CONNECT_MS ?? 60_000),
+  );
+}, 600_000);
 
 afterAll(async () => {
   for (const cl of clients) cl.end(true);

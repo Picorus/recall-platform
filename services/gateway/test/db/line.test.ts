@@ -42,7 +42,7 @@ const hook = async (path: string, body: object, token = CFG.token) => {
     headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
     body: JSON.stringify(body),
   });
-  return { status: r.status, ...((await r.json()) as { result: string }) };
+  return { status: r.status, ...((await r.json()) as { result: string; is_superuser?: boolean }) };
 };
 
 describe('gateway (P2.3.2): hellos and uploads', () => {
@@ -97,7 +97,11 @@ describe('gateway (P2.3.2): hellos and uploads', () => {
       password: '',
       cert_common_name: box.screenId,
     };
-    expect(await hook('/emqx/authn', screen)).toMatchObject({ status: 200, result: 'allow' });
+    expect(await hook('/emqx/authn', screen)).toMatchObject({
+      status: 200,
+      result: 'allow',
+      is_superuser: false,
+    });
     expect(await hook('/emqx/authn', screen, 'wrong')).toMatchObject({
       status: 403,
       result: 'deny',
@@ -112,7 +116,8 @@ describe('gateway (P2.3.2): hellos and uploads', () => {
       password: 'gw-pass',
       cert_common_name: '',
     };
-    expect(await hook('/emqx/authn', gw)).toMatchObject({ result: 'allow' });
+    // Only the gateway, with its password, is the broker's superuser.
+    expect(await hook('/emqx/authn', gw)).toMatchObject({ result: 'allow', is_superuser: true });
     expect(await hook('/emqx/authn', { ...gw, password: 'guess' })).toMatchObject({
       result: 'deny',
     });

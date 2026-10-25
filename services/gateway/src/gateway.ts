@@ -98,6 +98,8 @@ export async function startGateway(
           .catch(() => false);
         if (granted) return;
         log('broker: subscription not granted yet, trying again');
+        // The MQTT library skips a topic it thinks it already asked for: forget it first.
+        await c.unsubscribeAsync('$share/gateway/recall/v1/s/+/up/+').catch(() => undefined);
         await new Promise((ok) => setTimeout(ok, 1_000));
         if (!c.connected) await new Promise<void>((ok) => c.once('connect', () => ok()));
       }

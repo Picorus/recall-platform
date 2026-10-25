@@ -2,8 +2,9 @@
 // and "may it use this topic?" (authz). A screen connects only over TLS with a certificate we issued
 // to it, recorded, in date, not revoked, and not reported lost (screenMayConnect). Then it may only
 // send on its own up topics and listen on its own down topics (topicAllowed). The gateway itself
-// connects on the internal port with a password, and may read every screen's up topics and write
-// every screen's down topics. Anything else is refused. When in doubt (an error), refuse.
+// connects on the internal port with a password as the broker's superuser (so it never depends on
+// the topic hook), and keeps to every screen's up and down topics. Anything else is refused. When
+// in doubt (an error), refuse.
 import { createHash, timingSafeEqual } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { screenMayConnect } from '@recall/db';
@@ -47,7 +48,7 @@ export async function authn(pool: Pick<Pool, 'query'>, cfg: HookConfig, b: Body,
   const commonName = text(b, 'cert_common_name');
   if (commonName === '' && isGatewayClient(cfg, clientId, username))
     return sameSecret(text(b, 'password'), cfg.gatewayPassword)
-      ? { ok: true as const }
+      ? { ok: true as const, gateway: true }
       : { ok: false as const, reason: 'wrong gateway password' };
   return screenMayConnect(pool, { clientId, commonName, fingerprint: username }, now);
 }
@@ -120,7 +121,11 @@ export function hookHandler(
           if (req.url === '/emqx/authn') {
             const v = await authn(pool, cfg, b, now());
             if (!v.ok) log(`refused ${text(b, 'clientid').slice(0, 40)}: ${v.reason}`);
-            reply(200, { result: v.ok ? 'allow' : 'deny', is_superuser: false });
+            // The gateway is the broker's superuser: its topics are not asked about over HTTP (on a
+            // slow broker those answers were lost and the gateway never got its subscription, CI).
+            // It logs in only on the internal port with its 32+ character password.
+            const superuser = v.ok && 'gateway' in v;
+            reply(200, { result: v.ok ? 'allow' : 'deny', is_superuser: superuser });
           } else if (req.url === '/emqx/authz') {
             const ok = await authz(pool, cfg, b, now());
             if (!ok)
