@@ -2,6 +2,14 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 25 Oct 2026 · P2.6.1 · Local scheduler: the area from GPS on the box
+- P2.5.2 merged (PR #38, all checks green, the playback checks passing on the Android 11 emulator).
+- P2.6 is split in three: P2.6.1 the tracker on the box (this step); P2.6.2 the messages from the cloud (hour plans, area shapes, the live assignment) and the box's own offline pick; P2.6.3 the local scheduler that tells playback which brand to show.
+- **The tracker on the box** (`Tracker.kt`, `Areas.kt`, `Geo.kt` in `apps/player/core`): the cloud's reference (`screen-tracker.ts`, P1.2) in Kotlin. Every second: GPS cleaned (poor fixes and impossible jumps dropped, smoothed over 3 fixes), the area (inside, edge zone, outside; the nearer edge wins) with the 15-second hold, moving (above 5 km/h over 30 s; a 10 s window wakes it), and the 10-minute stop rule (the moving-hour clock pauses). The same rules as the simulator and the cloud's re-checks.
+- Tests: the 1,300 shared seconds (`test-vectors/screen-tracker.json`: a ride through areas with GPS gaps, poor fixes, jumps and resets, stops and the 10-minute rule) match the cloud second by second: verdict, position to 1 cm, area, moving, standby, clock. Plus time order, fixes for their own second, areas that are off. All 80 core tests pass.
+- Open: reading the real GPS chip and the minute summaries come with P2.8 (GPS service); the area shapes reach the box in P2.6.2.
+- Next: P2.6.2.
+
 ## 25 Oct 2026 · P2.5.2 · Playback: the screen
 - P2.5.1 merged (PR #37, all checks green).
 - **The screen** (`Screen.kt` in the Android app): two full-screen layers. The next spot loads behind the one showing (a video is opened and its first frame drawn, a picture decoded), and at the spot's second the back layer comes to the front and the video starts, so the swap takes a frame: no gap, no black. Pictures fill the spot; videos play without sound; a video shorter than the spot holds its last frame. Each spot is confirmed only once it is really on screen (P2.5.1 counts only confirmed spots). A file the player cannot read is reported as the file's fault and downloaded again (P2.4). The slate is RECALL's wordmark on midnight.
