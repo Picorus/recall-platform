@@ -12,6 +12,7 @@ import {
 } from '@recall/domain';
 import type { Pool } from 'pg';
 import { allAreaVersions } from './areas.js';
+import { storeCommandResult } from './commands.js';
 import { heardFrom, storeHealth } from './health.js';
 import { judgePlays, type PlayJudgement } from './plays.js';
 
@@ -152,6 +153,11 @@ export async function storeUpload(
     for (const n of result.accepted) {
       if (setAside.has(n.seq) || n.report.kind !== 'health') continue;
       await storeHealth(c, screenId, n.seq, n.report);
+    }
+    // P2.12: the box's answers to commands.
+    for (const n of result.accepted) {
+      if (setAside.has(n.seq) || n.report.kind !== 'command') continue;
+      await storeCommandResult(c, screenId, n.seq, n.report);
     }
     await heardFrom(c, screenId, now);
     let minutesCounted = 0;

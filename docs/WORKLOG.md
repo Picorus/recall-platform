@@ -2,6 +2,15 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 25 Oct 2026 · P2.12 · Remote commands
+- **What a command is** (`packages/domain/src/screen-commands.ts`, shared cases `test-vectors/screen-commands.json`): reboot, blank, unblank, test pattern (5–600 seconds), brightness (1–100, or automatic), send logs, clear cache. Each has its own id and may be carried out for at most an hour. The box's answer (done, refused, failed, with a note; for send-logs the end of its log) is a new report kind through the outbox.
+- **Logged in the database** (migration 0024, `packages/db/src/commands.ts`): `issueCommand` logs who sent it and why before it goes; `pendingCommands` (not answered, not expired); answers stored from uploads; `commandLog` gives admin the list with how each ended (done, refused, failed, waiting, expired).
+- **Sent by the gateway** with every hello until answered (the box says hello when its line opens and every 15 minutes); admin will also send at once (P3).
+- **On the box** (`Commands.kt` core, `Remote.kt`): each id is kept on storage before anything is done, so a command sent again (or a reboot) never repeats; expired or future-dated ones are refused; without a trusted time a command waits for its resend. Blank and test pattern cover the ads, and nothing shown under them counts; a blank stays after a restart until unblanked. A commanded brightness overrides the automatic one (P2.10) until set back. Reboot is answered first, then the box restarts as device owner. App 0.10.0.
+- Tests: TypeScript (commands read back, 15 refusals shared with the box, answers checked); gateway database test (sent with every hello until answered, logged with its answer, expired ones not sent); Kotlin 6 (`CommandsTest`: the cloud's cases, once only across restarts, expired / ahead / unreadable / failed, waiting without time, reboot answered first, logs printable). Kotlin core 128.
+- Open: admin screens to send commands and read the log (P3); the panel's own controls (blank, brightness, test pattern on the LED sending card) with the hardware.
+- Next: P2.13, our own update system.
+
 ## 25 Oct 2026 · P2.11 · Health
 - **What a health report holds** (`packages/domain/src/screen-health.ts`, a new report kind in the screen's outbox): the minute, app version, time since start, battery charge, charging and temperature, the box's temperature, free storage, mobile signal, LED fault, tamper, clocks disagreeing, and the box's counters (spots not counted, plays not stored, messages refused, GPS seconds missed, ads missing). Unknown readings travel as null. Checked strictly like every report (no extra fields, ranges).
 - **Alerts** (`healthAlerts`, settings `DEFAULT_HEALTH_RULES`): overheating (box ≥ 75 °C, battery ≥ 55 °C), low battery (≤ 15%, not charging), tamper, LED fault, low storage (< 500 MB), and no contact for 30 minutes.

@@ -1,0 +1,146 @@
+{
+  "taken": [
+    {
+      "text": "{\"v\":1,\"id\":\"c-reboot-0001\",\"made\":1793620000000,\"until\":1793620600000,\"do\":\"reboot\",\"value\":null}",
+      "command": {
+        "id": "c-reboot-0001",
+        "made": 1793620000000,
+        "until": 1793620600000,
+        "do": "reboot",
+        "value": null
+      }
+    },
+    {
+      "text": "{\"v\":1,\"id\":\"c-blank-0001\",\"made\":1793620000000,\"until\":1793620600000,\"do\":\"blank\",\"value\":null}",
+      "command": {
+        "id": "c-blank-0001",
+        "made": 1793620000000,
+        "until": 1793620600000,
+        "do": "blank",
+        "value": null
+      }
+    },
+    {
+      "text": "{\"v\":1,\"id\":\"c-unblank-0001\",\"made\":1793620000000,\"until\":1793620600000,\"do\":\"unblank\",\"value\":null}",
+      "command": {
+        "id": "c-unblank-0001",
+        "made": 1793620000000,
+        "until": 1793620600000,
+        "do": "unblank",
+        "value": null
+      }
+    },
+    {
+      "text": "{\"v\":1,\"id\":\"c-test-pattern-0001\",\"made\":1793620000000,\"until\":1793620600000,\"do\":\"test-pattern\",\"value\":60}",
+      "command": {
+        "id": "c-test-pattern-0001",
+        "made": 1793620000000,
+        "until": 1793620600000,
+        "do": "test-pattern",
+        "value": 60
+      }
+    },
+    {
+      "text": "{\"v\":1,\"id\":\"c-brightness-0001\",\"made\":1793620000000,\"until\":1793620600000,\"do\":\"brightness\",\"value\":40}",
+      "command": {
+        "id": "c-brightness-0001",
+        "made": 1793620000000,
+        "until": 1793620600000,
+        "do": "brightness",
+        "value": 40
+      }
+    },
+    {
+      "text": "{\"v\":1,\"id\":\"c-brightness-auto\",\"made\":1793620000000,\"until\":1793620600000,\"do\":\"brightness\",\"value\":null}",
+      "command": {
+        "id": "c-brightness-auto",
+        "made": 1793620000000,
+        "until": 1793620600000,
+        "do": "brightness",
+        "value": null
+      }
+    },
+    {
+      "text": "{\"v\":1,\"id\":\"c-send-logs-0001\",\"made\":1793620000000,\"until\":1793620600000,\"do\":\"send-logs\",\"value\":null}",
+      "command": {
+        "id": "c-send-logs-0001",
+        "made": 1793620000000,
+        "until": 1793620600000,
+        "do": "send-logs",
+        "value": null
+      }
+    },
+    {
+      "text": "{\"v\":1,\"id\":\"c-clear-cache-0001\",\"made\":1793620000000,\"until\":1793620600000,\"do\":\"clear-cache\",\"value\":null}",
+      "command": {
+        "id": "c-clear-cache-0001",
+        "made": 1793620000000,
+        "until": 1793620600000,
+        "do": "clear-cache",
+        "value": null
+      }
+    }
+  ],
+  "refused": [
+    {
+      "text": "nope",
+      "problem": "not a command"
+    },
+    {
+      "text": "{\"v\":1,\"id\":\"c-reboot-0001\",\"made\":1793620000000,\"until\":1793620600000,\"do\":\"reboot\",\"value\":null,\"extra\":1}",
+      "problem": "not a command"
+    },
+    {
+      "text": "{\"v\":2,\"id\":\"c-reboot-0001\",\"made\":1793620000000,\"until\":1793620600000,\"do\":\"reboot\",\"value\":null}",
+      "problem": "unknown version"
+    },
+    {
+      "text": "{\"v\":1,\"id\":\"short\",\"made\":1793620000000,\"until\":1793620600000,\"do\":\"reboot\",\"value\":null}",
+      "problem": "bad id"
+    },
+    {
+      "text": "{\"v\":1,\"id\":\"has space in it\",\"made\":1793620000000,\"until\":1793620600000,\"do\":\"reboot\",\"value\":null}",
+      "problem": "bad id"
+    },
+    {
+      "text": "{\"v\":1,\"id\":\"c-reboot-0001\",\"made\":0,\"until\":1793620600000,\"do\":\"reboot\",\"value\":null}",
+      "problem": "bad time"
+    },
+    {
+      "text": "{\"v\":1,\"id\":\"c-reboot-0001\",\"made\":1793620000000,\"until\":1793620000000,\"do\":\"reboot\",\"value\":null}",
+      "problem": "bad until"
+    },
+    {
+      "text": "{\"v\":1,\"id\":\"c-reboot-0001\",\"made\":1793620000000,\"until\":1793623600001,\"do\":\"reboot\",\"value\":null}",
+      "problem": "bad until"
+    },
+    {
+      "text": "{\"v\":1,\"id\":\"c-reboot-0001\",\"made\":1793620000000,\"until\":1793620600000,\"do\":\"format-disk\",\"value\":null}",
+      "problem": "unknown command"
+    },
+    {
+      "text": "{\"v\":1,\"id\":\"c-reboot-0001\",\"made\":1793620000000,\"until\":1793620600000,\"do\":\"reboot\",\"value\":5}",
+      "problem": "bad value"
+    },
+    {
+      "text": "{\"v\":1,\"id\":\"c-reboot-0001\",\"made\":1793620000000,\"until\":1793620600000,\"do\":\"brightness\",\"value\":0}",
+      "problem": "bad value"
+    },
+    {
+      "text": "{\"v\":1,\"id\":\"c-reboot-0001\",\"made\":1793620000000,\"until\":1793620600000,\"do\":\"brightness\",\"value\":101}",
+      "problem": "bad value"
+    },
+    {
+      "text": "{\"v\":1,\"id\":\"c-reboot-0001\",\"made\":1793620000000,\"until\":1793620600000,\"do\":\"test-pattern\",\"value\":null}",
+      "problem": "bad value"
+    },
+    {
+      "text": "{\"v\":1,\"id\":\"c-reboot-0001\",\"made\":1793620000000,\"until\":1793620600000,\"do\":\"test-pattern\",\"value\":601}",
+      "problem": "bad value"
+    },
+    {
+      "text": "{\"v\":1,\"id\":\"c-reboot-0001\",\"made\":1793620000000,\"until\":1793620600000,\"do\":\"test-pattern\",\"value\":4}",
+      "problem": "bad value"
+    }
+  ]
+}

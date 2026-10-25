@@ -1,7 +1,7 @@
 import { fakeDeviceCa } from '@recall/adapters';
-import { certFingerprint, revokeCertificate } from '@recall/db';
+import { certFingerprint, commandLog, issueCommand, revokeCertificate } from '@recall/db';
 import { freshDatabase } from '@recall/db/test-db';
-import { helloText, uploadText } from '@recall/domain';
+import { helloText, parseCommand, uploadText, type Numbered } from '@recall/domain';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type pg from 'pg';
@@ -184,5 +184,57 @@ describe('gateway (P2.3.2): hellos and uploads', () => {
     expect(await hook('/emqx/authz', ask)).toMatchObject({ result: 'allow' });
     await revokeCertificate(pool, third.certSerial, 'box reported stolen', 'ops-1', NOW);
     expect(await hook('/emqx/authz', ask)).toMatchObject({ result: 'deny' });
+  });
+
+  it('a command goes with every hello until the box answers it, and the answer is logged (P2.12)', async () => {
+    const fourth = await enrolBox(pool, fakeDeviceCa(), 'GW-LINE-0004', NOW);
+    const at = NOW * 1000 + 100_000;
+    const issued = await issueCommand(pool, {
+      screenId: fourth.screenId,
+      command: 'blank',
+      value: null,
+      by: 'ops-1',
+      reason: 'rider reports a cracked panel',
+      nowMs: at,
+    });
+    const hello = `recall/v1/s/${fourth.screenId}/up/hello`;
+    const sentWith = async (ms: number) =>
+      (await handleUp(pool, hello, bytes(helloText('0.9.0', 1)), ms))
+        .filter((r) => r.topic.endsWith('/down/command'))
+        .map((r) => r.payload);
+    expect(await sentWith(at + 1_000)).toEqual([issued.text]);
+    expect(await sentWith(at + 2_000)).toEqual([issued.text]); // again, until answered
+    const c = parseCommand(issued.text);
+    expect('problem' in c).toBe(false);
+    expect((await commandLog(pool, fourth.screenId, at + 2_000))[0]?.state).toBe('waiting');
+    // The box answers through its outbox.
+    const answer: Numbered = {
+      seq: 1,
+      at: NOW + 103,
+      report: { kind: 'command', id: issued.id, at: NOW + 103, result: 'done', note: '' },
+    };
+    await handleUp(
+      pool,
+      `recall/v1/s/${fourth.screenId}/up/upload`,
+      bytes(uploadText([answer], 1)),
+      at + 3_000,
+    );
+    expect(await sentWith(at + 4_000)).toEqual([]);
+    const log = await commandLog(pool, fourth.screenId, at + 4_000);
+    expect(log).toMatchObject([{ command: 'blank', by: 'ops-1', state: 'done' }]);
+    // A command never answered expires: it is not sent again, and the log says so.
+    await issueCommand(pool, {
+      screenId: fourth.screenId,
+      command: 'reboot',
+      value: null,
+      by: 'ops-1',
+      reason: 'frozen screen',
+      nowMs: at,
+      lifeMs: 60_000,
+    });
+    expect(await sentWith(at + 61_000)).toEqual([]);
+    expect(
+      (await commandLog(pool, fourth.screenId, at + 61_000)).map((l) => l.state).sort(),
+    ).toEqual(['done', 'expired']);
   });
 });

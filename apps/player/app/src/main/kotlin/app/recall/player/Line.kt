@@ -61,6 +61,8 @@ object Line {
             if (scheduler != null && box != null) {
                 runCatching { Gps.start(app, scheduler, box) }.onFailure { CrashLog.record(app, "gps not started: ${it.javaClass.simpleName}") }
             }
+            // Remote commands (P2.12): answered through the outbox.
+            if (box != null) runCatching { Remote.start(app, box) }.onFailure { CrashLog.record(app, "commands not started: ${it.javaClass.simpleName}") }
             // Health (P2.11): once a minute through the outbox.
             if (box != null) runCatching { BoxHealth.start(app, box) }.onFailure { CrashLog.record(app, "health not started: ${it.javaClass.simpleName}") }
         }
@@ -99,6 +101,7 @@ object Line {
             onMessage = { kind, payload ->
                 when (kind) {
                     DownKind.FILES -> Ads.onList(payload)
+                    DownKind.COMMAND -> Remote.onCommand(payload)
                     else -> Schedule.onMessage(kind, payload)
                 }
             },

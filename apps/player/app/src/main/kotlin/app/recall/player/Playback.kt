@@ -81,7 +81,9 @@ object Playback {
     fun start(activity: Activity, root: FrameLayout) {
         owner?.let(::stop)
         owner = activity
-        val s = Screen(activity, root)
+        // A screen left blanked by a command stays dark after a restart (P2.12).
+        Remote.load(activity)
+        val s = Screen(activity, root, cover = Remote::coverReason, testPattern = Remote::testPatternOn)
         screen = s
         val log: (String) -> Unit = { m -> Log.i("RecallPlay", m) }
         val counted = mark ?: PlayedMark(markFile(activity).load()).also { mark = it }
@@ -112,6 +114,11 @@ object Playback {
                 conductor = it
             }
         }, log, counted).also { it.start() }
+    }
+
+    /** The blank or test-pattern cover changed (P2.12): the screen shows it now (main thread). */
+    fun refreshCover() {
+        screen?.refreshCover()
     }
 
     /** Stops playback started by `activity` (an older screen going away never stops a newer one). */

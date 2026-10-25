@@ -43,7 +43,14 @@ import java.io.File
 import java.util.concurrent.Executors
 
 /** Must be made on the main thread. */
-class Screen(private val context: Context, private val root: FrameLayout) : Renderer {
+class Screen(
+    private val context: Context,
+    private val root: FrameLayout,
+    /** Why ads must not count now (blanked, test pattern, P2.12), or null. */
+    private val cover: () -> String? = { null },
+    /** True while the test pattern shows (else the cover is dark). */
+    private val testPattern: () -> Boolean = { false },
+) : Renderer {
     // First, before any player is built: players belong to the thread that makes them.
     private val mainThreadOnly = check(Looper.myLooper() == Looper.getMainLooper()) { "make the screen on the main thread" }
 
@@ -58,9 +65,36 @@ class Screen(private val context: Context, private val root: FrameLayout) : Rend
     private var front = 0
     private var released = false
 
+    /** Over everything while a command blanks the screen or shows the test pattern (P2.12). */
+    private val dark = View(context).apply {
+        setBackgroundColor(Color.BLACK)
+        visibility = View.GONE
+    }
+    private val bars = android.widget.LinearLayout(context).apply {
+        orientation = android.widget.LinearLayout.HORIZONTAL
+        visibility = View.GONE
+        for (c in listOf(Color.WHITE, Color.YELLOW, Color.CYAN, Color.GREEN, Color.MAGENTA, Color.RED, Color.BLUE, Color.BLACK)) {
+            addView(View(context).apply { setBackgroundColor(c) }, android.widget.LinearLayout.LayoutParams(0, MATCH_PARENT, 1f))
+        }
+    }
+
     init {
         decks.forEach { root.addView(it.view, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT)) }
         decks[front].view.bringToFront()
+        root.addView(dark, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
+        root.addView(bars, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
+        refreshCover()
+    }
+
+    /** Shows or hides the cover as the commands say (main thread). */
+    fun refreshCover() {
+        if (released) return
+        val reason = cover()
+        val test = reason != null && testPattern()
+        bars.visibility = if (test) View.VISIBLE else View.GONE
+        dark.visibility = if (reason != null && !test) View.VISIBLE else View.GONE
+        dark.bringToFront()
+        bars.bringToFront()
     }
 
     /** Runs on the main thread, unless the screen has been released meanwhile. */
@@ -80,6 +114,9 @@ class Screen(private val context: Context, private val root: FrameLayout) : Rend
         front = i
         decks[i].show()
         decks[1 - i].hide()
+        refreshCover()
+        // Under a cover the spot was not seen: it never counts (P2.12).
+        cover()?.let { reason -> decks[i].covered(reason) }
     }
 
     /** Frees the video players and the decoder (when the screen goes away). */
@@ -197,6 +234,13 @@ class Screen(private val context: Context, private val root: FrameLayout) : Rend
             player?.play()
             if (ready) confirm()
             // Still loading: confirmed when its picture or first frame arrives (if in time).
+        }
+
+        /** The spot showing is under a cover: reported as not shown, never confirmed. */
+        fun covered(reason: String) {
+            val s = spot ?: return
+            confirmed = true
+            reports?.failed(s, reason, fileFault = false)
         }
 
         fun hide() {

@@ -20,3 +20,4 @@ export * from './report-sends.js';
 export * from './screens.js';
 export * from './screen-line.js';
 export * from './health.js';
+export * from './commands.js';
