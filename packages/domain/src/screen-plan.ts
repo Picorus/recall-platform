@@ -10,8 +10,13 @@ import type { AreaVersion } from './areas.js';
 import type { Carry, HourPlan } from './scheduler.js';
 
 const AREA_ID = /^[a-z0-9]+(-[a-z0-9]+)*$/;
-/** Booking lines, make-ups, aggregator ads and ads. */
+/** Ads. */
 const ID = /^[A-Za-z0-9_-]{1,64}$/;
+/**
+ * Booking lines, make-ups and aggregator ids, exactly as plays name them back (P2.7): a line is
+ * "booking/area/date/hour" (lineIdOf), a make-up "<line id>#1".
+ */
+const LINE_ID = /^[A-Za-z0-9_#/-]{1,120}$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 /** India is UTC+5:30, with no summer time: every hour starts at :30 UTC. */
 const IST_OFFSET = 19_800;
@@ -46,6 +51,7 @@ const hasExactly = (x: Record<string, unknown>, keys: readonly string[]) =>
 const isWhole = (x: unknown, min: number, max = Number.MAX_SAFE_INTEGER): x is number =>
   typeof x === 'number' && Number.isSafeInteger(x) && x >= min && x <= max;
 const isId = (x: unknown): x is string => typeof x === 'string' && ID.test(x);
+const isLineId = (x: unknown): x is string => typeof x === 'string' && LINE_ID.test(x);
 const isIdList = (x: unknown, min: number, max: number): x is string[] =>
   Array.isArray(x) && x.length >= min && x.length <= max && x.every(isId);
 const isCoord = (x: unknown, limit: number): x is number =>
@@ -178,7 +184,7 @@ function planProblem(p: unknown): string | undefined {
   const lines = each(p.lines, MAX_LINES, (l) => {
     if (!isPlainObject(l) || !hasExactly(l, ['lineId', 'kind', 'ads', 'plays', 'bikes']))
       return 'wrong line fields';
-    if (!isId(l.lineId) || ids.has(l.lineId)) return 'bad line id';
+    if (!isLineId(l.lineId) || ids.has(l.lineId)) return 'bad line id';
     ids.add(l.lineId);
     if (typeof l.kind !== 'string' || !LINE_KINDS.includes(l.kind)) return 'bad line kind';
     if (!isIdList(l.ads, 1, 5)) return 'bad line ads';
@@ -190,7 +196,7 @@ function planProblem(p: unknown): string | undefined {
   const demands = each(p.spotDemands, MAX_LINES, (d) => {
     if (!isPlainObject(d) || !hasExactly(d, ['id', 'kind', 'ads', 'plays']))
       return 'wrong spot fields';
-    if (!isId(d.id) || demandIds.has(d.id)) return 'bad spot id';
+    if (!isLineId(d.id) || demandIds.has(d.id)) return 'bad spot id';
     demandIds.add(d.id);
     if (typeof d.kind !== 'string' || !DEMAND_KINDS.includes(d.kind)) return 'bad spot kind';
     if (!isIdList(d.ads, 1, 5)) return 'bad spot ads';
@@ -275,8 +281,8 @@ export function parseAssign(
   if (typeof x.areaId !== 'string' || !AREA_ID.test(x.areaId)) return { problem: 'bad area id' };
   if (!isWhole(x.startsAt, 1) || !startsOnIndiaHour(x.startsAt))
     return { problem: 'bad start time' };
-  if (x.lineId !== null && !isId(x.lineId)) return { problem: 'bad line id' };
-  if (x.spotId !== null && !isId(x.spotId)) return { problem: 'bad spot id' };
+  if (x.lineId !== null && !isLineId(x.lineId)) return { problem: 'bad line id' };
+  if (x.spotId !== null && !isLineId(x.spotId)) return { problem: 'bad spot id' };
   return {
     made: x.made,
     areaId: x.areaId,

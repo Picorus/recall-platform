@@ -71,6 +71,8 @@ data class Second(
     val standby: Boolean,
     /** This second counts towards moving hours (the clock runs unless in standby). */
     val clockRuns: Boolean,
+    /** How accurate this second's GPS fix was (metres), when it gave `position`; for play records (P2.7). */
+    val accuracyM: Double? = null,
 )
 
 object Tracker {
@@ -132,7 +134,7 @@ object Tracker {
         val stillSince = if (confirmed) null else (s.stillSince ?: t)
         val standby = if (moving || stillSince == null) false else s.standby || t - stillSince + 1 > rules.standbyAfterSeconds
         val state = TrackerState(t, lastGood, jumps, recent, track, place, pending, moving, stillSince, standby)
-        return state to Second(t, verdict, fresh?.at, place, moving, standby, clockRuns = !standby)
+        return state to Second(t, verdict, fresh?.at, place, moving, standby, clockRuns = !standby, accuracyM = fix?.accuracyM?.takeIf { fresh != null })
     }
 
     /** What to do with this second's fix, and the run of jumps that follows from it. */

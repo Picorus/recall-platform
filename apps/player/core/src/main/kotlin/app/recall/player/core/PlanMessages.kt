@@ -30,7 +30,10 @@ data class Assignment(val made: Long, val areaId: String, val startsAt: Long, va
 
 object PlanMessages {
     private val AREA_ID = Regex("[a-z0-9]+(-[a-z0-9]+)*")
+    /** Ads. */
     private val ID = Regex("[A-Za-z0-9_-]{1,64}")
+    /** Lines, make-ups and aggregator ids, exactly as plays name them back (P2.7): "booking/area/date/hour", "…#1". */
+    private val LINE_ID = Regex("[A-Za-z0-9_#/-]{1,120}")
     private val DATE = Regex("\\d{4}-\\d{2}-\\d{2}")
     /** Plain JSON numbers only (no 1.0f, .5, 01, TRUE): what the cloud's own reader accepts. */
     private val JSON_NUMBER = Regex("-?(0|[1-9]\\d*)(\\.\\d+)?([eE][+-]?\\d+)?")
@@ -142,7 +145,7 @@ object PlanMessages {
         val ids = mutableSetOf<String>()
         val lines = list(p["lines"], MAX_LINES).map { le ->
             val l = obj(le, setOf("lineId", "kind", "ads", "plays", "bikes")) ?: fail("wrong line fields")
-            val id = str(l["lineId"])?.takeIf { ID.matches(it) && ids.add(it) } ?: fail("bad line id")
+            val id = str(l["lineId"])?.takeIf { LINE_ID.matches(it) && ids.add(it) } ?: fail("bad line id")
             val kind = str(l["kind"])?.takeIf { it in LINE_KINDS } ?: fail("bad line kind")
             val ads = idList(l["ads"], 1, 5) ?: fail("bad line ads")
             val plays = whole(l["plays"], 0)
@@ -153,7 +156,7 @@ object PlanMessages {
         val demandIds = mutableSetOf<String>()
         val demands = list(p["spotDemands"], MAX_LINES).map { de ->
             val d = obj(de, setOf("id", "kind", "ads", "plays")) ?: fail("wrong spot fields")
-            val id = str(d["id"])?.takeIf { ID.matches(it) && demandIds.add(it) } ?: fail("bad spot id")
+            val id = str(d["id"])?.takeIf { LINE_ID.matches(it) && demandIds.add(it) } ?: fail("bad spot id")
             val kind = str(d["kind"])?.takeIf { it in DEMAND_KINDS } ?: fail("bad spot kind")
             val ads = idList(d["ads"], 1, 5) ?: fail("bad spot ads")
             val plays = whole(d["plays"], 0) ?: fail("bad spot plays")
@@ -200,7 +203,7 @@ object PlanMessages {
         val area = areaId(x["areaId"])
         val startsAt = whole(x["startsAt"], 1)?.takeIf { it % HOUR == HOUR - IST_OFFSET % HOUR } ?: fail("bad start time")
         fun optionalId(e: JsonElement?, problem: String): String? =
-            if (e is JsonNull) null else str(e)?.takeIf(ID::matches) ?: fail(problem)
+            if (e is JsonNull) null else str(e)?.takeIf(LINE_ID::matches) ?: fail(problem)
         val line = optionalId(x["lineId"], "bad line id")
         val spot = optionalId(x["spotId"], "bad spot id")
         Assignment(made, area, startsAt, Carry(line, spot))

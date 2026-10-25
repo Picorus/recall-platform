@@ -12,14 +12,18 @@ import android.os.SystemClock
 import app.recall.player.core.DownKind
 import app.recall.player.core.Enrolment
 import app.recall.player.core.LineTls
+import app.recall.player.core.MarkFile
 import app.recall.player.core.Outbox
 import app.recall.player.core.PahoTransport
+import app.recall.player.core.PlayLog
+import app.recall.player.core.PlaySigner
 import app.recall.player.core.ScreenLine
 import app.recall.player.core.TrustedClock
 import java.io.File
 import java.security.SecureRandom
 import java.util.Base64
 import java.util.concurrent.atomic.AtomicReference
+import kotlinx.serialization.json.JsonObject
 
 object Line {
     /** The box's clock, set by the cloud here and by GPS (P2.8). */
@@ -55,9 +59,26 @@ object Line {
         val (screenId, broker, cert, brokerCa) = need.map { it.readText().trim() }
         // What to play where (P2.6): from storage at once, even before the line opens.
         runCatching { Schedule.start(app, screenId) }.onFailure { CrashLog.record(app, "schedule not started: ${it.javaClass.simpleName}") }
+        val vault = AndroidKeyVault()
+        // The outbox and the signed play log (P2.7) start whether or not the line can open: plays
+        // are kept on storage until it can. Plays are signed only with the key made at enrolment.
+        val signs = vault.has(Enrolment.PLAY_KEY)
+        val seal: (Long, JsonObject) -> JsonObject = if (signs) PlaySigner(screenId, vault)::seal else { _, r -> r }
+        // Once per process: a second start (the line could not open before) reuses them.
+        val box = outbox ?: Outbox(File(app.filesDir, "outbox"), seal = seal).also { outbox = it }
+        if (signs && Playback.playLog == null) {
+            Playback.playLog = PlayLog(
+                outbox = box,
+                places = { t -> Schedule.scheduler?.where(t) },
+                mark = Playback.markFile(app),
+                stored = ::nudge,
+                log = { android.util.Log.i("RecallPlays", it) },
+            )
+        } else if (!signs) {
+            CrashLog.record(app, "plays not recorded: the box has no play key (enrol it again)")
+        }
         // The key must be the one enrolled, and the certificate must be for it: a box set up wrongly
         // says so here instead of failing every handshake quietly (review, P2.3.3).
-        val vault = AndroidKeyVault()
         if (!vault.has(Enrolment.TLS_KEY)) {
             CrashLog.record(app, "line not started: the box has no line key (enrol it again)")
             return
@@ -67,11 +88,9 @@ object Line {
             CrashLog.record(app, "line not started: the certificate is not for this box's key")
             return
         }
-        val box = Outbox(File(app.filesDir, "outbox"))
         val key = vault.privateKey(Enrolment.TLS_KEY)
         val factory = LineTls.socketFactory(key, cert, brokerCa)
         val random = SecureRandom()
-        outbox = box
         line = ScreenLine(
             screenId = screenId,
             appVersion = BuildConfig.VERSION_NAME,
