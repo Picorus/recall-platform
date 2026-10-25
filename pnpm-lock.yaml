@@ -46,6 +46,9 @@ importers:
 
   packages/db:
     dependencies:
+      '@recall/adapters':
+        specifier: workspace:*
+        version: link:../adapters
       '@recall/domain':
         specifier: workspace:*
         version: link:../domain
