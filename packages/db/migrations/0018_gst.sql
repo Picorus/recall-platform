@@ -25,6 +25,8 @@ CREATE TABLE gst_documents (
   legal_name      text        NOT NULL,
   gstin           text,
   place_of_supply text        NOT NULL CHECK (place_of_supply ~ '^\d{2}$'),
+  -- The service code printed on the document (advertising: 998365, a setting).
+  sac             text        NOT NULL CHECK (sac ~ '^\d{6}$'),
   taxable_paise   bigint      NOT NULL CHECK (taxable_paise >= 0),
   cgst_paise      bigint      NOT NULL CHECK (cgst_paise >= 0),
   sgst_paise      bigint      NOT NULL CHECK (sgst_paise >= 0),
@@ -37,6 +39,25 @@ CREATE TABLE gst_documents (
 );
 CREATE INDEX gst_documents_issued ON gst_documents (issued_at);
 
+-- Invoices partners (agencies, aggregators) send RECALL for their cuts. Their GST is claimed back
+-- only when such an invoice is recorded (best practice, Prateek 25 Oct 2026: no CA yet).
+CREATE TABLE partner_invoices (
+  partner_id    text        NOT NULL CHECK (length(partner_id) BETWEEN 1 AND 64),
+  invoice_no    text        NOT NULL CHECK (length(invoice_no) BETWEEN 1 AND 16),
+  invoice_date  date        NOT NULL,
+  gstin         text        CHECK (gstin ~ '^\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]$'),
+  taxable_paise bigint      NOT NULL CHECK (taxable_paise > 0),
+  gst_paise     bigint      NOT NULL CHECK (gst_paise >= 0),
+  recorded_by   text        NOT NULL,
+  recorded_at   timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (partner_id, invoice_no),
+  CHECK (gst_paise = 0 OR gstin IS NOT NULL)
+);
+CREATE TRIGGER partner_invoices_no_change BEFORE UPDATE OR DELETE ON partner_invoices
+  FOR EACH ROW EXECUTE FUNCTION recall_append_only();
+CREATE TRIGGER partner_invoices_no_truncate BEFORE TRUNCATE ON partner_invoices
+  FOR EACH STATEMENT EXECUTE FUNCTION recall_append_only();
+
 CREATE TRIGGER brand_tax_profiles_no_change BEFORE UPDATE OR DELETE ON brand_tax_profiles
   FOR EACH ROW EXECUTE FUNCTION recall_append_only();
 CREATE TRIGGER brand_tax_profiles_no_truncate BEFORE TRUNCATE ON brand_tax_profiles
@@ -45,4 +66,4 @@ CREATE TRIGGER gst_documents_no_change BEFORE UPDATE OR DELETE ON gst_documents
   FOR EACH ROW EXECUTE FUNCTION recall_append_only();
 CREATE TRIGGER gst_documents_no_truncate BEFORE TRUNCATE ON gst_documents
   FOR EACH STATEMENT EXECUTE FUNCTION recall_append_only();
-GRANT SELECT, INSERT ON brand_tax_profiles, gst_documents TO recall_app;
+GRANT SELECT, INSERT ON brand_tax_profiles, gst_documents, partner_invoices TO recall_app;

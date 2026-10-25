@@ -94,7 +94,7 @@ export async function priceBooks(pool: Pick<Pool, 'query'>): Promise<PriceBook[]
     cuts: x.book.cuts ?? { agency: 1_000, aggregator: 200 },
     cutTdsBp: x.book.cutTdsBp ?? 200,
     riderPay: x.book.riderPay ?? DEFAULT_RIDER_PAY_RULES,
-    taxes: x.book.taxes ?? DEFAULT_TAX_RULES,
+    taxes: { ...DEFAULT_TAX_RULES, ...x.book.taxes },
   }));
 }
 

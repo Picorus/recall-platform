@@ -8,8 +8,11 @@ Newest first. Each entry: date · step id · what changed · tests · open issue
 - Database (migration 0018): `brand_tax_profiles` (legal name, GSTIN, state; latest wins) and `gst_documents` (every invoice and credit note, one per ledger entry, numbered under a lock so the series has no gaps or repeats; never changed).
   - A paid booking issues its tax invoice in the same step; an approved refund (and a top-up) issues its credit note in the same step.
   - `gstSummary(month)`, `accountantExport(month)`: invoice and credit-note registers, the full journal, the summary.
-- Tests: 5 domain, 6 database (numbers; Telangana vs Maharashtra; credit note against its invoice; summary agrees with the ledger; missing tax details flagged; export lines; documents can't be changed).
-- Open for the CA: input tax credit on partners' GST needs their invoices (we record the GST, not their invoice numbers yet); HSN/SAC code for advertising (998365 expected) to print on invoices; the invoice PDF itself comes with the brand portal (P5). E-invoicing (IRN) goes behind an adapter when turnover nears the limit (P6).
+- Prateek (no CA yet, best practice): partner invoices recorded (`recordPartnerInvoice`, migration 0018 `partner_invoices`); their GST claimed back only with an invoice, never more than booked; service code 998365 on every document (a setting).
+- Review by a second agent found 3 real problems, fixed with tests: a credit note took the brand's current GSTIN instead of its invoice's (now copies the invoice); several credit notes did not add back to the invoice's CGST/SGST (now split from what the invoice still has, and never beyond it); a leading tab could still start a spreadsheet formula (now escaped). Tax details are taken as they were at the moment of the invoice.
+- Tests: 5 domain, 9 database (numbers; Telangana vs Maharashtra; credit note against its invoice, same customer and GSTIN after a change; two credit notes add back exactly; summary agrees with the ledger; missing tax details; partner invoices; export lines; documents can't be changed).
+- Known: a refund on a booking with no invoice is refused (a refund needs an invoice to credit). Every paid booking gets one from now on; there are no older paid bookings anywhere yet.
+- Open: the invoice PDF itself comes with the brand portal (P5). E-invoicing (IRN) goes behind an adapter when turnover nears the limit (P6). When a CA is appointed: confirm 998365, the 2% TDS on cuts and 1% on rider pay.
 - **Next:** P1.7 is complete after review. Then the plan's next step.
 
 ## 25 Oct 2026 · P1.7.8 · Screen loan record

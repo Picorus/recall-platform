@@ -37,5 +37,6 @@ describe('GST documents (P1.7.9)', () => {
       ),
     ).toBe('a,b\r\n"x,y",\'=SUM(A1)\r\n"say ""hi""",-5\r\n');
     expect([rupees(123_450), rupees(5), rupees(-1_005)]).toEqual(['1234.50', '0.05', '-10.05']);
+    expect(toCsv(['a'], [['\t=1+1']])).toBe("a\r\n'\t=1+1\r\n");
   });
 });

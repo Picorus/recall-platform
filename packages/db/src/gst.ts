@@ -10,6 +10,7 @@ import {
   rupees,
   splitGst,
   toCsv,
+  type GstSplit,
 } from '@recall/domain';
 import type { Pool, PoolClient } from 'pg';
 import { priceBooks } from './bookings.js';
@@ -49,6 +50,66 @@ export async function setBrandTaxProfile(
   );
 }
 
+export interface PartnerInvoice {
+  readonly partnerId: string;
+  readonly invoiceNo: string;
+  /** "YYYY-MM-DD" */
+  readonly invoiceDate: string;
+  /** Absent for a partner not registered for GST (then no GST on it). */
+  readonly gstin?: string;
+  readonly taxablePaise: number;
+  readonly gstPaise: number;
+}
+
+/**
+ * Records an invoice a partner sent for its cuts (Prateek, 25 Oct 2026: best practice). Its GST
+ * can then be claimed back; GST we booked for a partner with no invoice behind it is not claimed.
+ * Refused when it claims more GST than RECALL booked for that partner (a 1-rupee rounding margin).
+ */
+export async function recordPartnerInvoice(
+  pool: Pool,
+  inv: PartnerInvoice,
+  by: string,
+): Promise<void> {
+  if (inv.gstin !== undefined) {
+    const problems = gstinProblems(inv.gstin);
+    if (problems.length > 0) throw new RangeError(problems.join('; '));
+  } else if (inv.gstPaise > 0) throw new RangeError('GST on an invoice needs the partner’s GSTIN');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(inv.invoiceDate)) throw new RangeError('Date must be YYYY-MM-DD');
+  if (
+    ![inv.taxablePaise, inv.gstPaise].every((n) => Number.isSafeInteger(n) && n >= 0) ||
+    inv.taxablePaise === 0
+  )
+    throw new RangeError('Amounts must be whole paise; the invoice value more than 0');
+  await inTransaction(pool, async (c) => {
+    await c.query("SELECT pg_advisory_xact_lock(hashtext('partner-invoices'))");
+    const r = await c.query<{ booked: string; backed: string }>(
+      `SELECT (SELECT coalesce(sum(debit - credit), 0) FROM ledger_postings
+                WHERE account = 'gst-input' AND party = $1) AS booked,
+              (SELECT coalesce(sum(gst_paise), 0) FROM partner_invoices WHERE partner_id = $1) AS backed`,
+      [inv.partnerId],
+    );
+    const room = Number(r.rows[0]?.booked ?? 0) - Number(r.rows[0]?.backed ?? 0) + 100;
+    if (inv.gstPaise > room)
+      throw new Error(
+        `This invoice claims ₹${inv.gstPaise / 100} GST; RECALL booked only ₹${(room - 100) / 100} more for ${inv.partnerId}`,
+      );
+    await c.query(
+      `INSERT INTO partner_invoices (partner_id, invoice_no, invoice_date, gstin, taxable_paise,
+         gst_paise, recorded_by) VALUES ($1, $2, $3::date, $4, $5, $6, $7)`,
+      [
+        inv.partnerId,
+        inv.invoiceNo,
+        inv.invoiceDate,
+        inv.gstin ?? null,
+        inv.taxablePaise,
+        inv.gstPaise,
+        by,
+      ],
+    );
+  });
+}
+
 /** India date of a moment ("YYYY-MM-DD"). */
 const indiaDate = (t: number) => new Date((t + 330 * 60) * 1000).toISOString().slice(0, 10);
 
@@ -83,25 +144,62 @@ export async function issueGstDocument(
   const book = priceBookAt(await priceBooks(c), isoAt(d.at));
   if (!book) throw new Error('No price book in force');
   const supplier = book.taxes.supplierStateCode;
-  const p = await c.query<{ legal_name: string; gstin: string | null; state_code: string }>(
-    `SELECT legal_name, gstin, state_code FROM brand_tax_profiles
-      WHERE brand_id = $1 ORDER BY set_at DESC LIMIT 1`,
-    [brandId],
-  );
-  // A brand with no tax details yet is billed in RECALL's state under its brand id; the register
-  // shows it so the details are added before the return is filed.
-  const profile = p.rows[0] ?? { legal_name: brandId, gstin: null, state_code: supplier };
+  let recipient: { legal_name: string; gstin: string | null; state_code: string };
   let against: string | null = null;
-  if (d.kind === 'credit-note') {
-    const inv = await c.query<{ doc_no: string; place_of_supply: string }>(
-      `SELECT doc_no, place_of_supply FROM gst_documents
-        WHERE booking_id = $1 AND kind = 'invoice' ORDER BY issued_at LIMIT 1`,
+  let split: GstSplit;
+  if (d.kind === 'invoice') {
+    // The brand's tax details in force when the invoice is issued. A brand with none yet is billed
+    // in RECALL's state under its brand id; the summary flags it so they are added before filing.
+    const p = await c.query<{ legal_name: string; gstin: string | null; state_code: string }>(
+      `SELECT legal_name, gstin, state_code FROM brand_tax_profiles
+        WHERE brand_id = $1 AND set_at <= to_timestamp($2) ORDER BY set_at DESC LIMIT 1`,
+      [brandId, d.at],
+    );
+    recipient = p.rows[0] ?? { legal_name: brandId, gstin: null, state_code: supplier };
+    split = splitGst(d.gst, supplier, recipient.state_code);
+  } else {
+    // A credit note copies its invoice's recipient and place of supply, and its CGST / SGST come
+    // out of what the invoice still has, so all the credit notes add back to the invoice exactly.
+    const inv = await c.query<{
+      doc_no: string;
+      legal_name: string;
+      gstin: string | null;
+      place_of_supply: string;
+      taxable: string;
+      cgst: string;
+      sgst: string;
+      igst: string;
+      c_taxable: string;
+      c_cgst: string;
+      c_sgst: string;
+      c_igst: string;
+    }>(
+      `SELECT i.doc_no, i.legal_name, i.gstin, i.place_of_supply,
+              i.taxable_paise AS taxable, i.cgst_paise AS cgst, i.sgst_paise AS sgst, i.igst_paise AS igst,
+              coalesce(sum(n.taxable_paise), 0) AS c_taxable, coalesce(sum(n.cgst_paise), 0) AS c_cgst,
+              coalesce(sum(n.sgst_paise), 0) AS c_sgst, coalesce(sum(n.igst_paise), 0) AS c_igst
+         FROM gst_documents i LEFT JOIN gst_documents n ON n.against_doc = i.doc_no
+        WHERE i.booking_id = $1 AND i.kind = 'invoice'
+        GROUP BY i.doc_no ORDER BY min(i.issued_at) LIMIT 1`,
       [d.bookingId],
     );
-    if (!inv.rows[0]) throw new Error(`No invoice for booking ${d.bookingId} to credit`);
-    against = inv.rows[0].doc_no;
-    // A credit note follows its invoice's place of supply.
-    profile.state_code = inv.rows[0].place_of_supply;
+    const i = inv.rows[0];
+    if (!i) throw new Error(`No invoice for booking ${d.bookingId} to credit`);
+    against = i.doc_no;
+    recipient = { legal_name: i.legal_name, gstin: i.gstin, state_code: i.place_of_supply };
+    const left = {
+      taxable: Number(i.taxable) - Number(i.c_taxable),
+      cgst: Number(i.cgst) - Number(i.c_cgst),
+      sgst: Number(i.sgst) - Number(i.c_sgst),
+      igst: Number(i.igst) - Number(i.c_igst),
+    };
+    if (d.taxable > left.taxable || d.gst > left.cgst + left.sgst + left.igst)
+      throw new Error(`Credit notes would go beyond invoice ${i.doc_no}`);
+    if (Number(i.igst) > 0) split = { cgst: 0, sgst: 0, igst: d.gst };
+    else {
+      const cgst = Math.max(d.gst - left.sgst, Math.min(Math.floor(d.gst / 2), left.cgst));
+      split = { cgst, sgst: d.gst - cgst, igst: 0 };
+    }
   }
   const fy = financialYearOf(indiaDate(d.at));
   const last = await c.query<{ n: number | null }>(
@@ -110,12 +208,12 @@ export async function issueGstDocument(
   );
   const n = (last.rows[0]?.n ?? 0) + 1;
   const docNo = docNumber(d.kind, fy, n);
-  const split = splitGst(d.gst, supplier, profile.state_code);
   await c.query(
     `INSERT INTO gst_documents (doc_no, kind, fy, n, source_entry, booking_id, brand_id, against_doc,
        legal_name, gstin, place_of_supply, taxable_paise, cgst_paise, sgst_paise, igst_paise,
-       total_paise, issued_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, to_timestamp($17))`,
+       total_paise, issued_at, sac)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, to_timestamp($17),
+             $18)`,
     [
       docNo,
       d.kind,
@@ -125,15 +223,16 @@ export async function issueGstDocument(
       d.bookingId,
       brandId,
       against,
-      profile.legal_name,
-      profile.gstin,
-      profile.state_code,
+      recipient.legal_name,
+      recipient.gstin,
+      recipient.state_code,
       d.taxable,
       split.cgst,
       split.sgst,
       split.igst,
       d.taxable + d.gst,
       d.at,
+      book.taxes.sacCode,
     ],
   );
   return docNo;
@@ -159,8 +258,10 @@ export interface GstSummary {
     sgst: number;
     igst: number;
   };
-  /** GST charged to RECALL by partners on their cuts, to claim back (CA to confirm each one). */
+  /** GST on partner invoices dated this month: claimed back. */
   readonly inputTaxCredit: number;
+  /** GST booked for partners so far with no invoice recorded yet: not claimed until one is. */
+  readonly inputGstAwaitingInvoices: number;
   /** GST on sales less credit notes less input tax credit: what is paid for the month. */
   readonly netGstPayable: number;
   /** TDS held back in the month, to deposit by the 7th of the next month. */
@@ -202,9 +303,8 @@ export async function gstSummary(c: Q, month: string): Promise<GstSummary> {
   };
   const invoices = of('invoice');
   const creditNotes = of('credit-note');
-  const ledger = await c.query<{ itc: string; tds_riders: string; tds_partners: string }>(
-    `SELECT coalesce(sum(p.debit - p.credit) FILTER (WHERE p.account = 'gst-input'), 0) AS itc,
-            coalesce(sum(p.credit - p.debit) FILTER (WHERE p.account = 'tds-payable'
+  const ledger = await c.query<{ tds_riders: string; tds_partners: string }>(
+    `SELECT coalesce(sum(p.credit - p.debit) FILTER (WHERE p.account = 'tds-payable'
               AND e.kind IN ('rider-pay', 'poc-bonus', 'poc-finish-bonus')), 0) AS tds_riders,
             coalesce(sum(p.credit - p.debit) FILTER (WHERE p.account = 'tds-payable'
               AND e.kind IN ('agency-cut', 'aggregator-cut')), 0) AS tds_partners
@@ -213,7 +313,22 @@ export async function gstSummary(c: Q, month: string): Promise<GstSummary> {
     [from, to],
   );
   const gst = (x: typeof invoices) => x.cgst + x.sgst + x.igst;
-  const itc = Number(ledger.rows[0]?.itc ?? 0);
+  const partner = await c.query<{ itc: string; backed: string }>(
+    `SELECT coalesce(sum(gst_paise) FILTER (WHERE invoice_date >= $1::date AND invoice_date < $2::date), 0) AS itc,
+            coalesce(sum(gst_paise) FILTER (WHERE invoice_date < $2::date), 0) AS backed
+       FROM partner_invoices`,
+    [`${month}-01`, indiaDate(to)],
+  );
+  const itc = Number(partner.rows[0]?.itc ?? 0);
+  const booked = await c.query<{ n: string }>(
+    `SELECT coalesce(sum(p.debit - p.credit), 0) AS n FROM ledger_postings p JOIN ledger_entries e USING (entry_id)
+      WHERE p.account = 'gst-input' AND e.at < to_timestamp($1)`,
+    [to],
+  );
+  const awaiting = Math.max(
+    0,
+    Number(booked.rows[0]?.n ?? 0) - Number(partner.rows[0]?.backed ?? 0),
+  );
   // The financial year from April to the end of this month.
   const fy = financialYearOf(`${month}-01`);
   const fyStart = monthRange(`${fy.slice(0, 4)}-04`).from;
@@ -245,6 +360,7 @@ export async function gstSummary(c: Q, month: string): Promise<GstSummary> {
     invoices,
     creditNotes,
     inputTaxCredit: itc,
+    inputGstAwaitingInvoices: awaiting,
     netGstPayable: gst(invoices) - gst(creditNotes) - itc,
     tds: {
       riders: Number(ledger.rows[0]?.tds_riders ?? 0),
@@ -274,6 +390,7 @@ export async function accountantExport(
     legal_name: string;
     gstin: string | null;
     place_of_supply: string;
+    sac: string;
     taxable: string;
     cgst: string;
     sgst: string;
@@ -281,7 +398,7 @@ export async function accountantExport(
     total: string;
   }>(
     `SELECT doc_no, kind, to_char(issued_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD') AS issued,
-            against_doc, booking_id, legal_name, gstin, place_of_supply,
+            against_doc, booking_id, legal_name, gstin, place_of_supply, sac,
             taxable_paise AS taxable, cgst_paise AS cgst, sgst_paise AS sgst, igst_paise AS igst,
             total_paise AS total
        FROM gst_documents WHERE issued_at >= to_timestamp($1) AND issued_at < to_timestamp($2)
@@ -295,6 +412,7 @@ export async function accountantExport(
     'customer',
     'gstin',
     'place of supply',
+    'sac',
     'taxable',
     'cgst',
     'sgst',
@@ -308,6 +426,7 @@ export async function accountantExport(
     d.legal_name,
     d.gstin ?? '',
     d.place_of_supply,
+    d.sac,
     rupees(Number(d.taxable)),
     rupees(Number(d.cgst)),
     rupees(Number(d.sgst)),
@@ -332,6 +451,20 @@ export async function accountantExport(
       ORDER BY e.at, e.entry_id, p.n`,
     [from, to],
   );
+  const partners = await c.query<{
+    partner_id: string;
+    invoice_no: string;
+    invoice_date: string;
+    gstin: string | null;
+    taxable: string;
+    gst: string;
+  }>(
+    `SELECT partner_id, invoice_no, invoice_date::text AS invoice_date, gstin,
+            taxable_paise AS taxable, gst_paise AS gst
+       FROM partner_invoices WHERE invoice_date >= $1::date AND invoice_date < $2::date
+      ORDER BY invoice_date, partner_id, invoice_no`,
+    [`${month}-01`, indiaDate(to)],
+  );
   const s = await gstSummary(c, month);
   const gst = (x: GstSummary['invoices']) => x.cgst + x.sgst + x.igst;
   return [
@@ -344,6 +477,20 @@ export async function accountantExport(
       csv: toCsv(
         ['against', ...header],
         docs.rows.filter((d) => d.kind === 'credit-note').map((d) => [d.against_doc, ...row(d)]),
+      ),
+    },
+    {
+      name: `partner-invoices-${month}.csv`,
+      csv: toCsv(
+        ['partner', 'invoice', 'date', 'gstin', 'taxable', 'gst'],
+        partners.rows.map((p) => [
+          p.partner_id,
+          p.invoice_no,
+          p.invoice_date,
+          p.gstin ?? '',
+          rupees(Number(p.taxable)),
+          rupees(Number(p.gst)),
+        ]),
       ),
     },
     {
@@ -373,7 +520,8 @@ export async function accountantExport(
           ['GST on invoices', rupees(gst(s.invoices))],
           ['credit notes issued', s.creditNotes.count],
           ['GST on credit notes', rupees(gst(s.creditNotes))],
-          ['input tax credit (partners)', rupees(s.inputTaxCredit)],
+          ['input tax credit (partner invoices this month)', rupees(s.inputTaxCredit)],
+          ['partner GST waiting for an invoice', rupees(s.inputGstAwaitingInvoices)],
           ['net GST payable', rupees(s.netGstPayable)],
           ['TDS held back from riders', rupees(s.tds.riders)],
           ['TDS held back from partners', rupees(s.tds.partners)],

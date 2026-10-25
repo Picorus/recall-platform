@@ -50,8 +50,9 @@ export function splitGst(gst: number, supplierState: string, placeOfSupply: stri
 /** One CSV field, quoted when needed (commas, quotes, new lines). */
 const field = (v: string | number | null | undefined) => {
   const s = v === null || v === undefined ? '' : String(v);
-  // A leading = + - @ would make a spreadsheet run it as a formula: written as text instead.
-  const safe = /^[=+\-@]/.test(s) && !/^-?\d+(\.\d+)?$/.test(s) ? `'${s}` : s;
+  // A leading = + - @ (or tab / carriage return) would make a spreadsheet run it as a formula:
+  // written as text instead.
+  const safe = /^[=+\-@\t\r]/.test(s) && !/^-?\d+(\.\d+)?$/.test(s) ? `'${s}` : s;
   return /[",\n\r]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
 };
 

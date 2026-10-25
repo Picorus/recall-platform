@@ -76,12 +76,15 @@ export interface TaxRules {
   readonly eInvoiceTurnoverPaise: number;
   /** Warn this share of the way there (basis points), so it is switched on in time. */
   readonly eInvoiceWarnBp: number;
+  /** The service code printed on invoices (advertising space or time: 998365). */
+  readonly sacCode: string;
 }
 
 export const DEFAULT_TAX_RULES: TaxRules = {
   supplierStateCode: '36',
   eInvoiceTurnoverPaise: 5_000_000_000,
   eInvoiceWarnBp: 8_000,
+  sacCode: '998365',
 };
 
 /** The book in force from 22 Oct 2026: rulebook v5.4 and Prateek's decisions of 21–22 Oct. */
@@ -206,13 +209,16 @@ export function checkPriceBook(b: PriceBook): PriceBookProblem[] {
   const t = b.taxes;
   if (
     !/^\d{2}$/.test(t.supplierStateCode) ||
+    !/^\d{6}$/.test(t.sacCode) ||
     !Number.isSafeInteger(t.eInvoiceTurnoverPaise) ||
     t.eInvoiceTurnoverPaise <= 0 ||
     !Number.isSafeInteger(t.eInvoiceWarnBp) ||
     t.eInvoiceWarnBp < 0 ||
     t.eInvoiceWarnBp > 10_000
   )
-    problems.push('tax settings: a 2-digit state code, a turnover above 0, a warning share 0–100%');
+    problems.push(
+      'tax settings: a 2-digit state code, a 6-digit service code, a turnover above 0, a warning share 0–100%',
+    );
   return problems;
 }
 
