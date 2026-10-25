@@ -2,6 +2,28 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 25 Oct 2026 · P2.5.1 · Playback: what plays when
+- P2.4 merged (PR #36, all checks green, the Android app built in CI).
+- P2.5 is split like P2.3: P2.5.1 decides what each spot shows and when (plain Kotlin, tested on any computer); P2.5.2 puts it on the screen without gaps (Android, proven on the emulator).
+- **The spot rules on the box** (`Spots.kt`): the cloud scheduler's `spotAt` in Kotlin: 240 spots an hour, one RECALL spot after every 5 brand plays (200 + 40), the brand's ads in turn, RECALL spots to the make-up or aggregator ad the bike carries, else RECALL's own. Checked against new shared cases (`test-vectors/spots.json`: every spot of an hour for 6 kinds of carry), which the cloud's code also passes.
+- **What shows now** (`Playout.kt`): spots follow the trusted clock on a 15-second grid (hours start on :00 or :30 UTC, both on the grid), so the pattern holds after a restart or a slow file. Only a checked file on the box is shown. A planned ad whose file is not here: a RECALL ad that is here plays instead and the play says so (the brand is not counted; make-ups cover it), else the slate. No trusted time: RECALL ads in turn, never counted. No plan for the time: RECALL ads.
+- **Keeping time** (`Conductor.kt`): the next spot is loaded 2 s before it starts and shown on its second. The trusted time is read again for every spot: a correction of a whole spot or more joins the spot of now part-way; a small step back waits for the second. A spot joined part-way is marked "not whole" and never counts. Every spot shown is handed on for the signed play log (P2.7); a problem reported by the screen marks it not ok, and a bad file goes back to the store to be downloaded again. Playback runs on its own thread and starts again after any failure.
+- **When a play counts** (for the signed play log, P2.7): shown by trusted time, from its first second to its last, the screen confirmed it started and reported no problem, an ad (not the slate), and no spot at or after that time counted before.
+- Second-agent review: 10 findings, all fixed:
+  - (high) a clock moved back by more than one spot could count the same spot twice. Now a "latest spot counted" mark is shared across restarts of playback (P2.7 will keep it on storage);
+  - (high) a spot cut short by stopping playback was counted as whole. Now it must run to its end;
+  - a problem found while a spot was loading, or no word from the screen at all, still counted. Now the screen must confirm each spot;
+  - the time disappearing between two reads could crash playback. Now it is read once per spot;
+  - a broken plan froze the screen. Now it is treated as no plan (RECALL ads);
+  - a long wait after the clock moved back held a frozen frame. Now RECALL filler plays, never counted;
+  - spots after the time was lost were still marked as timed. Now they are not;
+  - the cloud's and the box's spot rules differed for negative spot numbers. Both refuse them now;
+  - spot lengths that do not fit half an hour, and plans off the 15-second grid, are refused;
+  - the restart loop itself is guarded against failing.
+- Tests: TypeScript 4 (the shared cases, the 200/40 pattern, negative spots refused, no RECALL ads). Kotlin 15: the shared cases and the 240/40 counts; a whole hour on the second (240 spots, 200 brand, 40 make-up, ads in turn, each loaded ≥ 2 s ahead, all counted); starting part-way; stopping part-way; missing files (RECALL ad, then slate; counted once); no trusted time then time arriving; clock jumps both ways; a clock moved back 40 s with no spot counted twice, also after a restart; RECALL filler during a long wait; the time flickering and going away; screen failures while showing and while loading, no confirmation, bad files; a broken or off-grid plan; no plan; the next hour's plan; the thread restarting. All 76 core tests pass.
+- Open: the screen itself (P2.5.2); the plan and what the bike carries come from the local scheduler (P2.6); signed plays (P2.7); health counters (P2.11).
+- Next: P2.5.2, the screen.
+
 ## 25 Oct 2026 · P2.4 · Ad storage on the box
 - P2.3.3 merged (PR #35, all checks green).
 - **The list** (`packages/domain/src/ad-files.ts`, Kotlin `AdFiles.kt`, shared cases `test-vectors/ad-files.json`): the cloud tells each screen which ad files to keep on a new topic `…/down/files`. Each entry: the ad, the file's SHA-256 fingerprint, its size (up to 64 MB), an HTTPS link, and keep-until (the end of the last booking using it, at most 400 days ahead). Each list is the whole list and carries the time it was made: an older list is ignored, and anything left off is no longer needed. Links must be HTTPS and plain ASCII; one file cannot be listed with two sizes. The cloud's builder refuses anything the box would refuse.

@@ -259,6 +259,8 @@ export function spotAt(
   index: number,
   rules: SpotRules = DEFAULT_SPOT_RULES,
 ): SpotChoice {
+  if (!Number.isSafeInteger(index) || index < 0)
+    throw new Error(`spot ${index}: spots count from 0`);
   const recall = (): SpotChoice => ({
     kind: 'recall',
     ad: nth(plan.recallAds, index) ?? '',
