@@ -13,6 +13,8 @@ import { handleUp, LineMemory } from './line.js';
 const AT_ONCE = 16;
 /** Messages waiting beyond this are dropped unanswered: their boxes send them again. */
 const MOST_WAITING = 10_000;
+/** Login refusals (MQTT 3 and 5 codes): not authorized, bad user name or password. */
+const REFUSED = new Set([4, 5, 134, 135]);
 
 export interface GatewayConfig extends HookConfig {
   /** The broker's internal port, e.g. mqtt://127.0.0.1:1883. */
@@ -40,6 +42,7 @@ export async function startGateway(
   const address = server.address();
   const hookPort = typeof address === 'object' && address ? address.port : cfg.hookPort;
   let client: mqtt.MqttClient | undefined;
+  let stopping = false;
   return {
     hookPort,
     async connect() {
@@ -76,7 +79,15 @@ export async function startGateway(
         waiting.push([topic, payload]);
         work();
       });
-      c.on('error', (e) => log(`broker: ${e.message}`));
+      c.on('error', (e) => {
+        log(`broker: ${e.message}`);
+        // A refused login (the broker still starting, or its checks briefly unreachable) is not
+        // retried by the MQTT library: try again ourselves, every 2 seconds (seen in CI, P2.3.2).
+        if (!c.connected && 'code' in e && REFUSED.has(Number(e.code)))
+          setTimeout(() => {
+            if (!c.connected && !stopping) c.reconnect();
+          }, 2_000);
+      });
       await new Promise<void>((ok) => c.once('connect', () => ok()));
       // A broker still starting can refuse the first subscription (its checks not yet ready): try
       // again until it is granted. Later reconnects subscribe again by themselves.
@@ -92,6 +103,7 @@ export async function startGateway(
       }
     },
     async stop() {
+      stopping = true;
       await client?.endAsync();
       const closed = new Promise<void>((ok) => server.close(() => ok()));
       server.closeAllConnections(); // the broker keeps its hook connections open
