@@ -36,6 +36,8 @@ class ScreenLine(
     private val mono: () -> Long,
     private val random: (Long) -> Long,
     private val log: (String) -> Unit = {},
+    /** What the line does not handle itself: ad file lists (P2.4), later plans and commands. */
+    private val onMessage: (DownKind, ByteArray) -> Unit = { _, _ -> },
     private val rules: LineRules = LineRules(),
     private val backoffRules: BackoffRules = BackoffRules(),
 ) {
@@ -162,7 +164,7 @@ class ScreenLine(
                     log("line: dropped (${e.cause?.message ?: "no reason"})")
                     return
                 }
-                is Event.Message -> when (ScreenLink.downKind(screenId, e.topic)) {
+                is Event.Message -> when (val kind = ScreenLink.downKind(screenId, e.topic)) {
                     DownKind.ACK -> ScreenLink.parseAck(String(e.payload))?.let { n ->
                         if (outbox.acknowledge(n)) {
                             // Acks can come out of order: only one covering what was sent frees the line.
@@ -183,7 +185,10 @@ class ScreenLine(
                             c.cloudNow(mono())?.let { ms -> outbox.trim(ms / 1000) }
                         }
                     }
-                    else -> {} // plans and commands: later steps (P2.6, P2.12)
+                    // Ad file lists (P2.4); plans and commands: later steps (P2.6, P2.12).
+                    else -> kind?.let { k ->
+                        runCatching { onMessage(k, e.payload) }.onFailure { log("line: ${k.name.lowercase()} not handled: ${it.message}") }
+                    }
                 }
             }
         }

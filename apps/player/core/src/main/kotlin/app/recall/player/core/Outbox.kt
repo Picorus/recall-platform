@@ -19,10 +19,6 @@ package app.recall.player.core
 import java.io.File
 import java.io.FileOutputStream
 import java.io.RandomAccessFile
-import java.nio.channels.FileChannel
-import java.nio.file.Files
-import java.nio.file.StandardCopyOption
-import java.nio.file.StandardOpenOption
 import java.util.zip.CRC32
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -100,7 +96,7 @@ class Outbox(private val dir: File, private val rules: OutboxRules = OutboxRules
         val before = seg.file.length()
         try {
             appendSynced(seg.file, line)
-            if (current == null) syncDir(dir)
+            if (current == null) DiskFiles.syncDir(dir)
         } catch (e: Exception) {
             undoAppend(seg.file, before, current == null)
             throw e
@@ -177,7 +173,7 @@ class Outbox(private val dir: File, private val rules: OutboxRules = OutboxRules
     fun acknowledge(seq: Long): Boolean {
         val highest = segments.lastOrNull { it.entries.isNotEmpty() }?.entries?.last()?.seq ?: return false
         if (seq <= acked || seq > highest) return false
-        writeAtomically(File(dir, "acked"), seq.toString())
+        DiskFiles.writeAtomically(File(dir, "acked"), seq.toString())
         acked = seq
         dropConfirmed()
         return true
@@ -199,7 +195,7 @@ class Outbox(private val dir: File, private val rules: OutboxRules = OutboxRules
     fun renumberAfter(cloudUpTo: Long): Int {
         if (cloudUpTo <= next - 1) return 0
         val waiting = unconfirmed().toList()
-        writeAtomically(File(dir, "floor"), cloudUpTo.toString())
+        DiskFiles.writeAtomically(File(dir, "floor"), cloudUpTo.toString())
         next = cloudUpTo + 1
         val old = segments.toList()
         open = null
@@ -233,7 +229,7 @@ class Outbox(private val dir: File, private val rules: OutboxRules = OutboxRules
         val seg = segments.first()
         val top = seg.entries.last().seq
         // Recorded before the reports go, so their numbers are never used again.
-        if (top > acked && top > readNumber("floor")) writeAtomically(File(dir, "floor"), top.toString())
+        if (top > acked && top > readNumber("floor")) DiskFiles.writeAtomically(File(dir, "floor"), top.toString())
         expired += seg.entries.count { it.seq > acked }
         delete(seg)
     }
@@ -274,26 +270,6 @@ class Outbox(private val dir: File, private val rules: OutboxRules = OutboxRules
         private fun appendSynced(f: File, text: String) = FileOutputStream(f, true).use {
             it.write(text.toByteArray())
             it.fd.sync()
-        }
-
-        /** Writes a small file whole or not at all (a power cut leaves the old one). */
-        private fun writeAtomically(f: File, text: String) {
-            val tmp = File(f.parentFile, "${f.name}.tmp")
-            FileOutputStream(tmp).use {
-                it.write(text.toByteArray())
-                it.fd.sync()
-            }
-            Files.move(tmp.toPath(), f.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
-            syncDir(f.parentFile)
-        }
-
-        /** Makes a new or renamed file's name itself survive a power cut (where the system allows). */
-        private fun syncDir(dir: File) {
-            try {
-                FileChannel.open(dir.toPath(), StandardOpenOption.READ).use { it.force(true) }
-            } catch (_: Exception) {
-                // Some systems cannot open a folder this way; their journal orders it instead.
-            }
         }
     }
 }

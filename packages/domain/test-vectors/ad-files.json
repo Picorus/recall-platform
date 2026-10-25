@@ -1,0 +1,121 @@
+{
+  "comment": "P2.4: the list of ad files a screen keeps (down/files). The cloud (TypeScript) and the player (Kotlin) both pass these.",
+  "list": {
+    "made": 1789990000000,
+    "files": [
+      {
+        "ad": "AD-ponnu-1",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+        "bytes": 4800000,
+        "url": "https://files.recall.example/ads/a1.mp4?sig=x%2By&exp=1790090000",
+        "keepUntil": 1790172000
+      },
+      {
+        "ad": "house_7",
+        "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "bytes": 120000,
+        "url": "https://files.recall.example/ads/\"q\".png",
+        "keepUntil": 1790000000
+      }
+    ],
+    "text": "{\"v\":1,\"made\":1789990000000,\"files\":[{\"ad\":\"AD-ponnu-1\",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1\",\"bytes\":4800000,\"url\":\"https://files.recall.example/ads/a1.mp4?sig=x%2By&exp=1790090000\",\"keepUntil\":1790172000},{\"ad\":\"house_7\",\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"bytes\":120000,\"url\":\"https://files.recall.example/ads/\\\"q\\\".png\",\"keepUntil\":1790000000}]}"
+  },
+  "refused": [
+    {
+      "text": "not json",
+      "problem": "not a JSON object"
+    },
+    {
+      "text": "{\"v\":1}",
+      "problem": "not a file list"
+    },
+    {
+      "text": "{\"v\":1,\"files\":[]}",
+      "problem": "not a file list"
+    },
+    {
+      "text": "{\"v\":2,\"made\":1789990000000,\"files\":[]}",
+      "problem": "unknown version"
+    },
+    {
+      "text": "{\"v\":1,\"made\":0,\"files\":[]}",
+      "problem": "bad list time"
+    },
+    {
+      "text": "{\"v\":1,\"made\":\"1789990000000\",\"files\":[]}",
+      "problem": "bad list time"
+    },
+    {
+      "text": "{\"v\":1,\"made\":1789990000000,\"files\":{}}",
+      "problem": "bad files"
+    },
+    {
+      "text": "{\"v\":1,\"made\":1789990000000,\"files\":[{\"ad\":\"a b\",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"bytes\":1,\"url\":\"https://x/y\",\"keepUntil\":1}]}",
+      "problem": "bad ad id"
+    },
+    {
+      "text": "{\"v\":1,\"made\":1789990000000,\"files\":[{\"ad\":\"A\",\"sha256\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"bytes\":1,\"url\":\"https://x/y\",\"keepUntil\":1}]}",
+      "problem": "bad fingerprint"
+    },
+    {
+      "text": "{\"v\":1,\"made\":1789990000000,\"files\":[{\"ad\":\"A\",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"bytes\":1,\"url\":\"https://x/y\",\"keepUntil\":1}]}",
+      "problem": "bad fingerprint"
+    },
+    {
+      "text": "{\"v\":1,\"made\":1789990000000,\"files\":[{\"ad\":\"A\",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"bytes\":0,\"url\":\"https://x/y\",\"keepUntil\":1}]}",
+      "problem": "bad size"
+    },
+    {
+      "text": "{\"v\":1,\"made\":1789990000000,\"files\":[{\"ad\":\"A\",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"bytes\":\"5\",\"url\":\"https://x/y\",\"keepUntil\":1}]}",
+      "problem": "bad size"
+    },
+    {
+      "text": "{\"v\":1,\"made\":1789990000000,\"files\":[{\"ad\":\"A\",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"bytes\":67108865,\"url\":\"https://x/y\",\"keepUntil\":1}]}",
+      "problem": "bad size"
+    },
+    {
+      "text": "{\"v\":1,\"made\":1789990000000,\"files\":[{\"ad\":\"A\",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"bytes\":1,\"url\":\"http://x/y\",\"keepUntil\":1}]}",
+      "problem": "not an HTTPS link"
+    },
+    {
+      "text": "{\"v\":1,\"made\":1789990000000,\"files\":[{\"ad\":\"A\",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"bytes\":1,\"url\":\"https://x/a b\",\"keepUntil\":1}]}",
+      "problem": "not an HTTPS link"
+    },
+    {
+      "text": "{\"v\":1,\"made\":1789990000000,\"files\":[{\"ad\":\"A\",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"bytes\":1,\"url\":\"https://x/café\",\"keepUntil\":1}]}",
+      "problem": "not an HTTPS link"
+    },
+    {
+      "text": "{\"v\":1,\"made\":1789990000000,\"files\":[{\"ad\":\"A\",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"bytes\":1,\"url\":\"https://x/ab\",\"keepUntil\":1}]}",
+      "problem": "not an HTTPS link"
+    },
+    {
+      "text": "{\"v\":1,\"made\":1789990000000,\"files\":[{\"ad\":\"A\",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"bytes\":1,\"url\":\"https://x/a﻿b\",\"keepUntil\":1}]}",
+      "problem": "not an HTTPS link"
+    },
+    {
+      "text": "{\"v\":1,\"made\":1789990000000,\"files\":[{\"ad\":\"A\",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"bytes\":1,\"url\":\"https://x/y\",\"keepUntil\":0}]}",
+      "problem": "bad keep-until"
+    },
+    {
+      "text": "{\"v\":1,\"made\":1789990000000,\"files\":[{\"ad\":\"A\",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"bytes\":1,\"url\":\"https://x/y\",\"keepUntil\":1824550001}]}",
+      "problem": "bad keep-until"
+    },
+    {
+      "text": "{\"v\":1,\"made\":1789990000000,\"files\":[{\"ad\":\"A\",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"bytes\":1,\"url\":\"https://x/y\",\"keepUntil\":1.5}]}",
+      "problem": "bad keep-until"
+    },
+    {
+      "text": "{\"v\":1,\"made\":1789990000000,\"files\":[{\"ad\":\"A\",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"bytes\":1,\"url\":\"https://x/y\",\"keepUntil\":1,\"extra\":1}]}",
+      "problem": "wrong fields"
+    },
+    {
+      "text": "{\"v\":1,\"made\":1789990000000,\"files\":[{\"ad\":\"A\",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"bytes\":1,\"url\":\"https://x/y\",\"keepUntil\":1},{\"ad\":\"A\",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"bytes\":1,\"url\":\"https://x/y\",\"keepUntil\":1}]}",
+      "problem": "an ad listed twice"
+    },
+    {
+      "text": "{\"v\":1,\"made\":1789990000000,\"files\":[{\"ad\":\"A\",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"bytes\":1,\"url\":\"https://x/y\",\"keepUntil\":1},{\"ad\":\"B\",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"bytes\":2,\"url\":\"https://x/y\",\"keepUntil\":1}]}",
+      "problem": "one file with two sizes"
+    }
+  ]
+}

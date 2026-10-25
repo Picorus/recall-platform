@@ -25,3 +25,4 @@ export * from './people.js';
 export * from './report.js';
 export * from './screen-identity.js';
 export * from './screen-link.js';
+export * from './ad-files.js';
