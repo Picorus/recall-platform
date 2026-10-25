@@ -13,3 +13,4 @@ export * from './rider-pay.js';
 export * from './business-mode.js';
 export * from './payouts.js';
 export * from './screen-loans.js';
+export * from './gst.js';

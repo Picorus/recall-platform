@@ -15,6 +15,7 @@ import {
 import type { Pool, PoolClient } from 'pg';
 import { priceBooks } from './bookings.js';
 import { accrueCuts } from './cuts.js';
+import { issueGstDocument } from './gst.js';
 import { postEntry } from './ledger.js';
 import { inTransaction, paidForLine, refundedOnBooking, type OpenLine } from './makeups.js';
 import { COUNTING, lineTotalsFor } from './plays.js';
@@ -295,19 +296,26 @@ export async function decideRefund(
     if (decision === 'approved') {
       const base = Number(row.base);
       const gst = Number(row.gst);
-      const credit = (id: string, b: number, g: number) =>
-        postEntry(
-          c,
-          refundApproved({
-            refundId: id,
-            lineId: row.line_id,
-            brandId: row.brand_id,
-            base: b,
-            gst: g,
-            at: now,
-          }),
-          by.id,
-        );
+      const credit = async (id: string, b: number, g: number) => {
+        const entry = refundApproved({
+          refundId: id,
+          lineId: row.line_id,
+          brandId: row.brand_id,
+          base: b,
+          gst: g,
+          at: now,
+        });
+        await postEntry(c, entry, by.id);
+        // P1.7.9: the credit note against the booking's invoice, in the same step.
+        await issueGstDocument(c, {
+          kind: 'credit-note',
+          sourceEntry: entry.entryId,
+          bookingId: row.line_id.split('/')[0] ?? '',
+          taxable: b,
+          gst: g,
+          at: now,
+        });
+      };
       if (base + gst > 0) await credit(refundId, base, gst);
       const book = line && books.find((b) => b.version === line.price_book_version);
       if (line && book) {

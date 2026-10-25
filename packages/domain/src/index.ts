@@ -20,3 +20,4 @@ export * from './scheduler.js';
 export * from './rider-pay.js';
 export * from './business-mode.js';
 export * from './screen-loan.js';
+export * from './gst.js';

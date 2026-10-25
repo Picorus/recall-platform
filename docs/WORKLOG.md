@@ -2,6 +2,16 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 25 Oct 2026 · P1.7.9 · GST and the books
+- P1.7.7–8 merged (PR #25).
+- Domain (`gst.ts`): financial years (April–March), document numbers (`RC/27-28/000001`, `CN/…`, at most 16 characters), GSTIN check (shape and check digit), CGST + SGST or IGST split, CSV files safe for spreadsheets (no formulas run), rupees with paise. Tax settings in the price book: RECALL's state (36, Telangana), e-invoicing limit (₹5 crore) and warning (80%).
+- Database (migration 0018): `brand_tax_profiles` (legal name, GSTIN, state; latest wins) and `gst_documents` (every invoice and credit note, one per ledger entry, numbered under a lock so the series has no gaps or repeats; never changed).
+  - A paid booking issues its tax invoice in the same step; an approved refund (and a top-up) issues its credit note in the same step.
+  - `gstSummary(month)`, `accountantExport(month)`: invoice and credit-note registers, the full journal, the summary.
+- Tests: 5 domain, 6 database (numbers; Telangana vs Maharashtra; credit note against its invoice; summary agrees with the ledger; missing tax details flagged; export lines; documents can't be changed).
+- Open for the CA: input tax credit on partners' GST needs their invoices (we record the GST, not their invoice numbers yet); HSN/SAC code for advertising (998365 expected) to print on invoices; the invoice PDF itself comes with the brand portal (P5). E-invoicing (IRN) goes behind an adapter when turnover nears the limit (P6).
+- **Next:** P1.7 is complete after review. Then the plan's next step.
+
 ## 25 Oct 2026 · P1.7.8 · Screen loan record
 - Domain (`screen-loan.ts`): loan statuses that only move forward (applied → approved → disbursed → closed; or rejected; disbursed → defaulted → closed); EMI dates the same day each month (the last day of a shorter month); what the rider app shows: status, next EMI, EMIs left.
 - Database (migration 0017): `screen_loans` (bank, amount, EMI, months, first EMI date) and `screen_loan_events` (each status the bank reports, who, when). `recordScreenLoan`, `moveScreenLoan`, `riderLoans`. Nothing here touches the ledger: loans and EMIs are never on RECALL's books.
