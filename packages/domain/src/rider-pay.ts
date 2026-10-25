@@ -65,6 +65,9 @@ export function checkRiderPayRules(r: RiderPayRules): string[] {
     ].every(whole)
   )
     problems.push('rider pay settings must be whole numbers');
+  // A switch reaches back to 08:00 of its day: a month must stay open longer than that.
+  if (r.monthCloseHours < 24)
+    problems.push('a month must stay open at least 24 hours after it ends');
   if (r.pocBonusFromHours >= r.pocBonusFullHours)
     problems.push('the bonus must start below the hours for the full bonus');
   if (r.soldShareBp > 10_000 || r.tdsBp > 3_000)

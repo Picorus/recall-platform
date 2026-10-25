@@ -12,7 +12,7 @@ import {
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type pg from 'pg';
 import { saveAreaVersion } from '../../src/areas.js';
-import { setBusinessMode } from '../../src/business-mode.js';
+import { canSwitch, markDemoCopy, setBusinessMode } from '../../src/business-mode.js';
 import { createBooking, moveBooking, savePriceBook } from '../../src/bookings.js';
 import { accountTotals, trialBalance } from '../../src/ledger.js';
 import { addScreenKey } from '../../src/plays.js';
@@ -257,13 +257,20 @@ describe('rider pay in the POC (P1.7.6)', () => {
     );
   });
 
-  it('the switch: only a super admin, once a day, counted from that business day', async () => {
+  it('the switch: only a super admin, and the POC only once', async () => {
     await expect(
       setBusinessMode(pool, 'poc', { id: 'priya', role: 'admin' }, 'try it', end + 86_400 * 40),
     ).rejects.toThrow(/super admin/);
     await expect(
       setBusinessMode(pool, 'regular', SUPER, 'again', end + 86_400 * 40),
     ).rejects.toThrow(/already on regular/);
+    // The POC happens once: after it has ended, it cannot be switched on again.
+    expect(await canSwitch(pool)).toBe(false);
+    await expect(
+      setBusinessMode(pool, 'poc', SUPER, 'POC again', end + 86_400 * 40),
+    ).rejects.toThrow(/POC has ended/);
+    // This database holds real-looking data: it cannot be turned into a demo copy.
+    await expect(markDemoCopy(pool, 'prateek')).rejects.toThrow(/empty database/);
   });
 
   it('a rider is on one screen at a time', async () => {

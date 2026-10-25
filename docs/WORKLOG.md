@@ -4,7 +4,7 @@ Newest first. Each entry: date · step id · what changed · tests · open issue
 
 ## 24 Oct 2026 · P1.7.5–6 · Rider pay and the business switch
 - P1.7.4 merged (PR #23).
-- **Business switch** (Prateek): `business-mode.ts` + migration 0015 `business_modes`. A super admin flips POC ↔ regular business (`setBusinessMode`); it counts from the start of that business day; one switch a day; append-only with who and why. The month the POC is first switched on is POC month 1. Rider pay follows it; the brand side will read it later.
+- **Business switch** (Prateek): `business-mode.ts` + migration 0015 `business_modes`. A super admin flips POC ↔ regular business (`setBusinessMode`); it counts from the start of that business day; one switch a day; append-only with who and why. Switching the POC on counts from the 1st of a month (so month 1 is full). The POC runs once: after it is switched off it can never come back (`canSwitch` tells the portal; after the POC it shows as a record, view only, to the super admin). Demo copy for investors (Prateek, 25 Oct): `markDemoCopy` (only an empty database) lets the super admin flip POC on and off freely there. The month the POC is first switched on is POC month 1. Rider pay follows it; the brand side will read it later.
 - **POC pay** (model v5.2 table, Prateek):
   - Flat base ₹2,000 / ₹4,000 / ₹6,000 in POC months 1 / 2 / 3, earned day by day (`pocDayPaise`: a full month adds up exactly) for the Monday payouts.
   - Founding bonus each month (`pocMonthBonus`): full ₹6,000 at 150+ verified hours in the 15 km zone, in proportion from 100, none below. `pocBonusList(month)` for the portal; `givePocBonus` by a super admin once the month has closed, once.
@@ -19,7 +19,13 @@ Newest first. Each entry: date · step id · what changed · tests · open issue
   - A last-day line's make-up plays the next day: its sales went to nobody if the screen changed hands after 03:00 on the 1st. Now riders are looked up for 2 days after the month, and a rider whose plays sold is always in the run.
   - Pay could go to riders with no screen that month. Now only riders who rode (or whose plays sold) are paid.
   - A closed month could still change. Now, once closed (48 h after the month), late changes are not posted; they come back in `late` for finance to settle by hand.
-- Tests: 243 domain (property tests: a month's days add up exactly; the bonus never falls with more hours; shares never more than paid; pay entries always balance), 104 database (a POC week; a full month exact; a screen changing hands; bonus full / in proportion / none; given once, only by a super admin, only after the month closes; finishing bonus; the switch; ₹25/h + 25% sold; 260 h cap; a closed month stays closed; make-up sales after the month).
+- A third review of the POC and the switch found 5 problems, all fixed with tests:
+  - The finishing bonus was tied to the first switch-off even if the POC came back on: the POC now runs once.
+  - A switch-on mid-month (or at 00:30 on the 1st) made a short month 1 and shifted the bases (₹16,000 instead of ₹12,000 over a Nov–Jan POC): the POC now always starts on the 1st.
+  - A rider who handed his screen on at the exact moment of the switch got the finishing bonus: fixed.
+  - The finishing bonus read the price book of the first regular month: now the last POC day's.
+  - Migration 0014 was changed after it was pushed (it was never merged or run outside tests); its comment fixed. Months must stay open at least 24 hours (a switch reaches back to 08:00).
+- Tests: 244 domain (property tests: a month's days add up exactly; the bonus never falls with more hours; shares never more than paid; pay entries always balance), 105 database (a demo copy; a POC week; a full month exact; a screen changing hands; bonus full / in proportion / none; given once, only by a super admin, only after the month closes; finishing bonus; the switch; ₹25/h + 25% sold; 260 h cap; a closed month stays closed; make-up sales after the month).
 - Open (speed, before real volumes): the monthly run is one transaction with per-line queries; fine for the POC (200 bikes), to be split up before scale. A price book saved later with a back-dated start can change an unpaid month's rates: saving books will check this with the admin tools (P3).
 - Open: POC brand package (₹2.5 lakh a month + GST, invoiced and paid before each month starts) on the brand side (P5) reads the same switch.
 - **Next: P1.7.7** Monday payout run (finance approves, payout adapter with a fake, retries).

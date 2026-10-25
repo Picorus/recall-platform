@@ -31,6 +31,19 @@ export function switchCountsFrom(now: number): number {
   return eightAm(day ?? toIndiaTime(new Date(now * 1000)).date);
 }
 
+/**
+ * From when switching the POC on counts: always the 1st of a month at 08:00 India time (today's
+ * business day if it is the 1st, otherwise the next 1st), so POC month 1 is a full month and the
+ * three months add up exactly (review, 25 Oct 2026). A switch-on in the 23:00–02:00 tail of the
+ * last day goes to the 1st.
+ */
+export function pocStartsFrom(now: number): number {
+  const day = businessDayOf(new Date(now * 1000)) ?? toIndiaTime(new Date(now * 1000)).date;
+  if (day.endsWith('-01')) return eightAm(day);
+  const [y, m] = day.split('-').map(Number) as [number, number];
+  return eightAm(new Date(Date.UTC(y, m, 1)).toISOString().slice(0, 10));
+}
+
 /** The month ("YYYY-MM", India time) the POC was first switched on, if it ever was. */
 export function pocFirstMonth(changes: readonly ModeChange[]): string | undefined {
   const first = changes.find((c) => c.mode === 'poc');
@@ -41,7 +54,7 @@ export function pocFirstMonth(changes: readonly ModeChange[]): string | undefine
 
 /**
  * When the POC ended: the first switch to regular business after it was on (undefined while it
- * runs, or if it never ran).
+ * runs, or if it never ran). The POC runs once: it can never be switched on again after this.
  */
 export function pocEndedAt(changes: readonly ModeChange[]): number | undefined {
   const start = changes.findIndex((c) => c.mode === 'poc');

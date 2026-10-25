@@ -3,6 +3,7 @@ import {
   modeAt,
   pocEndedAt,
   pocFirstMonth,
+  pocStartsFrom,
   switchCountsFrom,
   type ModeChange,
 } from '../src/business-mode.js';
@@ -37,5 +38,13 @@ describe('the business switch: POC or regular business', () => {
     expect(pocEndedAt(changes)).toBe(ist('2027-11-01T08:00:00'));
     expect(pocEndedAt(changes.slice(0, 1))).toBeUndefined();
     expect(pocFirstMonth([])).toBeUndefined();
+  });
+
+  it('the POC is switched on from the 1st of a month, so month 1 is a full month', () => {
+    expect(pocStartsFrom(ist('2026-10-25T15:00:00'))).toBe(ist('2026-11-01T08:00:00'));
+    expect(pocStartsFrom(ist('2026-11-01T10:00:00'))).toBe(ist('2026-11-01T08:00:00'));
+    // 00:30 on the 1st is the tail of the 31st: still the 1st at 08:00.
+    expect(pocStartsFrom(ist('2026-11-01T00:30:00'))).toBe(ist('2026-11-01T08:00:00'));
+    expect(pocStartsFrom(ist('2026-12-20T09:00:00'))).toBe(ist('2027-01-01T08:00:00'));
   });
 });

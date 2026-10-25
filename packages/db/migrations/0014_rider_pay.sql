@@ -1,6 +1,5 @@
 -- P1.7.5–6: rider pay. Which rider rides which screen, from when (a new row moves the screen on; a row
--- with no rider takes it off). Append-only (hard rule 3): who and when kept. A rider's first row also
--- sets his POC month: the base grows from his first month on a screen.
+-- with no rider takes it off). Append-only (hard rule 3): who and when kept.
 CREATE TABLE rider_screens (
   screen_id text        NOT NULL CHECK (length(screen_id) BETWEEN 1 AND 64),
   from_at   timestamptz NOT NULL,

@@ -341,21 +341,24 @@ export async function pocBonusList(
   return out;
 }
 
-/** Riders who finished the POC and kept the screen: holding one when the business left the POC. */
+/**
+ * Riders who finished the POC and kept the screen: holding one when the business left the POC (the
+ * last POC day's rules: the day before it ended).
+ */
 export async function pocFinishList(c: Pick<PoolClient, 'query'>): Promise<PocBonusRow[]> {
   const changes = await businessModes(c);
   const ended = pocEndedAt(changes);
   if (ended === undefined) throw new Error('The POC has not ended');
   const rules = rulesFor(
     await priceBooks(c),
-    toIndiaTime(new Date((ended - 1) * 1000)).date.slice(0, 7),
+    toIndiaTime(new Date((ended - 86_400) * 1000)).date.slice(0, 7),
   );
   const all = await stretches(c, ended - 3600, ended);
   const given = await c.query<{ ref: string }>(
     "SELECT ref FROM ledger_entries WHERE kind = 'poc-finish-bonus'",
   );
   const done = new Set(given.rows.map((r) => r.ref));
-  return [...new Set(all.filter((s) => s.from < ended && s.to >= ended).map((s) => s.riderId))]
+  return [...new Set(all.filter((s) => s.from < ended && s.to > ended).map((s) => s.riderId))]
     .sort()
     .map((riderId) => ({
       riderId,
@@ -386,7 +389,7 @@ export async function givePocBonus(
     const books = await priceBooks(c);
     const rules = rulesFor(
       books,
-      month ?? toIndiaTime(new Date((closes - 1) * 1000)).date.slice(0, 7),
+      month ?? toIndiaTime(new Date((closes - 86_400) * 1000)).date.slice(0, 7),
     );
     if (now < closes + rules.monthCloseHours * 3600)
       throw new Error('A POC bonus is given once its month (or the POC) has ended and closed');
