@@ -2,6 +2,7 @@ package app.recall.player.core
 
 import java.security.KeyPair
 import java.security.KeyPairGenerator
+import java.security.PrivateKey
 import java.security.Signature
 import java.security.spec.ECGenParameterSpec
 import java.util.Base64
@@ -18,6 +19,8 @@ class SoftwareKeyVault : KeyVault {
     }
 
     override fun publicKey(alias: String): String = Base64.getEncoder().encodeToString(pair(alias).public.encoded)
+
+    override fun privateKey(alias: String): PrivateKey = pair(alias).private
 
     override fun sign(alias: String, bytes: ByteArray): String {
         val s = Signature.getInstance("SHA256withECDSA")

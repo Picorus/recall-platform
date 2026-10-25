@@ -4,6 +4,8 @@
 // packages/domain/src/screen-identity.ts.
 package app.recall.player.core
 
+import java.security.PrivateKey
+
 /** Where the box keeps its private keys. On the box: the Android Keystore (never exported). */
 interface KeyVault {
     /** Makes an ECDSA P-256 key under `alias` if there is none; returns its public key (SPKI DER, base64). */
@@ -11,6 +13,12 @@ interface KeyVault {
 
     /** Signs with the key under `alias`: ECDSA P-256 with SHA-256, DER, base64. */
     fun sign(alias: String, bytes: ByteArray): String
+
+    /**
+     * The private key under `alias`, for the secure line's handshake (P2.3.3). On the box this is a
+     * handle into the Android Keystore: it signs, it cannot be read out.
+     */
+    fun privateKey(alias: String): PrivateKey
 }
 
 data class EnrolmentRequest(

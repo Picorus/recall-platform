@@ -73,6 +73,9 @@ data class TrustedClock(val gps: TimeSample? = null, val cloud: TimeSample? = nu
     /** The time now (UTC ms) at monotonic `monoMs`, or null while no source has been heard. */
     fun now(monoMs: Long, rules: ClockRules = ClockRules()): Long? = best(monoMs, rules)?.let { at(it, monoMs) }
 
+    /** The time by the cloud's reading only (UTC ms), or null: for decisions GPS must not drive. */
+    fun cloudNow(monoMs: Long): Long? = cloud?.takeIf { it.monoMs <= monoMs }?.let { at(it, monoMs) }
+
     /** How far off `now` may be, in ms, or null while unknown. */
     fun doubtMs(monoMs: Long, rules: ClockRules = ClockRules()): Long? = best(monoMs, rules)?.let { doubt(it, monoMs, rules) }
 

@@ -24,7 +24,9 @@ import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
 import java.util.zip.CRC32
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonObject
 
 data class OutboxRules(
     /** Reports at least this old are given up (plan: 7 days; KEEP_UNSENT_SECONDS in the cloud). */
@@ -168,15 +170,45 @@ class Outbox(private val dir: File, private val rules: OutboxRules = OutboxRules
 
     /**
      * The cloud has stored everything up to and including `seq`: forget it. An ack beyond the
-     * highest number held (wrong or forged) is ignored, so it can never empty the outbox.
+     * highest number held is not applied here (see `renumberAfter`), so it can never empty the
+     * outbox. Returns true when it moved the outbox on.
      */
     @Synchronized
-    fun acknowledge(seq: Long) {
-        val highest = segments.lastOrNull { it.entries.isNotEmpty() }?.entries?.last()?.seq ?: return
-        if (seq <= acked || seq > highest) return
+    fun acknowledge(seq: Long): Boolean {
+        val highest = segments.lastOrNull { it.entries.isNotEmpty() }?.entries?.last()?.seq ?: return false
+        if (seq <= acked || seq > highest) return false
         writeAtomically(File(dir, "acked"), seq.toString())
         acked = seq
         dropConfirmed()
+        return true
+    }
+
+    /** The highest number this box has handed out (0 before the first report). */
+    @Synchronized
+    fun lastNumber(): Long = next - 1
+
+    /**
+     * The cloud says it has every number up to `cloudUpTo`, beyond any this box ever handed out: the
+     * box's numbering started again (its outbox was lost while its keys survived). The cloud would
+     * take the reports still waiting as repeats and drop them, so they are numbered again after
+     * `cloudUpTo` (review, P2.3.3). Safe across a power cut: the new numbers are recorded first, the
+     * copies written, then the old lines deleted (an old line left behind is taken as a repeat).
+     * Returns how many reports were renumbered.
+     */
+    @Synchronized
+    fun renumberAfter(cloudUpTo: Long): Int {
+        if (cloudUpTo <= next - 1) return 0
+        val waiting = unconfirmed().toList()
+        writeAtomically(File(dir, "floor"), cloudUpTo.toString())
+        next = cloudUpTo + 1
+        val old = segments.toList()
+        open = null
+        for (q in waiting) {
+            val body = q.text.substring(HEAD.find(q.text)!!.range.last + 1, q.text.length - 1)
+            add(Json.parseToJsonElement(body).jsonObject, q.at)
+        }
+        old.forEach(::delete)
+        return waiting.size
     }
 
     /** Reports waiting for the cloud, and the space the outbox takes. */
