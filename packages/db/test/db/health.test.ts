@@ -36,6 +36,8 @@ const healthy = (t: number, o: Partial<HealthReport> = {}): HealthReport => ({
   messagesRefused: 0,
   gpsMissedSeconds: 0,
   adsMissing: 0,
+  appCode: 9,
+  crashes: 0,
   ...o,
 });
 

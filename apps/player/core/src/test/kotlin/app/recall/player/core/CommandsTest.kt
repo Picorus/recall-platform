@@ -28,6 +28,7 @@ class CommandsTest {
         override fun brightness(percent: Int?) { done += "brightness $percent" }
         override fun logs(): String = "line one\nline two é"
         override fun clearCache() { done += "clear" }
+        override fun fittingCheck(id: String, seconds: Long) { done += "fitting $id $seconds" }
     }
 
     private val answers = mutableListOf<JsonObject>()

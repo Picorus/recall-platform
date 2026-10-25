@@ -30,3 +30,4 @@ export * from './screen-plan.js';
 export * from './screen-health.js';
 export * from './screen-commands.js';
 export * from './updates.js';
+export * from './fitting.js';

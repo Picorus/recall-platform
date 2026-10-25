@@ -1,0 +1,65 @@
+{
+  "taken": [
+    {
+      "text": "{\"v\":1,\"made\":1793620000000,\"versionCode\":12,\"versionName\":\"0.12.0\",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"bytes\":12345678,\"url\":\"https://files.recall.example/player/12.apk\"}",
+      "file": {
+        "versionCode": 12,
+        "versionName": "0.12.0",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "bytes": 12345678,
+        "url": "https://files.recall.example/player/12.apk",
+        "made": 1793620000000
+      }
+    }
+  ],
+  "refused": [
+    {
+      "text": "nope",
+      "problem": "not an update"
+    },
+    {
+      "text": "{\"v\":1,\"made\":1793620000000,\"versionCode\":12,\"versionName\":\"0.12.0\",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"bytes\":12345678,\"url\":\"https://files.recall.example/player/12.apk\",\"extra\":1}",
+      "problem": "not an update"
+    },
+    {
+      "text": "{\"v\":2,\"made\":1793620000000,\"versionCode\":12,\"versionName\":\"0.12.0\",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"bytes\":12345678,\"url\":\"https://files.recall.example/player/12.apk\"}",
+      "problem": "unknown version"
+    },
+    {
+      "text": "{\"v\":1,\"made\":0,\"versionCode\":12,\"versionName\":\"0.12.0\",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"bytes\":12345678,\"url\":\"https://files.recall.example/player/12.apk\"}",
+      "problem": "bad time"
+    },
+    {
+      "text": "{\"v\":1,\"made\":1793620000000,\"versionCode\":0,\"versionName\":\"0.12.0\",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"bytes\":12345678,\"url\":\"https://files.recall.example/player/12.apk\"}",
+      "problem": "bad version code"
+    },
+    {
+      "text": "{\"v\":1,\"made\":1793620000000,\"versionCode\":2100000001,\"versionName\":\"0.12.0\",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"bytes\":12345678,\"url\":\"https://files.recall.example/player/12.apk\"}",
+      "problem": "bad version code"
+    },
+    {
+      "text": "{\"v\":1,\"made\":1793620000000,\"versionCode\":12,\"versionName\":\"a b\",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"bytes\":12345678,\"url\":\"https://files.recall.example/player/12.apk\"}",
+      "problem": "bad version name"
+    },
+    {
+      "text": "{\"v\":1,\"made\":1793620000000,\"versionCode\":12,\"versionName\":\"0.12.0\",\"sha256\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"bytes\":12345678,\"url\":\"https://files.recall.example/player/12.apk\"}",
+      "problem": "bad fingerprint"
+    },
+    {
+      "text": "{\"v\":1,\"made\":1793620000000,\"versionCode\":12,\"versionName\":\"0.12.0\",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"bytes\":0,\"url\":\"https://files.recall.example/player/12.apk\"}",
+      "problem": "bad size"
+    },
+    {
+      "text": "{\"v\":1,\"made\":1793620000000,\"versionCode\":12,\"versionName\":\"0.12.0\",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"bytes\":209715201,\"url\":\"https://files.recall.example/player/12.apk\"}",
+      "problem": "bad size"
+    },
+    {
+      "text": "{\"v\":1,\"made\":1793620000000,\"versionCode\":12,\"versionName\":\"0.12.0\",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"bytes\":12345678,\"url\":\"http://files.recall.example/x.apk\"}",
+      "problem": "bad link"
+    },
+    {
+      "text": "{\"v\":1,\"made\":1793620000000,\"versionCode\":12,\"versionName\":\"0.12.0\",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"bytes\":12345678,\"url\":\"https://files.recall.example/a b.apk\"}",
+      "problem": "bad link"
+    }
+  ]
+}

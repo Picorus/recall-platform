@@ -41,6 +41,10 @@ export interface RolloutRules {
   readonly maxCrashRatio: number;
   /** Fewest crashes that can roll back before enough screen-hours are seen (one is chance). */
   readonly minCrashes: number;
+  /** Fewest different screens crashing that can roll back. */
+  readonly minCrashScreens: number;
+  /** Screens on the new version connecting this long with no health at all: it is broken (ms). */
+  readonly silentMs: number;
 }
 
 export const DEFAULT_ROLLOUT_RULES: RolloutRules = {
@@ -50,6 +54,8 @@ export const DEFAULT_ROLLOUT_RULES: RolloutRules = {
   maxCrashRate: 0.05,
   maxCrashRatio: 2,
   minCrashes: 3,
+  minCrashScreens: 2,
+  silentMs: 2 * 3_600_000,
 };
 
 /** Where a screen falls for a release, 0–9999: it is in a stage when below the stage's share. */
@@ -61,10 +67,32 @@ export function inStage(screenId: string, releaseId: string, stageBp: number): b
   return bucketOf(screenId, releaseId) < stageBp;
 }
 
+/**
+ * The screens of a fleet in a stage: those in its share by bucket, and never fewer than `least`
+ * (the lowest buckets), so a stage of a small fleet is never empty and stalls (review P2.13). A
+ * screen in a stage stays in every later one.
+ */
+export function stageScreens(
+  fleet: readonly string[],
+  releaseId: string,
+  stageBp: number,
+  least = 2,
+): Set<string> {
+  const ranked = [...new Set(fleet)]
+    .map((s) => ({ s, b: bucketOf(s, releaseId) }))
+    .sort((x, y) => x.b - y.b || (x.s < y.s ? -1 : x.s > y.s ? 1 : 0));
+  const byShare = ranked.filter((x) => x.b < stageBp).length;
+  return new Set(
+    ranked.slice(0, Math.max(byShare, Math.min(least, ranked.length))).map((x) => x.s),
+  );
+}
+
 /** How a version has done since the stage began: crashes over screen-hours. */
 export interface VersionStats {
   readonly screenHours: number;
   readonly crashes: number;
+  /** Different screens that crashed (one faulty box never rolls a release back alone). */
+  readonly crashScreens?: number;
 }
 
 export type RolloutStep =
@@ -84,6 +112,11 @@ export function nextStep(
     readonly now: number;
     readonly fresh: VersionStats;
     readonly old: VersionStats;
+    /**
+     * Screens that connected on the new version this stage. Connecting but sending no health at
+     * all means the new version breaks before it can report: that rolls back too (review P2.13).
+     */
+    readonly connected?: number;
   },
   rules: RolloutRules = DEFAULT_ROLLOUT_RULES,
 ): RolloutStep {
@@ -93,12 +126,15 @@ export function nextStep(
   // Judged once there is enough to judge, or at once when crashes alone already pass the line on
   // the least screen-hours that could count (a version that crashes everywhere is not waited on).
   const enough = o.fresh.screenHours >= rules.minScreenHours;
+  const manyScreens = (o.fresh.crashScreens ?? rules.minCrashScreens) >= rules.minCrashScreens;
   const tooMany =
     o.fresh.crashes >= rules.minCrashes &&
     o.fresh.crashes > rules.maxCrashRate * Math.max(o.fresh.screenHours, rules.minScreenHours);
-  if (tooMany || (enough && fresh > rules.maxCrashRate))
+  if (manyScreens && (tooMany || (enough && fresh > rules.maxCrashRate)))
     return { do: 'roll-back', why: `crashes ${fresh.toFixed(3)}/screen-hour on the new version` };
-  if (enough && old > 0 && fresh > old * rules.maxCrashRatio)
+  if ((o.connected ?? 0) > 0 && o.fresh.screenHours === 0 && o.now - o.stageSince >= rules.silentMs)
+    return { do: 'roll-back', why: 'screens on the new version connect but send no health' };
+  if (manyScreens && enough && old > 0 && fresh > old * rules.maxCrashRatio)
     return {
       do: 'roll-back',
       why: `crashes ${fresh.toFixed(3)}/screen-hour against ${old.toFixed(3)} on the old version`,

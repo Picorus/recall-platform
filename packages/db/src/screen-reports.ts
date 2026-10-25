@@ -13,6 +13,7 @@ import {
 import type { Pool } from 'pg';
 import { allAreaVersions } from './areas.js';
 import { storeCommandResult } from './commands.js';
+import { storeFitting } from './fitting.js';
 import { heardFrom, storeHealth } from './health.js';
 import { judgePlays, type PlayJudgement } from './plays.js';
 
@@ -158,6 +159,11 @@ export async function storeUpload(
     for (const n of result.accepted) {
       if (setAside.has(n.seq) || n.report.kind !== 'command') continue;
       await storeCommandResult(c, screenId, n.seq, n.report);
+    }
+    // P2.14: fitting checks, with the cloud's verdict.
+    for (const n of result.accepted) {
+      if (setAside.has(n.seq) || n.report.kind !== 'fitting') continue;
+      await storeFitting(c, screenId, n.seq, n.report);
     }
     await heardFrom(c, screenId, now);
     let minutesCounted = 0;

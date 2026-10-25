@@ -31,6 +31,7 @@ const taken = [
   cmd('brightness', null, 'c-brightness-auto'),
   cmd('send-logs', null),
   cmd('clear-cache', null),
+  cmd('fitting-check', 120),
 ].map((c) => ({ text: commandText(c), command: c }));
 
 const good = JSON.parse(commandText(cmd('reboot', null))) as Record<string, unknown>;
@@ -52,6 +53,8 @@ const refused = [
   { text: text({ do: 'test-pattern', value: null }), problem: 'bad value' },
   { text: text({ do: 'test-pattern', value: 601 }), problem: 'bad value' },
   { text: text({ do: 'test-pattern', value: 4 }), problem: 'bad value' },
+  { text: text({ do: 'fitting-check', value: null }), problem: 'bad value' },
+  { text: text({ do: 'fitting-check', value: 29 }), problem: 'bad value' },
 ];
 
 describe('remote commands (P2.12)', () => {

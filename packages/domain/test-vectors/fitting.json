@@ -1,0 +1,139 @@
+{
+  "cases": [
+    {
+      "name": "every part passes",
+      "report": {
+        "kind": "fitting",
+        "id": "c-fitting-0001",
+        "at": 1793620120,
+        "gpsAccuracyM": 6,
+        "lineUp": true,
+        "camera": "ok",
+        "batteryPct": 82,
+        "charging": false,
+        "panel": "unknown"
+      },
+      "ready": true
+    },
+    {
+      "name": "no GPS fix",
+      "report": {
+        "kind": "fitting",
+        "id": "c-fitting-0001",
+        "at": 1793620120,
+        "gpsAccuracyM": null,
+        "lineUp": true,
+        "camera": "ok",
+        "batteryPct": 82,
+        "charging": false,
+        "panel": "unknown"
+      },
+      "ready": false
+    },
+    {
+      "name": "GPS too rough",
+      "report": {
+        "kind": "fitting",
+        "id": "c-fitting-0001",
+        "at": 1793620120,
+        "gpsAccuracyM": 51,
+        "lineUp": true,
+        "camera": "ok",
+        "batteryPct": 82,
+        "charging": false,
+        "panel": "unknown"
+      },
+      "ready": false
+    },
+    {
+      "name": "line down",
+      "report": {
+        "kind": "fitting",
+        "id": "c-fitting-0001",
+        "at": 1793620120,
+        "gpsAccuracyM": 6,
+        "lineUp": false,
+        "camera": "ok",
+        "batteryPct": 82,
+        "charging": false,
+        "panel": "unknown"
+      },
+      "ready": false
+    },
+    {
+      "name": "camera not answering",
+      "report": {
+        "kind": "fitting",
+        "id": "c-fitting-0001",
+        "at": 1793620120,
+        "gpsAccuracyM": 6,
+        "lineUp": true,
+        "camera": "fail",
+        "batteryPct": 82,
+        "charging": false,
+        "panel": "unknown"
+      },
+      "ready": false
+    },
+    {
+      "name": "camera not known (no link yet)",
+      "report": {
+        "kind": "fitting",
+        "id": "c-fitting-0001",
+        "at": 1793620120,
+        "gpsAccuracyM": 6,
+        "lineUp": true,
+        "camera": "unknown",
+        "batteryPct": 82,
+        "charging": false,
+        "panel": "unknown"
+      },
+      "ready": false
+    },
+    {
+      "name": "battery low",
+      "report": {
+        "kind": "fitting",
+        "id": "c-fitting-0001",
+        "at": 1793620120,
+        "gpsAccuracyM": 6,
+        "lineUp": true,
+        "camera": "ok",
+        "batteryPct": 30,
+        "charging": false,
+        "panel": "unknown"
+      },
+      "ready": false
+    },
+    {
+      "name": "battery low but charging",
+      "report": {
+        "kind": "fitting",
+        "id": "c-fitting-0001",
+        "at": 1793620120,
+        "gpsAccuracyM": 6,
+        "lineUp": true,
+        "camera": "ok",
+        "batteryPct": 30,
+        "charging": true,
+        "panel": "unknown"
+      },
+      "ready": true
+    },
+    {
+      "name": "battery not readable",
+      "report": {
+        "kind": "fitting",
+        "id": "c-fitting-0001",
+        "at": 1793620120,
+        "gpsAccuracyM": 6,
+        "lineUp": true,
+        "camera": "ok",
+        "batteryPct": null,
+        "charging": null,
+        "panel": "unknown"
+      },
+      "ready": false
+    }
+  ]
+}

@@ -52,10 +52,18 @@ class GpsLoop(
     /** Seconds the box had to step without looking (it fell behind). Health, P2.11. */
     val missedSeconds: Long get() = skipped.get()
 
+    /** The accuracy of the latest reading (m), if it was taken within `withinMs` of `nowMono` (P2.14). */
+    fun freshAccuracyM(nowMono: Long, withinMs: Long = 2_000): Double? =
+        lastReading?.takeIf { nowMono - it.monoMs in 0..withinMs }?.accuracyM?.takeIf { it != Double.MAX_VALUE }
+
+    @Volatile private var lastReading: Reading? = null
+
     /** A reading from the GPS chip, taken at the box's counter `monoMs` (any thread). */
     fun onFix(lat: Double, lng: Double, accuracyM: Double?, monoMs: Long) {
         // No accuracy given: treated as a poor fix (the tracker drops it).
-        reading.set(Reading(lat, lng, accuracyM?.takeIf { it.isFinite() && it >= 0 } ?: Double.MAX_VALUE, monoMs))
+        val r = Reading(lat, lng, accuracyM?.takeIf { it.isFinite() && it >= 0 } ?: Double.MAX_VALUE, monoMs)
+        reading.set(r)
+        lastReading = r
     }
 
     /** A play was recorded (any thread): counted in the minute it is recorded in. */

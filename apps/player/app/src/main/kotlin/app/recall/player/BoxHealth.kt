@@ -23,6 +23,7 @@ import java.io.File
 
 object BoxHealth {
     @Volatile private var started = false
+    @Volatile private var appContext: Context? = null
     private val startedAt = SystemClock.elapsedRealtime()
 
     @Synchronized
@@ -30,6 +31,7 @@ object BoxHealth {
         if (started) return
         started = true
         val app = context.applicationContext
+        appContext = app
         val reporter = HealthReporter(
             app = BuildConfig.VERSION_NAME,
             read = { read(app) },
@@ -40,6 +42,7 @@ object BoxHealth {
                 Line.nudge()
             },
             log = { Log.i("RecallHealth", it) },
+            appCode = BuildConfig.VERSION_CODE,
         )
         val handler = Handler(HandlerThread("recall-health").apply { start() }.looper)
         handler.post(object : Runnable {
@@ -59,9 +62,11 @@ object BoxHealth {
         messagesRefused = Schedule.scheduler?.refused ?: 0,
         gpsMissedSeconds = Gps.loop?.missedSeconds ?: 0,
         adsMissing = Playback.adsMissing,
+        crashes = appContext?.let(CrashLog::count) ?: 0,
     )
 
-    private fun read(app: Context): HealthReading {
+    /** What the box reads about itself now (also for the fitting check, P2.14). */
+    fun read(app: Context): HealthReading {
         val battery = runCatching { app.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED)) }.getOrNull()
         val level = battery?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
         val scale = battery?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1

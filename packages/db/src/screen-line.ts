@@ -87,12 +87,14 @@ export async function recordHello(
   screenId: string,
   app: string,
   nowMs: number,
+  /** The player's version code (from 0.11, P2.13), or null. */
+  appCode: number | null = null,
 ): Promise<void> {
   await inTransaction(pool, async (c) => {
     await c.query(
-      `INSERT INTO screen_hellos (screen_id, at, app)
-       VALUES ($1, to_timestamp($2 / 1000.0), $3) ON CONFLICT DO NOTHING`,
-      [screenId, nowMs, app],
+      `INSERT INTO screen_hellos (screen_id, at, app, app_code)
+       VALUES ($1, to_timestamp($2 / 1000.0), $3, $4) ON CONFLICT DO NOTHING`,
+      [screenId, nowMs, app, appCode],
     );
     // P2.11: heard from again; a "no contact" alert clears (only screens with an inbox have alerts).
     const inbox = await c.query('SELECT 1 FROM screen_inboxes WHERE screen_id = $1', [screenId]);

@@ -40,6 +40,8 @@ class ScreenLine(
     private val onMessage: (DownKind, ByteArray) -> Unit = { _, _ -> },
     private val rules: LineRules = LineRules(),
     private val backoffRules: BackoffRules = BackoffRules(),
+    /** The player's version code, sent with each hello (P2.13); null for none. */
+    private val appCode: Int? = null,
 ) {
     private sealed interface Event {
         /** `at`: the counter when it arrived (not when the loop got to it, review P2.3.3). */
@@ -134,7 +136,7 @@ class ScreenLine(
         while (running) {
             val now = mono()
             if (now - helloAt >= rules.helloEveryMs) {
-                t.publish(ScreenLink.upTopic(screenId, UpKind.HELLO), ScreenLink.helloText(appVersion, now).toByteArray())
+                t.publish(ScreenLink.upTopic(screenId, UpKind.HELLO), ScreenLink.helloText(appVersion, now, appCode).toByteArray())
                 helloAt = now
                 helloMono = now
             }

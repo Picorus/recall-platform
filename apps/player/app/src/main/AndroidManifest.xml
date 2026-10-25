@@ -14,6 +14,8 @@
          player itself as device owner (Kiosk). -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- P2.13: our own updates, installed by the player itself as device owner. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <application
         android:allowBackup="false"
@@ -55,6 +57,10 @@
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
+
+        <receiver
+            android:name=".InstallResult"
+            android:exported="false" />
 
         <service
             android:name=".WatchdogService"

@@ -15,7 +15,7 @@ import kotlinx.serialization.json.longOrNull
 enum class UpKind { HELLO, UPLOAD }
 
 /** What the cloud sends to a screen: FILES the ad files to keep (P2.4); AREAS, PLAN, ASSIGN what to play where (P2.6). */
-enum class DownKind { ACK, TIME, FILES, AREAS, PLAN, ASSIGN, COMMAND }
+enum class DownKind { ACK, TIME, FILES, AREAS, PLAN, ASSIGN, COMMAND, UPDATE }
 
 object ScreenLink {
     const val TOPIC_ROOT = "recall/v1/s"
@@ -44,8 +44,14 @@ object ScreenLink {
     fun uploadText(numbered: List<String>, oldestHeld: Long) =
         """{"v":1,"oldestHeld":$oldestHeld,"batch":[${numbered.joinToString(",")}]}"""
 
-    /** A hello: the app version and the box's own counter (ms), echoed back with the cloud's time. */
-    fun helloText(app: String, mono: Long) = """{"v":1,"app":${JsonPrimitive(app)},"mono":$mono}"""
+    /**
+     * A hello: the app version, its version code (null: left out, as players before 0.11 did; the
+     * update offered depends on it, P2.13) and the box's own counter (ms), echoed back with the
+     * cloud's time.
+     */
+    fun helloText(app: String, mono: Long, code: Int? = null) =
+        if (code == null) """{"v":1,"app":${JsonPrimitive(app)},"mono":$mono}"""
+        else """{"v":1,"app":${JsonPrimitive(app)},"code":$code,"mono":$mono}"""
 
     /** The cloud's reply to an upload: everything up to this number is stored. Null when not one. */
     fun parseAck(text: String): Long? = runCatching {

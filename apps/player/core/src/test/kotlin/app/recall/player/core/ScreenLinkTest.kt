@@ -37,6 +37,8 @@ class ScreenLinkTest {
         assertEquals(str(up, "text"), ScreenLink.uploadText(lines, up.getValue("oldestHeld").jsonPrimitive.long))
         val hello = v.getValue("hello").jsonObject
         assertEquals(str(hello, "text"), ScreenLink.helloText(str(hello, "app"), hello.getValue("mono").jsonPrimitive.long))
+        val hc = v.getValue("helloCode").jsonObject
+        assertEquals(str(hc, "text"), ScreenLink.helloText(str(hc, "app"), hc.getValue("mono").jsonPrimitive.long, hc.getValue("code").jsonPrimitive.long.toInt()))
     }
 
     @Test
