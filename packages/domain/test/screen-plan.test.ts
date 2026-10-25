@@ -5,6 +5,8 @@ import { downTopic, topicAllowed } from '../src/screen-link.js';
 import {
   areasText,
   assignText,
+  indiaHourStart,
+  MAX_MESSAGE_BYTES,
   parseAreas,
   parseAssign,
   parsePlans,
@@ -25,6 +27,7 @@ interface Vectors {
     spotId: string | null;
   }[];
   refused: { kind: string; text: string; problem: string }[];
+  forms: { text: string; made: number }[];
   hashes: { s: string; fnv1a32: number; hash32: number }[];
   screens: string[];
   picks: { areaId: string; startsAt: number; carries: [string | null, string | null][] }[];
@@ -58,6 +61,23 @@ describe('screen plans (P2.6): the shared cases the Kotlin player also passes', 
     for (const r of V.refused) {
       expect(parse[r.kind as keyof typeof parse](r.text), r.text).toEqual({ problem: r.problem });
     }
+    // Plain JSON forms of the same whole number are taken alike on both sides.
+    for (const f of V.forms) expect(parseAssign(f.text)).toMatchObject({ made: f.made });
+  });
+
+  it('a message over 1 MB is refused before it is read', () => {
+    const big = `{"v":1,"made":1,"areas":[],"pad":"${'x'.repeat(MAX_MESSAGE_BYTES)}"}`;
+    expect(parseAreas(big)).toEqual({ problem: 'too big' });
+    expect(parsePlans(big)).toEqual({ problem: 'too big' });
+    expect(parseAssign(big)).toEqual({ problem: 'too big' });
+  });
+
+  it('hours are India hours: 18:00 is 12:30 UTC, and 00:00 and 01:00 belong to the day before', () => {
+    expect(indiaHourStart('2026-11-02', 18)).toBe(Date.UTC(2026, 10, 2, 12, 30) / 1000);
+    expect(indiaHourStart('2026-11-02', 24)).toBe(Date.UTC(2026, 10, 2, 18, 30) / 1000);
+    expect(indiaHourStart('2026-11-02', 25)).toBe(Date.UTC(2026, 10, 2, 19, 30) / 1000);
+    expect(indiaHourStart('2026-02-30', 18)).toBeUndefined();
+    expect(indiaHourStart('2-11-2026', 18)).toBeUndefined();
   });
 
   it('the screen own pick without an assignment, for 200 screens and 4 plans', () => {

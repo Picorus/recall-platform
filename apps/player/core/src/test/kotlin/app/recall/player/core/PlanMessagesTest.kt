@@ -63,6 +63,26 @@ class PlanMessagesTest {
     }
 
     @Test
+    fun `takes plain JSON forms of the same whole number, as the cloud does, and refuses a message over 1 MB`() {
+        for (f in v.getValue("forms").jsonArray.map { it.jsonObject }) {
+            val a = PlanMessages.assign(s(f, "text"))
+            assertNull(a.problem, s(f, "text"))
+            assertEquals(l(f, "made"), a.made)
+        }
+        val big = """{"v":1,"made":1,"areas":[],"pad":"${"x".repeat(PlanMessages.MAX_MESSAGE_BYTES)}"}"""
+        assertEquals("too big", PlanMessages.areas(big).problem)
+        assertEquals("too big", PlanMessages.plans(big).problem)
+        assertEquals("too big", PlanMessages.assign(big).problem)
+    }
+
+    @Test
+    fun `hours are India hours`() {
+        assertEquals(1_793_622_600L, PlanMessages.indiaHourStart("2026-11-02", 18))
+        assertEquals(1_793_622_600L + 6 * 3600, PlanMessages.indiaHourStart("2026-11-02", 24))
+        assertNull(PlanMessages.indiaHourStart("2026-02-30", 18))
+    }
+
+    @Test
     fun `refuses the same messages as the cloud, for the same reasons`() {
         for (r in v.getValue("refused").jsonArray.map { it.jsonObject }) {
             val text = s(r, "text")

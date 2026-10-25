@@ -10,6 +10,18 @@ Newest first. Each entry: date · step id · what changed · tests · open issue
   - Everything is kept on storage: a box that starts with no signal still knows its areas, plans and assignments. Refused messages are counted for the health report (P2.11).
 - **On the box** (`Schedule.kt`): starts with the line's setup (it needs the screen id), from storage at once; the line hands it the three messages; playback asks it what to play.
 - Tests: 5 new (`LocalSchedulerTest`): the box's own pick in an area with a plan, the edge zone, no plan; the cloud's assignment winning (newest only) and coming back with the bike; plan revisions; everything kept across a restart and ended hours dropped; refused messages counted. All 88 core tests pass.
+- Second-agent review of P2.6.2 and P2.6.3: 10 findings, all fixed:
+  - a large plan message being saved could hold up playback, so a spot started late and a brand lost a counted play. Now playback reads a finished copy and never waits;
+  - the edge zone: the cloud only assigns bikes inside an area, and edge plays count only up to a share. Now a bike in an edge zone carries the area's booking only if it was inside that area earlier this hour (steady along a border); a bike that just stays near an area plays RECALL's ads (DECISIONS);
+  - the shared cases never tested a choice between several make-ups or aggregators for RECALL's spots, several make-ups or trials for a bike, a line with no bikes, the after-midnight hours or a re-sent plan. Now they do, with all the missing refusals; the generator is kept in the repository (`packages/domain/scripts/screen-plan-vectors.ts`);
+  - the box read some odd number forms the cloud refuses (`TRUE`, `78.4f`, `.5`, a leading zero) and refused some it takes (`1.0`, `1e12`). Now both take and refuse exactly the same;
+  - an area version too large for the box: now capped on both sides;
+  - plans kept on storage could grow past what the box reads back after a restart. Now ended hours go by the newest cloud time seen, the count is capped and the saved file is checked when written;
+  - a message dated far ahead (a cloud clock fault) could freeze every later list. Now one dated more than 5 minutes ahead of the trusted time is refused and counted;
+  - an assignment naming a line the box's plan does not know (a newer revision on its way) played nothing. Now that part falls back to the box's own pick, and it is counted;
+  - plans must start exactly on the India hour their date and hour name;
+  - every message is capped at 1 MB on both sides.
+- Tests now: TypeScript 6 (`screen-plan`), Kotlin 93 in all (the scheduler 8: also the edge zone, unknown lines, messages dated ahead).
 - Open: the GPS service that feeds the tracker every second is P2.8 (until then the box counts as outside every area and plays RECALL's own ads); the cloud sending areas, plans and assignments (on every change and every hello) comes with the scheduler service.
 - Next: P2.7, the signed play log.
 

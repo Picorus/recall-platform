@@ -5,6 +5,7 @@
 package app.recall.player
 
 import android.content.Context
+import android.os.SystemClock
 import android.util.Log
 import app.recall.player.core.DownKind
 import app.recall.player.core.LocalScheduler
@@ -18,7 +19,13 @@ object Schedule {
     @Synchronized
     fun start(context: Context, screenId: String) {
         if (scheduler != null) return
-        val s = LocalScheduler(File(context.applicationContext.filesDir, "schedule"), screenId, log = { Log.i("RecallSchedule", it) })
+        val s = LocalScheduler(
+            File(context.applicationContext.filesDir, "schedule"),
+            screenId,
+            // A message dated well ahead of the trusted time is refused (P2.6.3 review).
+            nowMs = { Line.clock.get().now(SystemClock.elapsedRealtime()) },
+            log = { Log.i("RecallSchedule", it) },
+        )
         scheduler = s
         Playback.plans = s
     }

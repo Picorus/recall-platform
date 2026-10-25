@@ -13,14 +13,31 @@ const AREA_ID = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 /** Booking lines, make-ups, aggregator ads and ads. */
 const ID = /^[A-Za-z0-9_-]{1,64}$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
-/** Hours start on :00 or :30 UTC (India is UTC+5:30), so every hour starts on a half hour. */
-const HALF_HOUR = 1800;
+/** India is UTC+5:30, with no summer time: every hour starts at :30 UTC. */
+const IST_OFFSET = 19_800;
+const HOUR = 3600;
+const startsOnIndiaHour = (startsAt: number) => startsAt % HOUR === 1800;
+
+/** The first second (UTC) of `startHour` on the business date `date` (24 and 25: after midnight). */
+export function indiaHourStart(date: string, startHour: number): number | undefined {
+  if (!DATE.test(date)) return undefined;
+  const [y, m, d] = date.split('-').map(Number) as [number, number, number];
+  const midnight = Date.UTC(y, m - 1, d);
+  const back = new Date(midnight);
+  if (back.getUTCFullYear() !== y || back.getUTCMonth() !== m - 1 || back.getUTCDate() !== d)
+    return undefined;
+  return midnight / 1000 - IST_OFFSET + startHour * HOUR;
+}
 
 export const MAX_AREAS = 200;
 export const MAX_CORNERS = 500;
 export const MAX_PLANS = 1000;
 export const MAX_LINES = 100;
 export const MAX_EDGE = 2000;
+/** Largest message the screen reads (the broker's own packet limit is 1 MB). */
+export const MAX_MESSAGE_BYTES = 1024 * 1024;
+const MAX_VERSION = 2 ** 31 - 1;
+const TOO_BIG = Symbol('too big');
 
 const isPlainObject = (x: unknown): x is Record<string, unknown> =>
   typeof x === 'object' && x !== null && !Array.isArray(x);
@@ -34,7 +51,9 @@ const isIdList = (x: unknown, min: number, max: number): x is string[] =>
 const isCoord = (x: unknown, limit: number): x is number =>
   typeof x === 'number' && Number.isFinite(x) && Math.abs(x) <= limit;
 
+/** The message as JSON; TOO_BIG past the size limit; undefined when it is not JSON. */
 function readJson(text: string): unknown {
+  if (new TextEncoder().encode(text).length > MAX_MESSAGE_BYTES) return TOO_BIG;
   try {
     return JSON.parse(text);
   } catch {
@@ -65,7 +84,7 @@ function areaProblem(a: unknown): string | undefined {
   if (!isPlainObject(a) || !hasExactly(a, ['areaId', 'version', 'edgeMeters', 'active', 'ring']))
     return 'wrong area fields';
   if (typeof a.areaId !== 'string' || !AREA_ID.test(a.areaId)) return 'bad area id';
-  if (!isWhole(a.version, 1)) return 'bad area version';
+  if (!isWhole(a.version, 1, MAX_VERSION)) return 'bad area version';
   if (!isWhole(a.edgeMeters, 0, MAX_EDGE)) return 'bad edge zone';
   if (typeof a.active !== 'boolean') return 'bad on/off';
   const ring = a.ring;
@@ -95,6 +114,7 @@ export function parseAreas(
   text: string,
 ): { readonly made: number; readonly areas: ScreenArea[] } | { readonly problem: string } {
   const x = readJson(text);
+  if (x === TOO_BIG) return { problem: 'too big' };
   if (!isPlainObject(x) || !hasExactly(x, ['v', 'made', 'areas']))
     return { problem: 'not an areas list' };
   if (x.v !== 1) return { problem: 'unknown version' };
@@ -149,7 +169,9 @@ function planProblem(p: unknown): string | undefined {
   if (typeof p.areaId !== 'string' || !AREA_ID.test(p.areaId)) return 'bad area id';
   if (typeof p.date !== 'string' || !DATE.test(p.date)) return 'bad date';
   if (!isWhole(p.startHour, 0, 25)) return 'bad start hour';
-  if (!isWhole(p.startsAt, 1) || p.startsAt % HALF_HOUR !== 0) return 'bad start time';
+  // Exactly the hour its date and start hour name (the screen's own pick is keyed on both).
+  if (!isWhole(p.startsAt, 1) || p.startsAt !== indiaHourStart(p.date, p.startHour))
+    return 'bad start time';
   if (!isWhole(p.revision, 1)) return 'bad revision';
   if (!isIdList(p.recallAds, 0, MAX_LINES)) return 'bad RECALL ads';
   const ids = new Set<string>();
@@ -206,6 +228,7 @@ export function parsePlans(
   text: string,
 ): { readonly made: number; readonly plans: ScreenPlan[] } | { readonly problem: string } {
   const x = readJson(text);
+  if (x === TOO_BIG) return { problem: 'too big' };
   if (!isPlainObject(x) || !hasExactly(x, ['v', 'made', 'plans']))
     return { problem: 'not a plans list' };
   if (x.v !== 1) return { problem: 'unknown version' };
@@ -244,12 +267,14 @@ export function parseAssign(
   text: string,
 ): ({ readonly made: number } & ScreenAssignment) | { readonly problem: string } {
   const x = readJson(text);
+  if (x === TOO_BIG) return { problem: 'too big' };
   if (!isPlainObject(x) || !hasExactly(x, ['v', 'made', 'areaId', 'startsAt', 'lineId', 'spotId']))
     return { problem: 'not an assignment' };
   if (x.v !== 1) return { problem: 'unknown version' };
   if (!isWhole(x.made, 1)) return { problem: 'bad time' };
   if (typeof x.areaId !== 'string' || !AREA_ID.test(x.areaId)) return { problem: 'bad area id' };
-  if (!isWhole(x.startsAt, 1) || x.startsAt % HALF_HOUR !== 0) return { problem: 'bad start time' };
+  if (!isWhole(x.startsAt, 1) || !startsOnIndiaHour(x.startsAt))
+    return { problem: 'bad start time' };
   if (x.lineId !== null && !isId(x.lineId)) return { problem: 'bad line id' };
   if (x.spotId !== null && !isId(x.spotId)) return { problem: 'bad spot id' };
   return {

@@ -18,7 +18,6 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.doubleOrNull
-import kotlinx.serialization.json.longOrNull
 
 /** The city's areas in force (`made`: the cloud's ms; the newest list wins), or why refused. */
 data class AreaList(val made: Long, val areas: List<AreaVersion>, val problem: String? = null)
@@ -33,8 +32,15 @@ object PlanMessages {
     private val AREA_ID = Regex("[a-z0-9]+(-[a-z0-9]+)*")
     private val ID = Regex("[A-Za-z0-9_-]{1,64}")
     private val DATE = Regex("\\d{4}-\\d{2}-\\d{2}")
-    private const val HALF_HOUR = 1800L
+    /** Plain JSON numbers only (no 1.0f, .5, 01, TRUE): what the cloud's own reader accepts. */
+    private val JSON_NUMBER = Regex("-?(0|[1-9]\\d*)(\\.\\d+)?([eE][+-]?\\d+)?")
+    private const val HOUR = 3600L
+    /** India is UTC+5:30, with no summer time: every hour starts at :30 UTC. */
+    private const val IST_OFFSET = 19_800L
     private const val MAX_SAFE = (1L shl 53) - 1
+    /** Largest message the screen reads (the broker's own packet limit is 1 MB). */
+    const val MAX_MESSAGE_BYTES = 1024 * 1024
+    private const val MAX_VERSION = Int.MAX_VALUE.toLong()
     const val MAX_AREAS = 200
     const val MAX_CORNERS = 500
     const val MAX_PLANS = 1000
@@ -53,8 +59,12 @@ object PlanMessages {
 
     private fun obj(e: JsonElement?, keys: Set<String>): JsonObject? = (e as? JsonObject)?.takeIf { it.keys == keys }
     private fun str(e: JsonElement?): String? = (e as? JsonPrimitive)?.takeIf { it.isString }?.content
-    private fun whole(e: JsonElement?, min: Long, max: Long = MAX_SAFE): Long? =
-        (e as? JsonPrimitive)?.takeIf { !it.isString }?.longOrNull?.takeIf { it in min..max }
+    /** A whole number in range, however plain JSON writes it (1, 1.0, 1e3), as the cloud reads it. */
+    private fun whole(e: JsonElement?, min: Long, max: Long = MAX_SAFE): Long? {
+        val p = (e as? JsonPrimitive)?.takeIf { !it.isString } ?: return null
+        val n = p.content.toBigDecimalOrNull() ?: return null
+        return runCatching { n.longValueExact() }.getOrNull()?.takeIf { it in min..max }
+    }
     private fun isId(e: JsonElement?) = str(e)?.let(ID::matches) == true
     private fun areaId(e: JsonElement?): String = str(e)?.takeIf(AREA_ID::matches) ?: fail("bad area id")
     private fun idList(e: JsonElement?, min: Int, max: Int): List<String>? =
@@ -62,12 +72,28 @@ object PlanMessages {
     private fun coord(e: JsonElement?, limit: Double): Double? =
         (e as? JsonPrimitive)?.takeIf { !it.isString }?.doubleOrNull?.takeIf { it.isFinite() && kotlin.math.abs(it) <= limit }
 
+    /** Every bare value is plain JSON (true, false, null or a JSON number), as the cloud's reader demands. */
+    private fun strict(e: JsonElement): Boolean = when (e) {
+        is JsonObject -> e.values.all(::strict)
+        is JsonArray -> e.all(::strict)
+        is JsonNull -> true
+        is JsonPrimitive -> e.isString || e.content == "true" || e.content == "false" || JSON_NUMBER.matches(e.content)
+    }
+
+    /** The first second (UTC) of `startHour` on the business date (24 and 25: after midnight); null for a bad date. */
+    fun indiaHourStart(date: String, startHour: Long): Long? {
+        if (!DATE.matches(date)) return null
+        val day = runCatching { java.time.LocalDate.parse(date) }.getOrNull() ?: return null
+        return day.toEpochDay() * 86_400 - IST_OFFSET + startHour * HOUR
+    }
+
     /** The list itself: an array of at most `max`. */
     private fun list(e: JsonElement?, max: Int): JsonArray = (e as? JsonArray)?.takeIf { it.size <= max } ?: fail("bad list")
 
     /** The message, its version and its time; a refusal names the reason. */
     private fun head(text: String, keys: Set<String>, what: String, badTime: String): Pair<JsonObject, Long> {
-        val x = obj(runCatching { Json.parseToJsonElement(text) }.getOrNull(), keys) ?: fail(what)
+        need(text.toByteArray().size <= MAX_MESSAGE_BYTES, "too big")
+        val x = obj(runCatching { Json.parseToJsonElement(text) }.getOrNull()?.takeIf(::strict), keys) ?: fail(what)
         need(whole(x["v"], 1, 1) != null, "unknown version")
         val made = whole(x["made"], 1) ?: fail(badTime)
         return x to made
@@ -78,7 +104,7 @@ object PlanMessages {
         val areas = list(x["areas"], MAX_AREAS).map { e ->
             val a = obj(e, setOf("areaId", "version", "edgeMeters", "active", "ring")) ?: fail("wrong area fields")
             val id = areaId(a["areaId"])
-            val version = whole(a["version"], 1) ?: fail("bad area version")
+            val version = whole(a["version"], 1, MAX_VERSION) ?: fail("bad area version")
             val edge = whole(a["edgeMeters"], 0, MAX_EDGE) ?: fail("bad edge zone")
             val active = (a["active"] as? JsonPrimitive)?.takeIf { !it.isString }?.booleanOrNull ?: fail("bad on/off")
             val ring = (a["ring"] as? JsonArray)?.takeIf { it.size in 3..MAX_CORNERS } ?: fail("bad shape")
@@ -109,7 +135,8 @@ object PlanMessages {
         val area = areaId(p["areaId"])
         val date = str(p["date"])?.takeIf(DATE::matches) ?: fail("bad date")
         val startHour = whole(p["startHour"], 0, 25) ?: fail("bad start hour")
-        val startsAt = whole(p["startsAt"], 1)?.takeIf { it % HALF_HOUR == 0L } ?: fail("bad start time")
+        // Exactly the hour its date and start hour name (the screen's own pick is keyed on both).
+        val startsAt = whole(p["startsAt"], 1)?.takeIf { it == indiaHourStart(date, startHour) } ?: fail("bad start time")
         val revision = whole(p["revision"], 1) ?: fail("bad revision")
         val recallAds = idList(p["recallAds"], 0, MAX_LINES) ?: fail("bad RECALL ads")
         val ids = mutableSetOf<String>()
@@ -171,7 +198,7 @@ object PlanMessages {
     fun assign(text: String): Assignment = try {
         val (x, made) = head(text, setOf("v", "made", "areaId", "startsAt", "lineId", "spotId"), "not an assignment", "bad time")
         val area = areaId(x["areaId"])
-        val startsAt = whole(x["startsAt"], 1)?.takeIf { it % HALF_HOUR == 0L } ?: fail("bad start time")
+        val startsAt = whole(x["startsAt"], 1)?.takeIf { it % HOUR == HOUR - IST_OFFSET % HOUR } ?: fail("bad start time")
         fun optionalId(e: JsonElement?, problem: String): String? =
             if (e is JsonNull) null else str(e)?.takeIf(ID::matches) ?: fail(problem)
         val line = optionalId(x["lineId"], "bad line id")
