@@ -23,3 +23,4 @@ export * from './screen-loan.js';
 export * from './gst.js';
 export * from './people.js';
 export * from './report.js';
+export * from './screen-identity.js';
