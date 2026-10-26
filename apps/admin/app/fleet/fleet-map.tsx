@@ -3,8 +3,9 @@
 // state, area and plate; click a bike for its route, health, fittings and commands. Refreshes every
 // 30 seconds.
 import 'maplibre-gl/dist/maplibre-gl.css';
-import * as maplibregl from 'maplibre-gl';
-import type { GeoJSONSource, StyleSpecification } from 'maplibre-gl';
+import type * as maplibregl from 'maplibre-gl';
+import type { GeoJSONSource } from 'maplibre-gl';
+import { mapColours, newMap } from '../../lib/map';
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { api, ApiError, type Member } from '../../lib/api';
 import {
@@ -24,8 +25,6 @@ import { ALERT_NAMES, clock, count, dayOfIndia, since } from '../../lib/format';
 import { Shell, useMember } from '../../lib/session';
 
 const STATES: readonly FleetState[] = ['moving', 'stopped', 'offline', 'at-hub'];
-/** Hyderabad, Hitech City. */
-const CENTRE: [number, number] = [78.3772, 17.4435];
 
 interface Fleet {
   readonly at: number;
@@ -65,30 +64,6 @@ interface Detail {
     state: string;
     note: string;
   }[];
-}
-
-/** The design tokens' colours, read from the page (light or dark). */
-function colours() {
-  const css = getComputedStyle(document.documentElement);
-  const v = (name: string, fallback: string) => css.getPropertyValue(name).trim() || fallback;
-  return {
-    ground: v('--surface-0', '#F4F5F0'),
-    areaFill: v('--data-soft', '#E6E8FF'),
-    areaLine: v('--data', '#3B47D9'),
-    moving: v('--brand', '#C8F54A'),
-    stopped: v('--data', '#3B47D9'),
-    offline: v('--stop', '#C2341B'),
-    ink: v('--ink', '#0E121B'),
-  };
-}
-
-/** A map with no outside tiles: our areas and bikes on the page's ground colour. */
-function plainStyle(ground: string): StyleSpecification {
-  return {
-    version: 8,
-    sources: {},
-    layers: [{ id: 'ground', type: 'background', paint: { 'background-color': ground } }],
-  };
 }
 
 const COMMAND_NAMES: Record<string, string> = {
@@ -335,24 +310,13 @@ export default function FleetMap({ styleUrl }: { readonly styleUrl: string }) {
   // The map, once.
   useEffect(() => {
     if (!me || !box.current || map.current) return;
-    const c = colours();
-    // MapLibre's worker, served by this site (copied at build: scripts/copy-map-worker.mjs).
-    maplibregl.setWorkerUrl('/maplibre-gl-worker.mjs');
-    let m: maplibregl.Map;
-    try {
-      m = new maplibregl.Map({
-        container: box.current,
-        style: styleUrl || plainStyle(c.ground),
-        center: CENTRE,
-        zoom: 11.5,
-        attributionControl: styleUrl ? {} : false,
-      });
-    } catch {
+    const c = mapColours();
+    const m = newMap(box.current, styleUrl);
+    if (!m) {
       // No WebGL on this computer: the list and the screen panels still work.
       setNoMap(true);
       return;
     }
-    m.addControl(new maplibregl.NavigationControl({ showCompass: false }));
     m.on('load', () => {
       m.addSource('areas', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
       m.addLayer({
@@ -381,15 +345,7 @@ export default function FleetMap({ styleUrl }: { readonly styleUrl: string }) {
         source: 'bikes',
         paint: {
           'circle-radius': 6,
-          'circle-color': [
-            'match',
-            ['get', 'state'],
-            'moving',
-            c.moving,
-            'stopped',
-            c.stopped,
-            c.offline,
-          ],
+          'circle-color': ['match', ['get', 'state'], 'moving', c.brand, 'stopped', c.data, c.stop],
           'circle-stroke-color': c.ink,
           'circle-stroke-width': 1,
         },

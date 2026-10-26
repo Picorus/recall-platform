@@ -2,6 +2,15 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 26 Oct 2026 · P3.5 · Areas
+- P3.4 merged (PR #49). Prateek: Operations admins may pause, resume and roll back the fleet's player update (DECISIONS).
+- **Records**: each area version now keeps why it was saved (migration 0030); `areaRecords` gives every version with who, when and why. The area rules themselves are unchanged (P1.1).
+- **API** (`services/api/src/areas-api.ts`): `GET /areas` (every area with its history), `POST /areas/check` (the rules' verdict in words, nothing saved), `POST /areas` (super admin adds), `POST /areas/<id>/versions` (Operations admin: shape, edge zone, name, draft), `POST /areas/<id>/active` (super admin: on or off). Changes start now or later, never in the past. An overlap names the other area.
+- **Admin site**: the Areas page: every area on the map; open one to drag its corners, click the map to add corners, or type them (one "latitude, longitude" per line, the fallback without a map); Check before saving; edge zone, name, start time (India time), draft, reason; the version history with who and why; super admin: add an area, turn it on or off. Shared map set-up for the admin pages (`lib/map.ts`).
+- Tests: API 2 (who may look, edit, add and turn on or off; an overlap refused naming Kondapur; a crossing border; never back-dated; a too-wide edge zone; an unknown area); admin unit 3 (corners read back from their text for any shape; bad lines refused; India time to UTC); browser 1 (open Madhapur, check, save a narrower edge zone with a reason, see version 2 with its reason).
+- Open: drawing the edge zone itself on the map (shown as metres for now); area names on a plain map (needs a font source with the base map).
+- Next: P3.6, prices and rules.
+
 ## 26 Oct 2026 · P3.4 · Screens
 - P3.3 merged (PR #48). Prateek: Operations read-only members and admins may both see riders and routes on the map (DECISIONS).
 - **A screen's service life** (migration 0029, `packages/db/src/screens.ts`): to repair, repaired, retired, each with who and why. Screens in repair or retired cannot be fitted; a fitted screen must come off first. `swapScreen`: the old screen off and to repair, a spare on the same bike and rider, one step. Fitting and taking off now share one set of checks.

@@ -64,6 +64,8 @@ export async function saveAreaVersion(
   pool: Pool,
   area: AreaVersion,
   savedBy: string,
+  /** Why it was saved (the Areas page always gives one). */
+  reason?: string,
 ): Promise<void> {
   if (Number.isNaN(parseUtcIso(area.validFrom))) {
     throw new AreaError([{ kind: 'bad-date', detail: 'validFrom must be a UTC time' }]);
@@ -82,8 +84,8 @@ export async function saveAreaVersion(
     const problems = checkArea(area, others.rows.map(toArea));
     if (problems.length > 0) throw new AreaError(problems);
     await c.query(
-      `INSERT INTO area_versions (area_id, version, name, city, shape, edge_m, valid_from, draft, active, saved_by)
-       VALUES ($1, $2, $3, $4, ST_GeogFromText($5), $6, $7, $8, $9, $10)`,
+      `INSERT INTO area_versions (area_id, version, name, city, shape, edge_m, valid_from, draft, active, saved_by, reason)
+       VALUES ($1, $2, $3, $4, ST_GeogFromText($5), $6, $7, $8, $9, $10, $11)`,
       [
         area.areaId,
         area.version,
@@ -95,6 +97,7 @@ export async function saveAreaVersion(
         area.draft,
         area.active,
         savedBy,
+        reason?.trim() || null,
       ],
     );
   });
@@ -118,6 +121,26 @@ export async function areasAt(pool: Pick<Pool, 'query'>, instant: string): Promi
     [instant],
   );
   return r.rows.map(toArea);
+}
+
+export interface AreaRecord {
+  readonly area: AreaVersion;
+  readonly savedBy: string;
+  readonly savedAt: string;
+  readonly reason: string | null;
+}
+
+/** Every version of every area with who saved it, when and why: the Areas page's history (P3.5). */
+export async function areaRecords(pool: Pick<Pool, 'query'>): Promise<AreaRecord[]> {
+  const r = await pool.query<Row & { saved_by: string; saved_at: Date; reason: string | null }>(
+    `SELECT ${COLUMNS}, saved_by, saved_at, reason FROM area_versions ORDER BY area_id, version`,
+  );
+  return r.rows.map((x) => ({
+    area: toArea(x),
+    savedBy: x.saved_by,
+    savedAt: x.saved_at.toISOString(),
+    reason: x.reason,
+  }));
 }
 
 /** Every version of every area (a small table), for checking each booking line on its own day. */

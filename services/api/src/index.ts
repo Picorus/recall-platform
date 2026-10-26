@@ -6,3 +6,4 @@ export * from './staff-api.js';
 export * from './today-api.js';
 export * from './fleet-api.js';
 export * from './screens-api.js';
+export * from './areas-api.js';
