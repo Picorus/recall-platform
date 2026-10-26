@@ -3,7 +3,7 @@
 // Needs `next build` first and DATABASE_URL (pnpm services:up).
 import { apiHandler, newToken, newTotpSecret, seal, tokenHash, totpCode } from '@recall/api';
 import { launchAreas, newScreenId } from '@recall/domain';
-import { addStaff, saveAreaVersion, storeUpload } from '@recall/db';
+import { addStaff, createAccount, saveAreaVersion, storeUpload } from '@recall/db';
 import { freshDatabase } from '@recall/db/test-db';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
@@ -345,6 +345,17 @@ it('the Prices page: start with the plan’s prices, check and save a change, se
 }, 120_000);
 
 it('the Calendar page: a week of area-hours, a hold for a client from a cell, then released', async () => {
+  await createAccount(
+    db.pool,
+    {
+      brandId: 'chai-co',
+      kind: 'brand',
+      details: { name: 'Chai Co', agencyId: null, referredBy: null, active: true },
+      by: 'test',
+      reason: 'browser test',
+    },
+    Math.floor(clock() / 1000),
+  );
   const page = await browser.newPage();
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
@@ -395,5 +406,47 @@ it('the Calendar page: a week of area-hours, a hold for a client from a cell, th
   await page.getByRole('button', { name: 'Release' }).click();
   await page.getByText(/released: its bikes are on sale again/).waitFor();
   await page.getByText(/released .*client said no/).waitFor();
+  expect(errors).toEqual([]);
+}, 120_000);
+
+it('the Brands page: add an agency and a brand it handles, a contact and a note', async () => {
+  const page = await browser.newPage();
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  shift += 30_000;
+  await page.goto(`${SITE}/sign-in`);
+  await page.getByLabel('Email').fill('prateek@recall.in');
+  await page.getByLabel('Password').fill(PW);
+  await page.getByLabel('Code from your authenticator app').fill(totpCode(SECRET.value, step()));
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.getByText('Prateek · Super admin').waitFor();
+  await page.getByRole('link', { name: 'Brands' }).click();
+  await page.getByRole('heading', { name: 'Brands', exact: true }).waitFor();
+  const add = async (kind: string, name: string, agency?: string) => {
+    await page.getByRole('button', { name: 'Add a brand or agency' }).click();
+    const form = page.getByRole('form', { name: 'New account' });
+    await form.getByLabel('Kind').selectOption(kind);
+    await form.getByLabel('Name').fill(name);
+    if (agency) await form.getByLabel('Agency (brands only)').selectOption({ label: agency });
+    await form.getByLabel('Why (logged)').fill('signed today');
+    await form.getByRole('button', { name: 'Add' }).click();
+    await page.getByText(`${name} added.`).waitFor();
+  };
+  await add('agency', 'Adwise Media');
+  await add('brand', 'Dosa Co', 'Adwise Media');
+  await page.getByRole('heading', { name: /Dosa Co · brand · dosa-co/ }).waitFor();
+  const contact = page.getByRole('form', { name: 'Contact' });
+  await contact.getByLabel('Mobile (+91)').fill('+91 98765 43210');
+  await contact.getByRole('button', { name: 'Save contact' }).click();
+  await page.getByText('Contact saved.').waitFor();
+  await page.getByLabel('Add a note').fill('Wants evenings in Madhapur');
+  await page.getByRole('button', { name: 'Add note' }).click();
+  await page.getByText('Note added.').waitFor();
+  await page.getByText('Wants evenings in Madhapur').waitFor();
+  await page.getByRole('row', { name: /Dosa Co.*Adwise Media.*\+91 98765 43210/ }).waitFor();
+  if (process.env.SCREENSHOT_DIR) {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.screenshot({ path: `${process.env.SCREENSHOT_DIR}/brands.png`, fullPage: true });
+  }
   expect(errors).toEqual([]);
 }, 120_000);

@@ -1,6 +1,6 @@
 // The inventory calendar's routes: who may look, hold, release, book from a hold and set limits;
 // refusals in words; a full area-hour as 409.
-import { savePriceBook, saveAreaVersion } from '@recall/db';
+import { createAccount, savePriceBook, saveAreaVersion } from '@recall/db';
 import { freshDatabase } from '@recall/db/test-db';
 import { launchAreas, PRICE_BOOK_V1 } from '@recall/domain';
 import { randomBytes } from 'node:crypto';
@@ -32,6 +32,18 @@ beforeAll(async () => {
   for (const a of launchAreas('2026-11-01T00:00:00.000Z'))
     await saveAreaVersion(pool, { ...a, draft: false }, 'system');
   await savePriceBook(pool, PRICE_BOOK_V1, 'prateek');
+  for (const brandId of ['chai-co', 'dosa-co', 'tea-co'])
+    await createAccount(
+      pool,
+      {
+        brandId,
+        kind: 'brand',
+        details: { name: brandId, agencyId: null, referredBy: null, active: true },
+        by: 'test',
+        reason: 'route test',
+      },
+      Math.floor(now / 1000),
+    );
   server = createServer(
     apiHandler(
       pool,
@@ -153,6 +165,9 @@ describe('inventory calendar routes (P3.7)', () => {
     );
     expect((await post('/holds', sana, { ...hold, until: until + 40 * 86_400 })).body.error).toBe(
       'A hold lasts at most 30 days',
+    );
+    expect((await post('/holds', sana, { ...hold, brandId: 'chai-c0' })).body.error).toBe(
+      'No brand chai-c0: open it on the Brands page first',
     );
     expect((await post('/holds', sana, { ...hold, areaId: 'nowhere' })).body.error).toBe(
       'That area is not on sale',

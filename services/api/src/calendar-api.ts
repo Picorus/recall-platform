@@ -25,6 +25,7 @@ import {
   CapacityError,
   createBooking,
   endHold,
+  findAccount,
   placeHold,
   priceBooks,
   Refusal,
@@ -164,6 +165,11 @@ export async function handleCalendar(
     const brandId = str(b, 'brandId', 64).trim();
     if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(brandId))
       throw new HttpError(400, 'Brand id: lower case letters, digits and dashes');
+    // Holds are for a brand account (opened on the Brands page), so a typo cannot block bikes.
+    const brand = await findAccount(pool, brandId);
+    if (!brand || brand.kind !== 'brand')
+      throw new HttpError(400, `No brand ${brandId}: open it on the Brands page first`);
+    if (!brand.active) throw new HttpError(400, `${brand.name} is closed`);
     const areaId = str(b, 'areaId', 60);
     if (!(await sellableAreas(pool, nowMs)).some((a) => a.areaId === areaId))
       throw new HttpError(400, 'That area is not on sale');

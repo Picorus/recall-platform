@@ -39,6 +39,7 @@ import { handleScreens } from './screens-api.js';
 import { handleAreas } from './areas-api.js';
 import { handlePrices } from './prices-api.js';
 import { handleCalendar } from './calendar-api.js';
+import { handleBrands } from './brands-api.js';
 import {
   decoyHash,
   hashPassword,
@@ -437,6 +438,7 @@ export function apiHandler(
       if (await handleAreas(pool, cfg, req, res, nowMs)) return;
       if (await handlePrices(pool, cfg, req, res, nowMs)) return;
       if (await handleCalendar(pool, cfg, req, res, nowMs)) return;
+      if (await handleBrands(pool, cfg, req, res, nowMs)) return;
       throw new HttpError(404, 'Not found');
     })().catch((e: unknown) => {
       if (e instanceof HttpError) return send(res, e.status, { error: e.message });
