@@ -46,7 +46,7 @@ export async function handleReviews(
       ...a,
       preview: store.readLink(a.fileKey, now + PREVIEW_SECONDS),
     });
-    const q = await reviewQueue(pool);
+    const q = await reviewQueue(pool, now);
     send(res, 200, {
       at: now,
       waiting: q.waiting.map(shown),
@@ -75,7 +75,18 @@ export async function handleReviews(
       Object.entries(raw as Record<string, unknown>).map(([k, v]) => [k, v === true]),
     );
     const out = await refusedAs400(() =>
-      reviewAd(pool, { adId: ad[1] ?? '', decision, reason, checklist, by: who }, now),
+      reviewAd(
+        pool,
+        {
+          adId: ad[1] ?? '',
+          decision,
+          reason,
+          checklist,
+          by: who,
+          superAdmin: me.access.role === 'super-admin',
+        },
+        now,
+      ),
     );
     send(res, 200, out);
     return true;

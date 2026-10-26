@@ -2,7 +2,12 @@
 // what no machine can judge is a checklist the reviewer ticks to approve (Product v5.4: "no
 // flashing, nothing like a road sign, no banned categories"). A rejection says why, so Sales can tell
 // the brand what to fix. Legibility and colour are advice, never a reason to reject (DECISIONS,
-// 22 Oct 2026).
+// 22 Oct 2026). The person who uploaded an ad does not review it (a super admin may, in the POC).
+
+/** The staff id in a "Name (id)" record of who did something, or null. */
+export function staffIdOf(who: string): string | null {
+  return /\(([^()]+)\)$/.exec(who)?.[1] ?? null;
+}
 
 export const REVIEW_CHECKLIST = [
   { key: 'no-flashing', text: 'No flashing or strobing' },
@@ -40,5 +45,5 @@ export function reviewProblem(r: {
   if (r.outcome === 'fail') return 'It failed the automatic checks: it can only be rejected';
   const missing = REVIEW_CHECKLIST.filter((c) => r.checklist[c.key] !== true);
   if (missing.length) return `Tick every rule to approve: ${missing.map((c) => c.text).join('; ')}`;
-  return r.reason ? reasonProblem(r.reason) : undefined;
+  return undefined;
 }

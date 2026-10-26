@@ -542,13 +542,13 @@ it('booking for a brand: a draft from its page, the payment link, paid, the time
   }
   const bookingId = (await panel.getAttribute('aria-label'))?.replace('Booking ', '') ?? '';
 
-  // P3.9.2: the reviewer approves both (every rule ticked); the 3-second one can only be rejected.
+  // P3.9.2: the reviewer approves both (every rule ticked).
   await page.getByRole('link', { name: 'Ad review' }).click();
   const queue = page.getByRole('region', { name: 'Waiting for review' });
   const card = (name: string) => queue.getByRole('listitem').filter({ hasText: name });
   await card('Evening video').getByText(`for ${bookingId}`).waitFor();
-  await card('Too short').getByText('no booking yet').waitFor();
-  expect(await card('Too short').getByRole('button', { name: 'Approve' }).count()).toBe(0);
+  // A file that failed the automatic checks never waits for a person (it can never run).
+  expect(await card('Too short').count()).toBe(0);
   for (const name of ['Evening video', 'Logo card']) {
     const review = card(name).getByRole('form', { name: `Review ${name}` });
     expect(await review.getByRole('button', { name: 'Approve' }).isDisabled()).toBe(true);
@@ -568,14 +568,6 @@ it('booking for a brand: a draft from its page, the payment link, paid, the time
   await page
     .getByRole('region', { name: 'Latest decisions' })
     .getByText(/Logo card · .* · Approved by/)
-    .waitFor();
-  const tooShort = card('Too short').getByRole('form', { name: 'Review Too short' });
-  await tooShort.getByLabel('Why, for Too short').fill('Only 3 seconds: needs 15');
-  await tooShort.getByRole('button', { name: 'Reject' }).click();
-  await page.getByRole('status').filter({ hasText: 'Too short: rejected.' }).waitFor();
-  await page
-    .getByRole('region', { name: 'Latest decisions' })
-    .getByText(/Too short · .* · Rejected by .*: Only 3 seconds: needs 15/)
     .waitFor();
   if (process.env.SCREENSHOT_DIR)
     await page.screenshot({ path: `${process.env.SCREENSHOT_DIR}/reviews.png`, fullPage: true });

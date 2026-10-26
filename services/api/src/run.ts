@@ -1,6 +1,6 @@
 // Starts the API from the environment.
 import { createServer } from 'node:http';
-import { expireUnpaid } from '@recall/db';
+import { advanceReadyBookings, expireUnpaid } from '@recall/db';
 import pg from 'pg';
 import { readConfig } from './config.js';
 import { apiHandler } from './staff-api.js';
@@ -30,3 +30,15 @@ if (payments) {
   };
   setTimeout(tick, 60_000).unref();
 }
+
+// Every minute: paid bookings whose ads are all approved move on to ads approved (P3.9.2), in case
+// the step was missed when it happened (the database failing just after a payment, say).
+const ready = () => {
+  advanceReadyBookings(pool, Math.floor(Date.now() / 1000))
+    .then((ids) => {
+      if (ids.length > 0) console.log(`api: bookings ready to run: ${ids.join(', ')}`);
+    })
+    .catch((e: unknown) => console.error('api: moving ready bookings on failed', e))
+    .finally(() => setTimeout(ready, 60_000).unref());
+};
+setTimeout(ready, 60_000).unref();

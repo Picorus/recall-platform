@@ -55,6 +55,7 @@ describe('ads on the admin site (P3.9.1)', () => {
     expect(dueText(null, 0)).toBe('no booking yet');
     expect(dueText(3 * 86_400 + 5, 0)).toBe('due in 3 days');
     expect(dueText(5 * 3600, 0)).toBe('due in 5 hours');
+    expect(dueText(10 * 60, 0)).toBe('due in 10 minutes');
     expect(dueText(0, 2 * 86_400)).toBe('2 days past the deadline');
     expect(CHECKLIST).toEqual(REVIEW_CHECKLIST);
   });

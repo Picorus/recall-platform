@@ -321,7 +321,10 @@ export async function applyLinkStatus(
     return out === 'already' ? 'already' : 'paid-late';
   }
   // Its ads may all be approved already (P3.9.2): then it is ready to run (before its deadline).
-  await advanceIfReady(pool, bookingId, { by: 'payments', actor: 'system' }, now);
+  // The payment is recorded either way; a step missed here is made up by advanceReadyBookings.
+  await advanceIfReady(pool, bookingId, { by: 'payments', actor: 'system' }, now).catch(
+    () => undefined,
+  );
   return 'paid';
 }
 

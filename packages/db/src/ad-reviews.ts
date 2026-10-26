@@ -4,6 +4,7 @@ import {
   REVIEW_CHECKLIST,
   reasonProblem,
   reviewProblem,
+  staffIdOf,
   type ReviewDecision,
 } from '@recall/domain';
 import type { Pool } from 'pg';
@@ -13,12 +14,24 @@ import { Refusal } from './refusal.js';
 type Q = Pick<Pool, 'query'>;
 const secs = (d: Date) => Math.floor(d.getTime() / 1000);
 
-/** Each booking's latest choice of ads, and each booking's step now. */
+/** Bookings still to run (first hour after $1), with their latest choice of ads and step now. */
 const LATEST = `
-  latest AS (SELECT DISTINCT ON (booking_id) booking_id, ad_ids FROM booking_ad_sets
-              ORDER BY booking_id, version DESC),
-  step AS (SELECT DISTINCT ON (booking_id) booking_id, state FROM booking_events
-            ORDER BY booking_id, seq DESC)`;
+  latest AS (
+    SELECT b.booking_id, b.ads_due_at, b.first_hour_at, b.brand_id, l.ad_ids, s.state
+      FROM bookings b
+      JOIN LATERAL (SELECT ad_ids FROM booking_ad_sets a WHERE a.booking_id = b.booking_id
+                     ORDER BY version DESC LIMIT 1) l ON true
+      JOIN LATERAL (SELECT state FROM booking_events e WHERE e.booking_id = b.booking_id
+                     ORDER BY seq DESC LIMIT 1) s ON true
+     WHERE b.first_hour_at > to_timestamp($1))`;
+/** Every ad in the booking's latest choice is approved. */
+const ALL_APPROVED = `NOT EXISTS (SELECT 1 FROM unnest(l.ad_ids) x(ad_id)
+                     WHERE NOT EXISTS (SELECT 1 FROM ad_reviews v
+                                        WHERE v.ad_id = x.ad_id AND v.decision = 'approved'))`;
+/** A brand's name now. */
+const BRAND_NAME = (brandId: string) =>
+  `JOIN LATERAL (SELECT name FROM brand_versions bv WHERE bv.brand_id = ${brandId}
+                  ORDER BY version DESC LIMIT 1) v ON true`;
 
 export interface ReviewOutcome {
   /** Bookings this decision moved to ads approved. */
@@ -29,9 +42,10 @@ export interface ReviewOutcome {
 
 /**
  * Records a reviewer's decision on an ad: approved (every rule on the checklist ticked; never an ad
- * that failed the automatic checks) or rejected (with why). One decision per ad. An approval moves on
- * every paid booking whose ads are now all approved; after a booking's deadline that needs a reason
- * (short notice): given here, or later on the booking itself.
+ * that failed the automatic checks) or rejected (with why). One decision per ad, never by the person
+ * who uploaded it (a super admin may: in the POC one person may do both). An approval moves on every
+ * paid booking whose ads are now all approved, before its deadline; a booking past its deadline
+ * waits for its own short-notice approval (each with its own reason, never this ad's).
  */
 export async function reviewAd(
   pool: Pool,
@@ -40,7 +54,9 @@ export async function reviewAd(
     readonly decision: ReviewDecision;
     readonly reason: string | null;
     readonly checklist: Readonly<Record<string, boolean>>;
+    /** "Name (staff id)". */
     readonly by: string;
+    readonly superAdmin: boolean;
   },
   now: number,
 ): Promise<ReviewOutcome> {
@@ -48,7 +64,10 @@ export async function reviewAd(
   if (!ad) throw new Refusal(`No ad ${r.adId}`);
   if (ad.review)
     throw new Refusal(`${ad.name} was already ${ad.review.decision} by ${ad.review.by}`);
-  const reason = r.reason?.trim() || null;
+  const mine = staffIdOf(r.by);
+  if (!r.superAdmin && mine !== null && mine === staffIdOf(ad.uploadedBy))
+    throw new Refusal('You uploaded this ad: someone else reviews it');
+  const reason = r.decision === 'rejected' ? r.reason?.trim() || null : null;
   const problem = reviewProblem({ ...r, reason, outcome: ad.outcome });
   if (problem) throw new Refusal(problem);
   // Only the checklist's own rules are kept, as ticked or not.
@@ -64,23 +83,15 @@ export async function reviewAd(
   if (r.decision !== 'approved') return { approvedBookings: [], waiting: [] };
   const using = await pool.query<{ booking_id: string }>(
     `WITH ${LATEST}
-     SELECT l.booking_id FROM latest l JOIN step s USING (booking_id)
-      WHERE $1 = ANY(l.ad_ids) AND s.state = 'paid'
-        AND NOT EXISTS (SELECT 1 FROM unnest(l.ad_ids) x(ad_id)
-                         WHERE NOT EXISTS (SELECT 1 FROM ad_reviews v
-                                            WHERE v.ad_id = x.ad_id AND v.decision = 'approved'))
+     SELECT l.booking_id FROM latest l
+      WHERE $2 = ANY(l.ad_ids) AND l.state = 'paid' AND ${ALL_APPROVED}
       ORDER BY l.booking_id`,
-    [r.adId],
+    [now, r.adId],
   );
   const approvedBookings: string[] = [];
   const waiting: { bookingId: string; problem: string }[] = [];
   for (const b of using.rows) {
-    const why = await advanceIfReady(
-      pool,
-      b.booking_id,
-      { by: r.by, actor: 'admin', ...(reason ? { reason } : {}) },
-      now,
-    );
+    const why = await advanceIfReady(pool, b.booking_id, { by: r.by, actor: 'admin' }, now);
     if (why) waiting.push({ bookingId: b.booking_id, problem: why });
     else approvedBookings.push(b.booking_id);
   }
@@ -115,9 +126,11 @@ export interface QueueAd extends Ad {
 }
 
 export interface ReviewQueue {
-  /** Ads waiting for a decision: those bookings need soonest first, then the oldest uploads. */
+  /** Ads waiting for a decision (not those that failed the automatic checks: they cannot run):
+   * those bookings need soonest first, then the oldest uploads. */
   readonly waiting: readonly QueueAd[];
-  /** Paid bookings whose ads are all approved but have not moved on (past their deadline). */
+  /** Paid bookings still to run whose ads are all approved, past their deadline: each waits for a
+   * reviewer's short-notice approval. */
   readonly shortNotice: readonly {
     bookingId: string;
     brandName: string;
@@ -135,24 +148,23 @@ interface QueueRow {
   bookings: string[] | null;
 }
 
-export async function reviewQueue(pool: Q): Promise<ReviewQueue> {
-  const live = `('draft', 'awaiting-payment', 'paid')`;
+export async function reviewQueue(pool: Q, now: number): Promise<ReviewQueue> {
   const w = await pool.query<QueueRow>(
     `WITH ${LATEST},
      wanted AS (
-       SELECT x.ad_id, min(b.ads_due_at) AS needed_by, array_agg(b.booking_id ORDER BY b.booking_id) AS bookings
-         FROM latest l JOIN step s USING (booking_id) JOIN bookings b USING (booking_id)
-         CROSS JOIN LATERAL unnest(l.ad_ids) x(ad_id)
-        WHERE s.state IN ${live}
+       SELECT x.ad_id, min(l.ads_due_at) AS needed_by,
+              array_agg(l.booking_id ORDER BY l.booking_id) AS bookings
+         FROM latest l CROSS JOIN LATERAL unnest(l.ad_ids) x(ad_id)
+        WHERE l.state IN ('draft', 'awaiting-payment', 'paid')
         GROUP BY x.ad_id)
      SELECT a.ad_id, v.name AS brand_name, wd.needed_by, wd.bookings
-       FROM ads a
-       JOIN LATERAL (SELECT name FROM brand_versions bv WHERE bv.brand_id = a.brand_id
-                      ORDER BY version DESC LIMIT 1) v ON true
+       FROM ads a ${BRAND_NAME('a.brand_id')}
        LEFT JOIN wanted wd USING (ad_id)
       WHERE NOT EXISTS (SELECT 1 FROM ad_reviews r WHERE r.ad_id = a.ad_id)
+        AND a.outcome <> 'fail'
       ORDER BY wd.needed_by ASC NULLS LAST, a.uploaded_at, a.seq
       LIMIT 200`,
+    [now],
   );
   const found = new Map(
     (
@@ -182,21 +194,16 @@ export async function reviewQueue(pool: Q): Promise<ReviewQueue> {
     first_hour_at: Date;
   }>(
     `WITH ${LATEST}
-     SELECT b.booking_id, v.name AS brand_name, b.ads_due_at, b.first_hour_at
-       FROM latest l JOIN step s USING (booking_id) JOIN bookings b USING (booking_id)
-       JOIN LATERAL (SELECT name FROM brand_versions bv WHERE bv.brand_id = b.brand_id
-                      ORDER BY version DESC LIMIT 1) v ON true
-      WHERE s.state = 'paid'
-        AND NOT EXISTS (SELECT 1 FROM unnest(l.ad_ids) x(ad_id)
-                         WHERE NOT EXISTS (SELECT 1 FROM ad_reviews r
-                                            WHERE r.ad_id = x.ad_id AND r.decision = 'approved'))
-      ORDER BY b.first_hour_at
+     SELECT l.booking_id, v.name AS brand_name, l.ads_due_at, l.first_hour_at
+       FROM latest l ${BRAND_NAME('l.brand_id')}
+      WHERE l.state = 'paid' AND l.ads_due_at <= to_timestamp($1) AND ${ALL_APPROVED}
+      ORDER BY l.first_hour_at
       LIMIT 100`,
+    [now],
   );
   const r = await pool.query<{ ad_id: string; brand_name: string }>(
     `SELECT r.ad_id, v.name AS brand_name FROM ad_reviews r JOIN ads a USING (ad_id)
-       JOIN LATERAL (SELECT name FROM brand_versions bv WHERE bv.brand_id = a.brand_id
-                      ORDER BY version DESC LIMIT 1) v ON true
+       ${BRAND_NAME('a.brand_id')}
       ORDER BY r.reviewed_at DESC, r.ad_id LIMIT 30`,
   );
   const decided = new Map(

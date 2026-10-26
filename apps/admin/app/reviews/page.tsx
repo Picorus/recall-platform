@@ -84,9 +84,7 @@ function Decide({
         </fieldset>
       )}
       <label className="rc-field">
-        <span className="rc-field__label">
-          Why (needed to reject: the brand is told; or for a short-notice approval)
-        </span>
+        <span className="rc-field__label">Why reject (the brand is told)</span>
         <input
           className="rc-input"
           value={reason}
@@ -101,7 +99,7 @@ function Decide({
             className="rc-button"
             type="button"
             disabled={busy || !all}
-            onClick={() => onDecide('approved', reason, ticks)}
+            onClick={() => onDecide('approved', '', ticks)}
           >
             Approve
           </button>
@@ -166,7 +164,9 @@ export default function ReviewsPage() {
     const n = ++asked.current;
     api<Queue>('/reviews')
       .then((x) => {
-        if (n === asked.current) setQ(x);
+        if (n !== asked.current) return;
+        setQ(x);
+        setError('');
       })
       .catch((e: unknown) =>
         setError(e instanceof ApiError ? e.message : 'Could not load the queue.'),

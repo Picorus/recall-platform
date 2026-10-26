@@ -9,6 +9,12 @@ Newest first. Each entry: date · step id · what changed · tests · open issue
 - **Booking ads**: a rejected ad cannot be chosen; once a booking's ads are approved, it can switch only to other approved ads (never back to waiting).
 - **API** (`services/api/src/reviews-api.ts`): the queue (Ad review and Sales look), decide (Ad review admin), short-notice approval.
 - **Admin site**: an Ad review page: ads waiting, the ones bookings need soonest first (with how long until, or past, the deadline), preview, what the checks found, the checklist, approve or reject with why; bookings waiting for a short-notice approval; the latest decisions. The booking panel shows each ad's review.
+- Review by a second agent, all fixed with tests:
+  - The person who uploaded an ad could approve it: now someone else reviews it (a super admin may, so one person can run the POC).
+  - A database failure just after a payment (or a review and a change of ads at the same moment) could leave a paid booking stuck with all its ads approved: real failures are no longer passed off as "not ready", and every minute the API moves on any paid booking whose ads are all approved (before its deadline).
+  - An approval note on one ad could approve several late bookings on short notice: each late booking now needs its own reason.
+  - Approved ads could be swapped right before the first hour with no reviewer: now only before the deadline, and only to approved ads.
+  - The queue reads only bookings still to run (it stays fast as history grows), leaves out files that failed the automatic checks (they can never run), and lists short-notice bookings only once past their deadline. "Due in 10 minutes" instead of "1 hour".
 - Tests: domain checklist matches the page's; database 3 (approve/reject rules, one decision, the booking steps, short notice, the queue's order, paid after approval); API 1 (who looks, who decides, short notice); browser (a reviewer approves two ads, approves the booking on short notice, rejects a 3-second video).
 - Open: the hour plan and the screens' file lists will use a booking's approved ads when the scheduler service is built (P1.4.1 wiring); the move to "ads missing" when a booking's first hour comes without approved ads is for the scheduler too; a wrongly approved ad is taken off by choosing others (a decision is never undone).
 - Next: P3.10, delivery and make-ups.

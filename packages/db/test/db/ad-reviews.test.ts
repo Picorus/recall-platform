@@ -6,7 +6,13 @@ import { readFileSync } from 'node:fs';
 import type pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { approveOnShortNotice, reviewAd, reviewQueue } from '../../src/ad-reviews.js';
-import { adById, advanceIfReady, setBookingAds, uploadAd } from '../../src/ads.js';
+import {
+  adById,
+  advanceIfReady,
+  advanceReadyBookings,
+  setBookingAds,
+  uploadAd,
+} from '../../src/ads.js';
 import { saveAreaVersion } from '../../src/areas.js';
 import { bookingState, createBooking, moveBooking, savePriceBook } from '../../src/bookings.js';
 import { createAccount } from '../../src/brands.js';
@@ -57,7 +63,11 @@ const paidBooking = async (bookingId: string, date: string) => {
   );
 };
 const approve = (adId: string, reason: string | null = null) =>
-  reviewAd(pool, { adId, decision: 'approved', reason, checklist: ALL, by: 'Ravi' }, NOW + 60);
+  reviewAd(
+    pool,
+    { adId, decision: 'approved', reason, checklist: ALL, by: 'Ravi', superAdmin: false },
+    NOW + 60,
+  );
 
 beforeAll(async () => {
   db = await freshDatabase();
@@ -90,15 +100,36 @@ describe('ad review (P3.9.2)', () => {
     const refused = async (r: Parameters<typeof reviewAd>[1], msg: string) =>
       expect(reviewAd(pool, r, NOW)).rejects.toThrow(msg);
     await refused(
-      { adId: video, decision: 'approved', reason: null, checklist: {}, by: 'Ravi' },
+      {
+        adId: video,
+        decision: 'approved',
+        reason: null,
+        checklist: {},
+        by: 'Ravi',
+        superAdmin: false,
+      },
       'Tick every rule to approve',
     );
     await refused(
-      { adId: video, decision: 'rejected', reason: 'bad', checklist: {}, by: 'Ravi' },
+      {
+        adId: video,
+        decision: 'rejected',
+        reason: 'bad',
+        checklist: {},
+        by: 'Ravi',
+        superAdmin: false,
+      },
       'Say why in 10 to 500 letters',
     );
     await refused(
-      { adId: short, decision: 'approved', reason: null, checklist: ALL, by: 'Ravi' },
+      {
+        adId: short,
+        decision: 'approved',
+        reason: null,
+        checklist: ALL,
+        by: 'Ravi',
+        superAdmin: false,
+      },
       'it can only be rejected',
     );
 
@@ -121,6 +152,7 @@ describe('ad review (P3.9.2)', () => {
         reason: 'Looks like a traffic sign',
         checklist: {},
         by: 'Ravi',
+        superAdmin: false,
       },
       NOW,
     );
@@ -133,7 +165,32 @@ describe('ad review (P3.9.2)', () => {
     );
     expect(await setBookingAds(pool, 'BK-R-1', [card, video], 'Sana', NOW)).toBe(2);
     expect(await bookingState(pool, 'BK-R-1')).toBe('ads-approved');
+    // Past its deadline (2027-09-03 13:30 UTC), approved ads stay as they are.
+    const late = Date.UTC(2027, 8, 4) / 1000;
+    await expect(setBookingAds(pool, 'BK-R-1', [video, card], 'Sana', late)).rejects.toThrow(
+      'past their deadline',
+    );
     await expect(pool.query("UPDATE ad_reviews SET reason = 'x'")).rejects.toThrow();
+
+    // Whoever uploaded an ad does not review it (a super admin may, in the POC).
+    const own = (
+      await uploadAd(
+        pool,
+        store,
+        { brandId: 'chai-co', name: 'Own', data: file('ad-1280x640.png'), by: 'Sana (s1)' },
+        NOW,
+      )
+    ).adId;
+    const mine = { adId: own, decision: 'approved', reason: null, checklist: ALL } as const;
+    await expect(
+      reviewAd(pool, { ...mine, by: 'Sana (s1)', superAdmin: false }, NOW),
+    ).rejects.toThrow('You uploaded this ad: someone else reviews it');
+    expect(await reviewAd(pool, { ...mine, by: 'Sana (s1)', superAdmin: true }, NOW)).toEqual({
+      approvedBookings: [],
+      waiting: [],
+    });
+    // Failed ads are not in the queue (they can never run).
+    expect((await reviewQueue(pool, NOW)).waiting.map((a) => a.adId)).not.toContain(short);
   });
 
   it('past the deadline a booking waits for a reviewer’s reason; the queue shows what is most urgent', async () => {
@@ -144,7 +201,7 @@ describe('ad review (P3.9.2)', () => {
     // First hour in 4 days: ads were due 3 days ago.
     await paidBooking('BK-R-2', '2027-08-27');
     await setBookingAds(pool, 'BK-R-2', [a, b], 'Sana', NOW);
-    const q = await reviewQueue(pool);
+    const q = await reviewQueue(pool, NOW);
     expect(q.waiting.slice(0, 2).map((x) => x.adId)).toEqual([a, b]);
     expect(q.waiting[0]).toMatchObject({ brandName: 'Chai Co', bookings: ['BK-R-2'] });
     expect(q.waiting[0]?.neededBy).toBe(Date.UTC(2027, 7, 20, 13, 30) / 1000);
@@ -158,7 +215,7 @@ describe('ad review (P3.9.2)', () => {
         problem: 'a short-notice approval needs a reason (10 letters or more)',
       },
     ]);
-    expect((await reviewQueue(pool)).shortNotice.map((x) => x.bookingId)).toEqual(['BK-R-2']);
+    expect((await reviewQueue(pool, NOW)).shortNotice.map((x) => x.bookingId)).toEqual(['BK-R-2']);
     await expect(approveOnShortNotice(pool, 'BK-R-2', 'Ravi', 'ok', NOW)).rejects.toThrow(
       'Say why',
     );
@@ -174,10 +231,10 @@ describe('ad review (P3.9.2)', () => {
       "SELECT reason, by_who FROM booking_events WHERE booking_id = 'BK-R-2' AND state = 'ads-approved'",
     );
     expect(step.rows[0]?.reason).toBe('Brand sent files late; checked by eye');
-    expect((await reviewQueue(pool)).shortNotice).toEqual([]);
+    expect((await reviewQueue(pool, NOW)).shortNotice).toEqual([]);
   });
 
-  it('a booking paid after its ads were approved moves on by itself (before its deadline)', async () => {
+  it('a booking paid after its ads were approved moves on (before its deadline), missed steps too', async () => {
     const [a, b] = [
       await upload('Ready one', 'ad-15s-1280x640.mp4'),
       await upload('Ready two', 'ad-1280x640.png'),
@@ -213,9 +270,9 @@ describe('ad review (P3.9.2)', () => {
       { by: 'gateway', actor: 'system', paymentId: 'pay_r3' },
       NOW,
     );
-    expect(await advanceIfReady(pool, 'BK-R-3', { by: 'payments', actor: 'system' }, NOW)).toBe(
-      undefined,
-    );
+    // Made up by the every-minute sweep (a step missed just after the payment).
+    expect(await advanceReadyBookings(pool, NOW)).toEqual(['BK-R-3']);
+    expect(await advanceReadyBookings(pool, NOW)).toEqual([]);
     expect(await bookingState(pool, 'BK-R-3')).toBe('ads-approved');
   });
 });
