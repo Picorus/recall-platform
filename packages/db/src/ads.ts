@@ -8,13 +8,15 @@ import {
   isoAt,
   priceBookAt,
   worst,
+  type Actor,
   type AdCheck,
   type AdKind,
+  type ReviewDecision,
   type CheckOutcome,
 } from '@recall/domain';
 import { randomBytes } from 'node:crypto';
 import type { Pool } from 'pg';
-import { bookingState, priceBooks } from './bookings.js';
+import { bookingState, moveBooking, priceBooks, StepRace, StepRefused } from './bookings.js';
 import { findAccount } from './brands.js';
 import { inTransaction } from './makeups.js';
 import { Refusal } from './refusal.js';
@@ -38,6 +40,15 @@ export interface Ad {
   readonly outcome: CheckOutcome;
   readonly uploadedBy: string;
   readonly uploadedAt: number;
+  /** The Ad review decision (P3.9.2), or null while it waits. */
+  readonly review: AdReview | null;
+}
+
+export interface AdReview {
+  readonly decision: ReviewDecision;
+  readonly reason: string | null;
+  readonly by: string;
+  readonly at: number;
 }
 
 const CONTENT_TYPE: Record<AdKind, string> = {
@@ -62,7 +73,15 @@ interface AdRow {
   outcome: CheckOutcome;
   uploaded_by: string;
   uploaded_at: Date;
+  r_decision?: ReviewDecision | null;
+  r_reason?: string | null;
+  r_by?: string | null;
+  r_at?: Date | null;
 }
+/** An ad with its review, if any. */
+const AD_SELECT = `SELECT a.*, r.decision AS r_decision, r.reason AS r_reason,
+                          r.reviewed_by AS r_by, r.reviewed_at AS r_at
+                     FROM ads a LEFT JOIN ad_reviews r USING (ad_id)`;
 const toAd = (r: AdRow): Ad => ({
   adId: r.ad_id,
   brandId: r.brand_id,
@@ -78,6 +97,10 @@ const toAd = (r: AdRow): Ad => ({
   outcome: r.outcome,
   uploadedBy: r.uploaded_by,
   uploadedAt: secs(r.uploaded_at),
+  review:
+    r.r_decision && r.r_by && r.r_at
+      ? { decision: r.r_decision, reason: r.r_reason ?? null, by: r.r_by, at: secs(r.r_at) }
+      : null,
 });
 
 /**
@@ -149,14 +172,21 @@ export async function uploadAd(
 }
 
 export async function adById(pool: Q, adId: string): Promise<Ad | undefined> {
-  const r = await pool.query<AdRow>('SELECT * FROM ads WHERE ad_id = $1', [adId]);
+  const r = await pool.query<AdRow>(`${AD_SELECT} WHERE a.ad_id = $1`, [adId]);
   return r.rows[0] ? toAd(r.rows[0]) : undefined;
+}
+
+/** These ads (any order). */
+export async function adsByIds(pool: Q, adIds: readonly string[]): Promise<Ad[]> {
+  if (adIds.length === 0) return [];
+  const r = await pool.query<AdRow>(`${AD_SELECT} WHERE a.ad_id = ANY($1)`, [adIds]);
+  return r.rows.map(toAd);
 }
 
 /** A brand's ads, newest first. */
 export async function brandAds(pool: Q, brandId: string): Promise<Ad[]> {
   const r = await pool.query<AdRow>(
-    'SELECT * FROM ads WHERE brand_id = $1 ORDER BY uploaded_at DESC, seq DESC LIMIT 200',
+    `${AD_SELECT} WHERE a.brand_id = $1 ORDER BY a.uploaded_at DESC, a.seq DESC LIMIT 200`,
     [brandId],
   );
   return r.rows.map(toAd);
@@ -167,22 +197,28 @@ export async function bookingAds(pool: Q, bookingId: string): Promise<Ad[]> {
   const r = await pool.query<AdRow & { position: number }>(
     `WITH s AS (SELECT ad_ids FROM booking_ad_sets WHERE booking_id = $1
                  ORDER BY version DESC LIMIT 1)
-     SELECT a.*, x.position FROM s, unnest(s.ad_ids) WITH ORDINALITY AS x(ad_id, position)
+     SELECT a.*, x.position, r.decision AS r_decision, r.reason AS r_reason,
+            r.reviewed_by AS r_by, r.reviewed_at AS r_at
+       FROM s, unnest(s.ad_ids) WITH ORDINALITY AS x(ad_id, position)
        JOIN ads a ON a.ad_id = x.ad_id
+       LEFT JOIN ad_reviews r ON r.ad_id = x.ad_id
       ORDER BY x.position`,
     [bookingId],
   );
   return r.rows.map(toAd);
 }
 
-/** Steps where a booking's ads can still change (before it runs). Once its ads are approved
- * (P3.9.2), a change sends them back for review; until that exists, approved ads stay as they are. */
-const CHANGEABLE = ['draft', 'awaiting-payment', 'paid'];
+/** Steps where a booking's ads can still change (before it runs). Once its ads are approved, only
+ * to other approved ads and only before its ads deadline (the booking never steps back; nothing
+ * unreviewed can slip in; the screens get their files in time). */
+const CHANGEABLE = ['draft', 'awaiting-payment', 'paid', 'ads-approved'];
 const AD_ID = /^AD-[0-9A-F]{10}$/;
 
 /**
  * Chooses which of its brand's ads a booking runs: 2 to 5 (they take turns), none that failed a
- * check, all the brand's own. Kept as the next version; nothing is replaced.
+ * check or was rejected, all the brand's own (once the booking's ads are approved: approved ones
+ * only). Kept as the next version; nothing is replaced. A paid booking whose ads are now all
+ * approved moves on to ads approved (before the deadline; after it, a reviewer decides).
  */
 export async function setBookingAds(
   pool: Pool,
@@ -191,8 +227,8 @@ export async function setBookingAds(
   by: string,
   now: number,
 ): Promise<number> {
-  const b = await pool.query<{ brand_id: string; first_hour_at: Date }>(
-    'SELECT brand_id, first_hour_at FROM bookings WHERE booking_id = $1',
+  const b = await pool.query<{ brand_id: string; first_hour_at: Date; ads_due_at: Date }>(
+    'SELECT brand_id, first_hour_at, ads_due_at FROM bookings WHERE booking_id = $1',
     [bookingId],
   );
   const booking = b.rows[0];
@@ -208,19 +244,32 @@ export async function setBookingAds(
     brand_id: string;
     outcome: CheckOutcome;
     name: string;
-  }>('SELECT ad_id, brand_id, outcome, name FROM ads WHERE ad_id = ANY($1)', [ids]);
+    decision: ReviewDecision | null;
+  }>(
+    `SELECT a.ad_id, a.brand_id, a.outcome, a.name, r.decision
+       FROM ads a LEFT JOIN ad_reviews r USING (ad_id) WHERE a.ad_id = ANY($1)`,
+    [ids],
+  );
   for (const id of ids) {
     const ad = found.rows.find((x) => x.ad_id === id);
     if (!ad || ad.brand_id !== booking.brand_id)
       throw new Refusal(`${id} is not one of this brand's ads`);
     if (ad.outcome === 'fail') throw new Refusal(`${ad.name} failed the automatic checks`);
+    if (ad.decision === 'rejected') throw new Refusal(`${ad.name} was rejected in review`);
   }
-  return inTransaction(pool, async (c) => {
+  const allApproved = ids.every(
+    (id) => found.rows.find((x) => x.ad_id === id)?.decision === 'approved',
+  );
+  const version = await inTransaction(pool, async (c) => {
     await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`booking:${bookingId}`]);
     // Under the booking's lock: a cancel or a step cannot slip in between the check and the write.
     const state = await bookingState(c, bookingId);
     if (!state || !CHANGEABLE.includes(state) || now >= secs(booking.first_hour_at))
       throw new Refusal('Its ads can only change before the booking runs');
+    if (state === 'ads-approved' && !allApproved)
+      throw new Refusal('Its ads are approved: choose only approved ads (upload and review first)');
+    if (state === 'ads-approved' && now >= secs(booking.ads_due_at))
+      throw new Refusal('Its ads are approved and past their deadline: they stay as they are');
     const v = await c.query<{ n: number }>(
       'SELECT coalesce(max(version), 0) + 1 AS n FROM booking_ad_sets WHERE booking_id = $1',
       [bookingId],
@@ -233,4 +282,80 @@ export async function setBookingAds(
     );
     return version;
   });
+  // Checked again under the lock: a review that landed meanwhile counts too.
+  await advanceIfReady(pool, bookingId, { by, actor: 'admin' }, now);
+  return version;
+}
+
+class NotReady extends Error {}
+
+/**
+ * Moves a paid booking to ads approved when every ad it runs (its latest choice) is approved; checked
+ * again under the booking's lock, in the same transaction as the step. Before the deadline anyone
+ * may trigger it (the system, after a payment); after it, only staff with a reason (short notice).
+ * Returns why not (the booking rules, its step, or ads not all approved), or undefined when it
+ * moved. Anything else (the database failing) is thrown, never passed off as a reason.
+ */
+export async function advanceIfReady(
+  pool: Pool,
+  bookingId: string,
+  who: { readonly by: string; readonly actor: Actor; readonly reason?: string },
+  now: number,
+): Promise<string | undefined> {
+  try {
+    await moveBooking(
+      pool,
+      bookingId,
+      'ads-approved',
+      {
+        ...who,
+        expectFrom: 'paid',
+        alsoWrite: async (c) => {
+          const r = await c.query<{ chosen: number; approved: number }>(
+            `WITH s AS (SELECT ad_ids FROM booking_ad_sets WHERE booking_id = $1
+                         ORDER BY version DESC LIMIT 1)
+             SELECT cardinality(s.ad_ids) AS chosen,
+                    (SELECT count(*)::int FROM ad_reviews r
+                      WHERE r.ad_id = ANY(s.ad_ids) AND r.decision = 'approved') AS approved
+               FROM s`,
+            [bookingId],
+          );
+          const x = r.rows[0];
+          if (!x || x.chosen < DEFAULT_SPOT_RULES.minAds || x.approved !== x.chosen)
+            throw new NotReady('not all its ads are approved yet');
+        },
+      },
+      now,
+    );
+    return undefined;
+  } catch (e) {
+    if (e instanceof StepRace) return `the booking is ${e.now}`;
+    if (e instanceof StepRefused || e instanceof NotReady) return e.message;
+    throw e;
+  }
+}
+
+/**
+ * Every paid booking still to run whose ads are all approved, moved on (before its deadline; after
+ * it, a reviewer decides). Run every minute: a step missed (the database failing just after a
+ * payment, a review and a change of ads at the same moment) is made up here. Returns those moved.
+ */
+export async function advanceReadyBookings(pool: Pool, now: number): Promise<string[]> {
+  const r = await pool.query<{ booking_id: string }>(
+    `SELECT b.booking_id FROM bookings b
+       JOIN LATERAL (SELECT state FROM booking_events e WHERE e.booking_id = b.booking_id
+                      ORDER BY seq DESC LIMIT 1) s ON true
+       JOIN LATERAL (SELECT ad_ids FROM booking_ad_sets a WHERE a.booking_id = b.booking_id
+                      ORDER BY version DESC LIMIT 1) l ON true
+      WHERE s.state = 'paid' AND b.ads_due_at > to_timestamp($1)
+        AND NOT EXISTS (SELECT 1 FROM unnest(l.ad_ids) x(ad_id)
+                         WHERE NOT EXISTS (SELECT 1 FROM ad_reviews v
+                                            WHERE v.ad_id = x.ad_id AND v.decision = 'approved'))`,
+    [now],
+  );
+  const moved: string[] = [];
+  for (const x of r.rows)
+    if (!(await advanceIfReady(pool, x.booking_id, { by: 'system', actor: 'system' }, now)))
+      moved.push(x.booking_id);
+  return moved;
 }

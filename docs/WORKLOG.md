@@ -2,6 +2,23 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 26 Oct 2026 · P3.9.2 · Ad review queue
+- P3.9.1 merged (PR #56).
+- **Review rules** (`packages/domain/src/ad-review.ts`): to approve, the reviewer ticks every rule (no flashing; nothing like a road sign; not a banned category; any warnings from the automatic checks looked at); an ad that failed the automatic checks can only be rejected; a rejection says why (10 to 500 letters, so Sales can tell the brand what to fix).
+- **Decisions** (migration 0036, `packages/db/src/ad-reviews.ts`): one per ad, final, never edited. Approving moves on every paid booking whose chosen ads are now all approved (paid → ads approved), checked again under the booking's lock in the same transaction. Past a booking's deadline (7 days before its first hour, a setting) it waits: a reviewer approves it on short notice with why (logged on the booking's step). A booking paid after its ads were approved moves on by itself (before its deadline).
+- **Booking ads**: a rejected ad cannot be chosen; once a booking's ads are approved, it can switch only to other approved ads (never back to waiting).
+- **API** (`services/api/src/reviews-api.ts`): the queue (Ad review and Sales look), decide (Ad review admin), short-notice approval.
+- **Admin site**: an Ad review page: ads waiting, the ones bookings need soonest first (with how long until, or past, the deadline), preview, what the checks found, the checklist, approve or reject with why; bookings waiting for a short-notice approval; the latest decisions. The booking panel shows each ad's review.
+- Review by a second agent, all fixed with tests:
+  - The person who uploaded an ad could approve it: now someone else reviews it (a super admin may, so one person can run the POC).
+  - A database failure just after a payment (or a review and a change of ads at the same moment) could leave a paid booking stuck with all its ads approved: real failures are no longer passed off as "not ready", and every minute the API moves on any paid booking whose ads are all approved (before its deadline).
+  - An approval note on one ad could approve several late bookings on short notice: each late booking now needs its own reason.
+  - Approved ads could be swapped right before the first hour with no reviewer: now only before the deadline, and only to approved ads.
+  - The queue reads only bookings still to run (it stays fast as history grows), leaves out files that failed the automatic checks (they can never run), and lists short-notice bookings only once past their deadline. "Due in 10 minutes" instead of "1 hour".
+- Tests: domain checklist matches the page's; database 3 (approve/reject rules, one decision, the booking steps, short notice, the queue's order, paid after approval); API 1 (who looks, who decides, short notice); browser (a reviewer approves two ads, approves the booking on short notice, rejects a 3-second video).
+- Open: the hour plan and the screens' file lists will use a booking's approved ads when the scheduler service is built (P1.4.1 wiring); the move to "ads missing" when a booking's first hour comes without approved ads is for the scheduler too; a wrongly approved ad is taken off by choosing others (a decision is never undone).
+- Next: P3.10, delivery and make-ups.
+
 ## 26 Oct 2026 · P3.9.1 · Ad files and their automatic checks
 - P3.8.2 merged (PR #55). P3.9 is built in two parts: P3.9.1 ad files (this), P3.9.2 the review queue (approve or reject with why, short-notice approvals, the booking's step to ads approved).
 - **Automatic checks** (`packages/domain/src/ad-checks.ts`): an ad is one file the screen plays for a whole 15-second spot: a picture (PNG, JPEG, WebP) or an MP4 video. The file's own bytes are read (never its name): kind, pixels, and for a video its length and compression (from the MP4 boxes). Each check passes, warns (a person decides) or fails (never runs): size (30 MB), shorter side at least 480 px, the screen's shape 2:1 (1280 × 640; others fail), video length 15 s ± 0.5 s, sound (a warning: screens play none), H.264 (others a warning). The limits are a price-book setting (`ads`).
@@ -19,7 +36,8 @@ Newest first. Each entry: date · step id · what changed · tests · open issue
   - CI found two ads uploaded in the same second listed in random order: ads now keep their upload order.
   - Corrected before merging: the checks first assumed a 16:9 screen and 64 MB; Prateek's decision of 22 Oct says 1280 × 640, no sound, up to 30 MB, so the defaults are now 2:1 (a wrong shape fails), 30 MB (refused before storing), and sound is a warning. Test files remade at 1280 × 640.
   - Second round (no blockers): an upload cut off on the way is refused, not kept as a whole file (the admin site passes on the declared size; the site and the API both check it); a video marked to play turned a quarter is read upright (its shape is checked as it plays); a video whose sound runs longer than the picture, and a fragmented (streaming) MP4, fail with those words instead of "length cannot be read". Checked against real ffmpeg files: plain, fast-start, with sound, 1080p, 29.97 fps, trimmed, HEVC and VP9 (warned), QuickTime (refused).
-- Open: confirm a "carousel" means 2–5 picture ads each shown for a 15-second turn; brands upload in their own portal (P5); the hour plan and the screens' file lists will use the approved ads (P3.9.2). A full decode of each video (a sandboxed probe) comes with the real file store (P6); until then the reviewer watches the preview. Video previews do not play in Safari on the laptop fake (no partial downloads); fine in Chrome.
+- Prateek confirmed: a picture plays for a whole 15-second turn; a booking needs at least 2 ads (up to 5).
+- Open: brands upload in their own portal (P5); the hour plan and the screens' file lists will use the approved ads (P3.9.2). A full decode of each video (a sandboxed probe) comes with the real file store (P6); until then the reviewer watches the preview. Video previews do not play in Safari on the laptop fake (no partial downloads); fine in Chrome.
 - Next: P3.9.2, the review queue.
 
 ## 26 Oct 2026 · P3.8.2 · Booking for a brand

@@ -43,6 +43,7 @@ import { handleCalendar } from './calendar-api.js';
 import { handleBrands } from './brands-api.js';
 import { handleBookings } from './bookings-api.js';
 import { handleAds } from './ads-api.js';
+import { handleReviews } from './reviews-api.js';
 import {
   decoyHash,
   hashPassword,
@@ -448,6 +449,7 @@ export function apiHandler(
       if (await handleBrands(pool, cfg, req, res, nowMs)) return;
       if (await handleBookings(pool, cfg, req, res, nowMs)) return;
       if (await handleAds(pool, cfg, req, res, nowMs)) return;
+      if (await handleReviews(pool, cfg, req, res, nowMs)) return;
       throw new HttpError(404, 'Not found');
     })().catch((e: unknown) => {
       if (e instanceof HttpError) return send(res, e.status, { error: e.message });

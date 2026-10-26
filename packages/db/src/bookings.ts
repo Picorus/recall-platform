@@ -474,6 +474,9 @@ export interface StepBy {
   readonly alsoWrite?: (c: PoolClient) => Promise<unknown>;
 }
 
+/** The booking rules do not allow this step now (stepProblem's reason as the message). */
+export class StepRefused extends Error {}
+
 /** The booking moved on since the caller looked (see `StepBy.expectFrom`). */
 export class StepRace extends Error {
   constructor(
@@ -522,7 +525,7 @@ export async function moveBooking(
     if (who.expectFrom !== undefined && last.state !== who.expectFrom)
       throw new StepRace(last.state, who.expectFrom);
     const problem = stepProblem(last.state, to, now, timing, who.actor, who.reason);
-    if (problem) throw new Error(problem);
+    if (problem) throw new StepRefused(problem);
     if (last.state === 'draft' && to === 'awaiting-payment' && !last.trial) {
       // The draft's prices must still be the ones in force, and portal brands still need the lead time.
       const book = priceBookAt(await priceBooks(c), isoAt(now));
