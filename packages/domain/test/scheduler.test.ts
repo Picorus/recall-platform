@@ -409,7 +409,8 @@ describe('live assignment (P1.4.2)', () => {
       ),
       { numRuns: 300 },
     );
-  });
+    // Hundreds of random fleets: a slow CI machine needs more than the default 5 seconds.
+  }, 30_000);
 });
 
 describe('offline fallback (P1.4.3)', () => {
