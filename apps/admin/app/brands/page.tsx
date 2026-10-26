@@ -579,6 +579,7 @@ export default function BrandsPage() {
               <BookingPanel
                 key={booking}
                 bookingId={booking}
+                brandId={a.brandId}
                 canAct={isSales(me)}
                 onChange={() => {
                   loadList();

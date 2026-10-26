@@ -4,3 +4,4 @@ export * from './maps.js';
 export * from './messages.js';
 export * from './device-ca.js';
 export * from './payments.js';
+export * from './storage.js';

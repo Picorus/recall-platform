@@ -1,5 +1,11 @@
 // The API's settings from the environment (names in .env.example; values never in the repository).
-import { fakePayments, type PaymentsAdapter } from '@recall/adapters';
+import {
+  fakeFileStore,
+  fakePayments,
+  type FileStore,
+  type PaymentsAdapter,
+} from '@recall/adapters';
+import { randomBytes } from 'node:crypto';
 import { readKey } from './secrets.js';
 import type { StaffApiConfig } from './staff-api.js';
 
@@ -41,6 +47,7 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
   if (production && proxyHops < 1)
     throw new Error('API_PROXY_HOPS must be at least 1 in production (a load balancer in front)');
   const payments = paymentsFrom(env, production);
+  const files = filesFrom(env, production);
   return {
     databaseUrl: need('DATABASE_URL'),
     host: env.API_HOST || '127.0.0.1',
@@ -50,6 +57,7 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     secureCookies,
     proxyHops,
     ...(payments ? { payments } : {}),
+    ...(files ? { files } : {}),
   };
 }
 
@@ -88,4 +96,18 @@ export function paymentsFrom(
   if (!local && !env.PAYMENTS_WEBHOOK_SECRET)
     throw new Error('PAYMENTS_WEBHOOK_SECRET must be set when the API is reachable from outside');
   return fakePayments(env.PAYMENTS_WEBHOOK_SECRET ? { secret: env.PAYMENTS_WEBHOOK_SECRET } : {});
+}
+
+/**
+ * Ad files (P3.9.1). On a laptop: a fake store in memory (files are lost on a restart), its signed
+ * links served by the API through the admin site (`FILES_PUBLIC_URL`). The real store
+ * (S3-compatible) comes with the other outside services (P6); until then production has no ad files.
+ */
+export function filesFrom(env: NodeJS.ProcessEnv, production: boolean): FileStore | undefined {
+  if (production) return undefined;
+  return fakeFileStore({
+    baseUrl: env.FILES_PUBLIC_URL || 'http://localhost:3001/api/files',
+    // A fresh key on each start: the fake's files do not outlive the process either.
+    secret: randomBytes(32).toString('hex'),
+  });
 }

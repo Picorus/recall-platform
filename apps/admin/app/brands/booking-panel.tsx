@@ -8,6 +8,7 @@ import { STEP_NAMES } from '../../lib/brands';
 import { linkText } from '../../lib/bookings';
 import { clock, dayName, dayOfIndia, rupees } from '../../lib/format';
 import { hourLabel } from '../../lib/prices';
+import BookingAds from './booking-ads';
 
 interface Booking {
   readonly bookingId: string;
@@ -52,10 +53,12 @@ const PAID = ['paid', 'ads-approved'];
 
 export default function BookingPanel({
   bookingId,
+  brandId,
   canAct,
   onChange,
 }: {
   readonly bookingId: string;
+  readonly brandId: string;
   readonly canAct: boolean;
   readonly onChange: () => void;
 }) {
@@ -211,6 +214,13 @@ export default function BookingPanel({
             Cancel booking
           </button>
         </form>
+      )}
+      {b.state !== 'cancelled' && (
+        <BookingAds
+          bookingId={b.bookingId}
+          brandId={brandId}
+          canAct={canAct && at < b.firstHourAt}
+        />
       )}
       <h4 style={{ margin: 0 }}>Timeline</h4>
       <ul className="plain" aria-label="Timeline">

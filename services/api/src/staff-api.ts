@@ -6,7 +6,7 @@
 // - A new member (or one reset) gets a one-time invite link to set a password and add RECALL to
 //   their authenticator app; the code from the app is checked before the invite is used.
 // - `staffFor(req, need)` is how every other admin route asks who is calling and whether they may.
-import type { PaymentsAdapter } from '@recall/adapters';
+import type { FileStore, PaymentsAdapter } from '@recall/adapters';
 import {
   accessProblem,
   can,
@@ -42,6 +42,7 @@ import { handlePrices } from './prices-api.js';
 import { handleCalendar } from './calendar-api.js';
 import { handleBrands } from './brands-api.js';
 import { handleBookings } from './bookings-api.js';
+import { handleAds } from './ads-api.js';
 import {
   decoyHash,
   hashPassword,
@@ -71,6 +72,8 @@ export interface StaffApiConfig {
   readonly rules?: SignInRules;
   /** Brand payments (P3.8.2): the provider, or its fake on a laptop. Absent: booking pay routes say so. */
   readonly payments?: PaymentsAdapter;
+  /** Ad files (P3.9.1): the store, or its fake on a laptop. Absent: ad routes say so. */
+  readonly files?: FileStore;
 }
 
 const cookieName = (cfg: StaffApiConfig) =>
@@ -444,6 +447,7 @@ export function apiHandler(
       if (await handleCalendar(pool, cfg, req, res, nowMs)) return;
       if (await handleBrands(pool, cfg, req, res, nowMs)) return;
       if (await handleBookings(pool, cfg, req, res, nowMs)) return;
+      if (await handleAds(pool, cfg, req, res, nowMs)) return;
       throw new HttpError(404, 'Not found');
     })().catch((e: unknown) => {
       if (e instanceof HttpError) return send(res, e.status, { error: e.message });
