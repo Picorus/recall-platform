@@ -22,7 +22,7 @@ export interface AdView {
 export const MIN_ADS = 2;
 export const MAX_ADS = 5;
 
-/** "Video 1280 × 720, 15.0 s: passes the checks", or what failed / needs a look. */
+/** "Video 1280 × 640, 15.0 s: passes the checks", or what failed / needs a look. */
 export function adSummary(a: AdView): string {
   const what = a.kind === 'mp4' ? 'Video' : 'Picture';
   const size = a.width && a.height ? ` ${a.width} × ${a.height}` : '';

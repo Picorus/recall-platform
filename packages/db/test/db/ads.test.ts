@@ -48,14 +48,14 @@ describe('ads (P3.9.1)', () => {
     const v = await uploadAd(
       pool,
       store,
-      { brandId: 'chai-co', name: 'Evening offer', data: file('ad-15s-1280x720.mp4'), by: 'Sana' },
+      { brandId: 'chai-co', name: 'Evening offer', data: file('ad-15s-1280x640.mp4'), by: 'Sana' },
       NOW,
     );
     expect(v).toMatchObject({
       adId: expect.stringMatching(/^AD-[0-9A-F]{10}$/),
       kind: 'mp4',
       width: 1280,
-      height: 720,
+      height: 640,
       durationMs: 15_000,
       codec: 'avc1',
       outcome: 'pass',
@@ -68,7 +68,7 @@ describe('ads (P3.9.1)', () => {
       {
         brandId: 'chai-co',
         name: 'Evening offer (copy)',
-        data: file('ad-15s-1280x720.mp4'),
+        data: file('ad-15s-1280x640.mp4'),
         by: 'Sana',
       },
       NOW + 1,
@@ -100,7 +100,7 @@ describe('ads (P3.9.1)', () => {
       uploadAd(
         pool,
         store,
-        { brandId: 'nobody', name: 'x', data: file('ad-1280x720.png'), by: 'S' },
+        { brandId: 'nobody', name: 'x', data: file('ad-1280x640.png'), by: 'S' },
         NOW,
       ),
     ).rejects.toThrow('No brand nobody');
@@ -136,13 +136,13 @@ describe('ads (P3.9.1)', () => {
     const pic = await uploadAd(
       pool,
       store,
-      { brandId: 'chai-co', name: 'Logo card', data: file('ad-1280x720.png'), by: 'Sana' },
+      { brandId: 'chai-co', name: 'Logo card', data: file('ad-1280x640.png'), by: 'Sana' },
       NOW + 3,
     );
     const theirs = await uploadAd(
       pool,
       store,
-      { brandId: 'dosa-co', name: 'Dosa', data: file('ad-1280x720.jpg'), by: 'Sana' },
+      { brandId: 'dosa-co', name: 'Dosa', data: file('ad-1280x640.jpg'), by: 'Sana' },
       NOW + 3,
     );
     await expect(setBookingAds(pool, 'BK-AD-1', [ok[0] ?? ''], 'Sana', NOW)).rejects.toThrow(
@@ -170,15 +170,15 @@ describe('ads (P3.9.1)', () => {
     const up = (data: Uint8Array, name = 'Hostile', brandId = 'chai-co', s: FileStore = store) =>
       uploadAd(pool, s, { brandId, name, data, by: 'S' }, NOW);
     // A header claiming 4294967295 × 4294967295 pixels: not believed, recorded as failed.
-    const wide = file('ad-1280x720.png');
+    const wide = file('ad-1280x640.png');
     new DataView(wide.buffer).setUint32(16, 0xffffffff);
     new DataView(wide.buffer).setUint32(20, 0xffffffff);
     expect(await up(wide)).toMatchObject({ width: null, height: null, outcome: 'fail' });
     // A header with no picture in it: recorded as failed.
-    expect((await up(file('ad-1280x720.png').slice(0, 33))).outcome).toBe('fail');
+    expect((await up(file('ad-1280x640.png').slice(0, 33))).outcome).toBe('fail');
     expect(store.files.size).toBe(files + 2);
     // A name with a control character, a closed brand: refused, nothing stored.
-    await expect(up(file('ad-1280x720.webp'), 'a\u0000b')).rejects.toThrow(
+    await expect(up(file('ad-1280x640.webp'), 'a\u0000b')).rejects.toThrow(
       'a character that is not allowed',
     );
     await createAccount(
@@ -192,7 +192,7 @@ describe('ads (P3.9.1)', () => {
       },
       NOW,
     );
-    await expect(up(file('ad-1280x720.webp'), 'x', 'gone-co')).rejects.toThrow('Gone Co is closed');
+    await expect(up(file('ad-1280x640.webp'), 'x', 'gone-co')).rejects.toThrow('Gone Co is closed');
     expect(store.files.size).toBe(files + 2);
     // The store fails: no row is kept for a file that was never stored.
     const before = (await brandAds(pool, 'chai-co')).length;
@@ -200,7 +200,7 @@ describe('ads (P3.9.1)', () => {
       ...store,
       put: () => Promise.reject(new Error('store down')),
     };
-    await expect(up(file('ad-1280x720.webp'), 'x', 'chai-co', broken)).rejects.toThrow(
+    await expect(up(file('ad-1280x640.webp'), 'x', 'chai-co', broken)).rejects.toThrow(
       'store down',
     );
     expect((await brandAds(pool, 'chai-co')).length).toBe(before);

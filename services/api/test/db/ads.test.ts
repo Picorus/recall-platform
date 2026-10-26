@@ -78,17 +78,17 @@ describe('ad routes (P3.9.1)', () => {
     const sana = await member('sana@recall.in', { role: 'admin', areas: ['sales'] });
     const rev = await member('ravi@recall.in', { role: 'read-only', areas: ['ad-review'] });
     const fin = await member('farah@recall.in', { role: 'admin', areas: ['finance'] });
-    expect((await upload(rev, 'x', fixture('ad-1280x720.png'))).status).toBe(403);
-    const up = await upload(sana, 'Evening offer', fixture('ad-15s-1280x720.mp4'));
+    expect((await upload(rev, 'x', fixture('ad-1280x640.png'))).status).toBe(403);
+    const up = await upload(sana, 'Evening offer', fixture('ad-15s-1280x640.mp4'));
     expect(up).toMatchObject({
       status: 200,
       body: { ad: { kind: 'mp4', durationMs: 15_000, outcome: 'pass' } },
     });
-    expect((await upload(sana, 'Second', fixture('ad-1280x720.jpg'))).status).toBe(200);
+    expect((await upload(sana, 'Second', fixture('ad-1280x640.jpg'))).status).toBe(200);
     expect((await upload(sana, 'Not an ad', Buffer.from('%PDF-1.7 hello there'))).body.error).toBe(
       'Not a picture (PNG, JPEG, WebP) or an MP4 video',
     );
-    expect((await upload(sana, '', fixture('ad-1280x720.png'))).body.error).toBe(
+    expect((await upload(sana, '', fixture('ad-1280x640.png'))).body.error).toBe(
       'Give the ad a name (1 to 80 characters)',
     );
     // A file that arrives shorter than its declared size (the browser dropped) is not kept.
@@ -98,16 +98,16 @@ describe('ad routes (P3.9.1)', () => {
         cookie: sana,
         origin: ORIGIN,
         'content-type': 'application/octet-stream',
-        'x-upload-bytes': String(fixture('ad-1280x720.jpg').length + 100),
+        'x-upload-bytes': String(fixture('ad-1280x640.jpg').length + 100),
       },
-      body: fixture('ad-1280x720.jpg'),
+      body: fixture('ad-1280x640.jpg'),
     });
     expect([cut.status, ((await cut.json()) as { error: string }).error]).toEqual([
       400,
       'The upload was cut off. Try again.',
     ]);
     // A control character in the name is refused (not a database error).
-    expect(await upload(sana, 'a\u0000b', fixture('ad-1280x720.png'))).toEqual({
+    expect(await upload(sana, 'a\u0000b', fixture('ad-1280x640.png'))).toEqual({
       status: 400,
       body: { error: 'The ad name has a character that is not allowed' },
     });
@@ -129,7 +129,7 @@ describe('ad routes (P3.9.1)', () => {
     // Never run as a page if opened directly; not kept past the link's life.
     expect(file.headers.get('content-security-policy')).toBe('sandbox');
     expect(file.headers.get('cache-control')).toBe('private, max-age=600');
-    expect(Buffer.from(await file.arrayBuffer()).equals(fixture('ad-15s-1280x720.mp4'))).toBe(true);
+    expect(Buffer.from(await file.arrayBuffer()).equals(fixture('ad-15s-1280x640.mp4'))).toBe(true);
     const forged = `${url}${link.pathname.replace('/api', '')}?until=${Math.floor(now / 1000) + 99_999}&sig=${'0'.repeat(64)}`;
     expect((await fetch(forged)).status).toBe(403);
 

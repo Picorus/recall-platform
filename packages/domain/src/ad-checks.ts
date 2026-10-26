@@ -1,8 +1,10 @@
 // P3.9.1: the automatic checks an uploaded ad goes through before a person reviews it. An ad is one
 // file the screen plays for a whole 15-second spot: a picture (PNG, JPEG or WebP, shown for the
-// spot) or a video (MP4). The file's own bytes are read, never its name or what the uploader says:
-// what kind it is, its size in pixels, and for a video its length and how it is compressed. Each
-// check passes, warns (a person decides) or fails (it cannot be approved). The limits are settings.
+// spot; a brand's "carousel" is 2 to 5 of these taking turns) or a video (MP4). Prateek's rule
+// (DECISIONS, 22 Oct 2026): 1280 × 640, no sound, up to 30 MB, 15 seconds. The file's own bytes
+// are read, never its name or what the uploader says: what kind it is, its size in pixels, and for
+// a video its length, sound and compression. Each check passes, warns (a person decides) or fails
+// (it cannot be approved). The limits are settings.
 // What no machine can judge (flashing, looking like a road sign, banned categories) is the reviewer's
 // checklist (P3.9.2).
 
@@ -15,8 +17,8 @@ export interface AdRules {
   readonly lengthToleranceMs: number;
   /** The shorter side must be at least this many pixels (a smaller ad looks blurred). */
   readonly minShortSide: number;
-  /** The screen's shape, width ÷ height in thousandths (16:9 = 1778); off by more than the
-   * tolerance (thousandths of it) is a warning: the ad would be cropped or framed. */
+  /** The screen's shape, width ÷ height in thousandths (1280 × 640 = 2000); off by more than the
+   * tolerance (thousandths of it) fails: the ad would be cropped or framed. */
   readonly screenAspectMilli: number;
   readonly aspectToleranceMilli: number;
   /** Video compressions the screens play well; others are a warning. */
@@ -24,12 +26,12 @@ export interface AdRules {
 }
 
 export const DEFAULT_AD_RULES: AdRules = {
-  maxPictureBytes: 10 * 1024 * 1024,
-  maxVideoBytes: 64 * 1024 * 1024,
+  maxPictureBytes: 30 * 1024 * 1024,
+  maxVideoBytes: 30 * 1024 * 1024,
   spotMs: 15_000,
   lengthToleranceMs: 500,
   minShortSide: 480,
-  screenAspectMilli: 1778,
+  screenAspectMilli: 2000,
   aspectToleranceMilli: 100,
   goodCodecs: ['avc1'],
 };
@@ -47,6 +49,8 @@ export interface AdFacts {
   /** The file holds picture data (a picture) or a video track with its frames (a video), not
    * just a header. */
   readonly media: boolean;
+  /** A video with a sound track (the screens play none). */
+  readonly sound?: boolean;
   /** Why a video's frames or length could not be accepted, in words (when known). */
   readonly problem?: string | null;
 }
@@ -54,7 +58,7 @@ export interface AdFacts {
 export type CheckOutcome = 'pass' | 'warn' | 'fail';
 
 export interface AdCheck {
-  readonly check: 'kind' | 'content' | 'size' | 'pixels' | 'shape' | 'length' | 'codec';
+  readonly check: 'kind' | 'content' | 'size' | 'pixels' | 'shape' | 'length' | 'sound' | 'codec';
   readonly outcome: CheckOutcome;
   readonly detail: string;
 }
@@ -67,6 +71,9 @@ const u24le = (b: Uint8Array, at: number) => u16le(b, at) + (b[at + 2] ?? 0) * 6
 const u32be = (b: Uint8Array, at: number) => u16be(b, at) * 65_536 + u16be(b, at + 2);
 const u32le = (b: Uint8Array, at: number) => u16le(b, at) + u16le(b, at + 2) * 65_536;
 const u64be = (b: Uint8Array, at: number) => u32be(b, at) * 4_294_967_296 + u32be(b, at + 4);
+
+/** The most any ad-size setting may allow (what the upload path accepts at all). */
+export const MAX_AD_UPLOAD_BYTES = 64 * 1024 * 1024;
 
 /** Sizes and lengths past these are not believed (a damaged or hostile header): unreadable. */
 const MAX_SIDE = 16_384;
@@ -205,6 +212,7 @@ export function mp4Facts(b: Uint8Array): {
   height: number | null;
   codec: string | null;
   media: boolean;
+  sound: boolean;
   problem: string | null;
 } {
   let movieMs: number | null = null;
@@ -287,7 +295,8 @@ export function mp4Facts(b: Uint8Array): {
   };
   walk(0, b.length, 0, null);
   const video = tracks.find((t) => t.handler === 'vide');
-  const none = { durationMs: null, width: null, height: null, codec: null, media: false };
+  const sound = tracks.some((t) => t.handler === 'soun');
+  const none = { durationMs: null, width: null, height: null, codec: null, media: false, sound };
   if (fragmented)
     return { ...none, problem: 'a fragmented (streaming) MP4: export it as a normal MP4' };
   if (!video) return { ...none, problem: 'no video track in it' };
@@ -314,6 +323,7 @@ export function mp4Facts(b: Uint8Array): {
     height: sized ? video.height : null,
     codec: video.codec,
     media: mdat && (video.sampleDur ?? 0) > 0,
+    sound,
     problem,
   };
 }
@@ -336,6 +346,7 @@ export function adFacts(b: Uint8Array): AdFacts {
     durationMs: f.durationMs,
     codec: f.codec,
     media: f.media ?? false,
+    sound: 'sound' in f ? f.sound : false,
     problem: 'problem' in f ? f.problem : null,
   };
 }
@@ -397,8 +408,8 @@ export function checkAd(f: AdFacts, rules: AdRules = DEFAULT_AD_RULES): AdCheck[
       off > rules.aspectToleranceMilli * rules.screenAspectMilli
         ? {
             check: 'shape',
-            outcome: 'warn',
-            detail: `shape ${(aspect / 1000).toFixed(2)} : 1, the screen is ${(rules.screenAspectMilli / 1000).toFixed(2)} : 1 (it will be framed or cropped)`,
+            outcome: 'fail',
+            detail: `shape ${(aspect / 1000).toFixed(2)} : 1: the screen is ${(rules.screenAspectMilli / 1000).toFixed(2)} : 1 (make it 1280 × 640)`,
           }
         : { check: 'shape', outcome: 'pass', detail: 'fits the screen' },
     );
@@ -421,6 +432,12 @@ export function checkAd(f: AdFacts, rules: AdRules = DEFAULT_AD_RULES): AdCheck[
             }
           : { check: 'length', outcome: 'pass', detail: `${(f.durationMs / 1000).toFixed(1)} s` },
       );
+    if (f.sound)
+      out.push({
+        check: 'sound',
+        outcome: 'warn',
+        detail: 'it has sound: the screens play none (the picture must work without it)',
+      });
     out.push(
       f.codec !== null && rules.goodCodecs.includes(f.codec)
         ? { check: 'codec', outcome: 'pass', detail: f.codec }
@@ -462,7 +479,7 @@ export function checkAdRules(r: AdRules): string[] {
     r.aspectToleranceMilli > 1_000
   )
     problems.push('ad shape tolerance must be 0 to 100%');
-  if (r.maxVideoBytes > 64 * 1024 * 1024 || r.maxPictureBytes > r.maxVideoBytes)
+  if (r.maxVideoBytes > MAX_AD_UPLOAD_BYTES || r.maxPictureBytes > r.maxVideoBytes)
     problems.push('ad files are at most 64 MB (pictures no larger than videos)');
   return problems;
 }

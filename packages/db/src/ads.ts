@@ -20,6 +20,7 @@ import { inTransaction } from './makeups.js';
 import { Refusal } from './refusal.js';
 
 type Q = Pick<Pool, 'query'>;
+const mbText = (n: number) => `${(n / 1024 / 1024).toFixed(1)} MB`;
 const secs = (d: Date) => Math.floor(d.getTime() / 1000);
 
 export interface Ad {
@@ -105,6 +106,10 @@ export async function uploadAd(
   const facts = adFacts(a.data);
   const checks = checkAd(facts, book.ads);
   if (facts.kind === null) throw new Refusal('Not a picture (PNG, JPEG, WebP) or an MP4 video');
+  // Too large is refused outright: never stored (a failed check would keep the file).
+  const max = facts.kind === 'mp4' ? book.ads.maxVideoBytes : book.ads.maxPictureBytes;
+  if (facts.bytes > max)
+    throw new Refusal(`The file is ${mbText(facts.bytes)}: at most ${mbText(max)}`);
   const kind = facts.kind;
   const key = fileKey(a.data);
   const adId = `AD-${randomBytes(5).toString('hex').toUpperCase()}`;

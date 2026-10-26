@@ -513,8 +513,8 @@ it('booking for a brand: a draft from its page, the payment link, paid, the time
     await form.getByRole('button', { name: 'Upload' }).click();
     await ads.getByRole('status').filter({ hasText: name }).waitFor();
   };
-  await up('Evening video', 'ad-15s-1280x720.mp4');
-  await up('Logo card', 'ad-1280x720.png');
+  await up('Evening video', 'ad-15s-1280x640.mp4');
+  await up('Logo card', 'ad-1280x640.png');
   await up('Too short', 'ad-3s-1280x640.mp4');
   await ads
     .getByRole('listitem')

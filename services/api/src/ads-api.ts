@@ -7,7 +7,7 @@
 // And, on a laptop only (the fake store), the files themselves through signed links:
 //   GET  /files/<key>?until=<s>&sig=<hex>
 import type { FileStore } from '@recall/adapters';
-import { can, MAX_AD_BYTES, type StaffAccess } from '@recall/domain';
+import { can, MAX_AD_UPLOAD_BYTES, type StaffAccess } from '@recall/domain';
 import { bookingAds, brandAds, Refusal, setBookingAds, uploadAd, type Ad } from '@recall/db';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Pool } from 'pg';
@@ -136,7 +136,7 @@ export async function handleAds(
       throw new HttpError(503, 'Other uploads are running. Try again in a minute.');
     uploading += 1;
     try {
-      const data = await bodyBytes(req, MAX_AD_BYTES, UPLOAD_SECONDS);
+      const data = await bodyBytes(req, MAX_AD_UPLOAD_BYTES, UPLOAD_SECONDS);
       const ad = await refusedAs400(() =>
         uploadAd(pool, store, { brandId, name: q.get('name') ?? '', data, by: who }, now),
       );

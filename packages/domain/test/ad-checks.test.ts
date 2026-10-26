@@ -18,20 +18,20 @@ const file = (name: string) =>
 describe('ad checks (P3.9.1)', () => {
   it('reads pictures and videos from their own bytes', () => {
     for (const [name, kind] of [
-      ['ad-1280x720.png', 'png'],
-      ['ad-1280x720.jpg', 'jpeg'],
-      ['ad-1280x720.webp', 'webp'],
+      ['ad-1280x640.png', 'png'],
+      ['ad-1280x640.jpg', 'jpeg'],
+      ['ad-1280x640.webp', 'webp'],
     ] as const)
       expect(adFacts(file(name)), name).toMatchObject({
         kind,
         width: 1280,
-        height: 720,
+        height: 640,
         durationMs: null,
       });
-    expect(adFacts(file('ad-15s-1280x720.mp4'))).toMatchObject({
+    expect(adFacts(file('ad-15s-1280x640.mp4'))).toMatchObject({
       kind: 'mp4',
       width: 1280,
-      height: 720,
+      height: 640,
       durationMs: 15_000,
       codec: 'avc1',
     });
@@ -44,16 +44,16 @@ describe('ad checks (P3.9.1)', () => {
   });
 
   it('a 15-second H.264 video of the screen’s shape passes; a picture too', () => {
-    expect(checkAd(adFacts(file('ad-15s-1280x720.mp4')))).toEqual([
+    expect(checkAd(adFacts(file('ad-15s-1280x640.mp4')))).toEqual([
       { check: 'kind', outcome: 'pass', detail: 'MP4 video' },
       { check: 'content', outcome: 'pass', detail: 'has a video track' },
       { check: 'size', outcome: 'pass', detail: '0.0 MB' },
-      { check: 'pixels', outcome: 'pass', detail: '1280 × 720' },
+      { check: 'pixels', outcome: 'pass', detail: '1280 × 640' },
       { check: 'shape', outcome: 'pass', detail: 'fits the screen' },
       { check: 'length', outcome: 'pass', detail: '15.0 s' },
       { check: 'codec', outcome: 'pass', detail: 'avc1' },
     ]);
-    expect(worst(checkAd(adFacts(file('ad-1280x720.jpg'))))).toBe('pass');
+    expect(worst(checkAd(adFacts(file('ad-1280x640.jpg'))))).toBe('pass');
   });
 
   it('fails what cannot run, warns what a person should look at', () => {
@@ -63,8 +63,22 @@ describe('ad checks (P3.9.1)', () => {
       outcome: 'fail',
       detail: '3.0 s: a video must last 15 s',
     });
-    // 2:1 against a 16:9 screen: framed or cropped, a person decides.
-    expect(short.find((c) => c.check === 'shape')?.outcome).toBe('warn');
+    // The screen is 2:1 (1280 × 640): a 16:9 ad would be framed or cropped, so it fails.
+    expect(short.find((c) => c.check === 'shape')?.outcome).toBe('pass');
+    expect(checkAd(adFacts(file('ad-15s-1280x720.mp4'))).find((c) => c.check === 'shape')).toEqual({
+      check: 'shape',
+      outcome: 'fail',
+      detail: 'shape 1.78 : 1: the screen is 2.00 : 1 (make it 1280 × 640)',
+    });
+    expect(worst(checkAd(adFacts(file('ad-1280x720.png'))))).toBe('fail');
+    // Sound: the screens play none, a person checks the picture works without it.
+    expect(
+      checkAd(adFacts(file('ad-15s-with-sound.mp4'))).find((c) => c.check === 'sound'),
+    ).toEqual({
+      check: 'sound',
+      outcome: 'warn',
+      detail: 'it has sound: the screens play none (the picture must work without it)',
+    });
     expect(checkAd(adFacts(new TextEncoder().encode('%PDF-1.7 not an ad at all')))).toEqual([
       { check: 'kind', outcome: 'fail', detail: 'not a PNG, JPEG or WebP picture or an MP4 video' },
     ]);
@@ -78,13 +92,13 @@ describe('ad checks (P3.9.1)', () => {
       media: true,
     };
     expect(checkAd(tiny).find((c) => c.check === 'pixels')).toMatchObject({ outcome: 'fail' });
-    const huge = { ...tiny, width: 1920, height: 1080, bytes: 11 * 1024 * 1024 };
+    const huge = { ...tiny, width: 1280, height: 640, bytes: 31 * 1024 * 1024 };
     expect(checkAd(huge).find((c) => c.check === 'size')).toEqual({
       check: 'size',
       outcome: 'fail',
-      detail: '11.0 MB: at most 10.0 MB',
+      detail: '31.0 MB: at most 30.0 MB',
     });
-    const hevc = { ...adFacts(file('ad-15s-1280x720.mp4')), codec: 'hvc1' };
+    const hevc = { ...adFacts(file('ad-15s-1280x640.mp4')), codec: 'hvc1' };
     expect(checkAd(hevc).find((c) => c.check === 'codec')?.outcome).toBe('warn');
     // The rules are settings, checked before they can be saved.
     expect(checkAdRules(DEFAULT_AD_RULES)).toEqual([]);
@@ -92,7 +106,7 @@ describe('ad checks (P3.9.1)', () => {
   });
 
   it('never breaks on any bytes (a damaged or hostile upload)', () => {
-    const real = file('ad-15s-1280x720.mp4');
+    const real = file('ad-15s-1280x640.mp4');
     fc.assert(
       fc.property(
         fc.uint8Array({ maxLength: 4096 }),
@@ -117,8 +131,8 @@ describe('ad checks (P3.9.1)', () => {
   });
 
   it('does not believe a header alone: crafted, empty or mislabelled files fail', () => {
-    const png = file('ad-1280x720.png');
-    const mp4 = file('ad-15s-1280x720.mp4');
+    const png = file('ad-1280x640.png');
+    const mp4 = file('ad-15s-1280x640.mp4');
     const outcome = (b: Uint8Array, check: string) =>
       checkAd(adFacts(b)).find((c) => c.check === check)?.outcome;
     const set32 = (b: Uint8Array, at: number, v: number) =>
@@ -173,14 +187,14 @@ describe('ad checks (P3.9.1)', () => {
       detail: 'a fragmented (streaming) MP4: export it as a normal MP4',
     });
     // Recorded wide but marked to play turned a quarter: it plays tall.
-    expect(adFacts(file('ad-15s-rotated.mp4'))).toMatchObject({ width: 720, height: 1280 });
-    expect(fail('ad-15s-rotated.mp4', 'shape')?.outcome).toBe('warn');
+    expect(adFacts(file('ad-15s-rotated.mp4'))).toMatchObject({ width: 640, height: 1280 });
+    expect(fail('ad-15s-rotated.mp4', 'shape')?.outcome).toBe('fail');
   });
 
   it('reads a large hostile file quickly (a bounded number of boxes)', () => {
     // 16 MB of empty 8-byte boxes after a real header.
     const many = new Uint8Array(16 * 1024 * 1024);
-    many.set(file('ad-15s-1280x720.mp4').slice(0, 32));
+    many.set(file('ad-15s-1280x640.mp4').slice(0, 32));
     for (let at = 32; at + 8 <= many.length; at += 8) {
       many[at + 3] = 8;
       many.set([0x66, 0x72, 0x65, 0x65], at + 4);
