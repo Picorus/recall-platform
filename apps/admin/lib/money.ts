@@ -25,7 +25,7 @@ export interface MoneyMonth {
   readonly month: string;
   readonly position: {
     readonly heldForCampaignsPaise: number;
-    readonly owedBack: readonly { brandId: string; brandName: string; paise: number }[];
+    readonly owedBack: readonly { brandId: string | null; brandName: string; paise: number }[];
     readonly owedToAgenciesPaise: number;
     readonly owedToAggregatorsPaise: number;
     readonly owedToRidersPaise: number;
@@ -112,6 +112,7 @@ export interface OwedBackItem {
 
 export interface OwedBackList {
   readonly items: readonly OwedBackItem[];
+  readonly truncated: boolean;
   readonly canPay: boolean;
   readonly canSend: boolean;
 }

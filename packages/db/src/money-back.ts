@@ -3,6 +3,7 @@
 // wrong amount). Finance sends it back through the payment provider against the brand's payment
 // (the same key every try, so it is never sent twice), or, when that cannot work, records a bank
 // transfer made by hand. Either way the money leaves the books once, with who, when and how.
+import { createHash } from 'node:crypto';
 import { moneyPaidBack } from '@recall/domain';
 import type { PaymentsAdapter, RefundResult } from '@recall/adapters';
 import type { Pool, PoolClient } from 'pg';
@@ -13,6 +14,11 @@ type Q = Pick<PoolClient, 'query'>;
 
 /** Tries through the provider before it is given up (then it is paid by hand). */
 export const MAX_MONEY_BACK_TRIES = 3;
+/** How long the provider has to answer before it counts as no answer (asked again later). */
+const PROVIDER_WAIT_MS = 30_000;
+/** Written, and committed, before the provider is asked: an answer lost after it was sent never
+ * leaves the item looking unsent (so it is never also paid by hand). */
+const ASKED = 'asked the provider';
 
 export type MoneyBackState = 'owed' | 'pending' | 'failed' | 'given up' | 'refunded' | 'by-hand';
 
@@ -107,7 +113,7 @@ async function items(c: Q, only: string | null, open: boolean): Promise<MoneyBac
         last?.status === 'by-hand'
           ? `bank transfer ${last.provider_ref ?? ''}`
           : (last?.reason ?? null),
-      tries: mine.filter((t) => t.status !== 'by-hand' && t.status !== 'given up').length,
+      tries: mine.filter((t) => t.reason === ASKED).length,
       history: mine.map((t) => ({
         at: secs(t.at),
         by: t.by_name ?? t.by_who,
@@ -133,21 +139,59 @@ const mayPay = (by: { readonly role: string }) => {
     throw new Refusal('Only finance or a super admin sends money back');
 };
 
-/** One sender at a time (held across the provider call); `work` gets the held connection. */
-async function oneAtATime<T>(pool: Pool, work: (c: PoolClient) => Promise<T>): Promise<T> {
+/**
+ * One sender at a time for each amount owed back (held across the provider call); `work` gets the
+ * held connection. A connection that broke is not given back to the pool.
+ */
+async function oneAtATime<T>(
+  pool: Pool,
+  owedEntry: string,
+  work: (c: PoolClient) => Promise<T>,
+): Promise<T> {
   const c = await pool.connect();
+  const lock = `money-back:${owedEntry}`;
+  let broken: Error | undefined;
   try {
-    const got = await c.query<{ ok: boolean }>(
-      "SELECT pg_try_advisory_lock(hashtext('money-back')) AS ok",
-    );
-    if (!got.rows[0]?.ok) throw new Refusal('Money is being sent back just now: try again');
+    const got = await c.query<{ ok: boolean }>('SELECT pg_try_advisory_lock(hashtext($1)) AS ok', [
+      lock,
+    ]);
+    if (!got.rows[0]?.ok) throw new Refusal('This is being sent back just now: try again');
     try {
       return await work(c);
     } finally {
-      await c.query("SELECT pg_advisory_unlock(hashtext('money-back'))");
+      await c.query('SELECT pg_advisory_unlock(hashtext($1))', [lock]).catch((e: unknown) => {
+        broken = e instanceof Error ? e : new Error(String(e));
+      });
     }
   } finally {
-    c.release();
+    c.release(broken);
+  }
+}
+
+/** The provider's key for one try: the same until a try fails for sure (then a new one, since a
+ * provider may replay a failure under its key), short enough for any provider. */
+const refundKey = (owedEntry: string, failures: number) =>
+  `mb_${createHash('sha256').update(`${owedEntry}#${failures}`).digest('hex').slice(0, 32)}`;
+
+/** The provider's answer, or no answer (pending) if it throws or takes too long. */
+async function ask(provider: PaymentsAdapter, req: Parameters<PaymentsAdapter['refund']>[0]) {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      provider.refund(req),
+      new Promise<never>((_, no) => {
+        timer = setTimeout(() => no(new Error('took too long')), PROVIDER_WAIT_MS);
+      }),
+    ]);
+  } catch (e) {
+    // It may have gone through, so it waits: asked again with the same key.
+    const result: RefundResult = {
+      status: 'pending',
+      providerRef: `no answer: ${e instanceof Error ? e.message : String(e)}`.slice(0, 200),
+    };
+    return result;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -198,7 +242,7 @@ export async function sendMoneyBack(
   now: number = Math.floor(Date.now() / 1000),
 ): Promise<MoneyBackState> {
   mayPay(by);
-  return oneAtATime(pool, async (c) => {
+  return oneAtATime(pool, owedEntry, async (c) => {
     const item = await moneyBackItem(c, owedEntry);
     if (!item) throw new Refusal(`Nothing owed back as ${owedEntry}`);
     if (DONE.includes(item.state)) throw new Refusal(`This was already sent back (${item.state})`);
@@ -206,23 +250,20 @@ export async function sendMoneyBack(
       throw new Refusal('The provider could not send this back: pay it by bank transfer');
     if (!item.paymentId)
       throw new Refusal('No payment to send it back against: pay it by bank transfer');
-    let result: RefundResult;
-    try {
-      result = await provider.refund({
-        refundKey: owedEntry,
-        paymentId: item.paymentId,
-        amountPaise: item.amountPaise,
-        note: `${item.kind} ${item.bookingId ?? ''}`.trim(),
-      });
-    } catch (e) {
-      // No answer: it may have gone through, so it waits (asked again with the same key).
-      result = {
-        status: 'pending',
-        providerRef: `no answer: ${e instanceof Error ? e.message : String(e)}`.slice(0, 200),
-      };
-    }
+    const paymentId = item.paymentId;
+    const base = { paymentId, by: by.id, at: now };
+    const failuresBefore = item.history.filter((h) => h.text.startsWith('failed')).length;
+    // First on the books (committed): the provider is being asked.
+    await inTx(c, () =>
+      record(c, owedEntry, { ...base, status: 'pending', ref: null, reason: ASKED }),
+    );
+    const result = await ask(provider, {
+      refundKey: refundKey(owedEntry, failuresBefore),
+      paymentId,
+      amountPaise: item.amountPaise,
+      note: `${item.kind} ${item.bookingId ?? ''}`.trim(),
+    });
     return inTx(c, async () => {
-      const base = { paymentId: item.paymentId, by: by.id, at: now };
       if (result.status === 'refunded') {
         await record(c, owedEntry, {
           ...base,
@@ -255,7 +296,7 @@ export async function sendMoneyBack(
         return 'pending';
       }
       await record(c, owedEntry, { ...base, status: 'failed', ref: null, reason: result.reason });
-      const failures = item.history.filter((h) => h.text.startsWith('failed')).length + 1;
+      const failures = failuresBefore + 1;
       if (!result.retryable || failures >= MAX_MONEY_BACK_TRIES) {
         await record(c, owedEntry, {
           ...base,
@@ -272,7 +313,9 @@ export async function sendMoneyBack(
 
 /**
  * Records an amount owed back as paid by a bank transfer finance made by hand (its bank reference).
- * Not while the provider may still be sending it (pending): ask the provider first.
+ * Not while the provider may still be sending it (pending): ask it again first. If the provider
+ * never answers, only a super admin may record it, after checking with the provider that nothing
+ * was sent (said in the note).
  */
 export async function recordMoneyBackByHand(
   pool: Pool,
@@ -289,12 +332,14 @@ export async function recordMoneyBackByHand(
   // eslint-disable-next-line no-control-regex
   if (note.length > 300 || /[\u0000-\u001f\u007f]/.test(note))
     throw new Refusal('The note: up to 300 letters');
-  await oneAtATime(pool, async (c) => {
+  await oneAtATime(pool, owedEntry, async (c) => {
     const item = await moneyBackItem(c, owedEntry);
     if (!item) throw new Refusal(`Nothing owed back as ${owedEntry}`);
     if (DONE.includes(item.state)) throw new Refusal(`This was already sent back (${item.state})`);
-    if (item.state === 'pending')
-      throw new Refusal('The provider may still send this: press Send again to ask it first');
+    if (item.state === 'pending' && (by.role !== 'super-admin' || note.length < 10))
+      throw new Refusal(
+        'The provider may still send this: press Send again to ask it (if it never answers, a super admin records the transfer after checking with the provider, saying so in the note)',
+      );
     const who = await nameOf(c, by.id);
     await inTx(c, async () => {
       await record(c, owedEntry, {

@@ -70,9 +70,12 @@ export async function handleMoney(
     return true;
   }
   if (path === '/money/owed-back') {
+    const items = await moneyOwedBack(pool);
     send(res, 200, {
       at: now,
-      items: await moneyOwedBack(pool),
+      items,
+      // The list stops at the 500 oldest.
+      truncated: items.length >= 500,
       canPay: ['finance', 'super-admin'].includes(moneyRole(me.access)),
       canSend: cfg.payments !== undefined,
     });

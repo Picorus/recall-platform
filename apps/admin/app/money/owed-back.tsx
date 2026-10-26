@@ -14,10 +14,12 @@ function Actions({
   item,
   canSend,
   onDone,
+  onRefresh,
 }: {
   readonly item: OwedBackItem;
   readonly canSend: boolean;
   readonly onDone: (note: string) => void;
+  readonly onRefresh: () => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -30,7 +32,11 @@ function Actions({
     setError('');
     api<{ state: string }>(`/money/owed-back/${path}`, { owedEntry: item.owedEntry, ...body })
       .then((x) => onDone(done(x)))
-      .catch((e: unknown) => setError(failed(e)))
+      .catch((e: unknown) => {
+        setError(failed(e));
+        // Someone else may have moved it on: show where it stands now.
+        onRefresh();
+      })
       .finally(() => setBusy(false));
   };
   return (
@@ -124,6 +130,7 @@ export default function OwedBack({ onChanged }: { readonly onChanged: () => void
     <section className="rc-card stack" aria-label="Owed back to brands">
       <h2 style={{ margin: 0 }}>Owed back to brands ({list.items.length})</h2>
       {note && <p role="status">{note}</p>}
+      {list.truncated && <p className="error">Only the 500 oldest are shown.</p>}
       {list.items.length === 0 ? (
         <p className="muted">Nothing owed back.</p>
       ) : (
@@ -184,6 +191,7 @@ export default function OwedBack({ onChanged }: { readonly onChanged: () => void
                           load();
                           onChanged();
                         }}
+                        onRefresh={load}
                       />
                     )}
                   </td>

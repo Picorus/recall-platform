@@ -134,7 +134,7 @@ export interface MoneyPosition {
   /** Paid by brands for campaigns not yet delivered (before GST). */
   readonly heldForCampaignsPaise: number;
   /** Owed back to brands (refunds approved, payments after a cancellation or of a wrong amount). */
-  readonly owedBack: readonly { brandId: string; brandName: string; paise: number }[];
+  readonly owedBack: readonly { brandId: string | null; brandName: string; paise: number }[];
   /** Cuts owed to agencies and to aggregators (after TDS). */
   readonly owedToAgenciesPaise: number;
   readonly owedToAggregatorsPaise: number;
@@ -155,16 +155,17 @@ export async function moneyPosition(c: Q): Promise<MoneyPosition> {
       GROUP BY account`,
   );
   const bal = (a: string) => Number(r.rows.find((x) => x.account === a)?.balance ?? 0);
-  const back = await c.query<{ party: string; name: string; paise: string }>(
+  const back = await c.query<{ party: string | null; name: string | null; paise: string }>(
     `SELECT party, ${BRAND_NAME('party')} AS name, sum(credit - debit) AS paise
-       FROM ledger_postings WHERE account = 'refunds-payable' AND party IS NOT NULL
-      GROUP BY party HAVING sum(credit - debit) <> 0 ORDER BY party`,
+       FROM ledger_postings WHERE account = 'refunds-payable'
+      GROUP BY party HAVING sum(credit - debit) <> 0 ORDER BY party NULLS LAST`,
   );
   return {
     heldForCampaignsPaise: bal('campaign-held'),
+    // A payment for a link we have no record of has no brand: listed as "brand not known".
     owedBack: back.rows.map((x) => ({
       brandId: x.party,
-      brandName: x.name,
+      brandName: x.name ?? 'brand not known',
       paise: Number(x.paise),
     })),
     owedToAgenciesPaise: bal('agency-payable'),

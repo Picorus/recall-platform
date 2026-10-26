@@ -128,10 +128,13 @@ describe('money owed back (P3.13.2)', () => {
     await expect(
       recordMoneyBackByHand(pool, id, { reference: 'UTR123456', note: '' }, FINANCE, NOW + 520),
     ).rejects.toThrow(/already sent back/);
-    expect(payments.refunds.filter((r) => r.refundKey === id)).toHaveLength(1);
+    expect(payments.refunds.filter((r) => r.paymentId === pay1)).toHaveLength(1);
     expect(payments.refunds[0]).toMatchObject({ paymentId: pay1, amountPaise: 590_000 });
+    // A short key for the provider, never the entry itself.
+    expect(payments.refunds[0]?.refundKey).toMatch(/^mb_[0-9a-f]{32}$/);
     expect(await owedBack()).toBe(2_124_000);
     expect((await moneyBackItem(pool, id))?.history.map((h) => [h.by, h.text])).toEqual([
+      ['meena', 'pending: asked the provider'],
       ['meena', 'refunded'],
     ]);
   });
@@ -147,6 +150,12 @@ describe('money owed back (P3.13.2)', () => {
     ).rejects.toThrow(/may still send/);
     expect(await sendMoneyBack(pool, id, payments, FINANCE, NOW + 800)).toBe('refunded');
     expect(await owedBack()).toBe(0);
+    // A new key after the failure (a provider replays a failure under its key), then the same key
+    // while pending.
+    const keys = payments.refunds.filter((r) => r.paymentId === pay2).map((r) => r.refundKey);
+    expect(keys).toHaveLength(3);
+    expect(keys[0]).not.toBe(keys[1]);
+    expect(keys[1]).toBe(keys[2]);
     const item = await moneyBackItem(pool, id);
     expect([item?.state, item?.tries]).toEqual(['refunded', 3]);
   });
@@ -186,5 +195,50 @@ describe('money owed back (P3.13.2)', () => {
     await expect(sendMoneyBack(pool, 'refund:nothing', payments, FINANCE, NOW)).rejects.toThrow(
       /Nothing owed back/,
     );
+  });
+
+  it('an answer lost after the provider was asked is never paid by hand by finance', async () => {
+    // A refund owed on BK-R-1 again; the provider takes the money back but the answer is lost.
+    await post(
+      pool,
+      refundApproved({
+        refundId: 'BK-R-1/hyd-madhapur/2027-08-27/20#refund',
+        lineId: 'BK-R-1/hyd-madhapur/2027-08-27/20',
+        brandId: 'chai-co',
+        base: 100_000,
+        gst: 18_000,
+        at: NOW + 1000,
+      }),
+      'prateek',
+    );
+    const id = 'refund:BK-R-1/hyd-madhapur/2027-08-27/20#refund';
+    const lost = {
+      ...payments,
+      refund: async (r: Parameters<typeof payments.refund>[0]) => {
+        await payments.refund(r);
+        throw new Error('connection reset');
+      },
+    };
+    expect(await sendMoneyBack(pool, id, lost, FINANCE, NOW + 1100)).toBe('pending');
+    await expect(
+      recordMoneyBackByHand(pool, id, { reference: 'UTR777777', note: '' }, FINANCE, NOW + 1200),
+    ).rejects.toThrow(/may still send/);
+    // A super admin may, only saying they checked with the provider.
+    await expect(
+      recordMoneyBackByHand(
+        pool,
+        id,
+        { reference: 'UTR777777', note: '' },
+        { id: 'prateek', role: 'super-admin' },
+        NOW + 1200,
+      ),
+    ).rejects.toThrow(/may still send/);
+    // Asking again with the same key finds it was sent back: on the books once.
+    expect(await sendMoneyBack(pool, id, payments, FINANCE, NOW + 1300)).toBe('refunded');
+    expect(payments.refunds.filter((r) => r.paymentId === pay1).map((r) => r.amountPaise)).toEqual([
+      590_000, 118_000, 118_000,
+    ]);
+    const t = await trialBalance(pool);
+    expect(t.debit).toBe(t.credit);
   });
 });

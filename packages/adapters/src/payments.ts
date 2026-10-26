@@ -38,7 +38,11 @@ export type LinkStatus =
 
 /** P3.13.2: money sent back to the card, UPI or bank a payment came from. */
 export interface RefundRequest {
-  /** The same for every attempt of one refund: asking again never refunds twice. */
+  /**
+   * The same for every attempt of one refund: asking again never refunds twice. At most 35
+   * characters. A real provider may replay a failure under its key: the caller uses a new key only
+   * after a failure (when nothing was sent), never after no answer.
+   */
   readonly refundKey: string;
   /** The provider's id of the payment the money goes back against. */
   readonly paymentId: string;
@@ -80,7 +84,7 @@ export function fakePayments(
     readonly secret?: string;
     readonly clock?: () => number;
     readonly baseUrl?: string;
-    /** Refunds against these payments fail (`times`: only the first n tries). */
+    /** Refunds against these payments fail (`times`: only the first n tries, whatever the key). */
     readonly refundFails?: ReadonlyMap<
       string,
       { reason: string; retryable: boolean; times?: number }
@@ -134,10 +138,16 @@ export function fakePayments(
       if (before) return Promise.resolve(before);
       if (!Number.isSafeInteger(req.amountPaise) || req.amountPaise <= 0)
         return Promise.reject(new RangeError('amount must be whole paise above 0'));
-      const n = refundTries.get(req.refundKey) ?? 0;
+      const n = refundTries.get(req.paymentId) ?? 0;
       const fail = opts.refundFails?.get(req.paymentId);
       if (fail && n < (fail.times ?? Infinity)) {
-        refundTries.set(req.refundKey, n + 1);
+        refundTries.set(req.paymentId, n + 1);
+        // Like a real provider, a failure is replayed for the same key.
+        refundResults.set(req.refundKey, {
+          status: 'failed',
+          reason: fail.reason,
+          retryable: fail.retryable,
+        });
         return Promise.resolve({
           status: 'failed',
           reason: fail.reason,

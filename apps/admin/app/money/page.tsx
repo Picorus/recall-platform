@@ -106,7 +106,7 @@ export default function MoneyPage() {
           </div>
         </section>
       )}
-      {m && <OwedBack onChanged={() => load(month)} />}
+      <OwedBack onChanged={() => load(month)} />
       <div className="cal-bar">
         <label className="rc-field">
           <span className="rc-field__label">Month</span>
