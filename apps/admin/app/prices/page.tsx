@@ -108,7 +108,11 @@ export default function PricesPage() {
   const [form, setForm] = useState<PriceForm>();
   const [error, setError] = useState('');
   const [note, setNote] = useState('');
-  const [checked, setChecked] = useState<{ problems: string[]; changes: Change[] }>();
+  const [checked, setChecked] = useState<{
+    problems: string[];
+    changes: Change[];
+    openQuotes?: number;
+  }>();
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -170,7 +174,7 @@ export default function PricesPage() {
     const change = changeNow();
     if (!change || !newest) return;
     void call(async () => {
-      const r = await api<{ version: number }>('/prices', {
+      const r = await api<{ version: number; openQuotes: number }>('/prices', {
         baseVersion: newest.version,
         change,
         reason,
@@ -178,7 +182,10 @@ export default function PricesPage() {
       setReason('');
       load();
       setNote(
-        `Version ${r.version} saved. It applies from now; bookings already made keep their prices.`,
+        `Version ${r.version} saved. It applies from now; bookings already made keep their prices.` +
+          (r.openQuotes
+            ? ` ${r.openQuotes} open quote${r.openQuotes === 1 ? '' : 's'} must be quoted again.`
+            : ''),
       );
     });
   };
@@ -188,7 +195,7 @@ export default function PricesPage() {
       await api('/prices', { baseVersion: null, change: {}, reason });
       setReason('');
       load();
-      setNote('Version 1 saved: the plan’s prices apply from now.');
+      setNote('Version 1 saved: the plan’s prices apply from the start of this month.');
     });
   };
   const locked = !isSuper || busy;
@@ -407,6 +414,12 @@ export default function PricesPage() {
                       <p>The price rules allow this.</p>
                     )}
                     {checked.changes.length > 0 && <Changes rows={checked.changes} />}
+                    {!!checked.openQuotes && (
+                      <p>
+                        {checked.openQuotes} open quote{checked.openQuotes === 1 ? '' : 's'} will
+                        need a new quote at these prices before payment.
+                      </p>
+                    )}
                   </div>
                 )}
                 <ReasonBox value={reason} onChange={setReason} />

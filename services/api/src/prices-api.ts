@@ -12,6 +12,8 @@ import {
   can,
   checkPriceChange,
   describePriceChange,
+  firstVersionFrom,
+  pageBook,
   PLAIN_SETTINGS,
   PRICE_BOOK_V1,
   priceBookAt,
@@ -20,7 +22,7 @@ import {
   type PriceChange,
   type StaffAccess,
 } from '@recall/domain';
-import { PriceBookError, priceBookRecords, savePriceBook } from '@recall/db';
+import { openQuotes, PriceBookError, priceBookRecords, savePriceBook } from '@recall/db';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Pool } from 'pg';
 import { HttpError, jsonBody, send, str } from './http.js';
@@ -124,7 +126,7 @@ export async function handlePrices(
         savedAt: r.savedAt,
         reason: r.reason,
         changes: describePriceChange(books[i - 1], r.book),
-        book: r.book,
+        book: pageBook(r.book),
       }))
       .reverse();
     send(res, 200, {
@@ -132,7 +134,7 @@ export async function handlePrices(
       versions,
       inForce: inForce?.version ?? null,
       // Before any version is saved, the page offers the plan's book as the first one.
-      plan: newest ? null : PRICE_BOOK_V1,
+      plan: newest ? null : pageBook(PRICE_BOOK_V1),
     });
     return true;
   }
@@ -148,7 +150,8 @@ export async function handlePrices(
   const change = readChange(b.change);
   const reason = saving ? str(b, 'reason', 200).trim() : '';
   if (saving && reason.length < 3) throw new HttpError(400, 'Give a reason (3 to 200 characters)');
-  let from = start;
+  // The first version starts with the month, so monthly rules (rider pay) find it (review P3.6).
+  let from = newest ? start : firstVersionFrom(nowMs);
   if (newest) {
     const at = Date.parse(newest.validFrom);
     // Saved within the same second as the last version: start one second after it (a version must
@@ -165,7 +168,8 @@ export async function handlePrices(
   const changes = describePriceChange(newest, next);
 
   if (!saving) {
-    send(res, 200, { problems, changes });
+    // Open quotes are made again at the new prices (Prateek, 22 Oct 2026): say how many first.
+    send(res, 200, { problems, changes, openQuotes: newest ? await openQuotes(pool) : 0 });
     return true;
   }
   if (problems.length > 0) throw new HttpError(400, problems.join('; '));
@@ -183,6 +187,11 @@ export async function handlePrices(
       throw new HttpError(409, RELOAD);
     throw e;
   }
-  send(res, 200, { version: next.version, validFrom: next.validFrom, changes });
+  send(res, 200, {
+    version: next.version,
+    validFrom: next.validFrom,
+    changes,
+    openQuotes: newest ? await openQuotes(pool) : 0,
+  });
   return true;
 }

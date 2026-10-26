@@ -28,7 +28,10 @@ export interface Book {
 
 /** "300", "₹1,500.50" → paise; anything else is a problem in words. */
 export function readRupees(text: string): number | { problem: string } {
-  const m = /^₹?\s*(\d{1,3}(?:,\d{2,3})*|\d+)(?:\.(\d{1,2}))?$/.exec(text.trim());
+  // Plain digits, Indian grouping (1,50,000) or Western grouping (150,000); never a stray comma.
+  const m = /^₹?\s*(\d+|\d{1,2}(?:,\d{2})*,\d{3}|\d{1,3}(?:,\d{3})+)(?:\.(\d{1,2}))?$/.exec(
+    text.trim(),
+  );
   if (!m) return { problem: `"${text}" is not an amount in rupees` };
   const whole = Number((m[1] ?? '').replaceAll(',', ''));
   const paise = whole * 100 + Number((m[2] ?? '').padEnd(2, '0'));

@@ -7,6 +7,7 @@ import {
   BAND_NAMES,
   checkPriceChange,
   describePriceChange,
+  firstVersionFrom,
   hourText,
   percentText,
   rupeeText,
@@ -96,6 +97,14 @@ describe('prices and rules: the next version (P3.6)', () => {
     expect(bad({ hourBands: { 30: 'Peak' } })).toContain(
       'every start hour from 08:00 to 01:00 must be in exactly one band',
     );
+    expect(bad({ adsDueDays: 0 })).toContain(
+      'ads must be due at least 1 day before the first hour',
+    );
+    expect(bad({ repeatSpreadBp: 0 })).toContain('the deal spread must be 1–100%');
+    expect(bad({ offersBp: { 6: 0 } })).toContain(
+      'the 6-month offer must be above 0% (or remove it)',
+    );
+    expect(bad({ offersBp: {} })).toEqual([]);
     // Raising the floor above a band price is refused; lowering it is fine.
     expect(bad({ floorPaisePerBikeHour: 25_000 })).toContain('Lite: below the floor');
     expect(bad({ floorPaisePerBikeHour: 20_000 })).toEqual([]);
@@ -118,6 +127,13 @@ describe('prices and rules: the next version (P3.6)', () => {
         },
       ),
     );
+  });
+
+  it('the first version starts at 00:00 India time on the 1st of the month', () => {
+    expect(firstVersionFrom(Date.UTC(2026, 11, 1, 6))).toBe('2026-11-30T18:30:00.000Z');
+    expect(firstVersionFrom(Date.UTC(2026, 9, 26, 11))).toBe('2026-09-30T18:30:00.000Z');
+    // 31 Oct 20:00 UTC is already 1 Nov in India.
+    expect(firstVersionFrom(Date.UTC(2026, 9, 31, 20))).toBe('2026-10-31T18:30:00.000Z');
   });
 
   it('words: rupees with Indian grouping, percents, India hours', () => {

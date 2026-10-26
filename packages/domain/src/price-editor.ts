@@ -3,6 +3,7 @@
 // as a new price book version; every other setting is carried over unchanged. Each change is
 // checked by the price book rules and a few page rules, and shown in words (before → after).
 import { checkPriceBook, PRICE_BOOK_V1, type PriceBand, type PriceBook } from './price-book.js';
+import { INDIA_OFFSET_MINUTES } from './time.js';
 
 export type BandName = PriceBand['name'];
 export const BAND_NAMES: readonly BandName[] = ['Peak', 'Normal', 'Lite'];
@@ -108,9 +109,15 @@ export function checkPriceChange(next: PriceBook): string[] {
   // A brand booking in the portal must have time to send its ads before they are due.
   if (next.adsDueDays >= next.portalLeadDays)
     problems.push('ads must be due fewer days ahead than the portal lead time');
-  if (next.repeatSpreadBp > 10_000) problems.push('the deal spread must be 0–100%');
-  for (const m of Object.keys(next.repeatOffersBp))
+  // Ads due on the first hour leave no time to review them.
+  if (next.adsDueDays < 1) problems.push('ads must be due at least 1 day before the first hour');
+  // With no spread at all, deals whose hours do not split evenly over the months are refused.
+  if (next.repeatSpreadBp < 100 || next.repeatSpreadBp > 10_000)
+    problems.push('the deal spread must be 1–100%');
+  for (const [m, bp] of Object.entries(next.repeatOffersBp)) {
     if (Number(m) > L.offerMonths) problems.push(`offers are for 2 to ${L.offerMonths} months`);
+    if (bp === 0) problems.push(`the ${m}-month offer must be above 0% (or remove it)`);
+  }
   return [...new Set(problems)];
 }
 
@@ -180,4 +187,36 @@ export function describePriceChange(
     if (a !== b) out.push({ setting, before: b, after: a });
   }
   return out;
+}
+
+/**
+ * When the first version starts: 00:00 India time on the 1st of this month. Nothing can be sold
+ * before a book exists, so starting it earlier changes no sale; but rider pay and other monthly
+ * rules look up the book in force when the month starts, and must find one (review P3.6).
+ */
+export function firstVersionFrom(nowMs: number): string {
+  const offset = INDIA_OFFSET_MINUTES * 60_000;
+  const india = new Date(nowMs + offset);
+  return new Date(Date.UTC(india.getUTCFullYear(), india.getUTCMonth(), 1) - offset).toISOString();
+}
+
+/** What the Prices page shows of a book (not rider pay, cuts, taxes or the play rules). */
+export function pageBook(b: PriceBook) {
+  return {
+    version: b.version,
+    validFrom: b.validFrom,
+    bands: b.bands,
+    gstBp: b.gstBp,
+    playsPerBikeHour: b.playsPerBikeHour,
+    repeatOffersBp: b.repeatOffersBp,
+    repeatOfferBands: b.repeatOfferBands,
+    repeatSpreadBp: b.repeatSpreadBp,
+    floorPaisePerBikeHour: b.floorPaisePerBikeHour,
+    minBikesPerLine: b.minBikesPerLine,
+    minBookingPaise: b.minBookingPaise,
+    portalLeadDays: b.portalLeadDays,
+    adsDueDays: b.adsDueDays,
+    trialDays: b.trialDays,
+    trialBikeHours: b.trialBikeHours,
+  };
 }

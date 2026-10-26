@@ -82,6 +82,35 @@ export async function savePriceBook(
   );
 }
 
+type StoredBook = Partial<PriceBook> &
+  Omit<
+    PriceBook,
+    'capacity' | 'plays' | 'makeUps' | 'cancelRefundHours' | 'cancelRefundDecideHours' | 'cuts'
+  >;
+
+/** A book as stored; a book saved before a setting existed gets its default (the rule then). */
+function withDefaults(book: StoredBook): PriceBook {
+  return {
+    ...book,
+    capacity: book.capacity ?? DEFAULT_CAPACITY_RULES,
+    plays: book.plays ?? DEFAULT_PLAY_RULES,
+    makeUps: book.makeUps ?? DEFAULT_MAKE_UP_RULES,
+    cancelRefundHours: book.cancelRefundHours ?? 72,
+    cancelRefundDecideHours: book.cancelRefundDecideHours ?? 168,
+    cuts: book.cuts ?? { agency: 1_000, aggregator: 200 },
+    cutTdsBp: book.cutTdsBp ?? 200,
+    riderPay: book.riderPay ?? DEFAULT_RIDER_PAY_RULES,
+    taxes: { ...DEFAULT_TAX_RULES, ...book.taxes },
+    people: { ...DEFAULT_PEOPLE_RULES, ...book.people },
+    report: { ...DEFAULT_REPORT_RULES, ...book.report },
+  };
+}
+
+export async function priceBooks(pool: Pick<Pool, 'query'>): Promise<PriceBook[]> {
+  const r = await pool.query<{ book: StoredBook }>('SELECT book FROM price_books ORDER BY version');
+  return r.rows.map((x) => withDefaults(x.book));
+}
+
 /** A saved price book version with who saved it, when and why (P3.6). */
 export interface PriceBookRecord {
   readonly book: PriceBook;
@@ -92,48 +121,32 @@ export interface PriceBookRecord {
 
 /** Every version, oldest first, with who saved it, when and why. */
 export async function priceBookRecords(pool: Pick<Pool, 'query'>): Promise<PriceBookRecord[]> {
-  const books = await priceBooks(pool);
   const r = await pool.query<{
-    version: number;
+    book: StoredBook;
     saved_by: string;
     saved_at: Date;
     reason: string | null;
-  }>('SELECT version, saved_by, saved_at, reason FROM price_books ORDER BY version');
-  return books.map((book, i) => {
-    const row = r.rows[i];
-    if (row?.version !== book.version) throw new Error('price books changed while reading');
-    return {
-      book,
-      savedBy: row.saved_by,
-      savedAt: row.saved_at.toISOString(),
-      reason: row.reason,
-    };
-  });
+  }>('SELECT book, saved_by, saved_at, reason FROM price_books ORDER BY version');
+  return r.rows.map((x) => ({
+    book: withDefaults(x.book),
+    savedBy: x.saved_by,
+    savedAt: x.saved_at.toISOString(),
+    reason: x.reason,
+  }));
 }
 
-export async function priceBooks(pool: Pick<Pool, 'query'>): Promise<PriceBook[]> {
-  // Stored as saved; a book saved before a setting existed gets its default (the rule then).
-  const r = await pool.query<{
-    book: Partial<PriceBook> &
-      Omit<
-        PriceBook,
-        'capacity' | 'plays' | 'makeUps' | 'cancelRefundHours' | 'cancelRefundDecideHours' | 'cuts'
-      >;
-  }>('SELECT book FROM price_books ORDER BY version');
-  return r.rows.map((x) => ({
-    ...x.book,
-    capacity: x.book.capacity ?? DEFAULT_CAPACITY_RULES,
-    plays: x.book.plays ?? DEFAULT_PLAY_RULES,
-    makeUps: x.book.makeUps ?? DEFAULT_MAKE_UP_RULES,
-    cancelRefundHours: x.book.cancelRefundHours ?? 72,
-    cancelRefundDecideHours: x.book.cancelRefundDecideHours ?? 168,
-    cuts: x.book.cuts ?? { agency: 1_000, aggregator: 200 },
-    cutTdsBp: x.book.cutTdsBp ?? 200,
-    riderPay: x.book.riderPay ?? DEFAULT_RIDER_PAY_RULES,
-    taxes: { ...DEFAULT_TAX_RULES, ...x.book.taxes },
-    people: { ...DEFAULT_PEOPLE_RULES, ...x.book.people },
-    report: { ...DEFAULT_REPORT_RULES, ...x.book.report },
-  }));
+/**
+ * Paid drafts (not trials) that a new price book version would send back for a new quote: a draft
+ * is sold only at the prices it was quoted on (Prateek, 22 Oct 2026).
+ */
+export async function openQuotes(pool: Pick<Pool, 'query'>): Promise<number> {
+  const r = await pool.query<{ n: string }>(
+    `SELECT count(*) AS n FROM bookings b
+      WHERE NOT b.trial
+        AND (SELECT e.state FROM booking_events e WHERE e.booking_id = b.booking_id
+              ORDER BY e.seq DESC LIMIT 1) = 'draft'`,
+  );
+  return Number(r.rows[0]?.n ?? 0);
 }
 
 // ---------------------------------------------------------------- inventory

@@ -41,6 +41,10 @@ describe('prices page: reading what was typed (P3.6)', () => {
     expect(readRupees('1.005')).toEqual({ problem: '"1.005" is not an amount in rupees' });
     expect(readRupees('-5')).toHaveProperty('problem');
     expect(readRupees('3e2')).toHaveProperty('problem');
+    expect(readRupees('1,50,000')).toBe(15_000_000);
+    expect(readRupees('150,000')).toBe(15_000_000);
+    expect(readRupees('1,50')).toHaveProperty('problem');
+    expect(readRupees('1,000,00')).toHaveProperty('problem');
     expect(readPercent('12.5%')).toBe(1_250);
     expect(readPercent('8')).toBe(800);
     expect(readPercent('0.05')).toBe(5);

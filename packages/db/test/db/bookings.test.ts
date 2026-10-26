@@ -13,6 +13,7 @@ import {
   CapacityError,
   createBooking,
   moveBooking,
+  openQuotes,
   placeHold,
   PriceBookError,
   priceBooks,
@@ -99,6 +100,23 @@ describe('bookings', () => {
       moveBooking(pool, 'BK-0001', 'running', { by: 'system', actor: 'system' }, NOW + 200),
     ).rejects.toThrow(/cannot go from paid/);
     expect(await bookingState(pool, 'BK-0001')).toBe('paid');
+  });
+
+  it('open quotes: paid drafts count until they move on (a new price version re-quotes them)', async () => {
+    const before = await openQuotes(pool);
+    await createBooking(
+      pool,
+      {
+        bookingId: 'BK-OQ-1',
+        brandId: 'quote-co',
+        request: request([line('2027-08-30', 19, 30), line('2027-08-30', 20, 30)]),
+        by: 'priya',
+      },
+      NOW,
+    );
+    expect(await openQuotes(pool)).toBe(before + 1);
+    await moveBooking(pool, 'BK-OQ-1', 'awaiting-payment', { by: 'priya', actor: 'admin' }, NOW);
+    expect(await openQuotes(pool)).toBe(before);
   });
 
   it('the same rules as the domain: a portal brand cannot book for tomorrow', async () => {

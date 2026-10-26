@@ -95,9 +95,11 @@ describe('Prices and rules routes (P3.6)', () => {
       change: {},
       reason: 'launch prices',
     });
+    // The first version starts with the month (00:00 India time on the 1st), so monthly rules such
+    // as rider pay find a book in force for the whole launch month.
     expect(first).toMatchObject({
       status: 200,
-      body: { version: 1, validFrom: '2026-12-01T06:00:00.000Z' },
+      body: { version: 1, validFrom: '2026-11-30T18:30:00.000Z' },
     });
     const one = (await get(sales)).body;
     expect(one.inForce).toBe(1);
@@ -109,8 +111,9 @@ describe('Prices and rules routes (P3.6)', () => {
     });
     expect((await priceBooks(pool))[0]).toEqual({
       ...PRICE_BOOK_V1,
-      validFrom: '2026-12-01T06:00:00.000Z',
+      validFrom: '2026-11-30T18:30:00.000Z',
     });
+    expect(priceBookAt(await priceBooks(pool), '2026-11-30T18:30:00.000Z')?.version).toBe(1);
   });
 
   it('a change: checked first, then saved as the next version from now, with what changed in words', async () => {
@@ -128,6 +131,7 @@ describe('Prices and rules routes (P3.6)', () => {
           after: '5 days before the first hour',
         },
       ],
+      openQuotes: 0,
     });
     expect((await priceBooks(pool)).length).toBe(1); // checking saves nothing
     const saved = await post('/prices', sup, {
@@ -144,6 +148,9 @@ describe('Prices and rules routes (P3.6)', () => {
       changes: checked.body.changes,
       book: { adsDueDays: 5 },
     });
+    // Sales and Finance see the selling settings only, not rider pay, cuts or taxes.
+    expect(v[0]?.book).not.toHaveProperty('riderPay');
+    expect(v[0]?.book).not.toHaveProperty('taxes');
     // A booking quoted before keeps version 1; one quoted now gets version 2.
     const books = await priceBooks(pool);
     expect(priceBookAt(books, '2026-12-01T06:09:59.000Z')?.version).toBe(1);
