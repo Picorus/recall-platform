@@ -299,3 +299,44 @@ it('the Areas page: check a shape, save a new version with a reason, see it in t
   await page.getByRole('row', { name: /^2 .*250 m.*narrower edge on the flyover/ }).waitFor();
   expect(errors).toEqual([]);
 }, 120_000);
+
+it('the Prices page: start with the plan’s prices, check and save a change, see it in the versions', async () => {
+  const page = await browser.newPage();
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  shift += 30_000;
+  await page.goto(`${SITE}/sign-in`);
+  await page.getByLabel('Email').fill('prateek@recall.in');
+  await page.getByLabel('Password').fill(PW);
+  await page.getByLabel('Code from your authenticator app').fill(totpCode(SECRET.value, step()));
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.getByText('Prateek · Super admin').waitFor();
+  await page.getByRole('link', { name: 'Prices' }).click();
+  await page.getByRole('heading', { name: 'Prices and rules', exact: true }).waitFor();
+  await page.getByText('No prices saved yet').waitFor();
+  await page.getByLabel('Reason (kept with the version)').fill('launch prices');
+  await page.getByRole('button', { name: 'Start with these prices' }).click();
+  await page.getByText('Version 1 saved').waitFor();
+  // A change: a price below the floor is refused by Check; a good one shows before and after.
+  await page.getByLabel('Lite (₹ a bike-hour)').fill('200');
+  await page.getByRole('button', { name: 'Check' }).click();
+  await page.getByText('Lite: below the floor').waitFor();
+  await page.getByLabel('Lite (₹ a bike-hour)').fill('220');
+  await page.getByLabel('Peak (₹ a bike-hour)').fill('320');
+  await page.getByLabel('Band at 16:00').selectOption('Peak');
+  await page.getByRole('button', { name: 'Check' }).click();
+  await page.getByText('The price rules allow this.').waitFor();
+  await page.getByRole('row', { name: /Peak price a bike-hour ₹300 ₹320/ }).waitFor();
+  if (process.env.SCREENSHOT_DIR) {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.screenshot({ path: `${process.env.SCREENSHOT_DIR}/prices.png`, fullPage: true });
+  }
+  // A new version must start after the last one (both "now", a second apart at least).
+  shift += 2_000;
+  await page.getByLabel('Reason (kept with the version)').fill('evening demand');
+  await page.getByRole('button', { name: 'Save' }).click();
+  await page.getByText('Version 2 saved').waitFor();
+  await page.getByText(/Version 2 \(in force\)/).waitFor();
+  await page.getByText(/evening demand/).waitFor();
+  expect(errors).toEqual([]);
+}, 120_000);

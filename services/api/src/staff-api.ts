@@ -37,6 +37,7 @@ import { handleToday } from './today-api.js';
 import { handleFleet } from './fleet-api.js';
 import { handleScreens } from './screens-api.js';
 import { handleAreas } from './areas-api.js';
+import { handlePrices } from './prices-api.js';
 import {
   decoyHash,
   hashPassword,
@@ -433,6 +434,7 @@ export function apiHandler(
       if (await handleFleet(pool, cfg, req, res, nowMs)) return;
       if (await handleScreens(pool, cfg, req, res, nowMs)) return;
       if (await handleAreas(pool, cfg, req, res, nowMs)) return;
+      if (await handlePrices(pool, cfg, req, res, nowMs)) return;
       throw new HttpError(404, 'Not found');
     })().catch((e: unknown) => {
       if (e instanceof HttpError) return send(res, e.status, { error: e.message });

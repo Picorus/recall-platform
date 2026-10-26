@@ -65,16 +65,50 @@ export class PriceBookError extends Error {
   }
 }
 
-/** Saves the next price book version (super admin only; the API checks who). */
-export async function savePriceBook(pool: Pool, book: PriceBook, savedBy: string): Promise<void> {
+/** Saves the next price book version (super admin only; the API checks who), with why. */
+export async function savePriceBook(
+  pool: Pool,
+  book: PriceBook,
+  savedBy: string,
+  reason?: string,
+): Promise<void> {
   const problems = checkPriceBook(book);
   if (problems.length > 0) throw new PriceBookError(problems);
   await inTransaction(pool, (c) =>
     c.query(
-      'INSERT INTO price_books (version, valid_from, book, saved_by) VALUES ($1, $2, $3, $4)',
-      [book.version, book.validFrom, JSON.stringify(book), savedBy],
+      'INSERT INTO price_books (version, valid_from, book, saved_by, reason) VALUES ($1, $2, $3, $4, $5)',
+      [book.version, book.validFrom, JSON.stringify(book), savedBy, reason ?? null],
     ),
   );
+}
+
+/** A saved price book version with who saved it, when and why (P3.6). */
+export interface PriceBookRecord {
+  readonly book: PriceBook;
+  readonly savedBy: string;
+  readonly savedAt: string;
+  readonly reason: string | null;
+}
+
+/** Every version, oldest first, with who saved it, when and why. */
+export async function priceBookRecords(pool: Pick<Pool, 'query'>): Promise<PriceBookRecord[]> {
+  const books = await priceBooks(pool);
+  const r = await pool.query<{
+    version: number;
+    saved_by: string;
+    saved_at: Date;
+    reason: string | null;
+  }>('SELECT version, saved_by, saved_at, reason FROM price_books ORDER BY version');
+  return books.map((book, i) => {
+    const row = r.rows[i];
+    if (row?.version !== book.version) throw new Error('price books changed while reading');
+    return {
+      book,
+      savedBy: row.saved_by,
+      savedAt: row.saved_at.toISOString(),
+      reason: row.reason,
+    };
+  });
 }
 
 export async function priceBooks(pool: Pick<Pool, 'query'>): Promise<PriceBook[]> {
