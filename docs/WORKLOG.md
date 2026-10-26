@@ -2,6 +2,18 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 26 Oct 2026 · P3.8.1 · Brands and agencies
+- P3.7 merged (PR #52). Prateek: selling is dynamic; bookings and holds both use up what an area-hour can carry, spare bikes run make-ups, aggregator or RECALL ads; after the POC the aim is the most business, with nearby slots offered when an area-hour is full (DECISIONS, PR #53).
+- P3.8 is built in two parts: P3.8.1 accounts (this), P3.8.2 booking for a brand with a payment link, the booking timeline, cancel and notes.
+- **Accounts** (migration 0033, `packages/db/src/brands.ts`, rules in `packages/domain/src/brands.ts`): brand and agency accounts; details (name, agency, referred by, open or closed) change as versions with who and why; a stale page is told to reload, never overwrites; a brand's agency must be an open agency account; an agency with open brands cannot be closed until they move. Notes are kept for good. Contacts and tax details use the existing tables (P1.9, P1.7.9).
+- **API** (`services/api/src/brands-api.ts`): list, one account's page, open, change, contact, tax details, notes. Sales, Finance and Support look; a Sales admin changes; a Sales or Finance admin sets tax details.
+- **Holds now need a brand account** (closes the P3.7 open item): a typo can no longer block bikes.
+- **Admin site**: the Brands page (search by name, id, phone, email or GSTIN; add; one account's details, contact, tax details, bookings, notes, history; an agency's brands).
+- Tests: database 3, API 2 (+1 hold check), admin unit 2, browser 1 (an agency and a brand it handles, a contact and a note).
+- Fixed on the way: after adding an account the page briefly reloaded the one open before, wiping what was being typed; answers for an account no longer open are now dropped.
+- Open: bookings by agencies and their 10% shown on the agency statement (P3.13, P5.10); brand sign-in to the portal (P5).
+- Next: P3.8.2, booking for a brand.
+
 ## 26 Oct 2026 · P3.7 · Inventory calendar
 - P3.6 merged (PR #51) once GitHub Actions ran again (Prateek fixed billing).
 - **The grid** (`packages/domain/src/calendar.ts`, `packages/db/src/calendar.ts`): one area's week, every start hour 08:00–01:00: bikes booked (awaiting payment or later; drafts keep nothing), held by live holds, the limit (a super admin's manual limit, or after the POC the forecast), free, bikes usually seen (past weeks, as the forecast reads them, before its margin), and for hours already over the bike-hours delivered (paid lines, by the share of plays counted).
