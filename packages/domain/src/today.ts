@@ -14,6 +14,13 @@ export interface TodayRules {
 
 export const DEFAULT_TODAY_RULES: TodayRules = { onlineMinutes: 5, liveMinutes: 5 };
 
+/** Spare screens the fleet keeps in stock: this share of the screens on bikes (210 = 200 + 5%). */
+export interface StockRules {
+  readonly spareShare: number;
+}
+
+export const DEFAULT_STOCK_RULES: StockRules = { spareShare: 0.05 };
+
 export type FleetState = 'moving' | 'stopped' | 'offline' | 'at-hub';
 
 /**

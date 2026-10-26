@@ -9,6 +9,24 @@ export function members(pool: () => pg.Pool, NOW: number) {
   let superId = '';
   /** A member with this access, signed in: their session cookie. */
   return async function member(email: string, access: StaffAccess): Promise<string> {
+    // The first member of a new database must be a super admin: make one when a test starts with
+    // someone else.
+    if (!superId && access.role !== 'super-admin')
+      superId = (
+        await addStaff(pool(), {
+          email: 'first-super@recall.in',
+          name: 'first',
+          access: { role: 'super-admin', areas: [] },
+          byId: 'setup',
+          reason: 'route test',
+          invite: {
+            tokenHash: tokenHash(newToken()),
+            totpSealed: 'unused',
+            untilMs: NOW + 3_600_000,
+          },
+          nowMs: NOW,
+        })
+      ).id;
     const invite = newToken();
     const m = await addStaff(pool(), {
       email,

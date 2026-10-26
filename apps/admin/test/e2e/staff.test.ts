@@ -230,3 +230,33 @@ it('the fleet map: bikes in the list, one bike in its panel, a command sent and 
   // MapLibre's worker loaded and ran (a missing worker only shows as a console error).
   expect(consoleLines.filter((l) => l.startsWith('error'))).toEqual([]);
 }, 120_000);
+
+it('the Screens page: stock counts, a spare sent to repair with a reason', async () => {
+  const spare = newScreenId([5, 3, 5, 8, 9, 7, 9]);
+  await db.pool.query(
+    `INSERT INTO screens (screen_id, hardware_serial, model, enrolled_by, enrolled_at)
+     VALUES ($1, 'RK-E2E-SPARE', 'VendorX LED28 v1', 'warehouse-1', now())`,
+    [spare],
+  );
+  const page = await browser.newPage();
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  shift += 30_000;
+  await page.goto(`${SITE}/sign-in`);
+  await page.getByLabel('Email').fill('prateek@recall.in');
+  await page.getByLabel('Password').fill(PW);
+  await page.getByLabel('Code from your authenticator app').fill(totpCode(SECRET.value, step()));
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.getByText('Prateek · Super admin').waitFor();
+  await page.getByRole('link', { name: 'Screens' }).click();
+  await page.getByRole('heading', { name: 'Screens', exact: true }).waitFor();
+  await page.getByText('No update has been released yet.').waitFor();
+  const row = page.getByRole('row', { name: new RegExp(spare) });
+  await row.getByRole('button', { name: 'Manage' }).click();
+  await page.getByLabel('What to do').selectOption('to-repair');
+  await page.getByLabel('Reason (logged)').fill('dead pixels');
+  await page.getByRole('button', { name: 'Save' }).click();
+  await page.getByText(`${spare}: send to repair done.`).waitFor();
+  await page.getByRole('row', { name: new RegExp(`${spare}.*In repair.*dead pixels`) }).waitFor();
+  expect(errors).toEqual([]);
+}, 120_000);

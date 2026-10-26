@@ -11,8 +11,9 @@ import {
   screenQr,
   type EnrolmentRequest,
 } from '@recall/domain';
-import type { Pool } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 import { inTransaction } from './makeups.js';
+import { Refusal } from './refusal.js';
 import { assignScreenIn } from './rider-pay.js';
 
 /** How long a screen's certificate lasts; it is renewed over the secure line before then (P2.3). */
@@ -70,11 +71,11 @@ export async function enrolScreen(
   now: number,
 ): Promise<Enrolled> {
   const problem = enrolmentProblem(req);
-  if (problem) throw new Error(problem);
+  if (problem) throw new Refusal(problem);
   if (Math.abs(req.madeAt - now) > ENROL_CLOCK_SECONDS)
-    throw new Error("the request is not fresh: check the box's clock and try again");
+    throw new Refusal("the request is not fresh: check the box's clock and try again");
   if (!enrolmentSigned(req))
-    throw new Error('the request is not signed by both keys (ECDSA P-256)');
+    throw new Refusal('the request is not signed by both keys (ECDSA P-256)');
   let screenId = '';
   let cert: IssuedCertificate | undefined;
   // One enrolment at a time (it calls the certificate authority inside the transaction), so two
@@ -86,7 +87,7 @@ export async function enrolScreen(
       [req.hardwareSerial],
     );
     if (known.rows[0])
-      throw new Error(`this box is already enrolled as ${known.rows[0].screen_id}`);
+      throw new Refusal(`this box is already enrolled as ${known.rows[0].screen_id}`);
     // A key belongs to one screen, in one role: a copied key must not make one bike count as two.
     const reused = await c.query<{ screen_id: string }>(
       `SELECT screen_id FROM screen_keys WHERE public_key = ANY($1)
@@ -94,14 +95,14 @@ export async function enrolScreen(
       [[req.tlsPublicKey, req.playPublicKey]],
     );
     if (reused.rows[0])
-      throw new Error(`a key in this request already belongs to ${reused.rows[0].screen_id}`);
+      throw new Refusal(`a key in this request already belongs to ${reused.rows[0].screen_id}`);
     // A fresh id (35 random bits); tried again in the unlikely case it is taken.
     for (let i = 0; i < 5 && !screenId; i++) {
       const id = newScreenId(Array.from({ length: 7 }, () => randomInt(32)));
       const taken = await c.query('SELECT 1 FROM screens WHERE screen_id = $1', [id]);
       if (taken.rowCount === 0) screenId = id;
     }
-    if (!screenId) throw new Error('could not find a free screen id');
+    if (!screenId) throw new Refusal('could not find a free screen id');
     cert = await ca.issue({
       screenId,
       publicKey: req.tlsPublicKey,
@@ -133,7 +134,7 @@ export async function enrolScreen(
       [screenId, FIRST_PLAY_KEY, req.playPublicKey, by],
     );
   });
-  if (!cert) throw new Error('no certificate issued');
+  if (!cert) throw new Refusal('no certificate issued');
   return {
     screenId,
     qr: screenQr(screenId),
@@ -159,7 +160,7 @@ async function lastChange(c: Pick<Pool, 'query'>, screenId: string, now: number)
   );
   const t = r.rows[0]?.t;
   if (t !== null && t !== undefined && Number(t) >= now)
-    throw new Error(
+    throw new Refusal(
       `${screenId} already has a change at this moment or later: try again in a moment`,
     );
 }
@@ -192,11 +193,36 @@ export async function fitScreen(
   now: number,
 ): Promise<Fitting> {
   const screenId = screenIdFromQr(scan.qr);
-  if (!screenId) throw new Error('this is not a RECALL screen QR');
+  if (!screenId) throw new Refusal('this is not a RECALL screen QR');
   const bike = numberPlate(scan.plate);
-  if (!bike) throw new Error('this does not look like a number plate');
+  if (!bike) throw new Refusal('this does not look like a number plate');
   return inTransaction(pool, async (c) => {
     await c.query("SELECT pg_advisory_xact_lock(hashtext('screen-fittings'))");
+    return fitIn(c, screenId, bike, scan.riderId, by, now, 'fitted');
+  });
+}
+
+/** Where a screen is in its service life: in repair or retired stops it being fitted (P3.4). */
+async function serviceState(c: Pick<Pool, 'query'>, screenId: string, now: number) {
+  const r = await c.query<{ kind: 'to-repair' | 'repaired' | 'retired' }>(
+    `SELECT kind FROM screen_service_events WHERE screen_id = $1 AND at <= to_timestamp($2)
+      ORDER BY id DESC LIMIT 1`,
+    [screenId, now],
+  );
+  return r.rows[0]?.kind;
+}
+
+/** Fits a screen inside the caller's transaction (which holds the fittings lock). */
+async function fitIn(
+  c: PoolClient,
+  screenId: string,
+  bike: string,
+  riderId: string,
+  by: string,
+  now: number,
+  reason: string,
+): Promise<Fitting> {
+  {
     const s = await c.query<{ ok_cert: boolean; ok_key: boolean }>(
       `SELECT EXISTS (SELECT 1 FROM screen_certificates
                        WHERE screen_id = $1 AND not_after > to_timestamp($2)) AS ok_cert,
@@ -207,13 +233,18 @@ export async function fitScreen(
       [screenId, now],
     );
     const row = s.rows[0];
-    if (!row) throw new Error(`${screenId} is not enrolled: enrol it at the warehouse first`);
-    if (!row.ok_cert) throw new Error(`${screenId} has no valid certificate: renew it first`);
+    if (!row) throw new Refusal(`${screenId} is not enrolled: enrol it at the warehouse first`);
+    if (!row.ok_cert) throw new Refusal(`${screenId} has no valid certificate: renew it first`);
     if (!row.ok_key)
-      throw new Error(`${screenId} was reported lost or stolen: it cannot be fitted`);
+      throw new Refusal(`${screenId} was reported lost or stolen: it cannot be fitted`);
+    const service = await serviceState(c, screenId, now);
+    if (service === 'to-repair')
+      throw new Refusal(`${screenId} is in repair: mark it repaired first`);
+    if (service === 'retired') throw new Refusal(`${screenId} is retired: it cannot be fitted`);
     const current = await fittingAt(c, screenId, now);
-    if (current?.bike === bike && current.riderId === scan.riderId) return current;
-    if (current) throw new Error(`${screenId} is on ${current.bike}: take it off that bike first`);
+    if (current?.bike === bike && current.riderId === riderId) return current;
+    if (current)
+      throw new Refusal(`${screenId} is on ${current.bike}: take it off that bike first`);
     await lastChange(c, screenId, now);
     const onBike = await c.query<{ screen_id: string }>(
       `SELECT screen_id FROM (
@@ -222,15 +253,112 @@ export async function fitScreen(
         WHERE bike = $1`,
       [bike, now],
     );
-    if (onBike.rows[0]) throw new Error(`${bike} already carries ${onBike.rows[0].screen_id}`);
+    if (onBike.rows[0]) throw new Refusal(`${bike} already carries ${onBike.rows[0].screen_id}`);
     await c.query(
       `INSERT INTO screen_fittings (screen_id, from_at, bike, rider_id, reason, set_by)
-       VALUES ($1, to_timestamp($2), $3, $4, 'fitted', $5)`,
-      [screenId, now, bike, scan.riderId, by],
+       VALUES ($1, to_timestamp($2), $3, $4, $5, $6)`,
+      [screenId, now, bike, riderId, reason, by],
     );
     // Rider pay follows the screen (P1.7.5): the rider is on this screen from now.
-    await assignScreenIn(c, screenId, scan.riderId, now, by);
-    return { screenId, bike, riderId: scan.riderId, from: now };
+    await assignScreenIn(c, screenId, riderId, now, by);
+    return { screenId, bike, riderId, from: now };
+  }
+}
+
+/** Takes a fitted screen off inside the caller's transaction (which holds the fittings lock). */
+async function unfitIn(c: PoolClient, screenId: string, reason: string, by: string, now: number) {
+  if (!(await fittingAt(c, screenId, now))) throw new Refusal(`${screenId} is not on a bike`);
+  await lastChange(c, screenId, now);
+  await c.query(
+    `INSERT INTO screen_fittings (screen_id, from_at, bike, rider_id, reason, set_by)
+     VALUES ($1, to_timestamp($2), NULL, NULL, $3, $4)`,
+    [screenId, now, reason.trim().slice(0, 200), by],
+  );
+  await assignScreenIn(c, screenId, null, now, by);
+}
+
+/**
+ * Swaps a bike's screen for a spare (P3.4): the old one comes off and goes to repair, the spare goes
+ * on the same bike for the same rider, all at once (the bike is never without a screen on record,
+ * and rider pay follows the new screen).
+ */
+export async function swapScreen(
+  pool: Pool,
+  o: {
+    readonly oldScreenId: string;
+    readonly newScreenId: string;
+    readonly reason: string;
+    readonly by: string;
+    readonly now: number;
+  },
+): Promise<Fitting> {
+  const reason = o.reason.trim();
+  if (reason.length < 3) throw new Refusal('say why the screen is swapped');
+  if (o.oldScreenId === o.newScreenId) throw new Refusal('pick a different screen to swap in');
+  return inTransaction(pool, async (c) => {
+    await c.query("SELECT pg_advisory_xact_lock(hashtext('screen-fittings'))");
+    const old = await fittingAt(c, o.oldScreenId, o.now);
+    if (!old) throw new Refusal(`${o.oldScreenId} is not on a bike`);
+    await unfitIn(c, o.oldScreenId, `swapped for ${o.newScreenId}: ${reason}`, o.by, o.now);
+    await serviceEventIn(c, o.oldScreenId, 'to-repair', `swapped out: ${reason}`, o.by, o.now);
+    return fitIn(
+      c,
+      o.newScreenId,
+      old.bike,
+      old.riderId,
+      o.by,
+      o.now,
+      `swapped in for ${o.oldScreenId}`,
+    );
+  });
+}
+
+export type ServiceKind = 'to-repair' | 'repaired' | 'retired';
+
+async function serviceEventIn(
+  c: Pick<Pool, 'query'>,
+  screenId: string,
+  kind: ServiceKind,
+  reason: string,
+  by: string,
+  now: number,
+) {
+  await c.query(
+    `INSERT INTO screen_service_events (screen_id, kind, reason, by, at)
+     VALUES ($1, $2, $3, $4, to_timestamp($5))`,
+    [screenId, kind, reason.slice(0, 200), by.slice(0, 80), now],
+  );
+}
+
+/**
+ * A screen goes to repair, comes back repaired, or is retired for good (P3.4). A screen on a bike
+ * must be taken off (or swapped) first; a retired one stays retired.
+ */
+export async function serviceScreen(
+  pool: Pool,
+  o: {
+    readonly screenId: string;
+    readonly kind: ServiceKind;
+    readonly reason: string;
+    readonly by: string;
+    readonly now: number;
+  },
+): Promise<void> {
+  const reason = o.reason.trim();
+  if (reason.length < 3) throw new Refusal('say why');
+  await inTransaction(pool, async (c) => {
+    await c.query("SELECT pg_advisory_xact_lock(hashtext('screen-fittings'))");
+    const known = await c.query('SELECT 1 FROM screens WHERE screen_id = $1', [o.screenId]);
+    if (known.rowCount === 0) throw new Refusal(`${o.screenId} is not enrolled`);
+    const state = await serviceState(c, o.screenId, o.now);
+    if (state === 'retired') throw new Refusal(`${o.screenId} is retired`);
+    if (o.kind === 'repaired' && state !== 'to-repair')
+      throw new Refusal(`${o.screenId} is not in repair`);
+    if (o.kind === 'to-repair' && state === 'to-repair')
+      throw new Refusal(`${o.screenId} is already in repair`);
+    if (o.kind !== 'repaired' && (await fittingAt(c, o.screenId, o.now)))
+      throw new Refusal(`${o.screenId} is on a bike: take it off or swap it first`);
+    await serviceEventIn(c, o.screenId, o.kind, reason, o.by, o.now);
   });
 }
 
@@ -242,17 +370,10 @@ export async function unfitScreen(
   by: string,
   now: number,
 ): Promise<void> {
-  if (reason.trim().length < 3) throw new Error('say why the screen is taken off');
+  if (reason.trim().length < 3) throw new Refusal('say why the screen is taken off');
   await inTransaction(pool, async (c) => {
     await c.query("SELECT pg_advisory_xact_lock(hashtext('screen-fittings'))");
-    if (!(await fittingAt(c, screenId, now))) throw new Error(`${screenId} is not on a bike`);
-    await lastChange(c, screenId, now);
-    await c.query(
-      `INSERT INTO screen_fittings (screen_id, from_at, bike, rider_id, reason, set_by)
-       VALUES ($1, to_timestamp($2), NULL, NULL, $3, $4)`,
-      [screenId, now, reason.trim().slice(0, 200), by],
-    );
-    await assignScreenIn(c, screenId, null, now, by);
+    await unfitIn(c, screenId, reason, by, now);
   });
 }
 
