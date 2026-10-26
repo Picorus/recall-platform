@@ -10,6 +10,7 @@ import { randomBytes } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { chromium, type Browser } from 'playwright';
+import { dayName } from '../../lib/format';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 
 const PORT = 3101;
@@ -158,6 +159,8 @@ it('the pass-through takes only plain paths and small bodies', async () => {
   for (const path of ['/api/staff/..%2Fhealth', '/api/staff%2Fme', '/api/staff/me.json']) {
     expect((await fetch(`${SITE}${path}`)).status, path).toBe(404);
   }
+  // A plain query goes through; anything else is refused.
+  expect((await fetch(`${SITE}/api/health?x=1%2F..`)).status).toBe(404);
   const ok = await fetch(`${SITE}/api/health`);
   expect(ok.status, await ok.text()).toBe(200);
 });
@@ -338,5 +341,59 @@ it('the Prices page: start with the plan’s prices, check and save a change, se
   await page.getByText('Version 2 saved').waitFor();
   await page.getByText(/Version 2 \(in force\)/).waitFor();
   await page.getByText(/evening demand/).waitFor();
+  expect(errors).toEqual([]);
+}, 120_000);
+
+it('the Calendar page: a week of area-hours, a hold for a client from a cell, then released', async () => {
+  const page = await browser.newPage();
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  shift += 30_000;
+  await page.goto(`${SITE}/sign-in`);
+  await page.getByLabel('Email').fill('prateek@recall.in');
+  await page.getByLabel('Password').fill(PW);
+  await page.getByLabel('Code from your authenticator app').fill(totpCode(SECRET.value, step()));
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.getByText('Prateek · Super admin').waitFor();
+  await page.getByRole('link', { name: 'Calendar' }).click();
+  await page.getByRole('heading', { name: 'Inventory calendar', exact: true }).waitFor();
+  await page
+    .getByRole('combobox', { name: 'Area', exact: true })
+    .selectOption({ label: 'Madhapur' });
+  const areaBox = page.getByRole('combobox', { name: 'Area', exact: true });
+  await expect.poll(() => areaBox.inputValue()).toBe('hyd-madhapur');
+  // Tomorrow's 19:00 cell (always in the future, whatever time the test runs).
+  const tomorrow = new Date(clock() + 86_400_000 + 330 * 60_000).toISOString().slice(0, 10);
+  const day = dayName(tomorrow);
+  await page.getByRole('button', { name: `${day} 19:00: 0 booked, no limit` }).click();
+  await page.getByRole('heading', { name: `${day} 19:00` }).waitFor();
+  await page.getByLabel('Limit (bikes; empty lifts it)').fill('40');
+  await page
+    .getByRole('form', { name: 'Manual limit' })
+    .getByLabel('Why (logged)')
+    .fill('flyover works');
+  await page.getByRole('button', { name: 'Save limit' }).click();
+  await page.getByText('Limit set to 40 bikes.').waitFor();
+  await page.getByLabel('Brand id (e.g. chai-co)').fill('chai-co');
+  await page.getByLabel('Bikes in each hour').fill('15');
+  await page.getByLabel('Ends on (India time)').fill(tomorrow);
+  await page.getByRole('form', { name: 'Hold' }).getByLabel('Why (logged)').fill('call on Monday');
+  await page.getByRole('button', { name: 'Hold', exact: true }).click();
+  await page.getByText(/^Held: HLD-/).waitFor();
+  const held = await db.pool.query<{ area_id: string }>(
+    "SELECT DISTINCT area_id FROM hold_lines hl JOIN holds h USING (hold_id) WHERE h.brand_id = 'chai-co'",
+  );
+  expect(held.rows).toEqual([{ area_id: 'hyd-madhapur' }]);
+  await page
+    .getByRole('button', { name: `${day} 19:00: 0 booked · 15 held, 25 free of 40` })
+    .waitFor();
+  if (process.env.SCREENSHOT_DIR) {
+    await page.setViewportSize({ width: 1400, height: 900 });
+    await page.screenshot({ path: `${process.env.SCREENSHOT_DIR}/calendar.png`, fullPage: true });
+  }
+  await page.getByLabel('Why release it').fill('client said no');
+  await page.getByRole('button', { name: 'Release' }).click();
+  await page.getByText(/released: its bikes are on sale again/).waitFor();
+  await page.getByText(/released .*client said no/).waitFor();
   expect(errors).toEqual([]);
 }, 120_000);

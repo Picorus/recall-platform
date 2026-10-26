@@ -54,7 +54,7 @@ async function inTransaction<T>(pool: Pool, work: (c: PoolClient) => Promise<T>)
 }
 
 /** Bookings and holds are checked one at a time (inventory lock for this transaction). */
-const lockInventory = (c: PoolClient) =>
+export const lockInventory = (c: PoolClient) =>
   c.query('SELECT pg_advisory_xact_lock(hashtext($1))', ['inventory']);
 
 // ---------------------------------------------------------------- price books
@@ -188,6 +188,9 @@ export async function inventoryFor(c: PoolClient, lines: readonly BookingLine[],
     `SELECT h.hold_id, h.until, hl.area_id, hl.day::text, hl.start_hour, hl.bikes
        FROM holds h JOIN hold_lines hl USING (hold_id) JOIN (${wanted}) w USING (area_id, day, start_hour)
       WHERE h.until > to_timestamp($4)
+        -- A hold released early stops keeping its bikes from then on (P3.7).
+        AND NOT EXISTS (SELECT 1 FROM hold_ends he
+                         WHERE he.hold_id = h.hold_id AND he.ended_at <= to_timestamp($4))
         -- A hold that already became a live booking is counted as that booking, not twice.
         AND NOT EXISTS (
           SELECT 1 FROM bookings b
@@ -238,21 +241,24 @@ export class CapacityError extends Error {
   }
 }
 
-/** A super admin sets (or with `null` lifts) a manual limit on one area-hour. */
+/** A super admin sets (or with `null` lifts) a manual limit on one area-hour, with why. */
 export async function setAreaHourLimit(
   pool: Pool,
   l: Pick<BookingLine, 'areaId' | 'date' | 'startHour'>,
   maxBikes: number | null,
   setBy: string,
+  reason?: string,
 ): Promise<void> {
+  if (maxBikes !== null && (!Number.isSafeInteger(maxBikes) || maxBikes < 0))
+    throw new RangeError('A limit is a whole number of bikes, 0 or more');
   lineStartsAt(l);
   await inTransaction(pool, async (c) => {
     await lockInventory(c);
     await c.query(
-      `INSERT INTO area_hour_limits (area_id, day, start_hour, version, max_bikes, set_by)
-       SELECT $1, $2, $3, coalesce(max(version), 0) + 1, $4, $5
+      `INSERT INTO area_hour_limits (area_id, day, start_hour, version, max_bikes, set_by, reason)
+       SELECT $1, $2, $3, coalesce(max(version), 0) + 1, $4, $5, $6
          FROM area_hour_limits WHERE area_id = $1 AND day = $2 AND start_hour = $3`,
-      [l.areaId, l.date, l.startHour, maxBikes, setBy],
+      [l.areaId, l.date, l.startHour, maxBikes, setBy, reason ?? null],
     );
   });
 }
@@ -266,6 +272,7 @@ export async function placeHold(
     lines: readonly BookingLine[];
     until: number;
     by: string;
+    reason?: string;
   },
   now: number,
 ): Promise<void> {
@@ -280,8 +287,8 @@ export async function placeHold(
     const short = capacityProblems(hold.lines, await inventoryFor(c, hold.lines, now), now);
     if (short.length > 0) throw new CapacityError(short);
     await c.query(
-      'INSERT INTO holds (hold_id, brand_id, until, held_by) VALUES ($1, $2, to_timestamp($3), $4)',
-      [hold.holdId, hold.brandId, hold.until, hold.by],
+      'INSERT INTO holds (hold_id, brand_id, until, held_by, reason) VALUES ($1, $2, to_timestamp($3), $4, $5)',
+      [hold.holdId, hold.brandId, hold.until, hold.by, hold.reason ?? null],
     );
     for (const l of hold.lines) {
       await c.query(
@@ -318,7 +325,8 @@ export async function createBooking(pool: Pool, b: NewBooking, now: number): Pro
     if (b.holdId !== undefined) {
       // Only the hold's own brand can book against it, and only while it lasts.
       const h = await c.query<{ brand_id: string; until: Date }>(
-        'SELECT brand_id, until FROM holds WHERE hold_id = $1',
+        `SELECT h.brand_id, least(h.until, he.ended_at) AS until
+           FROM holds h LEFT JOIN hold_ends he USING (hold_id) WHERE h.hold_id = $1`,
         [b.holdId],
       );
       const hold = h.rows[0];

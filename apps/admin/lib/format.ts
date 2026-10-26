@@ -24,15 +24,26 @@ export function clock(seconds: number): string {
   });
 }
 
-/** "Mon 23 Aug" from a business day "2027-08-23". */
+/** "Mon 23 Aug" from a business day "2027-08-23" (built by hand: browsers differ on commas). */
 export function dayName(date: string): string {
   const [y, m, d] = date.split('-').map(Number) as [number, number, number];
-  return new Date(Date.UTC(y, m - 1, d, 12)).toLocaleDateString('en-GB', {
-    timeZone: 'UTC',
-    weekday: 'short',
-    day: 'numeric',
-    month: 'short',
-  });
+  const at = new Date(Date.UTC(y, m - 1, d, 12));
+  const week = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][at.getUTCDay()] ?? '';
+  const month = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+  return `${week} ${at.getUTCDate()} ${month[at.getUTCMonth()] ?? ''}`;
 }
 
 /** "4 min", "2 h 5 min", "3 days" between two times in seconds. */

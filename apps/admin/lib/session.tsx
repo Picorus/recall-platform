@@ -48,6 +48,9 @@ export function Shell({
             member.areas.includes('operations') ||
             member.areas.includes('sales')) && <Link href="/areas">Areas</Link>}
           {(member.role === 'super-admin' ||
+            member.areas.includes('operations') ||
+            member.areas.includes('sales')) && <Link href="/calendar">Calendar</Link>}
+          {(member.role === 'super-admin' ||
             member.areas.includes('sales') ||
             member.areas.includes('finance')) && <Link href="/prices">Prices</Link>}
           {member.role === 'super-admin' && <Link href="/staff">Staff</Link>}

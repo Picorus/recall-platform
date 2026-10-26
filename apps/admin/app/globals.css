@@ -129,3 +129,42 @@ section + section {
 .area-panel {
   align-self: start;
 }
+/* P3.7 inventory calendar: one cell per area-hour; colour only backs up the words. */
+.cal td {
+  padding: 0;
+  vertical-align: top;
+}
+.cal-cell {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  min-width: 110px;
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 0.85em;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+}
+.cal-tight {
+  background: var(--data-soft);
+}
+.cal-full {
+  background: var(--stop-soft);
+}
+.cal-on {
+  outline: 2px solid var(--ink);
+  outline-offset: -2px;
+}
+.cal-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: end;
+  margin-bottom: var(--space-3);
+}
+.cal-bar .rc-field {
+  min-width: 220px;
+}

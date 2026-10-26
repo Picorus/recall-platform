@@ -38,11 +38,15 @@ async function pass(req: NextRequest, path: string[]): Promise<Response> {
     const v = req.headers.get(h);
     if (v) headers.set(h, v);
   }
+  // A plain query (?area=hyd-madhapur&from=2027-08-23) goes through; anything else is refused.
+  const query = req.nextUrl.search;
+  if (query.length > 300 || !/^(\?[A-Za-z0-9_.:=&-]*)?$/.test(query))
+    return Response.json({ error: 'Not found' }, { status: 404 });
   const body = req.method === 'POST' ? await smallBody(req) : undefined;
   if (body === null) return Response.json({ error: 'Too large' }, { status: 413 });
   let r: Response;
   try {
-    r = await fetch(`${api}/${path.join('/')}`, {
+    r = await fetch(`${api}/${path.join('/')}${query}`, {
       method: req.method,
       headers,
       body: body ?? null,
