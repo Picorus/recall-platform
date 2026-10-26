@@ -20,6 +20,8 @@ export interface CapacityRules {
   readonly minSecondsInside: number;
   /** Suggestions look for other areas within this distance (centre to centre). */
   readonly nearbyMeters: number;
+  /** A sales hold lasts at most this many days from when it is placed (P3.7). */
+  readonly holdMaxDays: number;
 }
 
 export const DEFAULT_CAPACITY_RULES: CapacityRules = {
@@ -30,6 +32,7 @@ export const DEFAULT_CAPACITY_RULES: CapacityRules = {
   minWeeks: 4,
   minSecondsInside: 300,
   nearbyMeters: 5_000,
+  holdMaxDays: 30,
 };
 
 /** One past week of one area at one weekday and start hour. */

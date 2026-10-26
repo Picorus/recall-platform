@@ -2,6 +2,7 @@
 // and a start hour (08:00 to 01:00). A booking is a list of lines; each line is so many bikes in one
 // area-hour. Prices come from the price book in force when the booking is made, and stay with it.
 import { publishedAt, type AreaVersion } from './areas.js';
+import { rupeeText } from './price-editor.js';
 import { paise, type Paise } from './money.js';
 import { bandOf, bikeHourPaise, bpOf, type PriceBand, type PriceBook } from './price-book.js';
 import { INDIA_OFFSET_MINUTES, parseUtcIso } from './time.js';
@@ -213,4 +214,31 @@ export function isoAt(seconds: number): string {
   const iso = new Date(seconds * 1000).toISOString();
   if (Number.isNaN(parseUtcIso(iso))) throw new RangeError(`Bad instant ${seconds}`);
   return iso;
+}
+
+/** A booking refusal in words, for the person booking (P3.7). Lines are numbered from 1. */
+export function bookingProblemText(p: BookingProblem): string {
+  const at = (i: number) => `line ${i + 1}`;
+  switch (p.kind) {
+    case 'no-lines':
+      return 'no hours chosen';
+    case 'bad-line':
+      return `${at(p.line)}: ${p.detail}`;
+    case 'duplicate-line':
+      return `${at(p.line)}: the same area and hour twice`;
+    case 'area':
+      return `${at(p.line)}: ${p.detail}`;
+    case 'too-few-bikes':
+      return `${at(p.line)}: at least ${p.minimum} bikes`;
+    case 'below-minimum':
+      return `the minimum booking is ${rupeeText(p.minimumPaise)} before GST`;
+    case 'too-soon':
+      return `brands booking in the portal must start on or after ${new Date(p.earliest * 1000).toISOString().slice(0, 10)}`;
+    case 'in-the-past':
+      return 'the first hour has already started';
+    case 'no-offer':
+      return `there is no ${p.months}-month offer`;
+    case 'repeat-not-spread':
+      return `the hours must be spread about equally over the ${p.months} months`;
+  }
 }

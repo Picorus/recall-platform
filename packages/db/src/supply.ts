@@ -115,6 +115,22 @@ export async function forecastLimits(
   now: number,
 ): Promise<Map<string, number>> {
   const out = new Map<string, number>();
+  for (const [k, v] of await supplyHistory(c, slots, rules, now))
+    out.set(k, sellableBikes(v.weeks, rules, v.estimate));
+  return out;
+}
+
+/**
+ * For each area-hour: the past weeks on the same weekday and hour (bikes really there) and the super
+ * admin's starting estimate, if any. The forecast and the inventory calendar both read this.
+ */
+export async function supplyHistory(
+  c: Pick<PoolClient, 'query'>,
+  slots: readonly Slot[],
+  rules: CapacityRules,
+  now: number,
+): Promise<Map<string, { weeks: WeekSupply[]; estimate: number | undefined }>> {
+  const out = new Map<string, { weeks: WeekSupply[]; estimate: number | undefined }>();
   if (slots.length === 0) return out;
   const areaIds = [...new Set(slots.map((s) => s.areaId))];
   // History starts when the fleet first reported and the area was first on; weeks from then on
@@ -156,7 +172,7 @@ export async function forecastLimits(
     const estimate = est.rows.find(
       (e) => e.area_id === s.areaId && e.start_hour === s.startHour,
     )?.bikes;
-    out.set(areaHourKey(s), sellableBikes(weeks, rules, estimate));
+    out.set(areaHourKey(s), { weeks, estimate });
   }
   return out;
 }
