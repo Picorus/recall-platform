@@ -166,6 +166,33 @@ export function bookingPaid(b: {
 }
 
 /**
+ * P3.8.2: money that reached us but cannot be kept for a booking (paid after it was cancelled, a
+ * wrong amount, or for a link we do not know): it is in the gateway account and owed back, so it is
+ * on the books at once and finance sends it back. One entry per payment, ever.
+ */
+export function moneyToReturn(m: {
+  readonly paymentId: string;
+  /** The booking it was for, or the link when no booking is known. */
+  readonly ref: string;
+  readonly brandId?: string;
+  readonly amount: number;
+  readonly why: string;
+  readonly at: number;
+}): Entry {
+  return {
+    entryId: `to-return:${m.paymentId}`,
+    at: m.at,
+    kind: 'money-to-return',
+    ref: m.ref,
+    memo: `Payment ${m.paymentId} to send back: ${m.why}`.slice(0, 300),
+    postings: [
+      ...post('payment-clearing', 'debit', m.amount, m.brandId),
+      ...post('refunds-payable', 'credit', m.amount, m.brandId),
+    ],
+  };
+}
+
+/**
  * P1.7.3: what a line has earned once `delivered` of its `promised` plays are counted: the delivered
  * share of what was paid for it, rounded down (never more than paid; extra plays are a bonus).
  */

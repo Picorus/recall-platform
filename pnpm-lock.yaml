@@ -57,6 +57,9 @@ importers:
         specifier: 19.3.0
         version: 19.3.0(react@19.3.0)
     devDependencies:
+      '@recall/adapters':
+        specifier: workspace:*
+        version: link:../../packages/adapters
       '@recall/api':
         specifier: workspace:*
         version: link:../../services/api
@@ -135,6 +138,9 @@ importers:
 
   services/api:
     dependencies:
+      '@recall/adapters':
+        specifier: workspace:*
+        version: link:../../packages/adapters
       '@recall/db':
         specifier: workspace:*
         version: link:../../packages/db

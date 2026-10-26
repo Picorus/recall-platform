@@ -16,20 +16,21 @@
   },
   "dependencies": {
     "@recall/design": "workspace:*",
+    "maplibre-gl": "6.13.0",
     "next": "16.3.8",
     "qrcode": "1.5.4",
     "react": "19.3.0",
-    "react-dom": "19.3.0",
-    "maplibre-gl": "6.13.0"
+    "react-dom": "19.3.0"
   },
   "devDependencies": {
+    "@recall/adapters": "workspace:*",
+    "@recall/api": "workspace:*",
+    "@recall/db": "workspace:*",
+    "@recall/domain": "workspace:*",
     "@types/qrcode": "1.5.5",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
-    "@recall/domain": "workspace:*",
-    "playwright": "1.56.1",
-    "@recall/api": "workspace:*",
-    "@recall/db": "workspace:*",
-    "fast-check": "4.10.2"
+    "fast-check": "4.10.2",
+    "playwright": "1.56.1"
   }
 }

@@ -52,6 +52,9 @@ export function stepProblem(
   if (!NEXT[from].includes(to)) return `cannot go from ${from} to ${to}`;
   switch (to) {
     case 'cancelled':
+      // An unpaid booking can always be cancelled by the system (its payment link ran out): it
+      // never played, and must not keep its bikes once its first hour has started (P3.8.2).
+      if (from === 'awaiting-payment' && actor === 'system') return undefined;
       return now < t.firstHourAt ? undefined : 'can only be cancelled before the first hour';
     case 'awaiting-payment':
       return now < t.firstHourAt ? undefined : 'the first hour has already started';

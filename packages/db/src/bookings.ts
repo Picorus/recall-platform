@@ -87,7 +87,13 @@ export async function savePriceBook(
 type StoredBook = Partial<PriceBook> &
   Omit<
     PriceBook,
-    'capacity' | 'plays' | 'makeUps' | 'cancelRefundHours' | 'cancelRefundDecideHours' | 'cuts'
+    | 'capacity'
+    | 'plays'
+    | 'makeUps'
+    | 'cancelRefundHours'
+    | 'cancelRefundDecideHours'
+    | 'cuts'
+    | 'payLinkHours'
   >;
 
 /** A book as stored; a book saved before a setting existed gets its default (the rule then). */
@@ -99,6 +105,7 @@ function withDefaults(book: StoredBook): PriceBook {
     makeUps: book.makeUps ?? DEFAULT_MAKE_UP_RULES,
     cancelRefundHours: book.cancelRefundHours ?? 72,
     cancelRefundDecideHours: book.cancelRefundDecideHours ?? 168,
+    payLinkHours: book.payLinkHours ?? 24,
     cuts: book.cuts ?? { agency: 1_000, aggregator: 200 },
     cutTdsBp: book.cutTdsBp ?? 200,
     riderPay: book.riderPay ?? DEFAULT_RIDER_PAY_RULES,
@@ -456,6 +463,23 @@ export interface StepBy {
   readonly reason?: string;
   /** For the move to paid: the payment's id at the gateway (P1.7.2). */
   readonly paymentId?: string;
+  /**
+   * The step the caller saw: checked under the booking's lock, so a step decided on an old reading
+   * (an expiry racing a payment) is refused instead of applied to whatever the booking is now.
+   */
+  readonly expectFrom?: BookingState;
+  /** Written in the same transaction as the step (a payment's record with its booking step). */
+  readonly alsoWrite?: (c: PoolClient) => Promise<unknown>;
+}
+
+/** The booking moved on since the caller looked (see `StepBy.expectFrom`). */
+export class StepRace extends Error {
+  constructor(
+    readonly now: BookingState,
+    readonly expected: BookingState,
+  ) {
+    super(`The booking is ${now} now, not ${expected}`);
+  }
 }
 
 /** Moves a booking to its next step, if the rules allow it now; logs who and why. */
@@ -493,6 +517,8 @@ export async function moveBooking(
     };
     if (who.paymentId !== undefined && !/^[A-Za-z0-9._-]{1,80}$/.test(who.paymentId))
       throw new Error('Payment id must be 1–80 letters, digits, dots, dashes or underscores');
+    if (who.expectFrom !== undefined && last.state !== who.expectFrom)
+      throw new StepRace(last.state, who.expectFrom);
     const problem = stepProblem(last.state, to, now, timing, who.actor, who.reason);
     if (problem) throw new Error(problem);
     if (last.state === 'draft' && to === 'awaiting-payment' && !last.trial) {
@@ -564,5 +590,6 @@ export async function moveBooking(
         });
       }
     }
+    if (who.alsoWrite) await who.alsoWrite(c);
   });
 }

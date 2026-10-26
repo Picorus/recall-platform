@@ -1,4 +1,5 @@
 // The API's settings from the environment (names in .env.example; values never in the repository).
+import { fakePayments, type PaymentsAdapter } from '@recall/adapters';
 import { readKey } from './secrets.js';
 import type { StaffApiConfig } from './staff-api.js';
 
@@ -39,6 +40,7 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
   // header on unchanged).
   if (production && proxyHops < 1)
     throw new Error('API_PROXY_HOPS must be at least 1 in production (a load balancer in front)');
+  const payments = paymentsFrom(env, production);
   return {
     databaseUrl: need('DATABASE_URL'),
     host: env.API_HOST || '127.0.0.1',
@@ -47,5 +49,43 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     origins,
     secureCookies,
     proxyHops,
+    ...(payments ? { payments } : {}),
   };
+}
+
+/**
+ * Brand payments (P3.8.2). On a laptop: the fake provider (no keys, no money). A real provider is
+ * plugged in at P6 by its keys; until then a production API runs without payments (its pay routes
+ * answer that payments are not set up) rather than on the fake. The fake's message key is public in
+ * the code, so a server anyone can reach must set its own, or anyone could "pay" a booking.
+ */
+export function paymentsFrom(
+  env: NodeJS.ProcessEnv,
+  production: boolean,
+): PaymentsAdapter | undefined {
+  const provider = env.PAYMENTS_PROVIDER || (production ? '' : 'fake');
+  if (provider === '') return undefined;
+  if (provider !== 'fake')
+    throw new Error(
+      `PAYMENTS_PROVIDER ${provider} is not available yet (real providers come in P6)`,
+    );
+  if (production) throw new Error('The fake payments provider is for a laptop only');
+  // Reachable from outside: bound beyond this machine, behind a proxy, or serving an admin site
+  // that is not on this machine.
+  const loopback = (h: string) => /^(127\.0\.0\.1|localhost|::1|\[::1\])$/.test(h);
+  const host = env.API_HOST || '127.0.0.1';
+  const origins = (env.ADMIN_ORIGINS || 'http://localhost:3001').split(',').map((o) => o.trim());
+  const local =
+    loopback(host) &&
+    Number(env.API_PROXY_HOPS || 0) === 0 &&
+    origins.every((o) => {
+      try {
+        return loopback(new URL(o).hostname);
+      } catch {
+        return false;
+      }
+    });
+  if (!local && !env.PAYMENTS_WEBHOOK_SECRET)
+    throw new Error('PAYMENTS_WEBHOOK_SECRET must be set when the API is reachable from outside');
+  return fakePayments(env.PAYMENTS_WEBHOOK_SECRET ? { secret: env.PAYMENTS_WEBHOOK_SECRET } : {});
 }

@@ -236,6 +236,11 @@ describe('booking steps (P1.3.5)', () => {
 
   it('refused: cancelling or approving ads after the start, running early, done early, skipping steps', () => {
     expect(stepProblem('paid', 'cancelled', during, t, 'admin')).toBeDefined();
+    // An unpaid booking whose payment link ran out: the system cancels it even once it has started;
+    // staff, and paid bookings, still cannot (P3.8.2).
+    expect(stepProblem('awaiting-payment', 'cancelled', during, t, 'system')).toBeUndefined();
+    expect(stepProblem('awaiting-payment', 'cancelled', during, t, 'admin')).toBeDefined();
+    expect(stepProblem('paid', 'cancelled', during, t, 'system')).toBeDefined();
     expect(stepProblem('paid', 'ads-approved', during, t, 'admin')).toBeDefined();
     expect(stepProblem('ads-approved', 'running', before, t, 'admin')).toBeDefined();
     expect(stepProblem('running', 'done', during, t, 'admin')).toBeDefined();
