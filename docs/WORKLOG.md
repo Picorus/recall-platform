@@ -2,6 +2,24 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 26 Oct 2026 · P3.10 · Delivery and make-ups
+- P3.9.2 merged (PR #57).
+- **Where a line stands** (`packages/domain/src/delivery.ts`): from its booking's step, its hour, plays counted, the make-up and refund decisions: not paid, waiting for ads, ads missing, upcoming, live, counting late uploads, delivered (extra plays free), short with a make-up booked or running, short waiting for the next decision, refund due / approved / rejected.
+- **Delivery data** (`packages/db/src/delivery.ts`): each line's plays counted exactly as the money counts them (the play rules of the price book it was sold on), bikes seen, make-ups with the plays counted for each, the refund and its decision; a booking's lines or a business day's sold lines (up to 300).
+- **The make-up and refund rules can run**: with `SETTLE_MAKE_UPS=on` the API makes the due decisions every minute (P1.6 `settleDue`: each decision once). Off by default: the screens' plans do not include make-ups until the scheduler service, and a make-up no screen plays would only end in a refund (and on the first run every old short line would be decided at once).
+- **API** (`services/api/src/delivery-api.ts`): a day's lines (default today, India time), a booking's lines; Operations, Sales, Support and Finance look. A super admin approves or rejects a proposed refund, with why (the ledger and credit note follow, P1.7).
+- **Admin site**: a Delivery page (pick a business day; each line's hour, brand and booking, area, bikes seen, plays, status in a word and in a sentence; refund decisions for a super admin) and a Delivery section in each booking's panel.
+- Tests: domain 4 (each status; missing never below 0 or above promised, a property test); database 2 (real signed plays: live, counting, short with a make-up whose plays make up the rest; a day's lines); API 1 (who looks, the day, refunds only by a super admin); admin unit 1 (the words); browser (an approved booking's hours on the Delivery page).
+- Review by a second agent, all fixed with tests:
+  - Refunds for a paid booking cancelled early were invisible (the status said "cancelled", the day page left cancelled bookings out): a refund now shows first, the day page includes cancelled lines that have one, a "Refunds waiting" list (any day) sits at the top of the Delivery page, and cancelled bookings show their Delivery section.
+  - Running the make-up rules before the screens play make-ups: off by default (above), each loop on its own.
+  - A short line said "waiting for the next make-up" forever when nothing more would happen (a trial, under a paisa) or when the refund came next: now "nothing to refund" or "a refund is worked out a day after the last make-up"; a decision more than 5 minutes late shows as late.
+  - The make-up rules shown came from the defaults, not the price book the line was sold on: now the line's own.
+  - A day over 300 lines was cut silently: now says so. Play counts read a few at a time (not one after another), make-ups found by line (an index).
+  - Impossible dates (30 Feb) refused; refund errors as "not found" / "already decided"; approved refunds show what was credited (with any top-up); later lines of a paid booking wait for ads only until its first hour; a line's next-day make-up shows on that day too.
+- Open: the screens' plans do not yet include make-ups (the scheduler service, P1.4 wiring); then turn `SETTLE_MAKE_UPS` on. Bikes seen counts screens that played the line's own hour.
+- Next: P3.11, riders.
+
 ## 26 Oct 2026 · P3.9.2 · Ad review queue
 - P3.9.1 merged (PR #56).
 - **Review rules** (`packages/domain/src/ad-review.ts`): to approve, the reviewer ticks every rule (no flashing; nothing like a road sign; not a banned category; any warnings from the automatic checks looked at); an ad that failed the automatic checks can only be rejected; a rejection says why (10 to 500 letters, so Sales can tell the brand what to fix).

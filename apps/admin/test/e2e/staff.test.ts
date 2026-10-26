@@ -571,5 +571,18 @@ it('booking for a brand: a draft from its page, the payment link, paid, the time
     .waitFor();
   if (process.env.SCREENSHOT_DIR)
     await page.screenshot({ path: `${process.env.SCREENSHOT_DIR}/reviews.png`, fullPage: true });
+
+  // P3.10: its two hours on the Delivery page for that day, not yet started.
+  await page.getByRole('link', { name: 'Delivery' }).click();
+  await page.getByLabel('Business day').fill(tomorrow);
+  const rows = page
+    .getByRole('table', { name: 'Delivery' })
+    .getByRole('row')
+    .filter({ hasText: bookingId });
+  await expect.poll(() => rows.count()).toBe(2);
+  await rows.first().getByText('Upcoming', { exact: true }).waitFor();
+  await rows.first().getByText('Upcoming: 6,000 plays promised').waitFor();
+  if (process.env.SCREENSHOT_DIR)
+    await page.screenshot({ path: `${process.env.SCREENSHOT_DIR}/delivery.png`, fullPage: true });
   expect(errors).toEqual([]);
 }, 120_000);

@@ -1,6 +1,6 @@
 // Starts the API from the environment.
 import { createServer } from 'node:http';
-import { advanceReadyBookings, expireUnpaid } from '@recall/db';
+import { advanceReadyBookings, expireUnpaid, settleDue } from '@recall/db';
 import pg from 'pg';
 import { readConfig } from './config.js';
 import { apiHandler } from './staff-api.js';
@@ -42,3 +42,21 @@ const ready = () => {
     .finally(() => setTimeout(ready, 60_000).unref());
 };
 setTimeout(ready, 60_000).unref();
+
+// Every minute, only when SETTLE_MAKE_UPS=on: the make-up and refund decisions that are due (P1.6,
+// shown on the Delivery page, P3.10). Off by default until the screens' hour plans include make-ups
+// (the scheduler service): a make-up opened that no screen plays would only lead to a refund.
+// Safe to run as often as wanted: each decision is made once.
+if (process.env.SETTLE_MAKE_UPS === 'on') {
+  const settle = () => {
+    settleDue(pool, Math.floor(Date.now() / 1000))
+      .then((s) => {
+        if (s.opened.length > 0)
+          console.log(`api: make-ups opened: ${s.opened.map((m) => m.makeUpId).join(', ')}`);
+        for (const f of s.failed) console.error(`api: could not settle ${f.lineId}: ${f.error}`);
+      })
+      .catch((e: unknown) => console.error('api: settling lines failed', e))
+      .finally(() => setTimeout(settle, 60_000).unref());
+  };
+  setTimeout(settle, 60_000).unref();
+}
