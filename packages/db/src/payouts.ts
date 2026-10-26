@@ -6,12 +6,11 @@ import type { PayoutDestination, PayoutsAdapter } from '@recall/adapters';
 import type { Pool, PoolClient } from 'pg';
 import { postEntry } from './ledger.js';
 import { inTransaction } from './makeups.js';
+import { checkedAccounts } from './rider-checks.js';
 import { accrueRiderPay } from './rider-pay.js';
 
 /** Tries for one payout before it is given up (and shown in admin). */
 export const MAX_PAYOUT_TRIES = 3;
-
-const RIDER = /^[A-Za-z0-9-]{3,40}$/;
 
 /** Problems with a payout destination (empty when it can be saved). */
 export function checkDestination(d: PayoutDestination): string[] {
@@ -25,23 +24,7 @@ export function checkDestination(d: PayoutDestination): string[] {
   return problems;
 }
 
-/** Sets where a rider is paid (the latest one is used). */
-export async function setPayoutAccount(
-  pool: Pool,
-  riderId: string,
-  destination: PayoutDestination,
-  by: string,
-): Promise<void> {
-  if (!RIDER.test(riderId)) throw new RangeError(`Bad rider id ${riderId}`);
-  const problems = checkDestination(destination);
-  if (problems.length > 0) throw new RangeError(problems.join('; '));
-  await inTransaction(pool, (c) =>
-    c.query(
-      'INSERT INTO rider_payout_accounts (rider_id, destination, set_by) VALUES ($1, $2, $3)',
-      [riderId, JSON.stringify(destination), by],
-    ),
-  );
-}
+// Where a rider is paid is set only by a passed ₹1 check in his name (checkRiderBank, P3.11.2).
 
 /** The India date of a moment ("YYYY-MM-DD"). */
 const indiaDate = (t: number) => new Date((t + 330 * 60) * 1000).toISOString().slice(0, 10);
@@ -114,11 +97,11 @@ export async function preparePayoutRun(
       'INSERT INTO payout_runs (run_id, prepared_at, prepared_by) VALUES ($1, to_timestamp($2), $3)',
       [monday, now, by],
     );
-    const accounts = await c.query<{ rider_id: string; destination: PayoutDestination }>(
-      `SELECT DISTINCT ON (rider_id) rider_id, destination FROM rider_payout_accounts
-        ORDER BY rider_id, set_at DESC`,
+    // Only an account that passed a ₹1 check in his name is paid to: anything else (never checked,
+    // changed since) is listed for finance as having no account.
+    const to = new Map(
+      [...(await checkedAccounts(c, null))].map(([id, a]) => [id, a.destination] as const),
     );
-    const to = new Map(accounts.rows.map((a) => [a.rider_id, a.destination]));
     const lines: { riderId: string; amountPaise: number }[] = [];
     const noAccount: { riderId: string; owedPaise: number }[] = [];
     for (const [riderId, owed] of await owedByRider(c)) {

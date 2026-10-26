@@ -428,6 +428,12 @@ export default function RiderPanel({
             <li key={kind} className="cal-bar">
               <span>
                 <strong>{name}</strong>: {checkText(c)}
+                {c?.link && (
+                  <>
+                    {' '}
+                    · link for him: <span className="mono">{c.link}</span>
+                  </>
+                )}
               </span>
               {canAct && kind !== 'bank' && (
                 <button
@@ -439,8 +445,8 @@ export default function RiderPanel({
                       `/riders/${r.riderId}/${kind}`,
                       {},
                       kind === 'identity'
-                        ? 'Identity check started: the link is on its way to him.'
-                        : 'Agreement sent to him to sign.',
+                        ? 'Identity check started: send him the link below.'
+                        : 'Agreement ready: send him the link below to sign.',
                     )
                   }
                 >
@@ -464,7 +470,7 @@ export default function RiderPanel({
         })}
       </ul>
       <p className="muted">Paid to: {p.payoutAccount ?? 'no account checked yet'}</p>
-      {canAct && (
+      {canAct && r.status !== 'left' && r.status !== 'rejected' && (
         <form className="cal-bar" onSubmit={bankCheck} aria-label="Check a bank account or UPI">
           <label className="rc-field">
             <span className="rc-field__label">Paid by</span>

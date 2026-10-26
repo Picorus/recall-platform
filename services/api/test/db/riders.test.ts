@@ -161,7 +161,7 @@ describe('rider routes (P3.11.1)', () => {
     const seen = (await (await fetch(`${url}/riders`, { headers: { cookie: ro } })).json()) as {
       riders: { phone: string }[];
     };
-    expect(seen.riders[0]?.phone).toBe('+91 98480 •••45');
+    expect(seen.riders[0]?.phone).toBe('+91 ••••••2345');
     // An upload for a document kind that does not exist is refused before the file is read.
     const bad = await fetch(`${url}/riders/RD-000001/documents?kind=passport`, {
       method: 'POST',

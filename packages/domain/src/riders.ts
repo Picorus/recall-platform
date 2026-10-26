@@ -105,7 +105,12 @@ const CONTROL = /[\u0000-\u001f\u007f]/;
 export function riderProblems(d: RiderDetails): string[] {
   const out: string[] = [];
   const name = d.name.trim();
-  if (name.length < 2 || name.length > 80 || CONTROL.test(name))
+  if (
+    name.length < 2 ||
+    name.length > 80 ||
+    CONTROL.test(name) ||
+    nameWords(name).join('').length < 2
+  )
     out.push('name must be 2 to 80 letters');
   if (phoneOf(d.phone) !== d.phone) out.push('phone must be an Indian mobile number');
   if (d.bikePlate !== null && plateOf(d.bikePlate) !== d.bikePlate)
@@ -132,7 +137,7 @@ export const RIDER_AGREEMENT = { version: 'rider-v1' } as const;
 /** Where one outside check stands (the newest one of its kind), or null if never started. */
 export type CheckFact = {
   readonly state: 'pending' | 'passed' | 'failed';
-  /** Identity: the name on his ID; bank: the name the bank holds. */
+  /** Identity: the name on his ID; agreement: who signed; bank: the name the bank holds. */
   readonly name: string | null;
   /** Agreement: the version signed. Bank: whether it was for the account he has now. */
   readonly current: boolean;
@@ -160,19 +165,35 @@ const nameWords = (n: string) =>
     .filter((w) => w.length > 0);
 
 /**
- * Does the name on a document or account match the name he gave? Every word of the shorter name
- * must be in the longer one ("RAVI KUMAR" matches "Ravi Kumar Reddy"; an initial matches its word).
+ * Does the name on a document or account match the name he gave? Each word of the shorter name
+ * pairs with a different word of the longer one, a whole word or an initial of it ("RAVI KUMAR"
+ * matches "Ravi Kumar Reddy" and "Ravi K."); at least one pair is a whole word of 2 letters or
+ * more (initials alone prove nothing); a one-word name matches only the same one word.
  */
 export function namesMatch(given: string, other: string): boolean {
   const a = nameWords(given);
   const b = nameWords(other);
   if (a.length === 0 || b.length === 0) return false;
+  if (a.length === 1 || b.length === 1) return a.length === b.length && a[0] === b[0];
   const [short, long] = a.length <= b.length ? [a, b] : [b, a];
-  return short.every((w) =>
-    long.some(
-      (x) => x === w || (w.length === 1 && x.startsWith(w)) || (x.length === 1 && w.startsWith(x)),
-    ),
-  );
+  // Pair each word with a different word, whole words first (then initials).
+  const used = new Set<number>();
+  let whole = false;
+  const pair = (w: string, ok: (x: string) => boolean) => {
+    const i = long.findIndex((x, j) => !used.has(j) && ok(x));
+    if (i < 0) return false;
+    used.add(i);
+    return true;
+  };
+  const initials: string[] = [];
+  for (const w of short) {
+    if (w.length >= 2 && pair(w, (x) => x === w)) whole = true;
+    else initials.push(w);
+  }
+  for (const w of initials)
+    if (!pair(w, (x) => (w.length === 1 && x.startsWith(w)) || (x.length === 1 && w.startsWith(x))))
+      return false;
+  return whole;
 }
 
 export interface CheckItem {
@@ -212,10 +233,13 @@ export function approvalChecklist(f: RiderFacts, now: number): CheckItem[] {
       return { item, done: false, detail: `failed: ${c.reason ?? ''}`.trim() };
     return passed(c);
   };
+  // A pass counts only with a name that matches his (no name returned: nothing was compared).
   const named = (item: string, c: NonNullable<CheckFact>, what: string): CheckItem =>
-    c.name !== null && !namesMatch(f.details.name, c.name)
-      ? { item, done: false, detail: `${what} "${c.name}" does not match "${f.details.name}"` }
-      : { item, done: true, detail: `${what} ${c.name ?? ''}`.trim() };
+    c.name === null
+      ? { item, done: false, detail: 'no name came back: start it again' }
+      : !namesMatch(f.details.name, c.name)
+        ? { item, done: false, detail: `${what} "${c.name}" does not match "${f.details.name}"` }
+        : { item, done: true, detail: `${what} ${c.name}` };
   return [
     {
       item: 'Number plate',
@@ -225,9 +249,9 @@ export function approvalChecklist(f: RiderFacts, now: number): CheckItem[] {
     ...RIDER_DOCUMENTS.map(doc),
     check('Identity (KYC)', f.identity, (c) => named('Identity (KYC)', c, 'verified:')),
     check('Agreement', f.agreement, (c) =>
-      c.current
-        ? { item: 'Agreement', done: true, detail: `signed (${RIDER_AGREEMENT.version})` }
-        : { item: 'Agreement', done: false, detail: 'signed an older version: send the new one' },
+      !c.current
+        ? { item: 'Agreement', done: false, detail: 'signed an older version: send the new one' }
+        : named('Agreement', c, `signed (${RIDER_AGREEMENT.version}) by`),
     ),
     check('Bank or UPI', f.bank, (c) =>
       c.current

@@ -30,7 +30,7 @@ const ready: RiderFacts = {
   ],
   screenFitted: false,
   identity: { state: 'passed', name: 'RAVI KUMAR', current: true, reason: null },
-  agreement: { state: 'passed', name: null, current: true, reason: null },
+  agreement: { state: 'passed', name: 'Ravi Kumar', current: true, reason: null },
   bank: { state: 'passed', name: 'RAVI KUMAR REDDY', current: true, reason: null },
 };
 
@@ -138,6 +138,19 @@ describe('riders (P3.11.1)', () => {
     expect(namesMatch('Ravi Kumar', 'RAVI KUMAR REDDY')).toBe(true);
     expect(namesMatch('Ravi K.', 'RAVI KUMAR')).toBe(true);
     expect(namesMatch('Ravi Kumar', 'SURESH KUMAR')).toBe(false);
+    for (const [x, y] of [
+      ['Ravi Kumar', 'R K Enterprises'],
+      ['Ravi Kumar', 'R'],
+      ['Ravi Kumar', 'RAVI'],
+      ['A.', 'Anil Sharma'],
+      ['Kumar', 'Suresh Kumar'],
+      ['Ravi Kumar Reddy', 'KUMAR'],
+      ['Ravi Kumar', 'R K'],
+      ['Ravi Ravi', 'RAVI KUMAR'],
+    ])
+      expect(namesMatch(x, y), `${x} / ${y}`).toBe(false);
+    expect(namesMatch('Kumar', 'KUMAR')).toBe(true);
+    expect(namesMatch('Ravi K', 'RAVI KUMAR REDDY')).toBe(true);
     const items = (f: Partial<RiderFacts>) =>
       approvalChecklist({ ...ready, ...f }, NOW)
         .filter((c) => !c.done)
@@ -157,7 +170,7 @@ describe('riders (P3.11.1)', () => {
     expect(
       items({
         identity: { state: 'passed', name: 'SURESH KUMAR', current: true, reason: null },
-        agreement: { state: 'passed', name: null, current: false, reason: null },
+        agreement: { state: 'passed', name: 'Ravi Kumar', current: false, reason: null },
         bank: { state: 'passed', name: 'RAVI KUMAR', current: false, reason: null },
       }),
     ).toEqual([
@@ -165,5 +178,9 @@ describe('riders (P3.11.1)', () => {
       'Agreement: signed an older version: send the new one',
       'Bank or UPI: changed since the check: check again',
     ]);
+    // A pass with no name returned compared nothing: not done.
+    expect(
+      items({ identity: { state: 'passed', name: null, current: true, reason: null } }),
+    ).toEqual(['Identity (KYC): no name came back: start it again']);
   });
 });

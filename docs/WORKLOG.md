@@ -14,6 +14,15 @@ Newest first. Each entry: date · step id · what changed · tests · open issue
   - Pressing Enter in the step reason no longer moves the rider; document buttons cannot be pressed twice.
   - Phone search with a 0 in front, plates with dashes; uploads checked (which document, whose) before the file is read; ads and documents each have their own upload slots; timeline ties in a fixed order; an index for screens by rider.
 - Tests: adapters 2; domain 6 (names, the new checklist items, back on the road); database 4 riders (the whole check flow with the fakes, a mismatched name and a closed account refused; fitting rules; phones and plates freed and re-checked); screens tests now fit real approved riders; API 1 (checks, privacy, early refusals); browser (identity, agreement and a UPI id checked from the panel before approval; Enter does not move him).
+- **Second review of P3.11.2, all fixed with tests:**
+  - A passed ₹1 check made any account his payout account, even in another name: now the name the bank holds must match his, or the check fails and nothing changes; once he is approved with a checked account, only a super admin moves his pay.
+  - The weekly payout run paid the newest account written, checked or not: now it pays only an account that passed a ₹1 check in his name (the old unchecked way of setting one is gone); anything else is listed for finance as "no account".
+  - A pass with no name (or no ID digits) ticked the box: now it counts as failed; the agreement records who signed and that name must match too.
+  - Names matched too easily ("R" matched "Ravi Kumar"): each word must pair with a different word, a one-word name only with the same word, and initials alone never match.
+  - Once approved, his name cannot change away from the name on his ID and bank.
+  - The fake checks would have run on any server not marked production: now only on a laptop nobody else can reach (as for payments); production has none until the real providers (P4), so no rider can be approved there before then.
+  - Check links go only to Operations (who send them to him); the panel no longer says they were sent; read-only members see only the last 4 digits of a phone and cannot search by phone.
+- Tests for database code now get 20 seconds each (as the other packages): the final report's PDF ran close to 5 s in a full run.
 - Open for Prateek: (1) how long rider records and documents are kept after he leaves (DPDP: erasure path), and (2) the agreement text from the lawyer (version rider-v1 is a placeholder). The real KYC, e-sign and bank-check providers need contracts.
 - Next: P3.11.3, fitting slots, earnings and leaving.
 

@@ -234,7 +234,7 @@ describe('riders (P3.11.1)', () => {
         bank,
         id,
         { kind: 'bank', accountNumber: '000111222333', ifsc: 'HDFC0001234', name: 'Ravi Kumar' },
-        'Omar',
+        { who: 'Omar', superAdmin: false },
         NOW + 15,
       ),
     ).toEqual({ outcome: 'failed', reason: 'account closed', nameAtBank: null });
@@ -256,7 +256,7 @@ describe('riders (P3.11.1)', () => {
       bank,
       id,
       { kind: 'upi', vpa: 'ravi@okaxis', name: 'Ravi Kumar' },
-      'Omar',
+      { who: 'Omar', superAdmin: false },
       NOW + 18,
     );
     await stepRider(pool, id, 'approved', 'Omar', 'documents checked', NOW + 20);
@@ -266,15 +266,62 @@ describe('riders (P3.11.1)', () => {
     expect(page?.documents.map((d) => d.kind)).toEqual(['insurance', 'insurance', 'rc', 'photo']);
     expect(page?.payoutAccount).toBe('UPI ravi@okaxis · Ravi Kumar');
     expect(page?.checks.map((c) => [c.kind, c.state, c.name, c.idLast4])).toEqual([
-      ['agreement', 'passed', null, null],
+      ['agreement', 'passed', 'RAVI KUMAR', null],
       ['bank', 'passed', 'RAVI KUMAR', null],
       ['identity', 'passed', 'RAVI KUMAR', '1234'],
     ]);
+    // An account in another name never passes; once approved, only a super admin moves his pay.
+    const other = fakeBankCheck();
+    await expect(
+      checkRiderBank(
+        pool,
+        other,
+        id,
+        { kind: 'upi', vpa: 'suresh@okaxis', name: 'Suresh Reddy' },
+        { who: 'Omar', superAdmin: false },
+        NOW + 40,
+      ),
+    ).rejects.toThrow('a super admin changes it');
+    expect(
+      await checkRiderBank(
+        pool,
+        other,
+        id,
+        { kind: 'upi', vpa: 'suresh@okaxis', name: 'Suresh Reddy' },
+        { who: 'Prateek', superAdmin: true },
+        NOW + 41,
+      ),
+    ).toEqual({
+      outcome: 'failed',
+      reason: 'the bank holds it as "SURESH REDDY", not "Ravi Kumar"',
+      nameAtBank: null,
+    });
+    expect((await riderPage(pool, id, NOW + 42))?.payoutAccount).toBe(
+      'UPI ravi@okaxis · Ravi Kumar',
+    );
+    // An account written in without a check is never where he is paid.
+    await pool.query(
+      `INSERT INTO rider_payout_accounts (rider_id, destination, set_by)
+       VALUES ($1, '{"kind":"upi","vpa":"evil@okaxis","name":"Ravi Kumar"}', 'someone')`,
+      [id],
+    );
+    expect((await riderPage(pool, id, NOW + 43))?.payoutAccount).toBeNull();
+    // Once approved, his name cannot drift from the name on his ID.
+    await expect(
+      reviseRider(
+        pool,
+        id,
+        { ...ravi, apps: ['swiggy'], rides: 'Kondapur', name: 'Suresh Reddy' },
+        'Omar',
+        'typo',
+        NOW + 44,
+      ),
+    ).rejects.toThrow('"Suresh Reddy" does not match the name on his ID ("RAVI KUMAR")');
     // Only the account that passed is where he is paid.
     const paid = await pool.query(
       "SELECT count(*)::int AS n FROM rider_payout_accounts WHERE rider_id = 'RD-000001'",
     );
-    expect(paid.rows[0]?.n).toBe(1);
+    expect(paid.rows[0]?.n).toBe(2); // the checked one, and the one written in (never paid)
   });
 
   it('active only with a screen fitted, leaving only after it comes off; notes; the timeline', async () => {

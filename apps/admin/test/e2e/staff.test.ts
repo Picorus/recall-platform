@@ -658,13 +658,13 @@ it('the Riders page: a walk-in rider added, his documents checked, approved, a n
     .filter({ hasText: 'Identity (KYC)' })
     .getByRole('button', { name: 'Start' })
     .click();
-  await panel.getByText('Identity check started: the link is on its way to him.').waitFor();
+  await panel.getByText('Identity check started: send him the link below.').waitFor();
   await checks
     .getByRole('listitem')
     .filter({ hasText: 'Agreement' })
     .getByRole('button', { name: 'Send' })
     .click();
-  await panel.getByText('Agreement sent to him to sign.').waitFor();
+  await panel.getByText('Agreement ready: send him the link below to sign.').waitFor();
   const bank = panel.getByRole('form', { name: 'Check a bank account or UPI' });
   await bank.getByLabel('UPI id').fill('ravi@okaxis');
   await bank.getByLabel("Holder's name").fill('Ravi Kumar');

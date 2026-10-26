@@ -14,10 +14,9 @@ import {
   payoutRunStatus,
   preparePayoutRun,
   sendPayoutRun,
-  setPayoutAccount,
 } from '../../src/payouts.js';
 import { accrueRiderPay, assignScreen, monthBounds } from '../../src/rider-pay.js';
-import { freshDatabase } from './fresh-db.js';
+import { checkedPayoutAccount, freshDatabase } from './fresh-db.js';
 
 let db: Awaited<ReturnType<typeof freshDatabase>>;
 let pool: pg.Pool;
@@ -29,7 +28,7 @@ const upi = (rider: string) => ({
   vpa: `${rider.toLowerCase()}@okbank`,
   name: rider,
 });
-const RIDERS = ['R-AAA', 'R-BBB', 'R-CCC'];
+const RIDERS = ['RD-000801', 'RD-000802', 'RD-000803'];
 
 const owed = async (rider: string) => {
   const t = await accountTotals(pool, 'rider-payable', { party: rider });
@@ -50,7 +49,7 @@ beforeAll(async () => {
   await setBusinessMode(pool, 'poc', SUPER, 'POC starts', ist('2027-07-20T12:00:00'));
   for (const r of RIDERS) {
     await assignScreen(pool, `scr-${r}`, r, monthBounds('2027-08').start, 'fitter');
-    await setPayoutAccount(pool, r, upi(r), 'priya');
+    await checkedPayoutAccount(pool, r, upi(r));
   }
 }, 60_000);
 afterAll(async () => db.drop());
@@ -59,17 +58,17 @@ describe('payout run edges', () => {
   it('a line is never paid when the rider is now owed less: it is cancelled and the right amount comes next run', async () => {
     const at = ist('2027-08-09T10:00:00');
     await preparePayoutRun(pool, '2027-08-09', at);
-    // A late correction: R-AAA's screen was really taken off on 3 August.
-    await assignScreen(pool, 'scr-R-AAA', null, ist('2027-08-03T08:00:00'), 'fitter');
+    // A late correction: RD-000801's screen was really taken off on 3 August.
+    await assignScreen(pool, 'scr-RD-000801', null, ist('2027-08-03T08:00:00'), 'fitter');
     await accrueRiderPay(pool, '2027-08', at + 60);
-    expect(await owed('R-AAA')).toBe(netFor(2));
+    expect(await owed('RD-000801')).toBe(netFor(2));
     await approvePayoutRun(pool, '2027-08-09', FINANCE, at);
     const r = await sendPayoutRun(pool, '2027-08-09', fakePayouts(), at + 120);
-    expect(r.paid).toEqual(['R-BBB', 'R-CCC']);
-    expect(r.givenUp).toEqual([{ riderId: 'R-AAA', reason: 'owed less than this line now' }]);
-    expect(await owed('R-AAA')).toBe(netFor(2)); // never below 0
+    expect(r.paid).toEqual(['RD-000802', 'RD-000803']);
+    expect(r.givenUp).toEqual([{ riderId: 'RD-000801', reason: 'owed less than this line now' }]);
+    expect(await owed('RD-000801')).toBe(netFor(2)); // never below 0
     const next = await preparePayoutRun(pool, '2027-08-16', ist('2027-08-16T10:00:00'));
-    expect(next.lines.find((l) => l.riderId === 'R-AAA')?.amountPaise).toBe(netFor(2));
+    expect(next.lines.find((l) => l.riderId === 'RD-000801')?.amountPaise).toBe(netFor(2));
   });
 
   it('finance can cancel what is left of a run; its money comes back in the next run', async () => {
@@ -77,10 +76,12 @@ describe('payout run edges', () => {
       cancelPayoutRun(pool, '2027-08-16', { id: 'priya', role: 'admin' }, 'wrong week'),
     ).rejects.toThrow(/finance/);
     expect(await cancelPayoutRun(pool, '2027-08-16', FINANCE, 'prepared twice by mistake')).toEqual(
-      ['R-AAA', 'R-BBB', 'R-CCC'],
+      ['RD-000801', 'RD-000802', 'RD-000803'],
     );
     const next = await preparePayoutRun(pool, '2027-08-23', ist('2027-08-23T10:00:00'));
-    expect(next.lines.find((l) => l.riderId === 'R-BBB')?.amountPaise).toBe(netFor(22) - netFor(8));
+    expect(next.lines.find((l) => l.riderId === 'RD-000802')?.amountPaise).toBe(
+      netFor(22) - netFor(8),
+    );
   });
 
   it('no answer from the provider: recorded as pending, the others are still paid, asked again later', async () => {
@@ -88,17 +89,17 @@ describe('payout run edges', () => {
     await approvePayoutRun(pool, '2027-08-23', FINANCE, at);
     const flaky: PayoutsAdapter = {
       send: (req) =>
-        req.riderId === 'R-BBB'
+        req.riderId === 'RD-000802'
           ? Promise.reject(new Error('timeout'))
           : Promise.resolve({ status: 'pending', providerRef: `p-${req.riderId}` }),
     };
     // Pending many times is never given up and never counts as a failed try.
     for (let i = 0; i < 5; i += 1) await sendPayoutRun(pool, '2027-08-23', flaky, at + i);
     const status = new Map((await payoutRunStatus(pool, '2027-08-23')).map((s) => [s.riderId, s]));
-    expect(status.get('R-BBB')?.status).toBe('pending');
-    expect(status.get('R-CCC')?.status).toBe('pending');
+    expect(status.get('RD-000802')?.status).toBe('pending');
+    expect(status.get('RD-000803')?.status).toBe('pending');
     const settled = await sendPayoutRun(pool, '2027-08-23', fakePayouts(), at + 3600);
-    expect(settled.paid).toEqual(['R-AAA', 'R-BBB', 'R-CCC']);
+    expect(settled.paid).toEqual(['RD-000801', 'RD-000802', 'RD-000803']);
   });
 
   it('works with a pool of one connection', async () => {

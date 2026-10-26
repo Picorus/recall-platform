@@ -32,7 +32,11 @@ describe('rider checks (P3.11.2)', () => {
       phone: '+919848012345',
       agreement: 'rider-v1',
     });
-    expect(await sign.status(s.ref)).toEqual({ state: 'signed', signedAt: 1_800_000_000 });
+    expect(await sign.status(s.ref)).toEqual({
+      state: 'signed',
+      signedAt: 1_800_000_000,
+      signerName: 'RAVI',
+    });
     const bank = fakeBankCheck({ failFor: new Map([['000111222333', 'account closed']]) });
     expect(await bank.check({ kind: 'upi', vpa: 'ravi@okaxis', name: 'Ravi Kumar' })).toMatchObject(
       { state: 'passed', nameAtBank: 'RAVI KUMAR' },

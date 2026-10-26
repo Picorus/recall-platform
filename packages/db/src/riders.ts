@@ -3,6 +3,7 @@
 import { fileKey, type FileStore } from '@recall/adapters';
 import {
   approvalChecklist,
+  namesMatch,
   DOCUMENT_NAMES,
   documentFileType,
   DOCUMENT_CONTENT_TYPE,
@@ -182,6 +183,15 @@ export async function reviseRider(
     if (!v) throw new Refusal(`No rider ${riderId}`);
     if (details.bikePlate !== r.rows[0]?.bike_plate && (await screenFittedTo(c, riderId, now)))
       throw new Refusal('His screen is on the bike: take it off before changing the number plate');
+    // Once approved, a new name must still be the one his identity and bank checks found.
+    const f = await factsOf(c, riderId, now);
+    if (f && ['approved', 'active', 'paused'].includes(f.status) && details.name !== f.details.name)
+      for (const [what, c2] of [
+        ['his ID', f.identity],
+        ['his bank', f.bank],
+      ] as const)
+        if (c2?.state === 'passed' && c2.name !== null && !namesMatch(details.name, c2.name))
+          throw new Refusal(`"${details.name}" does not match the name on ${what} ("${c2.name}")`);
     await checkDetails(c, details, riderId);
     await insertVersion(c, riderId, v + 1, details, by, why, now);
     return v + 1;

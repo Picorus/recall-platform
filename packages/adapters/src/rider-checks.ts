@@ -38,7 +38,13 @@ export interface KycAdapter {
 
 export type SignStatus =
   | { readonly state: 'pending' }
-  | { readonly state: 'signed'; /** UTC seconds. */ readonly signedAt: number }
+  | {
+      readonly state: 'signed';
+      /** UTC seconds. */
+      readonly signedAt: number;
+      /** Who signed, as the e-sign provider confirmed it (Aadhaar e-sign gives the name). */
+      readonly signerName: string;
+    }
   | { readonly state: 'declined'; readonly reason: string };
 
 export interface EsignAdapter {
@@ -81,7 +87,11 @@ export function fakeKyc(
       checks.set(
         ref,
         opts.auto
-          ? { state: 'verified', nameOnId: r.name.toUpperCase(), idLast4: r.phone.slice(-4) }
+          ? {
+              state: 'verified',
+              nameOnId: r.name.toUpperCase(),
+              idLast4: String(randomBytes(2).readUInt16BE(0) % 10_000).padStart(4, '0'),
+            }
           : { state: 'pending' },
       );
       return Promise.resolve({ ref, link: `${opts.baseUrl ?? 'https://kyc.example'}/${ref}` });
@@ -102,9 +112,14 @@ export function fakeEsign(
   const signs = new Map<string, SignStatus>();
   const now = opts.clock ?? (() => Math.floor(Date.now() / 1000));
   return {
-    send() {
+    send(r) {
       const ref = newRef('sign');
-      signs.set(ref, opts.auto ? { state: 'signed', signedAt: now() } : { state: 'pending' });
+      signs.set(
+        ref,
+        opts.auto
+          ? { state: 'signed', signedAt: now(), signerName: r.name.toUpperCase() }
+          : { state: 'pending' },
+      );
       return Promise.resolve({ ref, link: `${opts.baseUrl ?? 'https://sign.example'}/${ref}` });
     },
     status(ref) {

@@ -48,8 +48,8 @@ import type { Pool } from 'pg';
 import { HttpError, jsonBody, send, str, withUpload } from './http.js';
 import { staffFor, type StaffApiConfig } from './staff-api.js';
 
-/** "+91 98480 •••45": enough to recognise, not to call. */
-const maskPhone = (p: string) => `+91 ${p.slice(3, 8)} •••${p.slice(-2)}`;
+/** "+91 ••••••2345": enough to recognise on a call, not to find or call him. */
+const maskPhone = (p: string) => `+91 ••••••${p.slice(-4)}`;
 
 async function riderExists(pool: Pool, riderId: string): Promise<boolean> {
   const r = await pool.query('SELECT 1 FROM riders WHERE rider_id = $1', [riderId]);
@@ -116,28 +116,32 @@ export async function handleRiders(
       const status = q.get('status');
       if (status !== null && !(RIDER_STATUSES as readonly string[]).includes(status))
         throw new HttpError(400, 'Which status?');
-      const text = (q.get('q') ?? '').slice(0, 60);
+      const masked = me.access.role === 'read-only';
+      // Read-only members search by name, id or plate, never by phone digits (they see them masked).
+      const raw = (q.get('q') ?? '').slice(0, 60);
+      const text = masked ? raw.replace(/\d{4,}/g, '').trim() : raw;
       const riders = await riderList(pool, {
         ...(status ? { status: status as RiderStatus } : {}),
         q: text,
       });
-      const masked = me.access.role === 'read-only';
       send(res, 200, {
         riders: masked ? riders.map((r) => ({ ...r, phone: maskPhone(r.phone) })) : riders,
       });
       return true;
     }
     if (part) throw new HttpError(404, 'Not found');
-    // Checks still waiting: ask the providers first (cheap; a failure leaves them waiting).
-    if (cfg.riderChecks)
+    const reviewer = can(me.access, operations);
+    // Checks still waiting: those who act ask the providers first (a failure leaves them waiting).
+    if (cfg.riderChecks && reviewer)
       await refreshRiderChecks(pool, cfg.riderChecks, riderId, now).catch(() => 0);
     const page = await riderPage(pool, riderId, now);
     if (!page) throw new HttpError(404, `No rider ${riderId}`);
     const store = cfg.files;
-    const reviewer = can(me.access, operations);
     send(res, 200, {
       at: now,
       ...page,
+      // A check's link works for whoever holds it: only for those who send it to him.
+      checks: page.checks.map((c) => ({ ...c, link: reviewer ? c.link : null })),
       rider:
         me.access.role === 'read-only'
           ? { ...page.rider, phone: maskPhone(page.rider.phone) }
@@ -251,8 +255,8 @@ export async function handleRiders(
         : b.kind === 'bank'
           ? {
               kind: 'bank',
-              accountNumber: str(b, 'accountNumber', 18).replace(/\s/g, ''),
-              ifsc: str(b, 'ifsc', 11).trim().toUpperCase(),
+              accountNumber: str(b, 'accountNumber', 30).replace(/[\s-]/g, ''),
+              ifsc: str(b, 'ifsc', 20).trim().toUpperCase(),
               name,
             }
           : (() => {
@@ -261,7 +265,16 @@ export async function handleRiders(
     send(
       res,
       200,
-      await refusedAs400(() => checkRiderBank(pool, checks.bank, riderId, to, who, now)),
+      await refusedAs400(() =>
+        checkRiderBank(
+          pool,
+          checks.bank,
+          riderId,
+          to,
+          { who, superAdmin: me.access.role === 'super-admin' },
+          now,
+        ),
+      ),
     );
     return true;
   }
