@@ -1,7 +1,7 @@
 // Brand payments in the API's settings (review P3.8.2): the fake only on a laptop, never with the
 // public key on a server others can reach; production without a real provider runs without payments.
 import { describe, expect, it } from 'vitest';
-import { paymentsFrom, riderChecksFrom } from '../../src/config.js';
+import { paymentsFrom, payoutsFrom, riderChecksFrom } from '../../src/config.js';
 
 describe('payments settings (P3.8.2)', () => {
   it('a laptop gets the fake; a reachable server needs its own key; production never the fake', () => {
@@ -29,5 +29,13 @@ describe('payments settings (P3.8.2)', () => {
     );
     expect(() => riderChecksFrom({ RIDER_CHECKS_PROVIDER: 'fake' }, true)).toThrow('laptop only');
     expect(() => riderChecksFrom({ RIDER_CHECKS_PROVIDER: 'signzy' }, false)).toThrow('P4');
+  });
+
+  it('payouts: the fake only on a laptop nobody else can reach; none in production (P3.12)', () => {
+    expect(payoutsFrom({}, false)).toBeDefined();
+    expect(payoutsFrom({}, true)).toBeUndefined();
+    expect(() => payoutsFrom({ API_PROXY_HOPS: '1' }, false)).toThrow('laptop only');
+    expect(() => payoutsFrom({ PAYOUTS_PROVIDER: 'fake' }, true)).toThrow('laptop only');
+    expect(() => payoutsFrom({ PAYOUTS_PROVIDER: 'razorpayx' }, false)).toThrow('P6');
   });
 });

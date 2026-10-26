@@ -1,6 +1,6 @@
 // Starts the API from the environment.
 import { createServer } from 'node:http';
-import { advanceReadyBookings, expireUnpaid, settleDue } from '@recall/db';
+import { advanceReadyBookings, expireUnpaid, prepareDueRun, settleDue } from '@recall/db';
 import pg from 'pg';
 import { readConfig } from './config.js';
 import { apiHandler } from './staff-api.js';
@@ -59,4 +59,18 @@ if (process.env.SETTLE_MAKE_UPS === 'on') {
       .finally(() => setTimeout(settle, 60_000).unref());
   };
   setTimeout(settle, 60_000).unref();
+}
+
+// Every 5 minutes, unless PAYOUT_PREPARE=off: on Monday from 10:00 India time, the week's payout run
+// is prepared if nobody has prepared it yet (P3.12). Nothing is paid: finance approves and sends it.
+if (process.env.PAYOUT_PREPARE !== 'off') {
+  const prepare = () => {
+    prepareDueRun(pool, Math.floor(Date.now() / 1000))
+      .then((run) => {
+        if (run) console.log(`api: payout run ${run.runId} prepared (${run.lines.length} riders)`);
+      })
+      .catch((e: unknown) => console.error('api: preparing the payout run failed', e))
+      .finally(() => setTimeout(prepare, 300_000).unref());
+  };
+  setTimeout(prepare, 60_000).unref();
 }
