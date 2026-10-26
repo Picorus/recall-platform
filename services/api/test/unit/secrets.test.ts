@@ -13,6 +13,7 @@ import {
   totpStep,
   unseal,
 } from '../../src/secrets.js';
+import { callerIp } from '../../src/staff-api.js';
 
 // RFC 6238 appendix B (SHA-1, secret "12345678901234567890", 8 digits).
 const RFC = base32(Buffer.from('12345678901234567890'));
@@ -94,5 +95,22 @@ describe('secrets kept encrypted', () => {
   it('the key must be 32 bytes', () => {
     expect(readKey('ab'.repeat(32)).length).toBe(32);
     expect(() => readKey('abcd')).toThrow('32 bytes');
+  });
+});
+
+describe('the caller address sign-in limits count', () => {
+  it('without proxies: the connection itself; IPv6 by its /64', () => {
+    expect(callerIp('1.2.3.4', '10.0.0.9', 0)).toBe('10.0.0.9');
+    expect(callerIp(undefined, '::ffff:10.0.0.9', 0)).toBe('10.0.0.9');
+    expect(callerIp(undefined, '2001:db8:aa:bb:1:2:3:4', 0)).toBe('2001:db8:aa:bb::/64');
+    expect(callerIp(undefined, '2001:db8::1', 0)).toBe('2001:db8:0:0::/64');
+  });
+
+  it('behind our proxies: the entry the outermost one added, never what the caller wrote', () => {
+    // The caller wrote "6.6.6.6"; our load balancer saw 1.2.3.4; the API sees the balancer.
+    expect(callerIp('6.6.6.6, 1.2.3.4', '10.0.0.2', 1)).toBe('1.2.3.4');
+    // CDN, then load balancer: two hops.
+    expect(callerIp('6.6.6.6, 1.2.3.4, 172.16.0.5', '10.0.0.2', 2)).toBe('1.2.3.4');
+    expect(callerIp(undefined, '10.0.0.2', 1)).toBe('unknown');
   });
 });

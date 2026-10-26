@@ -50,7 +50,7 @@ jobs:
   database:
     name: Database tests (real PostgreSQL)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     env:
       DATABASE_URL: postgres://recall:recall@localhost:5432/recall
     steps:
@@ -65,6 +65,11 @@ jobs:
       - run: pnpm --filter @recall/db test:db
       - run: pnpm --filter @recall/gateway test:db
       - run: pnpm --filter @recall/api test:db
+      - name: Admin site in a browser (Next.js, API, database)
+        run: |
+          pnpm --filter @recall/admin exec playwright install --with-deps chromium
+          pnpm --filter @recall/admin build
+          pnpm --filter @recall/admin test:e2e
       - name: Screen line end to end (EMQX over TLS, gateway, database)
         run: pnpm --filter @recall/gateway test:emqx
       - name: Migrations apply to the laptop database

@@ -2,6 +2,22 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 25 Oct 2026 · P3.1 · Staff sign-in and roles
+- P2.13 + P2.14 merged (PR #45). P3, the admin portal, starts here.
+- **Roles** (`packages/domain/src/staff.ts`): super admin (everything; the only one who manages staff), admin with ticked areas (Sales, Ad review, Operations, Finance, Support), read-only (looks at ticked areas). One table, `can()`, answers every request on the server. `moneyRole()` gives the money code its 'super-admin' / 'finance' role.
+- **Records** (migration 0027, `packages/db/src/staff.ts`): staff, every access change (who, why), invites, credentials, every sign-in try, sessions and their ends. All append-only. Access changes are checked again inside the database transaction, from the stored access.
+- **The API service** (`services/api`, first real code): sign in / out, who am I, invites, and the super admin's staff routes. Secrets (`secrets.ts`): scrypt passwords, TOTP codes (RFC 6238, tested on its official values), AES-256-GCM for stored two-step secrets, random tokens kept only as hashes. `staffFor(req, need)` is how every later admin route checks who is calling. `first-admin` makes the first super admin on a new server.
+- **The admin site** (`apps/admin`, Next.js 16): sign-in, invite (QR code for the authenticator app), Today (placeholder for P3.2) and Staff (add, change access, reset, switch off, with reasons). Security headers (content rules, no framing, no referrer: invite links carry their token after #).
+- Tests: domain 9 (roles, limits, sessions); API unit 10 (RFC codes, one use only, hashing, encryption, caller address); API database 22 (the whole journey over HTTP: first super admin, invite, sign-in, add admin, admin/read-only refused, locks per address, per-address limit, the same code twice at once, idle and 12-hour ends, sign-out, access change, reset, switch-off, invites expiring, a reset landing mid sign-in, a malformed request); admin unit 3; browser end to end 1 (invite → sign-in → add an admin → sign out, in Chromium, now in CI).
+- Second-agent security review: 13 findings, all fixed:
+  - one malformed request could stop the whole API. Now refused, and nothing in the error path can throw;
+  - a sign-in racing a reset could keep a session. Now the slow password check runs outside the database transaction and the result is recorded under the staff lock after reading everything again; sessions older than the latest access change or reset are refused;
+  - password checks held database connections (10 at once could stall admin). Now outside transactions, at most 4 at a time;
+  - answers were faster for real, locked accounts; anyone could keep a member out with one wrong try every 15 minutes; everyone behind one proxy shared a limit. Now locks count per email and address (unknown emails too), IPv6 by /64, and the number of our proxies must be set in production;
+  - invite tokens were in the address (server logs). Now after #, sent by POST; the code that confirmed an invite cannot sign in; control characters refused; an unreadable secret counts as a wrong try; invites made before a switch-off stay dead; session reads use the app's limited database role.
+- Open: sending invite links by WhatsApp or email (adapters, P6; for now the super admin passes the link on); the audit log page (P3.16) will read these records; Today (P3.2).
+- Next: P3.2, the Today page.
+
 ## 25 Oct 2026 · P2.14 · Fitting check
 - **What it checks** (`packages/domain/src/fitting.ts`, shared cases `test-vectors/fitting.json`): a technician starts it from the rider app (P4) as a `fitting-check` command (30–600 seconds). The box shows the colour bars (every part of the panel can be seen lighting up) and watches for its best GPS fix; at the end it reads the 4G line, the camera and the battery and sends a fitting report through its outbox.
 - **The cloud judges each part itself** (`fittingVerdict`): GPS fix within 50 m, line up, camera answering, battery at least 50% or charging. Ready only when every part passes; a part the box cannot check (the camera, until the hardware) is "unknown" and never passes. Each check is kept with its verdict (migration 0026, `packages/db/src/fitting.ts`); the latest says whether the bike is ready (`latestFitting`).

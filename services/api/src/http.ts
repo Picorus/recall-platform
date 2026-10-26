@@ -37,6 +37,11 @@ export async function jsonBody(req: IncomingMessage): Promise<Record<string, unk
 export function str(x: Record<string, unknown>, key: string, max = 300): string {
   const v = x[key];
   if (typeof v !== 'string' || v.length > max) throw new HttpError(400, `${key} is missing`);
+  // No control characters (the database refuses a NUL; none belongs in a name, email or password).
+  for (const ch of v) {
+    const n = ch.charCodeAt(0);
+    if (n < 32 || n === 127) throw new HttpError(400, `${key} has a character that is not allowed`);
+  }
   return v;
 }
 

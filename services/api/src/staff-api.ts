@@ -53,8 +53,12 @@ export interface StaffApiConfig {
   readonly origins: readonly string[];
   /** HTTPS cookies (off only on a laptop over plain http). */
   readonly secureCookies: boolean;
-  /** Take the caller's address from X-Forwarded-For (only behind our own proxy). */
-  readonly trustProxy: boolean;
+  /**
+   * How many proxies of our own that add to X-Forwarded-For stand in front (the load balancer, a
+   * CDN; 0: none). The caller's address is the entry the outermost of them added. The admin site
+   * passes the header on unchanged, so it does not count.
+   */
+  readonly proxyHops: number;
   readonly rules?: SignInRules;
 }
 
@@ -72,15 +76,80 @@ function sessionCookie(cfg: StaffApiConfig, token: string, maxAgeS: number): str
   ].join('; ');
 }
 
-function callerIp(req: IncomingMessage, cfg: StaffApiConfig): string {
-  if (cfg.trustProxy) {
-    // Our proxy adds the address it saw last; anything before it the caller could have written.
-    const hops = String(req.headers['x-forwarded-for'] ?? '').split(',');
-    const last = hops[hops.length - 1]?.trim();
-    if (last) return last;
+/**
+ * The caller's address as sign-in limits count it. Behind `hops` proxies of ours, it is the entry
+ * the outermost one added (anything further left the caller could have written). IPv6 addresses
+ * count by their /64 network (one home or phone connection has a whole /64).
+ */
+export function callerIp(
+  forwardedFor: string | string[] | undefined,
+  socketAddress: string | undefined,
+  hops: number,
+): string {
+  let ip = socketAddress ?? 'unknown';
+  if (hops > 0) {
+    const list = String(forwardedFor ?? '')
+      .split(',')
+      .map((x) => x.trim())
+      .filter(Boolean);
+    ip = list[list.length - hops] ?? 'unknown';
   }
-  return req.socket.remoteAddress ?? 'unknown';
+  return ipKey(ip);
 }
+
+export function ipKey(ip: string): string {
+  const v4 = /^(?:::ffff:)?(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(ip);
+  if (v4?.[1]) return v4[1];
+  if (!ip.includes(':')) return ip.slice(0, 64);
+  // Expand :: to read the first four groups.
+  const [head = '', tail = ''] = ip.toLowerCase().split('%')[0]?.split('::') ?? [];
+  const h = head ? head.split(':') : [];
+  const t = tail ? tail.split(':') : [];
+  const groups = ip.includes('::')
+    ? [...h, ...Array<string>(Math.max(0, 8 - h.length - t.length)).fill('0'), ...t]
+    : h;
+  return `${groups
+    .slice(0, 4)
+    .map((g) => g.replace(/^0+(?=.)/, ''))
+    .join(':')}::/64`;
+}
+
+/** Password checks run a few at a time (each takes 32 MB and a moment of work); the rest queue. */
+class Gate {
+  private running = 0;
+  private readonly queue: (() => void)[] = [];
+  constructor(
+    private readonly most: number,
+    private readonly waiting: number,
+  ) {}
+  async run<T>(f: () => Promise<T>): Promise<T> {
+    if (this.running >= this.most) {
+      if (this.queue.length >= this.waiting)
+        throw new HttpError(429, 'Busy. Try again in a moment.');
+      await new Promise<void>((ok) => this.queue.push(ok));
+    }
+    this.running++;
+    try {
+      return await f();
+    } finally {
+      this.running--;
+      this.queue.shift()?.();
+    }
+  }
+}
+const passwordGate = new Gate(4, 100);
+
+const unsealed = (cfg: StaffApiConfig, sealed: string, log: (l: string) => void) => {
+  try {
+    return unseal(cfg.secretKey, sealed);
+  } catch {
+    // A wrong key (after a key change) or a damaged row: treated as a wrong try, and told.
+    log('api: a stored two-step secret cannot be read (STAFF_SECRET_KEY changed?)');
+    return undefined;
+  }
+};
+
+const INVITE_GONE = 'This link has expired or was used. Ask a super admin for a new one.';
 
 /** What a page may show of a member (never secrets). */
 const shown = (m: StaffMember) => ({
@@ -143,9 +212,9 @@ export async function handleStaff(
   req: IncomingMessage,
   res: ServerResponse,
   nowMs: number,
+  log: (line: string) => void = () => {},
 ): Promise<boolean> {
-  const url = new URL(req.url ?? '/', 'http://api');
-  const path = url.pathname;
+  const path = (req.url ?? '/').split('?')[0] ?? '/';
   if (path !== '/staff' && !path.startsWith('/staff/')) return false;
   const method = req.method ?? 'GET';
   if (method === 'POST') {
@@ -166,17 +235,19 @@ export async function handleStaff(
     const token = newToken();
     const r = await signIn(pool, {
       email,
-      ip: callerIp(req, cfg),
+      ip: callerIp(req.headers['x-forwarded-for'], req.socket.remoteAddress, cfg.proxyHops),
       agent: String(req.headers['user-agent'] ?? ''),
       sessionHash: tokenHash(token),
       nowMs,
       rules,
-      check: async (cred) => {
-        // An unknown member is checked against a decoy, so the answer takes as long.
-        const pwOk = await passwordMatches(password, cred?.passwordHash ?? (await decoyHash()));
-        if (!cred || !pwOk) return undefined;
-        return totpStep(unseal(cfg.secretKey, cred.totpSealed), code, nowMs, cred.usedUpTo);
-      },
+      check: (cred) =>
+        passwordGate.run(async () => {
+          // Nothing to check (unknown member, a lock) still checks a decoy: the answer takes as long.
+          const pwOk = await passwordMatches(password, cred?.passwordHash ?? (await decoyHash()));
+          const secret = cred && unsealed(cfg, cred.totpSealed, log);
+          if (!cred || !pwOk || !secret) return undefined;
+          return totpStep(secret, code, nowMs, cred.usedUpTo);
+        }),
     });
     if (!r.ok) {
       send(res, r.why === 'too-many-here' ? 429 : 401, { error: SIGN_IN_FAILED });
@@ -205,15 +276,13 @@ export async function handleStaff(
     return true;
   }
 
-  // The invite page: shows the secret for the authenticator app (the link itself is the secret).
-  if (method === 'GET' && path === '/staff/invite') {
-    const inv = await openInvite(pool, tokenHash(url.searchParams.get('t') ?? ''), nowMs);
-    if (!inv)
-      throw new HttpError(
-        404,
-        'This link has expired or was used. Ask a super admin for a new one.',
-      );
-    const secret = unseal(cfg.secretKey, inv.totpSealed);
+  // The invite page: shows the secret for the authenticator app (the link itself is the secret; its
+  // token travels after # in the address, so it never reaches a server log, and is sent here by POST).
+  if (method === 'POST' && path === '/staff/invite/open') {
+    const b = await jsonBody(req);
+    const inv = await openInvite(pool, tokenHash(str(b, 'token', 100)), nowMs);
+    const secret = inv && unsealed(cfg, inv.totpSealed, log);
+    if (!inv || !secret) throw new HttpError(404, INVITE_GONE);
     send(res, 200, {
       email: inv.email,
       name: inv.name,
@@ -229,20 +298,16 @@ export async function handleStaff(
     const password = str(b, 'password', 200);
     const code = str(b, 'code', 10).replace(/\s/g, '');
     const inv = await openInvite(pool, hash, nowMs);
-    if (!inv)
-      throw new HttpError(
-        404,
-        'This link has expired or was used. Ask a super admin for a new one.',
-      );
+    const secret = inv && unsealed(cfg, inv.totpSealed, log);
+    if (!inv || !secret) throw new HttpError(404, INVITE_GONE);
     const problem = passwordProblem(password, inv.email);
     if (problem) throw new HttpError(400, `Password: ${problem}`);
-    if (totpStep(unseal(cfg.secretKey, inv.totpSealed), code, nowMs) === undefined)
+    const step = totpStep(secret, code, nowMs);
+    if (step === undefined)
       throw new HttpError(400, 'The code does not match. Check the app and try the newest code.');
-    if (!(await acceptInvite(pool, hash, await hashPassword(password), nowMs)))
-      throw new HttpError(
-        404,
-        'This link has expired or was used. Ask a super admin for a new one.',
-      );
+    const passwordHash = await passwordGate.run(() => hashPassword(password));
+    if (!(await acceptInvite(pool, { tokenHash: hash, passwordHash, totpStep: step, nowMs })))
+      throw new HttpError(404, INVITE_GONE);
     send(res, 200, { ok: true });
     return true;
   }
@@ -336,14 +401,17 @@ export function apiHandler(
     const nowMs = clock();
     (async () => {
       if (req.method === 'GET' && req.url === '/health') return send(res, 200, { ok: true });
-      if (await handleStaff(pool, cfg, req, res, nowMs)) return;
+      if (await handleStaff(pool, cfg, req, res, nowMs, log)) return;
       throw new HttpError(404, 'Not found');
     })().catch((e: unknown) => {
       if (e instanceof HttpError) return send(res, e.status, { error: e.message });
-      log(
-        `api: ${req.method} ${new URL(req.url ?? '/', 'http://api').pathname}: ${(e as Error).stack ?? String(e)}`,
-      );
+      // Only the path: a query could carry something secret. Nothing here may throw again.
+      const path = String(req.url ?? '/')
+        .split('?')[0]
+        ?.slice(0, 200);
+      log(`api: ${String(req.method)} ${path}: ${(e as Error | undefined)?.stack ?? String(e)}`);
       if (!res.headersSent) send(res, 500, { error: 'Something went wrong. Try again.' });
+      else res.destroy();
     });
   };
 }

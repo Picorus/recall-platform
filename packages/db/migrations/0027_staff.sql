@@ -42,12 +42,15 @@ CREATE TABLE staff_credentials (
   invite_hash   text        NOT NULL UNIQUE REFERENCES staff_invites (token_hash),
   password_hash text        NOT NULL CHECK (password_hash LIKE 'scrypt$%'),
   totp_secret   text        NOT NULL,
+  -- The two-step step of the code that confirmed it: that code cannot then sign in.
+  totp_step     bigint      NOT NULL,
   at            timestamptz NOT NULL
 );
 CREATE INDEX staff_credentials_latest ON staff_credentials (staff_id, id DESC);
 
 -- Every sign-in try, right or wrong. `totp_step` of a successful one stops the same code being used
--- twice.
+-- twice. `ip` is the caller's address (IPv6 by its /64 network): wrong tries lock an email from that
+-- address only, so nobody can keep a member out from elsewhere.
 CREATE TABLE staff_sign_ins (
   id        bigint      GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   email     text        NOT NULL CHECK (length(email) <= 254),
@@ -59,6 +62,7 @@ CREATE TABLE staff_sign_ins (
   at        timestamptz NOT NULL
 );
 CREATE INDEX staff_sign_ins_staff ON staff_sign_ins (staff_id, id DESC);
+CREATE INDEX staff_sign_ins_email ON staff_sign_ins (email, ip, id DESC);
 CREATE INDEX staff_sign_ins_ip ON staff_sign_ins (ip, at DESC);
 
 CREATE TABLE staff_sessions (

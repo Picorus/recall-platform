@@ -28,6 +28,12 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     .filter(Boolean);
   const secureCookies = env.API_INSECURE_COOKIES !== 'yes';
   if (production && !secureCookies) throw new Error('API_INSECURE_COOKIES is for a laptop only');
+  // How many of our own proxies stand in front (0 on a laptop). It must be said in production: a
+  // wrong count makes every caller look the same (or lets callers choose their own address).
+  const hopsText = env.API_PROXY_HOPS || (production ? need('API_PROXY_HOPS') : '0');
+  const proxyHops = Number(hopsText);
+  if (!Number.isInteger(proxyHops) || proxyHops < 0 || proxyHops > 5)
+    throw new Error('API_PROXY_HOPS must be a whole number 0 to 5');
   return {
     databaseUrl: need('DATABASE_URL'),
     host: env.API_HOST || '127.0.0.1',
@@ -35,6 +41,6 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     secretKey: readKey(keyText),
     origins,
     secureCookies,
-    trustProxy: env.API_TRUST_PROXY === 'yes',
+    proxyHops,
   };
 }

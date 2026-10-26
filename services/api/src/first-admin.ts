@@ -1,6 +1,6 @@
 // Makes the first super admin on a new database (run once, on the server):
 //   pnpm --filter @recall/api first-admin <email> "<name>"
-// Prints the invite link's token: open /invite?t=<token> on the admin site to set the password and
+// Prints the invite link's token: open /invite#t=<token> on the admin site to set the password and
 // two-step code. Refused once any staff exist (then a super admin adds people in the admin site).
 import { addStaff } from '@recall/db';
 import pg from 'pg';
@@ -31,7 +31,7 @@ try {
     },
     nowMs,
   });
-  console.log(`Invite (valid 48 hours, once): ${cfg.origins[0] ?? ''}/invite?t=${token}`);
+  console.log(`Invite (valid 48 hours, once): ${cfg.origins[0] ?? ''}/invite#t=${token}`);
 } finally {
   await pool.end();
 }

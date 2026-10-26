@@ -239,7 +239,10 @@ export interface OpenInvite {
   readonly totpSealed: string;
 }
 
-/** An invite that can still be used: not used, not expired, the member's newest, member active. */
+/**
+ * An invite that can still be used: not used, not expired, the member's newest, member active, and
+ * not made before the member was last switched off (switching back on does not revive it).
+ */
 export async function openInvite(
   c: Q,
   tokenHash: string,
@@ -251,7 +254,9 @@ export async function openInvite(
       WHERE i.token_hash = $1 AND i.until > to_timestamp($2)
         AND NOT EXISTS (SELECT 1 FROM staff_credentials c WHERE c.invite_hash = i.token_hash)
         AND i.n = (SELECT max(n) FROM staff_invites WHERE staff_id = i.staff_id)
-        AND (SELECT active FROM staff_access WHERE staff_id = i.staff_id ORDER BY id DESC LIMIT 1)`,
+        AND (SELECT active FROM staff_access WHERE staff_id = i.staff_id ORDER BY id DESC LIMIT 1)
+        AND NOT EXISTS (SELECT 1 FROM staff_access a
+                         WHERE a.staff_id = i.staff_id AND NOT a.active AND a.at >= i.made_at)`,
     [tokenHash, ts(nowMs)],
   );
   const x = r.rows[0];
@@ -260,22 +265,26 @@ export async function openInvite(
 
 /**
  * Sets the password and two-step secret from an invite (once). The API has checked the new password
- * and that the member's app shows the right code. Returns false when the invite cannot be used.
+ * and that the member's app shows the right code (`totpStep`: that code cannot then sign in).
+ * Returns false when the invite cannot be used.
  */
 export async function acceptInvite(
   pool: Pool,
-  tokenHash: string,
-  passwordHash: string,
-  nowMs: number,
+  o: {
+    readonly tokenHash: string;
+    readonly passwordHash: string;
+    readonly totpStep: number;
+    readonly nowMs: number;
+  },
 ): Promise<boolean> {
   return inTransaction(pool, async (c) => {
     await c.query(LOCK);
-    const inv = await openInvite(c, tokenHash, nowMs);
+    const inv = await openInvite(c, o.tokenHash, o.nowMs);
     if (!inv) return false;
     await c.query(
-      `INSERT INTO staff_credentials (staff_id, invite_hash, password_hash, totp_secret, at)
-       VALUES ($1, $2, $3, $4, to_timestamp($5))`,
-      [inv.staffId, tokenHash, passwordHash, inv.totpSealed, ts(nowMs)],
+      `INSERT INTO staff_credentials (staff_id, invite_hash, password_hash, totp_secret, totp_step, at)
+       VALUES ($1, $2, $3, $4, $5, to_timestamp($6))`,
+      [inv.staffId, o.tokenHash, o.passwordHash, inv.totpSealed, o.totpStep, ts(o.nowMs)],
     );
     return true;
   });
@@ -298,13 +307,78 @@ export type SignInResult =
     };
 
 /** Wrong tries from one address in the lock time before it must wait (many accounts guessed). */
-const MAX_FAILURES_PER_IP = 30;
+export const MAX_FAILURES_PER_IP = 30;
+
+interface SignInState {
+  readonly ipBlocked: boolean;
+  readonly locked: number | undefined;
+  readonly member: StaffMember | undefined;
+  readonly cred: (StoredCredentials & { readonly id: string }) | undefined;
+}
+
+/** Where a sign-in stands for this email from this address (read before and after the check). */
+async function signInState(
+  c: Q,
+  email: string,
+  ip: string,
+  nowMs: number,
+  rules: SignInRules,
+): Promise<SignInState> {
+  const fromIp = await c.query<{ n: string }>(
+    `SELECT count(*) AS n FROM staff_sign_ins
+      WHERE ip = $1 AND NOT ok AND why = 'wrong' AND at > to_timestamp($2)`,
+    [ip, ts(nowMs - rules.lockMs)],
+  );
+  // Wrong tries for this email from this address since its last good sign-in. Counted by the email
+  // typed, so an unknown email locks the same way (its answers look the same); tries refused while
+  // locked do not add to the lock.
+  const fails = await c.query<{ at: string }>(
+    `SELECT (extract(epoch FROM at) * 1000)::bigint AS at FROM staff_sign_ins
+      WHERE email = $1 AND ip = $2 AND NOT ok AND why = 'wrong'
+        AND id > coalesce((SELECT max(id) FROM staff_sign_ins WHERE email = $1 AND ok), 0)
+      ORDER BY id`,
+    [email, ip],
+  );
+  const member = await staffByEmail(c, email);
+  // Only credentials set from the member's newest invite count: a reset stops the old ones.
+  const cred = member?.active
+    ? await c.query<{ id: string; password_hash: string; totp_secret: string; used: string }>(
+        `SELECT k.id, k.password_hash, k.totp_secret,
+                greatest(k.totp_step,
+                         (SELECT max(totp_step) FROM staff_sign_ins WHERE staff_id = k.staff_id AND ok)) AS used
+           FROM staff_credentials k
+          WHERE k.staff_id = $1
+            AND k.invite_hash = (SELECT token_hash FROM staff_invites WHERE staff_id = $1
+                                  ORDER BY n DESC LIMIT 1)`,
+        [member.id],
+      )
+    : { rows: [] };
+  const k = cred.rows[0];
+  return {
+    ipBlocked: Number(fromIp.rows[0]?.n) >= MAX_FAILURES_PER_IP,
+    locked: lockedUntil(
+      fails.rows.map((x) => Number(x.at)),
+      nowMs,
+      rules,
+    ),
+    member,
+    cred: k && {
+      id: String(k.id),
+      passwordHash: k.password_hash,
+      totpSealed: k.totp_secret,
+      usedUpTo: Number(k.used),
+    },
+  };
+}
 
 /**
  * One sign-in try. `check` is the API's secret check: given the stored credentials (or undefined
- * for an unknown or switched-off member: it must still take the same time), it returns the two-step
- * step used, or undefined when the password or code is wrong. On success a session starts with
- * `sessionHash`. Every try is recorded.
+ * when there is nothing to check: an unknown or switched-off member, a lock; it must still take the
+ * same time), it returns the two-step step used, or undefined when the password or code is wrong.
+ * The check runs outside any transaction (it is slow on purpose); the result is then recorded under
+ * the staff lock, after reading everything again, so a reset or switch-off that landed meanwhile,
+ * or the same code used by another try, wins. On success a session starts with `sessionHash`.
+ * Every try is recorded. `ip`: the caller's address as the API groups it.
  */
 export async function signIn(
   pool: Pool,
@@ -321,66 +395,31 @@ export async function signIn(
   const rules = o.rules ?? DEFAULT_SIGN_IN_RULES;
   const email = normalEmail(o.email).slice(0, 254);
   const ip = o.ip.slice(0, 64);
+  const before = await inTransaction(pool, (c) => signInState(c, email, ip, o.nowMs, rules));
+  const open = !before.ipBlocked && before.locked === undefined;
+  const step = await o.check(open ? before.cred : undefined);
   return inTransaction(pool, async (c) => {
-    // One try at a time per email: two at once could both pass the lock check.
-    await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`recall-sign-in:${email}`]);
-    const log = (staffId: string | null, ok: boolean, why: string, step: number | null = null) =>
+    await c.query(LOCK);
+    const log = (staffId: string | null, ok: boolean, why: string, used: number | null = null) =>
       c.query(
         `INSERT INTO staff_sign_ins (email, staff_id, ok, why, totp_step, ip, at)
          VALUES ($1, $2, $3, $4, $5, $6, to_timestamp($7))`,
-        [email, staffId, ok, why, step, ip, ts(o.nowMs)],
+        [email, staffId, ok, why, used, ip, ts(o.nowMs)],
       );
-    const fromIp = await c.query<{ n: string }>(
-      `SELECT count(*) AS n FROM staff_sign_ins
-        WHERE ip = $1 AND NOT ok AND why = 'wrong' AND at > to_timestamp($2)`,
-      [ip, ts(o.nowMs - rules.lockMs)],
-    );
-    if (Number(fromIp.rows[0]?.n) >= MAX_FAILURES_PER_IP) {
-      await log(null, false, 'too-many-here');
+    const now = await signInState(c, email, ip, o.nowMs, rules);
+    const id = now.member?.id ?? null;
+    if (now.ipBlocked) {
+      await log(id, false, 'too-many-here');
       return { ok: false, why: 'too-many-here' };
     }
-    const m = await staffByEmail(c, email);
-    // Wrong tries since the last good sign-in (tries refused while locked do not add to the lock).
-    const fails = m
-      ? await c.query<{ at: string }>(
-          `SELECT (extract(epoch FROM at) * 1000)::bigint AS at FROM staff_sign_ins
-            WHERE staff_id = $1 AND NOT ok AND why = 'wrong'
-              AND id > coalesce((SELECT max(id) FROM staff_sign_ins WHERE staff_id = $1 AND ok), 0)
-            ORDER BY id`,
-          [m.id],
-        )
-      : { rows: [] };
-    const until = lockedUntil(
-      fails.rows.map((x) => Number(x.at)),
-      o.nowMs,
-      rules,
-    );
-    if (m && until !== undefined) {
-      await log(m.id, false, 'locked');
-      return { ok: false, why: 'locked', until };
+    if (now.locked !== undefined) {
+      await log(id, false, 'locked');
+      return { ok: false, why: 'locked', until: now.locked };
     }
-    // Only credentials set from the member's newest invite count: a reset stops the old ones.
-    const cred = m?.active
-      ? await c.query<{ password_hash: string; totp_secret: string; used: string | null }>(
-          `SELECT k.password_hash, k.totp_secret,
-                  (SELECT max(totp_step) FROM staff_sign_ins WHERE staff_id = k.staff_id AND ok) AS used
-             FROM staff_credentials k
-            WHERE k.staff_id = $1
-              AND k.invite_hash = (SELECT token_hash FROM staff_invites WHERE staff_id = $1
-                                    ORDER BY n DESC LIMIT 1)`,
-          [m.id],
-        )
-      : { rows: [] };
-    const k = cred.rows[0];
-    const step = await o.check(
-      k && {
-        passwordHash: k.password_hash,
-        totpSealed: k.totp_secret,
-        usedUpTo: k.used === null ? -1 : Number(k.used),
-      },
-    );
-    if (!m || !k || step === undefined) {
-      await log(m?.id ?? null, false, 'wrong');
+    const m = now.member;
+    const k = now.cred;
+    if (!open || !m || !k || step === undefined || k.id !== before.cred?.id || step <= k.usedUpTo) {
+      await log(id, false, 'wrong');
       return { ok: false, why: 'wrong' };
     }
     await log(m.id, true, 'ok', step);
@@ -394,50 +433,59 @@ export async function signIn(
 }
 
 /**
- * The member behind a session, or undefined when it has ended, run out, gone idle, or the member was
- * switched off. Notes the session as seen (at most once a minute).
+ * The member behind a session, or undefined when it has ended, run out, gone idle, the member was
+ * switched off, or their access or password changed after it started. Notes the session as seen (at
+ * most once a minute).
  */
 export async function sessionMember(
-  pool: Pick<Pool, 'query'>,
+  pool: Pool,
   sessionHash: string,
   nowMs: number,
   rules: SignInRules = DEFAULT_SIGN_IN_RULES,
 ): Promise<StaffMember | undefined> {
-  const r = await pool.query<{ staff_id: string; started: string; seen: string }>(
-    `SELECT s.staff_id, (extract(epoch FROM s.started_at) * 1000)::bigint AS started,
-            (extract(epoch FROM greatest(s.started_at,
-              coalesce((SELECT max(at) FROM staff_session_seen WHERE token_hash = s.token_hash),
-                       s.started_at))) * 1000)::bigint AS seen
-       FROM staff_sessions s
-      WHERE s.token_hash = $1
-        AND NOT EXISTS (SELECT 1 FROM staff_session_ends e WHERE e.token_hash = s.token_hash)`,
-    [sessionHash],
-  );
-  const x = r.rows[0];
-  if (!x || !sessionAlive(Number(x.started), Number(x.seen), nowMs, rules)) return undefined;
-  const m = await staffMember(pool, x.staff_id);
-  if (!m?.active) return undefined;
-  if (nowMs - Number(x.seen) >= 60_000)
-    await pool.query(
-      `INSERT INTO staff_session_seen (token_hash, at) VALUES ($1, to_timestamp($2))
-       ON CONFLICT DO NOTHING`,
-      [sessionHash, ts(nowMs)],
+  return inTransaction(pool, async (c) => {
+    const r = await c.query<{ staff_id: string; started: string; seen: string; stale: boolean }>(
+      `SELECT s.staff_id, (extract(epoch FROM s.started_at) * 1000)::bigint AS started,
+              (extract(epoch FROM coalesce(
+                 (SELECT max(at) FROM staff_session_seen WHERE token_hash = s.token_hash),
+                 s.started_at)) * 1000)::bigint AS seen,
+              s.started_at < greatest(
+                (SELECT max(at) FROM staff_access WHERE staff_id = s.staff_id),
+                (SELECT max(made_at) FROM staff_invites WHERE staff_id = s.staff_id)) AS stale
+         FROM staff_sessions s
+        WHERE s.token_hash = $1
+          AND NOT EXISTS (SELECT 1 FROM staff_session_ends e WHERE e.token_hash = s.token_hash)`,
+      [sessionHash],
     );
-  return m;
+    const x = r.rows[0];
+    if (!x || x.stale || !sessionAlive(Number(x.started), Number(x.seen), nowMs, rules))
+      return undefined;
+    const m = await staffMember(c, x.staff_id);
+    if (!m?.active) return undefined;
+    if (nowMs - Number(x.seen) >= 60_000)
+      await c.query(
+        `INSERT INTO staff_session_seen (token_hash, at) VALUES ($1, to_timestamp($2))
+         ON CONFLICT DO NOTHING`,
+        [sessionHash, ts(nowMs)],
+      );
+    return m;
+  });
 }
 
 /** Ends a session (signing out). True when it was open. */
 export async function endSession(
-  pool: Pick<Pool, 'query'>,
+  pool: Pool,
   sessionHash: string,
   why: EndWhy,
   nowMs: number,
 ): Promise<boolean> {
-  const r = await pool.query(
-    `INSERT INTO staff_session_ends (token_hash, at, why)
-     SELECT token_hash, to_timestamp($2), $3 FROM staff_sessions WHERE token_hash = $1
-     ON CONFLICT DO NOTHING`,
-    [sessionHash, ts(nowMs), why],
-  );
-  return (r.rowCount ?? 0) > 0;
+  return inTransaction(pool, async (c) => {
+    const r = await c.query(
+      `INSERT INTO staff_session_ends (token_hash, at, why)
+       SELECT token_hash, to_timestamp($2), $3 FROM staff_sessions WHERE token_hash = $1
+       ON CONFLICT DO NOTHING`,
+      [sessionHash, ts(nowMs), why],
+    );
+    return (r.rowCount ?? 0) > 0;
+  });
 }

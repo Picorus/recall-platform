@@ -4,6 +4,9 @@ import pg from 'pg';
 import { readConfig } from './config.js';
 import { apiHandler } from './staff-api.js';
 
+// A mistake in one request must never stop the API for everyone.
+process.on('unhandledRejection', (e) => console.error('api: unhandled', e));
+
 const cfg = readConfig();
 const pool = new pg.Pool({ connectionString: cfg.databaseUrl });
 const server = createServer(apiHandler(pool, cfg));
