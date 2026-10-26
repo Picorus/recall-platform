@@ -797,3 +797,32 @@ it('the Payouts page: the Monday run approved, a line held and released, then pa
   }
   expect(errors).toEqual([]);
 }, 120_000);
+
+it('the Money page: where money stands, the payment and its tax invoice, the accountant files', async () => {
+  const page = await browser.newPage();
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  shift += 30_000;
+  await page.goto(`${SITE}/sign-in`);
+  await page.getByLabel('Email').fill('prateek@recall.in');
+  await page.getByLabel('Password').fill(PW);
+  await page.getByLabel('Code from your authenticator app').fill(totpCode(SECRET.value, step()));
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.getByText('Prateek · Super admin').waitFor();
+  await page.getByRole('link', { name: 'Money' }).click();
+  // The booking paid in the earlier test: held for its campaign, one payment, one invoice.
+  await page.getByRole('region', { name: 'Where money stands now' }).waitFor();
+  const pays = page.getByRole('table', { name: 'Payments' });
+  await pays.getByText('Paid', { exact: true }).waitFor();
+  await expect.poll(() => pays.getByRole('row').count()).toBe(2);
+  const docs = page.getByRole('table', { name: 'Tax documents' });
+  await expect.poll(() => docs.getByRole('row').count()).toBe(2);
+  const download = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Download files for the accountant' }).click();
+  expect((await download).suggestedFilename()).toMatch(/^invoices-\d{4}-\d{2}\.csv$/);
+  if (process.env.SCREENSHOT_DIR) {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.screenshot({ path: `${process.env.SCREENSHOT_DIR}/money.png`, fullPage: true });
+  }
+  expect(errors).toEqual([]);
+}, 120_000);
