@@ -2,6 +2,16 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 27 Oct 2026 · P3.12 · Payouts
+- P3.11.3 merged (PR #60).
+- **The Monday run in admin** (migration 0041, `packages/db/src/payouts.ts`): prepared by itself on Monday from 10:00 India time (or by hand), approved by someone other than who prepared it, then sent through the payout provider. What preparing found (riders with no checked account, pay not brought up to date, changes in closed months) is kept with the run.
+- **Finance can** hold one rider's line (never sent until released), drop it (his money goes in the next run) or cancel the rest of a run, each with why; nothing changes while a run is being sent. Failures are sent again (3 tries, then given up and owed next run).
+- **API** (`services/api/src/payouts-api.ts`): runs, one run, prepare, approve, send, hold/release, drop, cancel. Finance looks; finance admins and super admins act; read-only members see UPI ids masked. Payout provider: the fake on a laptop only; production cannot send until a real one (P6).
+- **Admin site**: a Payouts page (runs, where each stands, each line with its history and actions).
+- Tests: database 5 (auto-prepare timing, findings kept, hold/release, drop, nothing during a send, run list and page, append-only, ledger balances); API 1 routes test + config; browser (approve, hold, release, paid).
+- Open: the real payout provider (P6); a large run is sent inside one request for now.
+- Next: P3.13, money (payments, invoices, credit notes, refunds, statements, GST, exports).
+
 ## 27 Oct 2026 · P3.11.3 · Fitting slots, a rider's money, leaving
 - P3.11.1–2 merged (PR #59).
 - **Fitting slots** (migration 0040, `packages/db/src/rider-fitting.ts`): Operations open a slot at a fitting centre (a start in India time, up to 90 days ahead; how long; how many bikes) and book an approved rider into it. One booking per rider (booking again moves it, the old one cancelled with why); a slot never takes more bikes than it has room for (one lock for slots and bookings); a booking is cancelled with why. Each booking and cancellation is an event. Fitting centres become a setting in P3.17.

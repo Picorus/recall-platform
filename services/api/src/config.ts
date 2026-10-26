@@ -5,8 +5,10 @@ import {
   fakeFileStore,
   fakeKyc,
   fakePayments,
+  fakePayouts,
   type FileStore,
   type PaymentsAdapter,
+  type PayoutsAdapter,
 } from '@recall/adapters';
 import { randomBytes } from 'node:crypto';
 import { readKey } from './secrets.js';
@@ -52,6 +54,7 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
   const payments = paymentsFrom(env, production);
   const files = filesFrom(env, production);
   const riderChecks = riderChecksFrom(env, production);
+  const payouts = payoutsFrom(env, production);
   return {
     databaseUrl: need('DATABASE_URL'),
     host: env.API_HOST || '127.0.0.1',
@@ -63,6 +66,7 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     ...(payments ? { payments } : {}),
     ...(files ? { files } : {}),
     ...(riderChecks ? { riderChecks } : {}),
+    ...(payouts ? { payouts } : {}),
   };
 }
 
@@ -138,6 +142,26 @@ export function riderChecksFrom(
   if (production || !onlyLocal(env))
     throw new Error('The fake rider checks are for a laptop only (nobody else can reach it)');
   return { kyc: fakeKyc({ auto: true }), esign: fakeEsign({ auto: true }), bank: fakeBankCheck() };
+}
+
+/**
+ * Paying riders (P3.12). The real payout provider comes with its contract (P6); until then a
+ * production API prepares and approves runs but cannot send them. On a laptop (only one nobody else
+ * can reach) the fake pays at once, so the whole run can be tried.
+ */
+export function payoutsFrom(
+  env: NodeJS.ProcessEnv,
+  production: boolean,
+): PayoutsAdapter | undefined {
+  const provider = env.PAYOUTS_PROVIDER || (production ? '' : 'fake');
+  if (provider === '') return undefined;
+  if (provider !== 'fake')
+    throw new Error(
+      `PAYOUTS_PROVIDER ${provider} is not available yet (real providers come in P6)`,
+    );
+  if (production || !onlyLocal(env))
+    throw new Error('The fake payout provider is for a laptop only (nobody else can reach it)');
+  return fakePayouts();
 }
 
 /**

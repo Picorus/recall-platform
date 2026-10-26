@@ -12,6 +12,7 @@ import type {
   FileStore,
   KycAdapter,
   PaymentsAdapter,
+  PayoutsAdapter,
 } from '@recall/adapters';
 import {
   accessProblem,
@@ -52,6 +53,7 @@ import { handleAds } from './ads-api.js';
 import { handleReviews } from './reviews-api.js';
 import { handleDelivery } from './delivery-api.js';
 import { handleRiders } from './riders-api.js';
+import { handlePayouts } from './payouts-api.js';
 import {
   decoyHash,
   hashPassword,
@@ -89,6 +91,8 @@ export interface StaffApiConfig {
     readonly esign: EsignAdapter;
     readonly bank: BankCheckAdapter;
   };
+  /** Paying riders (P3.12): the provider, or its fake on a laptop. Absent: runs cannot be sent. */
+  readonly payouts?: PayoutsAdapter;
 }
 
 const cookieName = (cfg: StaffApiConfig) =>
@@ -466,6 +470,7 @@ export function apiHandler(
       if (await handleReviews(pool, cfg, req, res, nowMs)) return;
       if (await handleDelivery(pool, cfg, req, res, nowMs)) return;
       if (await handleRiders(pool, cfg, req, res, nowMs)) return;
+      if (await handlePayouts(pool, cfg, req, res, nowMs)) return;
       throw new HttpError(404, 'Not found');
     })().catch((e: unknown) => {
       if (e instanceof HttpError) return send(res, e.status, { error: e.message });

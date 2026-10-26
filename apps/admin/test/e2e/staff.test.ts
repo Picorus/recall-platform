@@ -1,11 +1,25 @@
 // The admin site in a real browser against the real API and a real database: the first super admin
 // opens their invite, sets a password and the two-step code, signs in, adds an admin and signs out.
 // Needs `next build` first and DATABASE_URL (pnpm services:up).
-import { fakeBankCheck, fakeEsign, fakeFileStore, fakeKyc, fakePayments } from '@recall/adapters';
+import {
+  fakeBankCheck,
+  fakeEsign,
+  fakeFileStore,
+  fakeKyc,
+  fakePayments,
+  fakePayouts,
+} from '@recall/adapters';
 import { apiHandler, newToken, newTotpSecret, seal, tokenHash, totpCode } from '@recall/api';
 import { launchAreas, newScreenId } from '@recall/domain';
-import { addStaff, createAccount, saveAreaVersion, storeUpload } from '@recall/db';
-import { freshDatabase } from '@recall/db/test-db';
+import {
+  addStaff,
+  createAccount,
+  post,
+  preparePayoutRun,
+  saveAreaVersion,
+  storeUpload,
+} from '@recall/db';
+import { checkedPayoutAccount, freshDatabase } from '@recall/db/test-db';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
@@ -47,6 +61,7 @@ beforeAll(async () => {
           esign: fakeEsign({ auto: true }),
           bank: fakeBankCheck(),
         },
+        payouts: fakePayouts(),
       },
       (l) => console.error(l),
       clock,
@@ -714,6 +729,71 @@ it('the Riders page: a walk-in rider added, his documents checked, approved, a n
   if (process.env.SCREENSHOT_DIR) {
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.screenshot({ path: `${process.env.SCREENSHOT_DIR}/riders.png`, fullPage: true });
+  }
+  expect(errors).toEqual([]);
+}, 120_000);
+
+it('the Payouts page: the Monday run approved, a line held and released, then paid', async () => {
+  // A rider owed ₹1,500 with a checked UPI, and this week's run prepared by itself.
+  const rider = 'RD-000990';
+  await checkedPayoutAccount(db.pool, rider, { kind: 'upi', vpa: 'kiran@okaxis', name: 'Kiran' });
+  await post(
+    db.pool,
+    {
+      entryId: `e2e-pay-${rider}`,
+      at: Math.floor(clock() / 1000),
+      kind: 'rider-pay',
+      ref: rider,
+      memo: 'e2e',
+      postings: [
+        { account: 'rider-earnings', debit: 150_000, credit: 0 },
+        { account: 'rider-payable', debit: 0, credit: 150_000, party: rider },
+      ],
+    },
+    'e2e',
+  );
+  const india = new Date(clock() + 330 * 60_000);
+  india.setUTCDate(india.getUTCDate() - ((india.getUTCDay() + 6) % 7));
+  const monday = india.toISOString().slice(0, 10);
+  await preparePayoutRun(db.pool, monday, Math.floor(clock() / 1000), 'system');
+
+  const page = await browser.newPage();
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  shift += 30_000;
+  await page.goto(`${SITE}/sign-in`);
+  await page.getByLabel('Email').fill('prateek@recall.in');
+  await page.getByLabel('Password').fill(PW);
+  await page.getByLabel('Code from your authenticator app').fill(totpCode(SECRET.value, step()));
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.getByText('Prateek · Super admin').waitFor();
+  await page.getByRole('link', { name: 'Payouts' }).click();
+  const run = page.getByRole('region', { name: `Run for ${dayName(monday)}` });
+  await run.getByRole('heading').getByText('Waiting for approval').waitFor();
+  const lines = run.getByRole('table', { name: 'Payout lines' });
+  await lines.getByText('UPI kiran@okaxis · Kiran').waitFor();
+  await run.getByRole('button', { name: 'Approve' }).click();
+  await run.getByText('Approved. It can be sent now.').waitFor();
+  await run.getByLabel(`Why, ${rider}`).fill('he called about his UPI');
+  await run.getByRole('button', { name: 'Hold' }).click();
+  await run.getByText(`${rider}: held.`).waitFor();
+  // Everything held: nothing to send.
+  await lines.getByText('Held', { exact: true }).waitFor();
+  expect(await run.getByRole('button', { name: 'Send' }).count()).toBe(0);
+  await run.getByLabel(`Why, ${rider}`).fill('UPI confirmed');
+  await run.getByRole('button', { name: 'Release' }).click();
+  await run.getByText(`${rider}: released.`).waitFor();
+  await run.getByRole('button', { name: 'Send' }).click();
+  await run.getByText(/^Sent: 1 paid,/).waitFor();
+  await run.getByRole('heading').getByText('Done').waitFor();
+  await lines.getByText('Paid', { exact: true }).waitFor();
+  await page
+    .getByRole('table', { name: 'Payout runs' })
+    .getByText('₹1,500 of ₹1,500 paid')
+    .waitFor();
+  if (process.env.SCREENSHOT_DIR) {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.screenshot({ path: `${process.env.SCREENSHOT_DIR}/payouts.png`, fullPage: true });
   }
   expect(errors).toEqual([]);
 }, 120_000);
