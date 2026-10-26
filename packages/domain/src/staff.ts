@@ -66,6 +66,11 @@ export interface SignInRules {
   readonly idleMs: number;
   /** An invite to set a password and the two-step code expires after this (ms). */
   readonly inviteMs: number;
+  /**
+   * Right password, wrong code, from anywhere, before the account stops until a super admin resets
+   * it: the password is known to someone, so the code is all that is left to guess.
+   */
+  readonly maxCodeFailures: number;
 }
 
 export const DEFAULT_SIGN_IN_RULES: SignInRules = {
@@ -74,6 +79,7 @@ export const DEFAULT_SIGN_IN_RULES: SignInRules = {
   sessionMs: 12 * 3_600_000,
   idleMs: 30 * 60_000,
   inviteMs: 48 * 3_600_000,
+  maxCodeFailures: 10,
 };
 
 /** Emails are compared in lower case, without spaces around. */

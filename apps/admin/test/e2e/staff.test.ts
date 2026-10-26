@@ -35,7 +35,16 @@ beforeAll(async () => {
   );
   await new Promise<void>((ok) => api.listen(0, '127.0.0.1', ok));
   const apiUrl = `http://127.0.0.1:${(api.address() as AddressInfo).port}`;
+  // A site left over from an earlier run would answer instead of this one.
+  if (
+    await fetch(SITE).then(
+      () => true,
+      () => false,
+    )
+  )
+    throw new Error(`port ${PORT} is in use`);
   next = spawn('npx', ['next', 'start', '-p', String(PORT)], {
+    detached: true,
     cwd: new URL('../..', import.meta.url).pathname,
     env: { ...process.env, API_URL: apiUrl, NEXT_TELEMETRY_DISABLED: '1' },
     stdio: 'pipe',
@@ -55,7 +64,8 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await browser?.close();
-  next?.kill();
+  // The whole process group: npx and the Next server it started.
+  if (next?.pid) process.kill(-next.pid, 'SIGTERM');
   await new Promise<void>((ok) => api.close(() => ok()));
   await db.drop();
 });
@@ -80,9 +90,15 @@ it('first super admin: invite, sign in, add an admin, sign out', async () => {
 
   const page = await browser.newPage();
   const res = await page.goto(`${SITE}/invite#t=${token}`);
-  expect(res?.headers()['content-security-policy']).toContain("frame-ancestors 'none'");
+  const csp = res?.headers()['content-security-policy'] ?? '';
+  expect(csp).toContain("frame-ancestors 'none'");
+  // Scripts only with this page's own code; no inline scripts allowed.
+  expect(csp).toMatch(/script-src 'self' 'nonce-[A-Za-z0-9+/=]+' 'strict-dynamic'(;|$)/);
+  expect(csp).not.toContain("'unsafe-inline' 'strict");
   expect(res?.headers()['referrer-policy']).toBe('no-referrer');
   await page.getByText('Welcome, Prateek').waitFor();
+  // The token is gone from the address (and the browser's history).
+  expect(page.url()).toBe(`${SITE}/invite`);
   await expect(page.getByAltText('QR code for your authenticator app').isVisible()).resolves.toBe(
     true,
   );
@@ -122,3 +138,17 @@ it('first super admin: invite, sign in, add an admin, sign out', async () => {
   await page.goto(`${SITE}/staff`);
   await page.getByRole('button', { name: 'Sign in' }).waitFor();
 }, 120_000);
+
+it('the pass-through takes only plain paths and small bodies', async () => {
+  const big = await fetch(`${SITE}/api/staff/sign-in`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', origin: SITE },
+    body: JSON.stringify({ email: 'x'.repeat(20_000) }),
+  });
+  expect(big.status).toBe(413);
+  for (const path of ['/api/staff/..%2Fhealth', '/api/staff%2Fme', '/api/staff/me.json']) {
+    expect((await fetch(`${SITE}${path}`)).status, path).toBe(404);
+  }
+  const ok = await fetch(`${SITE}/api/health`);
+  expect(ok.status, await ok.text()).toBe(200);
+});

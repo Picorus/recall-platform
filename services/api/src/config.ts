@@ -34,6 +34,11 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
   const proxyHops = Number(hopsText);
   if (!Number.isInteger(proxyHops) || proxyHops < 0 || proxyHops > 5)
     throw new Error('API_PROXY_HOPS must be a whole number 0 to 5');
+  // In production a load balancer must stand in front of the admin site: without one, either every
+  // caller looks the same (0) or callers can write their own address (the admin site passes the
+  // header on unchanged).
+  if (production && proxyHops < 1)
+    throw new Error('API_PROXY_HOPS must be at least 1 in production (a load balancer in front)');
   return {
     databaseUrl: need('DATABASE_URL'),
     host: env.API_HOST || '127.0.0.1',

@@ -113,4 +113,10 @@ describe('the caller address sign-in limits count', () => {
     expect(callerIp('6.6.6.6, 1.2.3.4, 172.16.0.5', '10.0.0.2', 2)).toBe('1.2.3.4');
     expect(callerIp(undefined, '10.0.0.2', 1)).toBe('unknown');
   });
+
+  it('a port added by a proxy is ignored', () => {
+    expect(callerIp('1.2.3.4:5678', '10.0.0.2', 1)).toBe('1.2.3.4');
+    expect(callerIp('1.2.3.4:5679', '10.0.0.2', 1)).toBe('1.2.3.4');
+    expect(callerIp('[2001:db8:aa:bb::1]:443', '10.0.0.2', 1)).toBe('2001:db8:aa:bb::/64');
+  });
 });

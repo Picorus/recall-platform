@@ -232,6 +232,24 @@ export async function resetStaff(
   });
 }
 
+/**
+ * A reset made on the server itself (`pnpm --filter @recall/api reset-staff`), for when no super
+ * admin can sign in (the only one lost their phone, or their account stopped after wrong codes).
+ */
+export async function resetStaffOnServer(
+  pool: Pool,
+  o: { readonly email: string; readonly invite: NewInvite; readonly nowMs: number },
+): Promise<StaffMember> {
+  return inTransaction(pool, async (c) => {
+    await c.query(LOCK);
+    const m = await staffByEmail(c, o.email);
+    if (!m) throw new Error('No such member');
+    await insertInvite(c, m.id, o.invite, 'server', o.nowMs);
+    await endAllSessions(c, m.id, 'reset', o.nowMs);
+    return m;
+  });
+}
+
 export interface OpenInvite {
   readonly staffId: string;
   readonly email: string;
@@ -309,9 +327,17 @@ export type SignInResult =
 /** Wrong tries from one address in the lock time before it must wait (many accounts guessed). */
 export const MAX_FAILURES_PER_IP = 30;
 
+/** The API's secret check: whether the password matched, and the two-step step used if all did. */
+export interface CheckResult {
+  readonly passwordOk: boolean;
+  readonly step: number | undefined;
+}
+
 interface SignInState {
   readonly ipBlocked: boolean;
   readonly locked: number | undefined;
+  /** Too many right-password-wrong-code tries since the last good sign-in: stopped until a reset. */
+  readonly codeLocked: boolean;
   readonly member: StaffMember | undefined;
   readonly cred: (StoredCredentials & { readonly id: string }) | undefined;
 }
@@ -326,7 +352,7 @@ async function signInState(
 ): Promise<SignInState> {
   const fromIp = await c.query<{ n: string }>(
     `SELECT count(*) AS n FROM staff_sign_ins
-      WHERE ip = $1 AND NOT ok AND why = 'wrong' AND at > to_timestamp($2)`,
+      WHERE ip = $1 AND NOT ok AND why IN ('wrong', 'wrong-code') AND at > to_timestamp($2)`,
     [ip, ts(nowMs - rules.lockMs)],
   );
   // Wrong tries for this email from this address since its last good sign-in. Counted by the email
@@ -334,7 +360,7 @@ async function signInState(
   // locked do not add to the lock.
   const fails = await c.query<{ at: string }>(
     `SELECT (extract(epoch FROM at) * 1000)::bigint AS at FROM staff_sign_ins
-      WHERE email = $1 AND ip = $2 AND NOT ok AND why = 'wrong'
+      WHERE email = $1 AND ip = $2 AND NOT ok AND why IN ('wrong', 'wrong-code')
         AND id > coalesce((SELECT max(id) FROM staff_sign_ins WHERE email = $1 AND ok), 0)
       ORDER BY id`,
     [email, ip],
@@ -342,10 +368,21 @@ async function signInState(
   const member = await staffByEmail(c, email);
   // Only credentials set from the member's newest invite count: a reset stops the old ones.
   const cred = member?.active
-    ? await c.query<{ id: string; password_hash: string; totp_secret: string; used: string }>(
+    ? await c.query<{
+        id: string;
+        password_hash: string;
+        totp_secret: string;
+        used: string;
+        code_fails: string;
+      }>(
         `SELECT k.id, k.password_hash, k.totp_secret,
                 greatest(k.totp_step,
-                         (SELECT max(totp_step) FROM staff_sign_ins WHERE staff_id = k.staff_id AND ok)) AS used
+                         (SELECT max(totp_step) FROM staff_sign_ins WHERE staff_id = k.staff_id AND ok)) AS used,
+                -- From any address, since these credentials were set and the last good sign-in.
+                (SELECT count(*) FROM staff_sign_ins f
+                  WHERE f.staff_id = k.staff_id AND f.why = 'wrong-code' AND f.at >= k.at
+                    AND f.id > coalesce((SELECT max(id) FROM staff_sign_ins
+                                          WHERE staff_id = k.staff_id AND ok), 0)) AS code_fails
            FROM staff_credentials k
           WHERE k.staff_id = $1
             AND k.invite_hash = (SELECT token_hash FROM staff_invites WHERE staff_id = $1
@@ -356,6 +393,7 @@ async function signInState(
   const k = cred.rows[0];
   return {
     ipBlocked: Number(fromIp.rows[0]?.n) >= MAX_FAILURES_PER_IP,
+    codeLocked: Number(k?.code_fails ?? 0) >= rules.maxCodeFailures,
     locked: lockedUntil(
       fails.rows.map((x) => Number(x.at)),
       nowMs,
@@ -374,7 +412,8 @@ async function signInState(
 /**
  * One sign-in try. `check` is the API's secret check: given the stored credentials (or undefined
  * when there is nothing to check: an unknown or switched-off member, a lock; it must still take the
- * same time), it returns the two-step step used, or undefined when the password or code is wrong.
+ * same time), it says whether the password matched and the two-step step used. It is not called at
+ * all for an address that must wait (that says nothing about any account, and costs no work).
  * The check runs outside any transaction (it is slow on purpose); the result is then recorded under
  * the staff lock, after reading everything again, so a reset or switch-off that landed meanwhile,
  * or the same code used by another try, wins. On success a session starts with `sessionHash`.
@@ -388,7 +427,7 @@ export async function signIn(
     readonly agent: string;
     readonly sessionHash: string;
     readonly nowMs: number;
-    readonly check: (cred: StoredCredentials | undefined) => Promise<number | undefined>;
+    readonly check: (cred: StoredCredentials | undefined) => Promise<CheckResult>;
     readonly rules?: SignInRules;
   },
 ): Promise<SignInResult> {
@@ -396,8 +435,11 @@ export async function signIn(
   const email = normalEmail(o.email).slice(0, 254);
   const ip = o.ip.slice(0, 64);
   const before = await inTransaction(pool, (c) => signInState(c, email, ip, o.nowMs, rules));
-  const open = !before.ipBlocked && before.locked === undefined;
-  const step = await o.check(open ? before.cred : undefined);
+  const open = !before.ipBlocked && before.locked === undefined && !before.codeLocked;
+  const checked: CheckResult = before.ipBlocked
+    ? { passwordOk: false, step: undefined }
+    : await o.check(open ? before.cred : undefined);
+  const step = checked.step;
   return inTransaction(pool, async (c) => {
     await c.query(LOCK);
     const log = (staffId: string | null, ok: boolean, why: string, used: number | null = null) =>
@@ -408,18 +450,23 @@ export async function signIn(
       );
     const now = await signInState(c, email, ip, o.nowMs, rules);
     const id = now.member?.id ?? null;
-    if (now.ipBlocked) {
+    // Refused before the check (a wait that ended meanwhile does not make it a wrong try).
+    if (now.ipBlocked || before.ipBlocked) {
       await log(id, false, 'too-many-here');
       return { ok: false, why: 'too-many-here' };
     }
-    if (now.locked !== undefined) {
+    if (now.locked !== undefined || now.codeLocked || !open) {
       await log(id, false, 'locked');
-      return { ok: false, why: 'locked', until: now.locked };
+      return now.locked !== undefined
+        ? { ok: false, why: 'locked', until: now.locked }
+        : { ok: false, why: 'locked' };
     }
     const m = now.member;
     const k = now.cred;
-    if (!open || !m || !k || step === undefined || k.id !== before.cred?.id || step <= k.usedUpTo) {
-      await log(id, false, 'wrong');
+    if (!m || !k || step === undefined || k.id !== before.cred?.id || step <= k.usedUpTo) {
+      // Right password, wrong code: counted for the whole account, from any address.
+      const codeOnly = m && k && k.id === before.cred?.id && checked.passwordOk;
+      await log(id, false, codeOnly ? 'wrong-code' : 'wrong');
       return { ok: false, why: 'wrong' };
     }
     await log(m.id, true, 'ok', step);

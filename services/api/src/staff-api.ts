@@ -97,7 +97,11 @@ export function callerIp(
   return ipKey(ip);
 }
 
-export function ipKey(ip: string): string {
+export function ipKey(raw: string): string {
+  // Some proxies add the port: 1.2.3.4:5678 or [2001:db8::1]:5678.
+  const ip = raw
+    .replace(/^\[([^\]]+)\](?::\d+)?$/, '$1')
+    .replace(/^(\d{1,3}(?:\.\d{1,3}){3}):\d+$/, '$1');
   const v4 = /^(?:::ffff:)?(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(ip);
   if (v4?.[1]) return v4[1];
   if (!ip.includes(':')) return ip.slice(0, 64);
@@ -122,7 +126,21 @@ class Gate {
     private readonly most: number,
     private readonly waiting: number,
   ) {}
-  async run<T>(f: () => Promise<T>): Promise<T> {
+  /** Places each address holds (running or queued): one address cannot fill the queue. */
+  private readonly held = new Map<string, number>();
+  async run<T>(who: string, f: () => Promise<T>): Promise<T> {
+    const mine = this.held.get(who) ?? 0;
+    if (mine >= PER_ADDRESS) throw new HttpError(429, 'Busy. Try again in a moment.');
+    this.held.set(who, mine + 1);
+    try {
+      return await this.queued(f);
+    } finally {
+      const n = (this.held.get(who) ?? 1) - 1;
+      if (n > 0) this.held.set(who, n);
+      else this.held.delete(who);
+    }
+  }
+  private async queued<T>(f: () => Promise<T>): Promise<T> {
     if (this.running >= this.most) {
       if (this.queue.length >= this.waiting)
         throw new HttpError(429, 'Busy. Try again in a moment.');
@@ -137,6 +155,7 @@ class Gate {
     }
   }
 }
+const PER_ADDRESS = 2;
 const passwordGate = new Gate(4, 100);
 
 const unsealed = (cfg: StaffApiConfig, sealed: string, log: (l: string) => void) => {
@@ -233,20 +252,21 @@ export async function handleStaff(
     const password = str(b, 'password', 200);
     const code = str(b, 'code', 10).replace(/\s/g, '');
     const token = newToken();
+    const ip = callerIp(req.headers['x-forwarded-for'], req.socket.remoteAddress, cfg.proxyHops);
     const r = await signIn(pool, {
       email,
-      ip: callerIp(req.headers['x-forwarded-for'], req.socket.remoteAddress, cfg.proxyHops),
+      ip,
       agent: String(req.headers['user-agent'] ?? ''),
       sessionHash: tokenHash(token),
       nowMs,
       rules,
       check: (cred) =>
-        passwordGate.run(async () => {
+        passwordGate.run(ip, async () => {
           // Nothing to check (unknown member, a lock) still checks a decoy: the answer takes as long.
           const pwOk = await passwordMatches(password, cred?.passwordHash ?? (await decoyHash()));
           const secret = cred && unsealed(cfg, cred.totpSealed, log);
-          if (!cred || !pwOk || !secret) return undefined;
-          return totpStep(secret, code, nowMs, cred.usedUpTo);
+          if (!cred || !pwOk || !secret) return { passwordOk: false, step: undefined };
+          return { passwordOk: true, step: totpStep(secret, code, nowMs, cred.usedUpTo) };
         }),
     });
     if (!r.ok) {
@@ -305,7 +325,10 @@ export async function handleStaff(
     const step = totpStep(secret, code, nowMs);
     if (step === undefined)
       throw new HttpError(400, 'The code does not match. Check the app and try the newest code.');
-    const passwordHash = await passwordGate.run(() => hashPassword(password));
+    const passwordHash = await passwordGate.run(
+      callerIp(req.headers['x-forwarded-for'], req.socket.remoteAddress, cfg.proxyHops),
+      () => hashPassword(password),
+    );
     if (!(await acceptInvite(pool, { tokenHash: hash, passwordHash, totpStep: step, nowMs })))
       throw new HttpError(404, INVITE_GONE);
     send(res, 200, { ok: true });

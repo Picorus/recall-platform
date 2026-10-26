@@ -56,7 +56,7 @@ CREATE TABLE staff_sign_ins (
   email     text        NOT NULL CHECK (length(email) <= 254),
   staff_id  text        REFERENCES staff (id),
   ok        boolean     NOT NULL,
-  why       text        NOT NULL CHECK (length(why) <= 80),
+  why       text        NOT NULL CHECK (why IN ('ok', 'wrong', 'wrong-code', 'locked', 'too-many-here')),
   totp_step bigint,
   ip        text        NOT NULL CHECK (length(ip) <= 64),
   at        timestamptz NOT NULL

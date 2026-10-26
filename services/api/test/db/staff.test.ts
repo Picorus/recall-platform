@@ -1,6 +1,12 @@
 // The whole staff journey over HTTP on a real database: first super admin, invite, sign-in with the
 // two-step code, adding an admin, access checks, locks, resets, switching off.
-import { addStaff, resetStaff, sessionMember, signIn as dbSignIn } from '@recall/db';
+import {
+  addStaff,
+  resetStaff,
+  resetStaffOnServer,
+  sessionMember,
+  signIn as dbSignIn,
+} from '@recall/db';
 import { freshDatabase } from '@recall/db/test-db';
 import { DEFAULT_SIGN_IN_RULES as R } from '@recall/domain';
 import { randomBytes } from 'node:crypto';
@@ -648,17 +654,85 @@ describe('robustness', () => {
           },
           nowMs: now,
         });
-        return cred
-          ? totpStep(
-              unseal(CFG.secretKey, cred.totpSealed),
-              totpCode(secret, step()),
-              now,
-              cred.usedUpTo,
-            )
-          : undefined;
+        return {
+          passwordOk: !!cred,
+          step: cred
+            ? totpStep(
+                unseal(CFG.secretKey, cred.totpSealed),
+                totpCode(secret, step()),
+                now,
+                cred.usedUpTo,
+              )
+            : undefined,
+        };
       },
     });
     expect(r.ok).toBe(false);
     expect(await sessionMember(pool, sessionHash, now)).toBeUndefined();
+  });
+
+  it('right password, wrong code 10 times from anywhere: stopped until a reset (on the server)', async () => {
+    const token = newToken();
+    await addStaff(pool, {
+      email: 'phished@recall.in',
+      name: 'Phished',
+      access: { role: 'admin', areas: ['sales'] },
+      byId:
+        (await pool.query<{ id: string }>("SELECT id FROM staff WHERE email = 'prateek@recall.in'"))
+          .rows[0]?.id ?? '',
+      reason: 'lock test',
+      invite: {
+        tokenHash: tokenHash(token),
+        totpSealed: seal(CFG.secretKey, newTotpSecret()),
+        untilMs: now + R.inviteMs,
+      },
+      nowMs: now,
+    });
+    const secret = await acceptInvite(token);
+    // Each from a different address, so the per-address lock never starts.
+    for (let i = 0; i < R.maxCodeFailures; i++) {
+      tick();
+      const r = await call(
+        'POST',
+        '/staff/sign-in',
+        { email: 'phished@recall.in', password: PW, code: '000000' },
+        undefined,
+        ORIGIN,
+        `192.0.2.${100 + i}`,
+      );
+      expect(r.status).toBe(401);
+    }
+    // Now even the right code is refused, from a fresh address.
+    expect((await signIn('phished@recall.in', secret, PW, '192.0.2.200')).status).toBe(401);
+    // A wrong password does not count towards it (an attacker without the password cannot stop it).
+    const why = await pool.query<{ why: string }>(
+      "SELECT why FROM staff_sign_ins WHERE email = 'phished@recall.in' ORDER BY id DESC LIMIT 1",
+    );
+    expect(why.rows[0]?.why).toBe('locked');
+    const reset = newToken();
+    await resetStaffOnServer(pool, {
+      email: 'phished@recall.in',
+      invite: {
+        tokenHash: tokenHash(reset),
+        totpSealed: seal(CFG.secretKey, newTotpSecret()),
+        untilMs: now + R.inviteMs,
+      },
+      nowMs: now,
+    });
+    tick();
+    const fresh = await acceptInvite(reset);
+    expect((await signIn('phished@recall.in', fresh, PW, '192.0.2.201')).status).toBe(200);
+  });
+
+  it('one address gets at most 2 password checks at once', async () => {
+    tick();
+    const body = { email: 'nobody@recall.in', password: 'wrong password!!', code: '123456' };
+    const all = await Promise.all(
+      [1, 2, 3, 4, 5].map(() =>
+        call('POST', '/staff/sign-in', body, undefined, ORIGIN, '192.0.2.250'),
+      ),
+    );
+    expect(all.filter((r) => r.status === 429).length).toBeGreaterThan(0);
+    expect(all.some((r) => r.body.error === 'Busy. Try again in a moment.')).toBe(true);
   });
 });

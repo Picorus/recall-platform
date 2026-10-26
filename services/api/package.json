@@ -12,7 +12,8 @@
     "test": "vitest run --passWithNoTests test/unit",
     "test:db": "vitest run test/db",
     "start": "tsx src/run.ts",
-    "first-admin": "tsx src/first-admin.ts"
+    "first-admin": "tsx src/first-admin.ts",
+    "reset-staff": "tsx src/reset-staff.ts"
   },
   "dependencies": {
     "@recall/db": "workspace:*",

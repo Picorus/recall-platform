@@ -24,6 +24,8 @@ export default function AcceptInvite() {
   useEffect(() => {
     // The token is after # in the link: browsers never send that part to any server.
     const t = new URLSearchParams(window.location.hash.slice(1)).get('t') ?? '';
+    // Not kept in the browser's history either.
+    window.history.replaceState(null, '', '/invite');
     setToken(t);
     api<Invite>('/staff/invite/open', { token: t })
       .then(async (inv) => {

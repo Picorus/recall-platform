@@ -1,21 +1,9 @@
 // The admin site. It reaches the cloud only through the API: /api/... is passed to the API service
-// (app/api/[...path]/route.ts), so the session cookie stays on this site (SameSite=Strict).
+// (app/api/[...path]/route.ts), so the session cookie stays on this site (SameSite=Strict). The
+// content rules (CSP), with a fresh script code for each page, are set in proxy.ts.
 import type { NextConfig } from 'next';
 
 const production = process.env.NODE_ENV === 'production';
-
-const csp = [
-  "default-src 'self'",
-  // Next.js puts small inline scripts on each page; development also needs eval.
-  `script-src 'self' 'unsafe-inline'${production ? '' : " 'unsafe-eval'"}`,
-  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-  "font-src 'self' https://fonts.gstatic.com",
-  "img-src 'self' data:",
-  "connect-src 'self'",
-  "frame-ancestors 'none'",
-  "base-uri 'none'",
-  "form-action 'self'",
-].join('; ');
 
 const config: NextConfig = {
   reactStrictMode: true,
@@ -28,7 +16,6 @@ const config: NextConfig = {
       {
         source: '/:path*',
         headers: [
-          { key: 'Content-Security-Policy', value: csp },
           { key: 'X-Frame-Options', value: 'DENY' },
           { key: 'X-Content-Type-Options', value: 'nosniff' },
           // Invite links carry their token: never pass the address on to another site.
