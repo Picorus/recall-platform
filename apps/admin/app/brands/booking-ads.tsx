@@ -28,7 +28,8 @@ export default function BookingAds({
       api<{ ads: AdView[] }>(`/ads/booking/${bookingId}`),
     ])
       .then(([all, mine]) => {
-        setAds(all.ads);
+        // The brand's newest ads, plus any chosen ones older than those (so they can be unticked).
+        setAds([...all.ads, ...mine.ads.filter((m) => !all.ads.some((a) => a.adId === m.adId))]);
         const ids = mine.ads.map((a) => a.adId);
         setChosen(ids);
         setSaved(ids);

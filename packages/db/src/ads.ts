@@ -1,6 +1,6 @@
 // P3.9.1 in the database: ads uploaded for a brand (checked automatically, stored by fingerprint)
 // and which of them each booking runs.
-import type { FileStore } from '@recall/adapters';
+import { fileKey, type FileStore } from '@recall/adapters';
 import {
   adFacts,
   checkAd,
@@ -93,18 +93,26 @@ export async function uploadAd(
 ): Promise<Ad> {
   const brand = await findAccount(pool, a.brandId);
   if (!brand || brand.kind !== 'brand') throw new Refusal(`No brand ${a.brandId}`);
+  if (!brand.active) throw new Refusal(`${brand.name} is closed`);
   const name = a.name.trim();
   if (name.length < 1 || name.length > 80)
     throw new Refusal('Give the ad a name (1 to 80 characters)');
+  // eslint-disable-next-line no-control-regex
+  if (/[\u0000-\u001f\u007f]/.test(name))
+    throw new Refusal('The ad name has a character that is not allowed');
   const book = priceBookAt(await priceBooks(pool), isoAt(now));
   if (!book) throw new Refusal('No price book in force');
   const facts = adFacts(a.data);
   const checks = checkAd(facts, book.ads);
   if (facts.kind === null) throw new Refusal('Not a picture (PNG, JPEG, WebP) or an MP4 video');
-  const stored = await store.put(a.data, CONTENT_TYPE[facts.kind]);
+  const kind = facts.kind;
+  const key = fileKey(a.data);
   const adId = `AD-${randomBytes(5).toString('hex').toUpperCase()}`;
-  const r = await inTransaction(pool, (c) =>
-    c.query<AdRow>(
+  // The row first, then the file, in one transaction: if either fails, neither is kept (a file
+  // stored by an upload whose row failed would be found by nothing). A file stored just before a
+  // failed commit is harmless: it is kept by fingerprint and the next upload of it reuses it.
+  const r = await inTransaction(pool, async (c) => {
+    const row = await c.query<AdRow>(
       `INSERT INTO ads (ad_id, brand_id, name, file_key, bytes, kind, width, height, duration_ms,
                         codec, checks, outcome, uploaded_by, uploaded_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, to_timestamp($14))
@@ -113,7 +121,7 @@ export async function uploadAd(
         adId,
         a.brandId,
         name,
-        stored.key,
+        key,
         facts.bytes,
         facts.kind,
         facts.width,
@@ -125,8 +133,11 @@ export async function uploadAd(
         a.by,
         now,
       ],
-    ),
-  );
+    );
+    const stored = await store.put(a.data, CONTENT_TYPE[kind]);
+    if (stored.key !== key) throw new Error('the file store keyed the file differently');
+    return row;
+  });
   const row = r.rows[0];
   if (!row) throw new Error('ad not saved');
   return toAd(row);
@@ -159,8 +170,10 @@ export async function bookingAds(pool: Q, bookingId: string): Promise<Ad[]> {
   return r.rows.map(toAd);
 }
 
-/** Steps where a booking's ads can still change (before it runs). */
-const CHANGEABLE = ['draft', 'awaiting-payment', 'paid', 'ads-approved'];
+/** Steps where a booking's ads can still change (before it runs). Once its ads are approved
+ * (P3.9.2), a change sends them back for review; until that exists, approved ads stay as they are. */
+const CHANGEABLE = ['draft', 'awaiting-payment', 'paid'];
+const AD_ID = /^AD-[0-9A-F]{10}$/;
 
 /**
  * Chooses which of its brand's ads a booking runs: 2 to 5 (they take turns), none that failed a
@@ -179,10 +192,9 @@ export async function setBookingAds(
   );
   const booking = b.rows[0];
   if (!booking) throw new Refusal(`No booking ${bookingId}`);
-  const state = await bookingState(pool, bookingId);
-  if (!state || !CHANGEABLE.includes(state) || now >= secs(booking.first_hour_at))
-    throw new Refusal('Its ads can only change before the booking runs');
   const ids = [...new Set(adIds)];
+  const bad = ids.find((id) => !AD_ID.test(id));
+  if (bad !== undefined) throw new Refusal(`${bad.slice(0, 20)} is not an ad id`);
   const { minAds, maxAds } = DEFAULT_SPOT_RULES;
   if (ids.length < minAds || ids.length > maxAds)
     throw new Refusal(`Choose ${minAds} to ${maxAds} ads (they take turns)`);
@@ -200,6 +212,10 @@ export async function setBookingAds(
   }
   return inTransaction(pool, async (c) => {
     await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`booking:${bookingId}`]);
+    // Under the booking's lock: a cancel or a step cannot slip in between the check and the write.
+    const state = await bookingState(c, bookingId);
+    if (!state || !CHANGEABLE.includes(state) || now >= secs(booking.first_hour_at))
+      throw new Refusal('Its ads can only change before the booking runs');
     const v = await c.query<{ n: number }>(
       'SELECT coalesce(max(version), 0) + 1 AS n FROM booking_ad_sets WHERE booking_id = $1',
       [bookingId],

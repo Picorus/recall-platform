@@ -91,6 +91,11 @@ describe('ad routes (P3.9.1)', () => {
     expect((await upload(sana, '', fixture('ad-1280x720.png'))).body.error).toBe(
       'Give the ad a name (1 to 80 characters)',
     );
+    // A control character in the name is refused (not a database error).
+    expect(await upload(sana, 'a\u0000b', fixture('ad-1280x720.png'))).toEqual({
+      status: 400,
+      body: { error: 'The ad name has a character that is not allowed' },
+    });
     expect((await fetch(`${url}/ads?brand=chai-co`, { headers: { cookie: fin } })).status).toBe(
       403,
     );
@@ -106,6 +111,9 @@ describe('ad routes (P3.9.1)', () => {
     const file = await fetch(`${url}${link.pathname.replace('/api', '')}${link.search}`);
     expect(file.status).toBe(200);
     expect(file.headers.get('content-type')).toBe('video/mp4');
+    // Never run as a page if opened directly; not kept past the link's life.
+    expect(file.headers.get('content-security-policy')).toBe('sandbox');
+    expect(file.headers.get('cache-control')).toBe('private, max-age=600');
     expect(Buffer.from(await file.arrayBuffer()).equals(fixture('ad-15s-1280x720.mp4'))).toBe(true);
     const forged = `${url}${link.pathname.replace('/api', '')}?until=${Math.floor(now / 1000) + 99_999}&sig=${'0'.repeat(64)}`;
     expect((await fetch(forged)).status).toBe(403);

@@ -6,11 +6,35 @@ import type { NextRequest } from 'next/server';
 export const dynamic = 'force-dynamic';
 
 const PASS_UP = ['content-type', 'cookie', 'origin', 'user-agent', 'x-forwarded-for'];
-const PASS_DOWN = ['content-type', 'cache-control', 'content-length', 'x-content-type-options'];
+const PASS_DOWN = [
+  'content-type',
+  'cache-control',
+  'content-length',
+  'x-content-type-options',
+  'content-security-policy',
+];
 const MAX_BODY = 16 * 1024;
 
-/** Uploading an ad (P3.9.1) may carry a file up to 64 MB; every other request at most 16 KB. */
+/** Uploading an ad (P3.9.1) may carry a file up to 64 MB; every other request at most 16 KB.
+ * An upload is passed on as it arrives (this site never holds it), a few at a time. */
 const MAX_UPLOAD = 64 * 1024 * 1024;
+const MAX_UPLOADS = 2;
+let uploading = 0;
+
+/** The request body passed on as it arrives, cut off past `max` bytes (then `over()` is true). */
+function cappedStream(req: NextRequest, max: number) {
+  let size = 0;
+  const stream = req.body?.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, out) {
+        size += chunk.length;
+        if (size > max) out.error(new Error('too large'));
+        else out.enqueue(chunk);
+      },
+    }),
+  );
+  return { stream: stream ?? null, over: () => size > max };
+}
 
 /** The request body, read up to `max` bytes (never more is held), or null when it is larger. */
 async function smallBody(req: NextRequest, max: number): Promise<Uint8Array<ArrayBuffer> | null> {
@@ -48,27 +72,47 @@ async function pass(req: NextRequest, path: string[]): Promise<Response> {
     const v = req.headers.get(h);
     if (v) headers.set(h, v);
   }
-  // A plain query (?area=hyd-madhapur&from=2027-08-23&name=Evening%20offer) goes through; anything
-  // else is refused. It is only ever added after the fixed API address and path, so an encoded
-  // character in it cannot change where the request goes.
+  // A plain query (?area=hyd-madhapur&from=2027-08-23) goes through; anything else is refused. An
+  // upload's may also carry an encoded ad name (name=Evening%20offer). It is only ever added after
+  // the fixed API address and path, so an encoded character in it cannot change where it goes.
+  const upload =
+    req.method === 'POST' && path.length === 2 && path[0] === 'ads' && path[1] === 'upload';
   const query = req.nextUrl.search;
-  if (query.length > 300 || !/^(\?[A-Za-z0-9_.:=&%+-]*)?$/.test(query))
+  const plain = upload ? /^(\?[A-Za-z0-9_.:=&%+-]*)?$/ : /^(\?[A-Za-z0-9_.:=&-]*)?$/;
+  if (query.length > 300 || !plain.test(query))
     return Response.json({ error: 'Not found' }, { status: 404 });
-  const upload = path.length === 2 && path[0] === 'ads' && path[1] === 'upload';
-  const body =
-    req.method === 'POST' ? await smallBody(req, upload ? MAX_UPLOAD : MAX_BODY) : undefined;
+  if (upload) {
+    // Not signed in: refused before a byte of the file is read (the API checks who it is).
+    if (!req.headers.get('cookie'))
+      return Response.json({ error: 'Please sign in' }, { status: 401 });
+    if (Number(req.headers.get('content-length') ?? 0) > MAX_UPLOAD)
+      return Response.json({ error: 'Too large' }, { status: 413 });
+    if (uploading >= MAX_UPLOADS)
+      return Response.json(
+        { error: 'Other uploads are running. Try again in a minute.' },
+        { status: 503 },
+      );
+  }
+  const body = req.method === 'POST' && !upload ? await smallBody(req, MAX_BODY) : undefined;
   if (body === null) return Response.json({ error: 'Too large' }, { status: 413 });
+  const sent = upload ? cappedStream(req, MAX_UPLOAD) : null;
   let r: Response;
+  if (upload) uploading += 1;
   try {
     r = await fetch(`${api}/${path.join('/')}${query}`, {
       method: req.method,
       headers,
-      body: body ?? null,
+      body: sent ? sent.stream : (body ?? null),
+      // A stream is sent as it arrives (Node's fetch needs this said).
+      ...(upload ? { duplex: 'half' } : {}),
       redirect: 'manual',
       cache: 'no-store',
-    });
+    } as RequestInit);
   } catch {
+    if (sent?.over()) return Response.json({ error: 'Too large' }, { status: 413 });
     return Response.json({ error: 'The server did not answer. Try again.' }, { status: 502 });
+  } finally {
+    if (upload) uploading -= 1;
   }
   const out = new Headers();
   for (const h of PASS_DOWN) {

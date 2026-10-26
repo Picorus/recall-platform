@@ -1,6 +1,6 @@
 // P3.9.1: ads uploaded for a brand, checked from their bytes and stored once by fingerprint; which
 // of them a booking runs (2 to 5, its brand's own, none that failed).
-import { fakeFileStore } from '@recall/adapters';
+import { fakeFileStore, type FileStore } from '@recall/adapters';
 import { launchAreas, PRICE_BOOK_V1 } from '@recall/domain';
 import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -163,5 +163,50 @@ describe('ads (P3.9.1)', () => {
       'before the booking runs',
     );
     await expect(pool.query("UPDATE ads SET name = 'x'")).rejects.toThrow();
+  });
+
+  it('a hostile file or name is refused or recorded as failed, never a crash; no stray files', async () => {
+    const files = store.files.size;
+    const up = (data: Uint8Array, name = 'Hostile', brandId = 'chai-co', s: FileStore = store) =>
+      uploadAd(pool, s, { brandId, name, data, by: 'S' }, NOW);
+    // A header claiming 4294967295 × 4294967295 pixels: not believed, recorded as failed.
+    const wide = file('ad-1280x720.png');
+    new DataView(wide.buffer).setUint32(16, 0xffffffff);
+    new DataView(wide.buffer).setUint32(20, 0xffffffff);
+    expect(await up(wide)).toMatchObject({ width: null, height: null, outcome: 'fail' });
+    // A header with no picture in it: recorded as failed.
+    expect((await up(file('ad-1280x720.png').slice(0, 33))).outcome).toBe('fail');
+    expect(store.files.size).toBe(files + 2);
+    // A name with a control character, a closed brand: refused, nothing stored.
+    await expect(up(file('ad-1280x720.webp'), 'a\u0000b')).rejects.toThrow(
+      'a character that is not allowed',
+    );
+    await createAccount(
+      pool,
+      {
+        brandId: 'gone-co',
+        kind: 'brand',
+        details: { name: 'Gone Co', agencyId: null, referredBy: null, active: false },
+        by: 'test',
+        reason: 'ads test',
+      },
+      NOW,
+    );
+    await expect(up(file('ad-1280x720.webp'), 'x', 'gone-co')).rejects.toThrow('Gone Co is closed');
+    expect(store.files.size).toBe(files + 2);
+    // The store fails: no row is kept for a file that was never stored.
+    const before = (await brandAds(pool, 'chai-co')).length;
+    const broken: FileStore = {
+      ...store,
+      put: () => Promise.reject(new Error('store down')),
+    };
+    await expect(up(file('ad-1280x720.webp'), 'x', 'chai-co', broken)).rejects.toThrow(
+      'store down',
+    );
+    expect((await brandAds(pool, 'chai-co')).length).toBe(before);
+    // An id that is not an ad id is refused before the database sees it.
+    await expect(setBookingAds(pool, 'BK-AD-1', ['AD-1', 'x\u0000'], 'S', NOW)).rejects.toThrow(
+      'is not an ad id',
+    );
   });
 });

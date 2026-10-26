@@ -166,6 +166,13 @@ it('the pass-through takes only plain paths and small bodies', async () => {
   }
   // A plain query goes through; anything else is refused.
   expect((await fetch(`${SITE}/api/health?x=a;b`)).status).toBe(404);
+  // An encoded value only rides with an upload; an upload with no sign-in is refused at once.
+  expect((await fetch(`${SITE}/api/health?x=a%00`)).status).toBe(404);
+  const anon = await fetch(`${SITE}/api/ads/upload?brand=x&name=a`, {
+    method: 'POST',
+    body: new Uint8Array(1024),
+  });
+  expect(anon.status).toBe(401);
   const ok = await fetch(`${SITE}/api/health`);
   expect(ok.status, await ok.text()).toBe(200);
 });

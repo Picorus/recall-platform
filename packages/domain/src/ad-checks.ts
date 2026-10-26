@@ -44,12 +44,15 @@ export interface AdFacts {
   /** Videos only. */
   readonly durationMs: number | null;
   readonly codec: string | null;
+  /** The file holds picture data (a picture) or a video track with its frames (a video), not
+   * just a header. */
+  readonly media: boolean;
 }
 
 export type CheckOutcome = 'pass' | 'warn' | 'fail';
 
 export interface AdCheck {
-  readonly check: 'kind' | 'size' | 'pixels' | 'shape' | 'length' | 'codec';
+  readonly check: 'kind' | 'content' | 'size' | 'pixels' | 'shape' | 'length' | 'codec';
   readonly outcome: CheckOutcome;
   readonly detail: string;
 }
@@ -60,73 +63,155 @@ const u16be = (b: Uint8Array, at: number) => (b[at] ?? 0) * 256 + (b[at + 1] ?? 
 const u16le = (b: Uint8Array, at: number) => (b[at] ?? 0) + (b[at + 1] ?? 0) * 256;
 const u24le = (b: Uint8Array, at: number) => u16le(b, at) + (b[at + 2] ?? 0) * 65_536;
 const u32be = (b: Uint8Array, at: number) => u16be(b, at) * 65_536 + u16be(b, at + 2);
+const u32le = (b: Uint8Array, at: number) => u16le(b, at) + u16le(b, at + 2) * 65_536;
 const u64be = (b: Uint8Array, at: number) => u32be(b, at) * 4_294_967_296 + u32be(b, at + 4);
+
+/** Sizes and lengths past these are not believed (a damaged or hostile header): unreadable. */
+const MAX_SIDE = 16_384;
+const MAX_LENGTH_MS = 3_600_000;
+/** How many boxes, chunks or segments are read at most (a file cannot keep the server busy). */
+const MAX_STEPS = 10_000;
+
+const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+/** MP4 brands (the ftyp box); QuickTime, HEIF/AVIF pictures and the like are not MP4 videos. */
+const MP4_BRANDS = ['isom', 'iso2', 'iso3', 'iso4', 'iso5', 'iso6', 'mp41', 'mp42', 'avc1', 'M4V '];
+const NOT_MP4 = ['qt  ', 'avif', 'avis', 'heic', 'heix', 'heim', 'heis', 'hevc', 'mif1', 'msf1'];
 
 /** What kind of file this is, by its first bytes (the same test the screen's player uses). */
 export function adKind(b: Uint8Array): AdKind | null {
   if (b.length < 12) return null;
-  if (b[0] === 0x89 && ascii(b, 1, 3) === 'PNG') return 'png';
+  if (PNG_SIGNATURE.every((x, i) => b[i] === x)) return 'png';
   if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'jpeg';
   if (ascii(b, 0, 4) === 'RIFF' && ascii(b, 8, 4) === 'WEBP') return 'webp';
-  if (ascii(b, 4, 4) === 'ftyp') return 'mp4';
+  if (ascii(b, 4, 4) === 'ftyp') {
+    const major = ascii(b, 8, 4);
+    if (MP4_BRANDS.includes(major)) return 'mp4';
+    if (NOT_MP4.includes(major)) return null;
+    const end = Math.min(u32be(b, 0), b.length, 256);
+    for (let at = 16; at + 4 <= end; at += 4)
+      if (MP4_BRANDS.includes(ascii(b, at, 4))) return 'mp4';
+  }
   return null;
 }
 
-/** A picture's size in pixels, from its header; null when it cannot be read. */
-export function pictureSize(b: Uint8Array, kind: AdKind): { width: number; height: number } | null {
+interface Picture {
+  readonly width: number;
+  readonly height: number;
+  /** Image data follows the header. */
+  readonly media: boolean;
+}
+
+/** A picture's size in pixels, from its header, and whether image data follows; null when its
+ * size cannot be read. */
+export function pictureSize(b: Uint8Array, kind: AdKind): Picture | null {
   if (kind === 'png') {
     if (b.length < 24 || ascii(b, 12, 4) !== 'IHDR') return null;
-    return { width: u32be(b, 16), height: u32be(b, 20) };
+    // Walk the chunks for image data (IDAT) before the end (IEND).
+    let media = false;
+    for (let at = 8, n = 0; at + 8 <= b.length && n < MAX_STEPS; n += 1) {
+      const type = ascii(b, at + 4, 4);
+      if (type === 'IEND') break;
+      const len = u32be(b, at);
+      if (type === 'IDAT' && len > 0 && at + 12 + len <= b.length) {
+        media = true;
+        break;
+      }
+      at += 12 + len;
+    }
+    return { width: u32be(b, 16), height: u32be(b, 20), media };
   }
   if (kind === 'webp') {
+    // RIFF chunks: the picture is a VP8 / VP8L chunk (or animation frames) with data in it.
+    let media = false;
+    for (let at = 12, n = 0; at + 8 <= b.length && n < MAX_STEPS; n += 1) {
+      const type = ascii(b, at, 4);
+      const len = u32le(b, at + 4);
+      if (['VP8 ', 'VP8L', 'ANMF'].includes(type) && len > 10 && at + 8 + len <= b.length) {
+        media = true;
+        break;
+      }
+      at += 8 + len + (len % 2);
+    }
     const chunk = ascii(b, 12, 4);
     if (chunk === 'VP8 ' && b.length >= 30)
-      return { width: u16le(b, 26) & 0x3fff, height: u16le(b, 28) & 0x3fff };
+      return { width: u16le(b, 26) & 0x3fff, height: u16le(b, 28) & 0x3fff, media };
     if (chunk === 'VP8L' && b.length >= 25) {
       const v = (b[21] ?? 0) | ((b[22] ?? 0) << 8) | ((b[23] ?? 0) << 16) | ((b[24] ?? 0) << 24);
-      return { width: (v & 0x3fff) + 1, height: ((v >>> 14) & 0x3fff) + 1 };
+      return { width: (v & 0x3fff) + 1, height: ((v >>> 14) & 0x3fff) + 1, media };
     }
     if (chunk === 'VP8X' && b.length >= 30)
-      return { width: u24le(b, 24) + 1, height: u24le(b, 27) + 1 };
+      return { width: u24le(b, 24) + 1, height: u24le(b, 27) + 1, media };
     return null;
   }
   if (kind === 'jpeg') {
-    // Walk the segments to the frame header (SOF0–SOF15, not DHT/JPG/DAC).
+    // Walk the segments to the frame header (SOF0–SOF15, not DHT/JPG/DAC), then on to the
+    // start of the image data (SOS).
+    let size: { width: number; height: number } | null = null;
     let at = 2;
-    while (at + 9 < b.length) {
-      if (b[at] !== 0xff) return null;
+    for (let n = 0; at + 4 <= b.length && n < MAX_STEPS; n += 1) {
+      if (b[at] !== 0xff) break;
       const marker = b[at + 1] ?? 0;
       if (marker === 0xff) {
         at += 1;
         continue;
       }
       const len = u16be(b, at + 2);
-      if (marker >= 0xc0 && marker <= 0xcf && ![0xc4, 0xc8, 0xcc].includes(marker))
-        return { height: u16be(b, at + 5), width: u16be(b, at + 7) };
-      if (len < 2) return null;
+      if (marker === 0xda) return size && { ...size, media: at + 2 + len < b.length };
+      if (
+        size === null &&
+        at + 9 <= b.length &&
+        marker >= 0xc0 &&
+        marker <= 0xcf &&
+        ![0xc4, 0xc8, 0xcc].includes(marker)
+      )
+        size = { height: u16be(b, at + 5), width: u16be(b, at + 7) };
+      if (len < 2) break;
       at += 2 + len;
     }
-    return null;
+    return size && { ...size, media: false };
   }
   return null;
 }
 
 const CONTAINERS = new Set(['moov', 'trak', 'mdia', 'minf', 'stbl']);
 
-/** A video's length, size and compression from its MP4 boxes; nulls where they cannot be read. */
+interface Track {
+  handler: string | null;
+  scale: number;
+  mediaDur: number | null;
+  sampleDur: number | null;
+  width: number | null;
+  height: number | null;
+  codec: string | null;
+}
+
+/** A length in milliseconds, or null when it is unknown or not believable. */
+const lengthMs = (dur: number | null, scale: number, unknown: boolean): number | null => {
+  if (dur === null || unknown || scale <= 0) return null;
+  const ms = Math.round((dur * 1000) / scale);
+  return Number.isSafeInteger(ms) && ms <= MAX_LENGTH_MS ? ms : null;
+};
+
+/**
+ * A video's length, size and compression from its MP4 boxes; nulls where they cannot be read.
+ * The length must agree three ways (the file's header, the video track's header and its frame
+ * table), and the file must hold a video track and its data (mdat).
+ */
 export function mp4Facts(b: Uint8Array): {
   durationMs: number | null;
   width: number | null;
   height: number | null;
   codec: string | null;
+  media: boolean;
 } {
-  let durationMs: number | null = null;
-  let width: number | null = null;
-  let height: number | null = null;
-  let codec: string | null = null;
-  const walk = (start: number, end: number, depth: number) => {
+  let movieMs: number | null = null;
+  let mdat = false;
+  let steps = 0;
+  const tracks: Track[] = [];
+  const walk = (start: number, end: number, depth: number, track: Track | null) => {
     let at = start;
-    while (at + 8 <= end && depth < 8) {
+    while (at + 8 <= end && depth < 8 && steps < MAX_STEPS) {
+      steps += 1;
       let size = u32be(b, at);
       const type = ascii(b, at + 4, 4);
       let head = 8;
@@ -137,50 +222,96 @@ export function mp4Facts(b: Uint8Array): {
       } else if (size === 0) size = end - at;
       if (size < head || at + size > end) return; // a broken box: stop reading this level
       const body = at + head;
-      if (CONTAINERS.has(type)) walk(body, at + size, depth + 1);
-      else if (type === 'mvhd' && body + 32 <= at + size) {
+      const stop = at + size;
+      if (type === 'trak') {
+        const t: Track = {
+          handler: null,
+          scale: 0,
+          mediaDur: null,
+          sampleDur: null,
+          width: null,
+          height: null,
+          codec: null,
+        };
+        tracks.push(t);
+        walk(body, stop, depth + 1, t);
+      } else if (CONTAINERS.has(type)) walk(body, stop, depth + 1, track);
+      else if (type === 'mdat' && depth === 0) mdat = size > head;
+      else if ((type === 'mvhd' || type === 'mdhd') && body + (b[body] === 1 ? 32 : 20) <= stop) {
         const v1 = b[body] === 1;
         const scale = u32be(b, body + (v1 ? 20 : 12));
         const dur = v1 ? u64be(b, body + 24) : u32be(b, body + 16);
-        if (scale > 0) durationMs = Math.round((dur * 1000) / scale);
-      } else if (type === 'tkhd') {
+        // All ones means "unknown".
+        const unknown = v1 ? u32be(b, body + 24) === 0xffffffff : dur === 0xffffffff;
+        if (type === 'mvhd') movieMs = lengthMs(dur, scale, unknown);
+        else if (track) {
+          track.scale = scale;
+          track.mediaDur = unknown ? null : dur;
+        }
+      } else if (type === 'hdlr' && track && body + 12 <= stop) {
+        track.handler = ascii(b, body + 8, 4);
+      } else if (type === 'tkhd' && track) {
         const v1 = b[body] === 1;
         const wAt = body + (v1 ? 88 : 76);
-        if (wAt + 8 <= at + size) {
-          const w = Math.floor(u32be(b, wAt) / 65_536);
-          const h = Math.floor(u32be(b, wAt + 4) / 65_536);
-          if (w > 0 && h > 0 && width === null) {
-            width = w;
-            height = h;
-          }
+        if (wAt + 8 <= stop) {
+          track.width = Math.floor(u32be(b, wAt) / 65_536);
+          track.height = Math.floor(u32be(b, wAt + 4) / 65_536);
         }
-      } else if (type === 'stsd' && body + 16 <= at + size && codec === null) {
+      } else if (type === 'stsd' && track && body + 16 <= stop) {
         const c = ascii(b, body + 12, 4);
-        if (
-          /^[a-z0-9]{4}$/i.test(c) &&
-          ['avc1', 'avc3', 'hev1', 'hvc1', 'vp09', 'av01', 'mp4v'].includes(c)
-        )
-          codec = c;
+        if (['avc1', 'avc3', 'hev1', 'hvc1', 'vp09', 'av01', 'mp4v'].includes(c)) track.codec = c;
+      } else if (type === 'stts' && track && body + 8 <= stop) {
+        // The frame table: runs of (frames, each lasting so long); their total is the length.
+        const entries = Math.min(u32be(b, body + 4), Math.floor((stop - body - 8) / 8));
+        let total = 0;
+        for (let i = 0; i < entries; i += 1)
+          total += u32be(b, body + 8 + i * 8) * u32be(b, body + 12 + i * 8);
+        track.sampleDur = total;
       }
       at += size;
     }
   };
-  walk(0, b.length, 0);
-  return { durationMs, width, height, codec };
+  walk(0, b.length, 0, null);
+  const video = tracks.find((t) => t.handler === 'vide');
+  if (!video) return { durationMs: null, width: null, height: null, codec: null, media: false };
+  const lengths = [
+    movieMs,
+    lengthMs(video.mediaDur, video.scale, false),
+    lengthMs(video.sampleDur, video.scale, false),
+  ];
+  // A header that disagrees with the frames is not believed.
+  const agree =
+    lengths.every((x) => x !== null) &&
+    Math.max(...(lengths as number[])) - Math.min(...(lengths as number[])) <= 1_000;
+  const sized =
+    video.width !== null && video.height !== null && video.width > 0 && video.height > 0;
+  return {
+    durationMs: agree ? (lengths[2] ?? null) : null,
+    width: sized ? video.width : null,
+    height: sized ? video.height : null,
+    codec: video.codec,
+    media: mdat && (video.sampleDur ?? 0) > 0,
+  };
 }
 
 /** What a file is: its kind, size, pixels and (for a video) length and compression. */
 export function adFacts(b: Uint8Array): AdFacts {
   const kind = adKind(b);
-  if (kind === 'mp4') return { kind, bytes: b.length, ...mp4Facts(b) };
-  const px = kind ? pictureSize(b, kind) : null;
+  const f =
+    kind === 'mp4'
+      ? mp4Facts(b)
+      : { ...(kind ? pictureSize(b, kind) : null), durationMs: null, codec: null };
+  const w = f.width ?? null;
+  const h = f.height ?? null;
+  const believed = w !== null && h !== null && w <= MAX_SIDE && h <= MAX_SIDE;
   return {
     kind,
     bytes: b.length,
-    width: px?.width ?? null,
-    height: px?.height ?? null,
-    durationMs: null,
-    codec: null,
+    width: believed ? w : null,
+    height: believed ? h : null,
+    durationMs: f.durationMs,
+    codec: f.codec,
+    media: f.media ?? false,
   };
 }
 
@@ -203,6 +334,15 @@ export function checkAd(f: AdFacts, rules: AdRules = DEFAULT_AD_RULES): AdCheck[
     outcome: 'pass',
     detail: video ? 'MP4 video' : `${f.kind.toUpperCase()} picture`,
   });
+  out.push(
+    f.media
+      ? { check: 'content', outcome: 'pass', detail: video ? 'has a video track' : 'has a picture' }
+      : {
+          check: 'content',
+          outcome: 'fail',
+          detail: video ? 'no video track with frames in it' : 'no picture data in it',
+        },
+  );
   const max = video ? rules.maxVideoBytes : rules.maxPictureBytes;
   out.push(
     f.bytes > max

@@ -31,18 +31,32 @@ async function refusedAs400<T>(f: () => Promise<T>): Promise<T> {
   }
 }
 
-/** The body as bytes, refused past `max` (read as it arrives, never more held). */
-async function bodyBytes(req: IncomingMessage, max: number): Promise<Uint8Array> {
+/** Uploads at once (each holds a file of up to 64 MB in memory), and how long one may take. */
+const MAX_UPLOADS = 2;
+const UPLOAD_SECONDS = 180;
+let uploading = 0;
+
+/** The body as bytes, refused past `max` (read as it arrives, never more held) or when it takes
+ * longer than `seconds` (a slow sender cannot hold the memory). */
+async function bodyBytes(req: IncomingMessage, max: number, seconds: number): Promise<Buffer> {
   const declared = Number(req.headers['content-length'] ?? 0);
   if (declared > max) throw new HttpError(413, 'The file is too large');
-  const chunks: Buffer[] = [];
-  let size = 0;
-  for await (const c of req) {
-    size += (c as Buffer).length;
-    if (size > max) throw new HttpError(413, 'The file is too large');
-    chunks.push(c as Buffer);
+  const late = setTimeout(
+    () => req.destroy(new HttpError(408, 'The upload took too long. Try again.')),
+    seconds * 1000,
+  );
+  try {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    for await (const c of req) {
+      size += (c as Buffer).length;
+      if (size > max) throw new HttpError(413, 'The file is too large');
+      chunks.push(c as Buffer);
+    }
+    return Buffer.concat(chunks, size);
+  } finally {
+    clearTimeout(late);
   }
-  return new Uint8Array(Buffer.concat(chunks));
 }
 
 export async function handleAds(
@@ -70,11 +84,14 @@ export async function handleAds(
       throw new HttpError(403, 'This link is not valid any more');
     const f = await fake.get(key);
     if (!f) throw new HttpError(404, 'Not found');
+    // Kept by the browser no longer than the link lasts; never run as a page if opened directly.
+    const left = Math.max(0, Math.min(600, Number(q.get('until')) - now));
     res.writeHead(200, {
       'content-type': f.contentType,
       'content-length': f.data.length,
-      'cache-control': 'private, max-age=600',
+      'cache-control': `private, max-age=${left}`,
       'x-content-type-options': 'nosniff',
+      'content-security-policy': 'sandbox',
     });
     res.end(Buffer.from(f.data));
     return true;
@@ -108,16 +125,20 @@ export async function handleAds(
   const me = await staffFor(pool, cfg, req, nowMs, sales);
   const who = `${me.name} (${me.id})`.slice(0, 120);
   if (path === '/ads/upload') {
-    const data = await bodyBytes(req, MAX_AD_BYTES);
-    const ad = await refusedAs400(() =>
-      uploadAd(
-        pool,
-        store,
-        { brandId: q.get('brand') ?? '', name: q.get('name') ?? '', data, by: who },
-        now,
-      ),
-    );
-    send(res, 200, { ad: shown(ad) });
+    const brandId = q.get('brand') ?? '';
+    if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(brandId)) throw new HttpError(400, 'Which brand?');
+    if (uploading >= MAX_UPLOADS)
+      throw new HttpError(503, 'Other uploads are running. Try again in a minute.');
+    uploading += 1;
+    try {
+      const data = await bodyBytes(req, MAX_AD_BYTES, UPLOAD_SECONDS);
+      const ad = await refusedAs400(() =>
+        uploadAd(pool, store, { brandId, name: q.get('name') ?? '', data, by: who }, now),
+      );
+      send(res, 200, { ad: shown(ad) });
+    } finally {
+      uploading -= 1;
+    }
     return true;
   }
   if (booking) {
