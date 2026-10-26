@@ -4,7 +4,7 @@
 // notes and the timeline. An Operations admin acts; Support adds notes.
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { api, ApiError } from '../../lib/api';
-import { dayOfIndia, clock } from '../../lib/format';
+import { dayOfIndia, clock, rupees } from '../../lib/format';
 import {
   APPS,
   DOCUMENT_NAMES,
@@ -15,6 +15,8 @@ import {
   STATUS_NAMES,
   checkText,
   CHECKS,
+  slotText,
+  type FittingSlot,
   type DocumentKind,
   type RiderDocument,
   type RiderPage,
@@ -139,10 +141,17 @@ export default function RiderPanel({
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState(false);
   const [stepReason, setStepReason] = useState('');
+  const [slots, setSlots] = useState<readonly FittingSlot[]>([]);
+  const [slotId, setSlotId] = useState('');
   const asked = useRef(0);
 
   const load = useCallback(() => {
     const n = ++asked.current;
+    api<{ slots: FittingSlot[] }>('/riders/slots')
+      .then((x) => {
+        if (n === asked.current) setSlots(x.slots);
+      })
+      .catch(() => undefined);
     api<RiderPage>(`/riders/${riderId}`)
       .then((x) => {
         if (n === asked.current) setP(x);
@@ -499,6 +508,87 @@ export default function RiderPanel({
             Check with ₹1
           </button>
         </form>
+      )}
+
+      <h4 style={{ margin: 0 }}>Fitting</h4>
+      <p className={p.fitting || p.screenId ? '' : 'muted'}>
+        {p.screenId
+          ? `Screen ${p.screenId} is on his bike.`
+          : p.fitting
+            ? `Booked: ${slotText(p.fitting, when)}`
+            : 'No fitting booked.'}
+      </p>
+      {canAct && r.status === 'approved' && !p.screenId && (
+        <div className="cal-bar" role="group" aria-label="Book a fitting">
+          <label className="rc-field">
+            <span className="rc-field__label">Slot</span>
+            <select className="rc-input" value={slotId} onChange={(e) => setSlotId(e.target.value)}>
+              <option value="">Choose a slot</option>
+              {slots
+                .filter((x) => x.startsAt > p.at)
+                .map((x) => (
+                  <option key={x.slotId} value={x.slotId} disabled={x.booked.length >= x.bikes}>
+                    {slotText(x, when)}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <button
+            className="rc-button rc-button--secondary"
+            type="button"
+            disabled={busy || !slotId}
+            onClick={() => act(`/riders/${r.riderId}/fitting`, { slotId }, 'Fitting booked.')}
+          >
+            {p.fitting ? 'Move his booking' : 'Book'}
+          </button>
+          {p.fitting && (
+            <button
+              className="rc-button rc-button--quiet"
+              type="button"
+              disabled={busy || stepReason.trim().length < 3}
+              title="Give the reason in “Why (logged)” above"
+              onClick={() =>
+                act(
+                  `/riders/${r.riderId}/fitting/cancel`,
+                  { reason: stepReason.trim() },
+                  'Fitting cancelled.',
+                  undefined,
+                  () => setStepReason(''),
+                )
+              }
+            >
+              Cancel booking
+            </button>
+          )}
+        </div>
+      )}
+
+      <h4 style={{ margin: 0 }}>Money</h4>
+      <p>
+        Owed now: <strong>{rupees(p.money.owedPaise)}</strong>
+      </p>
+      {p.money.payouts.length > 0 && (
+        <ul className="plain" aria-label="Payouts">
+          {p.money.payouts.map((x) => (
+            <li key={x.runId}>
+              Run {x.runId}: {rupees(x.amountPaise)} · {x.status}
+              {x.reason ? ` (${x.reason})` : ''}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {['approved', 'active', 'paused'].includes(r.status) && (
+        <>
+          <h4 style={{ margin: 0 }}>If he leaves</h4>
+          <ul className="plain" aria-label="If he leaves">
+            {p.leaving.map((c) => (
+              <li key={c.item} className={c.done ? '' : 'error'}>
+                {c.done ? '✓' : '✗'} {c.item}: {c.detail}
+              </li>
+            ))}
+          </ul>
+        </>
       )}
 
       <h4 style={{ margin: 0 }}>Documents</h4>

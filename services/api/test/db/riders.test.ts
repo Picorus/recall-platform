@@ -174,5 +174,46 @@ describe('rider routes (P3.11.1)', () => {
     expect((await fetch(`${url}/riders/RD-999999`, { headers: { cookie: sara } })).status).toBe(
       404,
     );
+
+    // Fitting (P3.11.3): Operations open a slot (India time) and book him; the page shows it.
+    const slotBody = (startsAt: string) => ({
+      centre: 'Kukatpally warehouse',
+      startsAt,
+      minutes: 120,
+      bikes: 4,
+    });
+    expect((await post(sara, '/riders/slots', slotBody('2027-06-02T10:00'))).status).toBe(403);
+    expect((await post(omar, '/riders/slots', slotBody('2027-02-30T10:00'))).body.error).toBe(
+      'When does it start? (India time)',
+    );
+    const slot = (await post(omar, '/riders/slots', slotBody('2027-06-02T10:00'))).body
+      .slotId as string;
+    expect(slot).toMatch(/^SLOT-[0-9A-F]{8}$/);
+    expect((await post(omar, '/riders/RD-000001/fitting', { slotId: slot })).status).toBe(200);
+    const slots = (await (
+      await fetch(`${url}/riders/slots`, { headers: { cookie: sara } })
+    ).json()) as {
+      slots: { slotId: string; startsAt: number; booked: string[] }[];
+    };
+    expect(slots.slots).toMatchObject([
+      { slotId: slot, startsAt: Date.UTC(2027, 5, 2, 4, 30) / 1000, booked: ['RD-000001'] },
+    ]);
+    const after = (await (
+      await fetch(`${url}/riders/RD-000001`, { headers: { cookie: omar } })
+    ).json()) as {
+      fitting: { slotId: string } | null;
+      money: { owedPaise: number };
+      leaving: { item: string; done: boolean }[];
+    };
+    expect(after.fitting?.slotId).toBe(slot);
+    expect(after.money.owedPaise).toBe(0);
+    expect(after.leaving.map((l) => [l.item, l.done])).toEqual([
+      ['Screen returned', true],
+      ['Final pay', true],
+      ['Screen loan', true],
+    ]);
+    expect(
+      (await post(omar, '/riders/RD-000001/fitting/cancel', { reason: 'bike in repair' })).status,
+    ).toBe(200);
   });
 });

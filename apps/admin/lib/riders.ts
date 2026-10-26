@@ -120,6 +120,25 @@ export function checkText(c: CheckView | undefined): string {
   return c.name ? `Passed: ${c.name}${id}` : 'Passed';
 }
 
+export interface FittingSlot {
+  readonly slotId: string;
+  readonly centre: string;
+  readonly startsAt: number;
+  readonly minutes: number;
+  readonly bikes: number;
+  readonly booked: readonly string[];
+}
+
+export interface RiderMoney {
+  readonly owedPaise: number;
+  readonly payouts: readonly {
+    runId: string;
+    amountPaise: number;
+    status: string;
+    reason: string | null;
+  }[];
+}
+
 export interface RiderPage {
   readonly at: number;
   readonly rider: RiderRow;
@@ -129,6 +148,9 @@ export interface RiderPage {
   readonly documents: readonly RiderDocument[];
   readonly checks: readonly CheckView[];
   readonly payoutAccount: string | null;
+  readonly fitting: FittingSlot | null;
+  readonly money: RiderMoney;
+  readonly leaving: readonly { item: string; done: boolean; detail: string }[];
   readonly timeline: readonly { at: number; by: string; text: string }[];
 }
 
@@ -143,4 +165,10 @@ export function documentStatus(d: RiderDocument): string {
   if (!d.review) return 'Waiting for a look';
   if (d.review.decision === 'rejected') return `Rejected: ${d.review.reason}`;
   return d.review.expiresOn ? `Accepted (covers until ${d.review.expiresOn})` : 'Accepted';
+}
+
+/** "Wed 2 Jun, 10:00 · 2 h · Kukatpally warehouse (1 of 4 booked)". */
+export function slotText(s: FittingSlot, when: (t: number) => string): string {
+  const h = s.minutes % 60 === 0 ? `${s.minutes / 60} h` : `${s.minutes} min`;
+  return `${when(s.startsAt)} · ${h} · ${s.centre} (${s.booked.length} of ${s.bikes} booked)`;
 }

@@ -678,6 +678,25 @@ it('the Riders page: a walk-in rider added, his documents checked, approved, a n
   await approve.getByRole('button', { name: 'Approve' }).click();
   await panel.getByRole('status').getByText('Approved.').waitFor();
   await panel.getByRole('heading').getByText('Approved').waitFor();
+
+  // P3.11.3: a fitting slot tomorrow at 10:00 (India time), and his booking in it.
+  const day = new Date(clock() + 86_400_000 + 330 * 60_000).toISOString().slice(0, 10);
+  const slots = page.getByRole('region', { name: 'Fitting slots' });
+  const openSlot = slots.getByRole('form', { name: 'Open a fitting slot' });
+  await openSlot.getByLabel('Centre').fill('Kukatpally warehouse');
+  await openSlot.getByLabel('Starts (India time)').fill(`${day}T10:00`);
+  await openSlot.getByRole('button', { name: 'Open slot' }).click();
+  await slots.getByText(/Kukatpally warehouse \(0 of 4 booked\)/).waitFor();
+  const book = panel.getByRole('group', { name: 'Book a fitting' });
+  const option = book.getByRole('option', { name: /Kukatpally warehouse/ });
+  await book.getByLabel('Slot').selectOption((await option.getAttribute('value')) ?? '');
+  await book.getByRole('button', { name: 'Book' }).click();
+  await panel.getByText(/^Booked: .* Kukatpally warehouse \(1 of 4 booked\)$/).waitFor();
+  await panel.getByText('Owed now:').waitFor();
+  await panel
+    .getByRole('list', { name: 'If he leaves' })
+    .getByText(/Screen returned: no screen/)
+    .waitFor();
   const note = panel.getByRole('form', { name: 'Rider note' });
   await note.getByLabel('Add a note').fill('Fitting booked for Monday');
   await note.getByRole('button', { name: 'Add note' }).click();

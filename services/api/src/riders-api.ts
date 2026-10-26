@@ -13,10 +13,22 @@
 //   POST /riders/<id>/bank                           { kind: 'bank', accountNumber, ifsc, name }
 //                                                    or { kind: 'upi', vpa, name }: a ₹1 check
 //   POST /riders/<id>/checks                         ask the providers about checks still waiting
+//   GET  /riders/slots                               fitting slots from now on, with who is booked
+//   POST /riders/slots                               { centre, startsAt (India "YYYY-MM-DDTHH:MM"),
+//                                                      minutes, bikes }: open one
+//   POST /riders/<id>/fitting                        { slotId }: book him (moves a booking)
+//   POST /riders/<id>/fitting/cancel                 { reason }
 // Personal documents: previews only for those who look at them (Operations admins); read-only
 // members see phones masked.
 import {
   addRiderNote,
+  bookFitting,
+  cancelFitting,
+  fittingSlots,
+  leavingChecklist,
+  openFittingSlot,
+  riderFitting,
+  riderMoney,
   checkRiderBank,
   createRider,
   refreshRiderChecks,
@@ -101,13 +113,17 @@ export async function handleRiders(
   const method = req.method ?? 'GET';
   const now = Math.floor(nowMs / 1000);
   const m =
-    /^\/riders\/(RD-\d{6})(?:\/(details|step|notes|documents|identity|agreement|bank|checks)(?:\/(DOC-[0-9A-F]{10})\/review)?)?$/.exec(
+    /^\/riders\/(RD-\d{6})(?:\/(details|step|notes|documents|identity|agreement|bank|checks|fitting)(?:\/(DOC-[0-9A-F]{10})\/review|\/(cancel))?)?$/.exec(
       path,
     );
+  if (path === '/riders/slots') return slots(pool, cfg, req, res, nowMs);
   if (path !== '/riders' && !m) throw new HttpError(404, 'Not found');
   const riderId = m?.[1] ?? '';
   const part = m?.[2];
   const docId = m?.[3];
+  const cancel = m?.[4] === 'cancel';
+  if ((docId && part !== 'documents') || (cancel && part !== 'fitting'))
+    throw new HttpError(404, 'Not found');
 
   if (method === 'GET') {
     const me = await staffFor(pool, cfg, req, nowMs);
@@ -137,9 +153,17 @@ export async function handleRiders(
     const page = await riderPage(pool, riderId, now);
     if (!page) throw new HttpError(404, `No rider ${riderId}`);
     const store = cfg.files;
+    const [fitting, money, leaving] = await Promise.all([
+      riderFitting(pool, riderId, now),
+      riderMoney(pool, riderId),
+      leavingChecklist(pool, riderId, page.screenId),
+    ]);
     send(res, 200, {
       at: now,
       ...page,
+      fitting: fitting.booking,
+      money,
+      leaving,
       // A check's link works for whoever holds it: only for those who send it to him.
       checks: page.checks.map((c) => ({ ...c, link: reviewer ? c.link : null })),
       rider:
@@ -278,6 +302,18 @@ export async function handleRiders(
     );
     return true;
   }
+  if (part === 'fitting') {
+    const b = await jsonBody(req);
+    if (cancel)
+      await refusedAs400(() => cancelFitting(pool, riderId, str(b, 'reason', 300), who, now));
+    else {
+      const slotId = str(b, 'slotId', 20);
+      if (!/^SLOT-[0-9A-F]{8}$/.test(slotId)) throw new HttpError(400, 'Which slot?');
+      await refusedAs400(() => bookFitting(pool, riderId, slotId, who, now));
+    }
+    send(res, 200, { ok: true });
+    return true;
+  }
   if (part === 'documents' && docId) {
     const b = await jsonBody(req);
     const decision = b.decision;
@@ -296,4 +332,54 @@ export async function handleRiders(
     return true;
   }
   throw new HttpError(404, 'Not found');
+}
+
+/** India wall-clock "YYYY-MM-DDTHH:MM" → UTC seconds, or null. */
+function indiaTime(x: string): number | null {
+  const m = /^(20\d{2})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(x);
+  if (!m) return null;
+  const [, y, mo, d, h, mi] = m.map(Number) as [number, number, number, number, number, number];
+  const t = Date.UTC(y, mo - 1, d, h, mi) / 1000 - 19_800;
+  const back = new Date((t + 19_800) * 1000).toISOString().slice(0, 16);
+  return back === x ? t : null;
+}
+
+/** Fitting slots: Operations and Support look; an Operations admin opens them. */
+async function slots(
+  pool: Pool,
+  cfg: StaffApiConfig,
+  req: IncomingMessage,
+  res: ServerResponse,
+  nowMs: number,
+): Promise<boolean> {
+  const now = Math.floor(nowMs / 1000);
+  if (req.method === 'GET') {
+    const me = await staffFor(pool, cfg, req, nowMs);
+    if (!mayLook(me.access)) throw new HttpError(403, 'Your access does not cover this');
+    send(res, 200, { at: now, slots: await fittingSlots(pool, now) });
+    return true;
+  }
+  if (req.method !== 'POST') throw new HttpError(405, 'Not allowed');
+  const origin = req.headers.origin;
+  if (!origin || !cfg.origins.includes(origin)) throw new HttpError(403, 'Not from the admin site');
+  const me = await staffFor(pool, cfg, req, nowMs, operations);
+  const b = await jsonBody(req);
+  const startsAt = indiaTime(str(b, 'startsAt', 16));
+  if (startsAt === null) throw new HttpError(400, 'When does it start? (India time)');
+  const num = (k: string) => (typeof b[k] === 'number' ? (b[k] as number) : NaN);
+  const slotId = await refusedAs400(() =>
+    openFittingSlot(
+      pool,
+      {
+        centre: str(b, 'centre', 80),
+        startsAt,
+        minutes: num('minutes'),
+        bikes: num('bikes'),
+        by: `${me.name} (${me.id})`.slice(0, 120),
+      },
+      now,
+    ),
+  );
+  send(res, 200, { slotId });
+  return true;
 }
