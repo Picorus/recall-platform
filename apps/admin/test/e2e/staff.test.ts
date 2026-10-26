@@ -1,7 +1,7 @@
 // The admin site in a real browser against the real API and a real database: the first super admin
 // opens their invite, sets a password and the two-step code, signs in, adds an admin and signs out.
 // Needs `next build` first and DATABASE_URL (pnpm services:up).
-import { fakePayments } from '@recall/adapters';
+import { fakeFileStore, fakePayments } from '@recall/adapters';
 import { apiHandler, newToken, newTotpSecret, seal, tokenHash, totpCode } from '@recall/api';
 import { launchAreas, newScreenId } from '@recall/domain';
 import { addStaff, createAccount, saveAreaVersion, storeUpload } from '@recall/db';
@@ -19,6 +19,9 @@ const SITE = `http://localhost:${PORT}`;
 const KEY = randomBytes(32);
 const PW = 'green kettle 42 mango';
 const payments = fakePayments();
+const files = fakeFileStore({ baseUrl: `${SITE}/api/files`, secret: 'e2e' });
+const fixture = (name: string) =>
+  new URL(`../../../../packages/domain/test/fixtures/ads/${name}`, import.meta.url).pathname;
 let shift = 0;
 const clock = () => Date.now() + shift;
 
@@ -32,7 +35,7 @@ beforeAll(async () => {
   api = createServer(
     apiHandler(
       db.pool,
-      { secretKey: KEY, origins: [SITE], secureCookies: true, proxyHops: 1, payments },
+      { secretKey: KEY, origins: [SITE], secureCookies: true, proxyHops: 1, payments, files },
       (l) => console.error(l),
       clock,
     ),
@@ -162,7 +165,7 @@ it('the pass-through takes only plain paths and small bodies', async () => {
     expect((await fetch(`${SITE}${path}`)).status, path).toBe(404);
   }
   // A plain query goes through; anything else is refused.
-  expect((await fetch(`${SITE}/api/health?x=1%2F..`)).status).toBe(404);
+  expect((await fetch(`${SITE}/api/health?x=a;b`)).status).toBe(404);
   const ok = await fetch(`${SITE}/api/health`);
   expect(ok.status, await ok.text()).toBe(200);
 });
@@ -494,6 +497,38 @@ it('booking for a brand: a draft from its page, the payment link, paid, the time
     .getByRole('list', { name: 'Timeline' })
     .getByText(/^Payment received/)
     .waitFor();
+  // Its ads: a 15-second video and a picture uploaded, both chosen; a 3-second video fails.
+  const ads = panel.getByRole('region', { name: 'Ads' });
+  const up = async (name: string, file: string) => {
+    const form = ads.getByRole('form', { name: 'Upload an ad' });
+    await form.getByLabel('Ad name').fill(name);
+    await form.getByLabel('File (picture, or 15-second MP4)').setInputFiles(fixture(file));
+    await form.getByRole('button', { name: 'Upload' }).click();
+    await ads.getByRole('status').filter({ hasText: name }).waitFor();
+  };
+  await up('Evening video', 'ad-15s-1280x720.mp4');
+  await up('Logo card', 'ad-1280x720.png');
+  await up('Too short', 'ad-3s-1280x640.mp4');
+  await ads
+    .getByRole('listitem')
+    .filter({ hasText: 'Too short' })
+    .getByText(/cannot run: 3\.0 s/)
+    .waitFor();
+  expect(await ads.getByLabel('Run Too short').isDisabled()).toBe(true);
+  await ads.getByLabel('Run Evening video').check();
+  await ads.getByLabel('Run Logo card').check();
+  await ads.getByRole('button', { name: 'Save the chosen ads' }).click();
+  await ads.getByText('Ads saved for this booking.').waitFor();
+  await ads.getByRole('heading', { name: /Ads \(2 chosen/ }).waitFor();
+  // The previews load through signed links.
+  await expect
+    .poll(() =>
+      ads
+        .locator('img.ad-preview')
+        .first()
+        .evaluate((i) => (i as unknown as { naturalWidth: number }).naturalWidth),
+    )
+    .toBe(1280);
   if (process.env.SCREENSHOT_DIR) {
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.screenshot({ path: `${process.env.SCREENSHOT_DIR}/booking.png`, fullPage: true });

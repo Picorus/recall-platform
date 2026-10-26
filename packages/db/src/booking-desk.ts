@@ -266,7 +266,7 @@ export async function applyLinkStatus(
     return 'expired';
   }
   // Recorded when we learn of it, so invoices keep their numbers in date order and books already
-  // closed never change; the provider's own time is kept on the payment's record.
+  // closed never change (the provider's clock may differ from ours; it is not trusted for order).
   const at = now;
   const paid = { paymentId: status.paymentId, amountPaise: status.amountPaise };
   if (status.amountPaise !== Number(link.amount_paise)) {
@@ -300,7 +300,7 @@ export async function applyLinkStatus(
           c.query(
             `INSERT INTO payment_link_events (link_id, state, payment_id, amount_paise, at)
              VALUES ($1, 'paid', $2, $3, to_timestamp($4)) ON CONFLICT DO NOTHING`,
-            [linkId, status.paymentId, status.amountPaise, Math.min(status.paidAt, now)],
+            [linkId, status.paymentId, status.amountPaise, at],
           ),
       },
       at,

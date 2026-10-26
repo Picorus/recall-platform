@@ -8,6 +8,7 @@ import {
   DEFAULT_RIDER_PAY_RULES,
   DEFAULT_PEOPLE_RULES,
   DEFAULT_REPORT_RULES,
+  DEFAULT_AD_RULES,
   DEFAULT_TAX_RULES,
   DEFAULT_PLAY_RULES,
   CALENDAR_HOURS,
@@ -112,6 +113,7 @@ function withDefaults(book: StoredBook): PriceBook {
     taxes: { ...DEFAULT_TAX_RULES, ...book.taxes },
     people: { ...DEFAULT_PEOPLE_RULES, ...book.people },
     report: { ...DEFAULT_REPORT_RULES, ...book.report },
+    ads: { ...DEFAULT_AD_RULES, ...book.ads },
   };
 }
 

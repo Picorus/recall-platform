@@ -1,6 +1,7 @@
 // P1.3.2: prices, offers, minimums and deadlines. All of them are settings (hard rule 8): a super
 // admin changes them in admin → Prices and rules, each change is a new version from a date, and a
 // booking keeps the version it was sold on.
+import { checkAdRules, DEFAULT_AD_RULES, type AdRules } from './ad-checks.js';
 import { DEFAULT_MAKE_UP_RULES, type MakeUpRules } from './makeups.js';
 import { checkPeopleRules, DEFAULT_PEOPLE_RULES, type PeopleRules } from './people.js';
 import { DEFAULT_PLAY_RULES, type PlayRules } from './plays.js';
@@ -77,6 +78,8 @@ export interface PriceBook {
   readonly people: PeopleRules;
   /** The final campaign report (P1.9). */
   readonly report: ReportRules;
+  /** What an ad file must be to run (P3.9.1): kind, size, pixels, shape, length. */
+  readonly ads: AdRules;
 }
 
 /** GST settings (P1.7.9). */
@@ -131,6 +134,7 @@ export const PRICE_BOOK_V1: PriceBook = {
   taxes: DEFAULT_TAX_RULES,
   people: DEFAULT_PEOPLE_RULES,
   report: DEFAULT_REPORT_RULES,
+  ads: DEFAULT_AD_RULES,
 };
 
 /** Highest cut rate that can be given (50%, in basis points). */
@@ -227,6 +231,7 @@ export function checkPriceBook(b: PriceBook): PriceBookProblem[] {
   problems.push(...checkRiderPayRules(b.riderPay));
   problems.push(...checkPeopleRules(b.people));
   problems.push(...checkReportRules(b.report));
+  problems.push(...checkAdRules(b.ads));
   const t = b.taxes;
   if (
     !/^\d{2}$/.test(t.supplierStateCode) ||

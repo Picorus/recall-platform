@@ -2,6 +2,18 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 26 Oct 2026 · P3.9.1 · Ad files and their automatic checks
+- P3.8.2 merged (PR #55). P3.9 is built in two parts: P3.9.1 ad files (this), P3.9.2 the review queue (approve or reject with why, short-notice approvals, the booking's step to ads approved).
+- **Automatic checks** (`packages/domain/src/ad-checks.ts`): an ad is one file the screen plays for a whole 15-second spot: a picture (PNG, JPEG, WebP) or an MP4 video. The file's own bytes are read (never its name): kind, pixels, and for a video its length and compression (from the MP4 boxes). Each check passes, warns (a person decides) or fails (never runs): size (pictures 10 MB, videos 64 MB), shorter side at least 480 px, shape against the screen's (16:9, a warning), video length 15 s ± 0.5 s, H.264 (others a warning). The limits are a price-book setting (`ads`).
+- **Storage adapter** (`packages/adapters/src/storage.ts`) with a working fake: files stored under their SHA-256 (the same file once; never swapped under its name), read only through short-lived signed links. The real store (S3-compatible) comes in P6; production has none until then.
+- **Ads** (migration 0035, `packages/db/src/ads.ts`): each upload belongs to a brand with its facts and checks (a failed file is kept so staff see why, but can never be chosen; a file that is not a picture or video is refused). A booking chooses 2 to 5 of its brand's ads (they take turns), as versions, until it runs.
+- **API** (`services/api/src/ads-api.ts`): upload (Sales admin; the file as the body, up to 64 MB), a brand's ads with preview links, a booking's ads; on a laptop the API serves the fake store's files through signed links. The admin site passes uploads up to 64 MB and files back; its query check now allows percent-encoded values (they come after a fixed address and path).
+- **Admin site**: an Ads section in the booking panel: previews, what the checks found in one line, upload, choose and save.
+- Fixed on the way: the payment event on a booking's timeline used the payment company's clock; now the time we learn of it, like everything else on the timeline.
+- Tests: domain 4 (real files made with ffmpeg read exactly; checks; any bytes never break the reader, a property test), adapter 2, database 2, API 1, admin unit 1, browser (a video and a picture uploaded and chosen, a 3-second video refused, previews through signed links).
+- Open: the screen's real shape and size (16:9 assumed; a setting); brands upload in their own portal (P5); the hour plan and the screens' file lists will use the approved ads (P3.9.2).
+- Next: P3.9.2, the review queue.
+
 ## 26 Oct 2026 · P3.8.2 · Booking for a brand
 - P3.8.1 merged (PR #54).
 - **Payments adapter** (`packages/adapters/src/payments.ts`) with a working fake: a link per booking attempt (asking again gives the same one), its status, stop, and the provider's signed messages (checked in constant time, and field by field: the amount paid, the payment id, the time in seconds).

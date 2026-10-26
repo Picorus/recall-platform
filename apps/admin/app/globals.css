@@ -168,3 +168,17 @@ section + section {
 .cal-bar .rc-field {
   min-width: 220px;
 }
+/* P3.9.1 ads: a small preview beside each ad's name and checks. */
+.ad-row {
+  display: grid;
+  grid-template-columns: auto 160px 1fr;
+  gap: var(--space-2);
+  align-items: center;
+}
+.ad-preview {
+  width: 160px;
+  aspect-ratio: 16 / 9;
+  object-fit: contain;
+  background: var(--surface-2);
+  border-radius: var(--radius-md);
+}
