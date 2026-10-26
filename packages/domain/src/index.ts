@@ -10,6 +10,7 @@ export * from './screen-reports.js';
 export * from './moving-hours.js';
 export * from './pay-zone.js';
 export * from './price-book.js';
+export * from './price-editor.js';
 export * from './bookings.js';
 export * from './booking-flow.js';
 export * from './supply.js';

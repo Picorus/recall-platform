@@ -65,41 +65,88 @@ export class PriceBookError extends Error {
   }
 }
 
-/** Saves the next price book version (super admin only; the API checks who). */
-export async function savePriceBook(pool: Pool, book: PriceBook, savedBy: string): Promise<void> {
+/** Saves the next price book version (super admin only; the API checks who), with why. */
+export async function savePriceBook(
+  pool: Pool,
+  book: PriceBook,
+  savedBy: string,
+  reason?: string,
+): Promise<void> {
   const problems = checkPriceBook(book);
   if (problems.length > 0) throw new PriceBookError(problems);
   await inTransaction(pool, (c) =>
     c.query(
-      'INSERT INTO price_books (version, valid_from, book, saved_by) VALUES ($1, $2, $3, $4)',
-      [book.version, book.validFrom, JSON.stringify(book), savedBy],
+      'INSERT INTO price_books (version, valid_from, book, saved_by, reason) VALUES ($1, $2, $3, $4, $5)',
+      [book.version, book.validFrom, JSON.stringify(book), savedBy, reason ?? null],
     ),
   );
 }
 
+type StoredBook = Partial<PriceBook> &
+  Omit<
+    PriceBook,
+    'capacity' | 'plays' | 'makeUps' | 'cancelRefundHours' | 'cancelRefundDecideHours' | 'cuts'
+  >;
+
+/** A book as stored; a book saved before a setting existed gets its default (the rule then). */
+function withDefaults(book: StoredBook): PriceBook {
+  return {
+    ...book,
+    capacity: book.capacity ?? DEFAULT_CAPACITY_RULES,
+    plays: book.plays ?? DEFAULT_PLAY_RULES,
+    makeUps: book.makeUps ?? DEFAULT_MAKE_UP_RULES,
+    cancelRefundHours: book.cancelRefundHours ?? 72,
+    cancelRefundDecideHours: book.cancelRefundDecideHours ?? 168,
+    cuts: book.cuts ?? { agency: 1_000, aggregator: 200 },
+    cutTdsBp: book.cutTdsBp ?? 200,
+    riderPay: book.riderPay ?? DEFAULT_RIDER_PAY_RULES,
+    taxes: { ...DEFAULT_TAX_RULES, ...book.taxes },
+    people: { ...DEFAULT_PEOPLE_RULES, ...book.people },
+    report: { ...DEFAULT_REPORT_RULES, ...book.report },
+  };
+}
+
 export async function priceBooks(pool: Pick<Pool, 'query'>): Promise<PriceBook[]> {
-  // Stored as saved; a book saved before a setting existed gets its default (the rule then).
+  const r = await pool.query<{ book: StoredBook }>('SELECT book FROM price_books ORDER BY version');
+  return r.rows.map((x) => withDefaults(x.book));
+}
+
+/** A saved price book version with who saved it, when and why (P3.6). */
+export interface PriceBookRecord {
+  readonly book: PriceBook;
+  readonly savedBy: string;
+  readonly savedAt: string;
+  readonly reason: string | null;
+}
+
+/** Every version, oldest first, with who saved it, when and why. */
+export async function priceBookRecords(pool: Pick<Pool, 'query'>): Promise<PriceBookRecord[]> {
   const r = await pool.query<{
-    book: Partial<PriceBook> &
-      Omit<
-        PriceBook,
-        'capacity' | 'plays' | 'makeUps' | 'cancelRefundHours' | 'cancelRefundDecideHours' | 'cuts'
-      >;
-  }>('SELECT book FROM price_books ORDER BY version');
+    book: StoredBook;
+    saved_by: string;
+    saved_at: Date;
+    reason: string | null;
+  }>('SELECT book, saved_by, saved_at, reason FROM price_books ORDER BY version');
   return r.rows.map((x) => ({
-    ...x.book,
-    capacity: x.book.capacity ?? DEFAULT_CAPACITY_RULES,
-    plays: x.book.plays ?? DEFAULT_PLAY_RULES,
-    makeUps: x.book.makeUps ?? DEFAULT_MAKE_UP_RULES,
-    cancelRefundHours: x.book.cancelRefundHours ?? 72,
-    cancelRefundDecideHours: x.book.cancelRefundDecideHours ?? 168,
-    cuts: x.book.cuts ?? { agency: 1_000, aggregator: 200 },
-    cutTdsBp: x.book.cutTdsBp ?? 200,
-    riderPay: x.book.riderPay ?? DEFAULT_RIDER_PAY_RULES,
-    taxes: { ...DEFAULT_TAX_RULES, ...x.book.taxes },
-    people: { ...DEFAULT_PEOPLE_RULES, ...x.book.people },
-    report: { ...DEFAULT_REPORT_RULES, ...x.book.report },
+    book: withDefaults(x.book),
+    savedBy: x.saved_by,
+    savedAt: x.saved_at.toISOString(),
+    reason: x.reason,
   }));
+}
+
+/**
+ * Paid drafts (not trials) that a new price book version would send back for a new quote: a draft
+ * is sold only at the prices it was quoted on (Prateek, 22 Oct 2026).
+ */
+export async function openQuotes(pool: Pick<Pool, 'query'>): Promise<number> {
+  const r = await pool.query<{ n: string }>(
+    `SELECT count(*) AS n FROM bookings b
+      WHERE NOT b.trial
+        AND (SELECT e.state FROM booking_events e WHERE e.booking_id = b.booking_id
+              ORDER BY e.seq DESC LIMIT 1) = 'draft'`,
+  );
+  return Number(r.rows[0]?.n ?? 0);
 }
 
 // ---------------------------------------------------------------- inventory

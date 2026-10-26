@@ -2,6 +2,24 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 26 Oct 2026 · P3.6 · Prices and rules
+- P3.5 merged (PR #50). Slow test groups (report PDF, scheduler property tests) now have 20 s on the CI machine.
+- **The editor** (`packages/domain/src/price-editor.ts`): `applyPriceChange` makes the next price book version from the current one (or, when none was ever saved, the plan's book) with only the asked settings changed: band prices, which band each start hour sells in, deal offers, the deal spread, the floor, minimum bikes and spend, the portal lead time, the ad deadline, the trial length and bike-hours. Every other setting (plays, make-ups, rider pay, taxes, reports) is carried over. `checkPriceChange` = the price book rules plus page rules (limits against typing slips, ads due before the portal lead time, offers 2–36 months). `describePriceChange` gives each change in words (before → after).
+- **Records**: each price book version keeps why it was saved (migration 0031); `priceBookRecords` gives every version with who, when and why.
+- **API** (`services/api/src/prices-api.ts`): `GET /prices` (every version with what changed; the one in force; the plan's book while none is saved), `POST /prices/check` (problems and changes, nothing saved), `POST /prices` (super admin, with a reason). A change starts now; the page sends the version it showed, so a save made meanwhile by someone else means "reload", never an unseen overwrite. Unknown settings are refused, not ignored.
+- **Admin site**: the Prices page (Sales, Finance and super admins see it): bands and hours, offers (add, remove), floor, booking rules, trial; Check shows the rules' verdict and a before/after table; Save with a reason; every version listed with who, when, why and what changed. Before the first version, a super admin starts with the plan's prices. Typed rupees and percents are read exactly (no float).
+- Tests: domain 5 (first version is the plan's book; only asked settings change; refusals; any mix of hours keeps each hour in one band, property test; words); API 5 (who may look and save; a change checked then saved from now; refusals with why; two saves at once; a version set for later blocks, versions cannot be edited or deleted); admin unit 3; browser 1 (start with the plan's prices, a price under the floor refused by Check, a change saved and listed).
+- Second-agent review: who may save, money handling, two saves at once and offers by months all correct; 6 findings, all fixed:
+  - the first version started "now", so rider pay (which uses the book in force when the month starts) would fail for the whole launch month. Now the first version starts at 00:00 India time on the 1st of the month (nothing could be sold before it existed, so no sale changes);
+  - every new version sends open quotes back for a new quote (Prateek's rule of 22 Oct), and the page did not say so. Now Check and Save say how many open quotes will need a new quote (`openQuotes`);
+  - typed amounts with a misplaced comma ("1,50") were read as rupees. Now only correct Indian or Western grouping;
+  - ads due 0 days ahead, a 0% deal spread (deals refused when hours do not split evenly) and a 0% offer could be saved. Now refused;
+  - Sales and Finance were sent rider pay, cuts and tax settings with the book. Now only what the page shows;
+  - the version list is read in one query.
+- Tests after the review: domain 2 (first version's start; the new refusals), database 1 (open quotes), API (first version from the month's start; what Sales sees), admin unit (comma rules).
+- Open: scheduling a price change for a later date (changes start when saved, like areas); GST rate, rider pay and other settings are changed in Settings (P3.17).
+- Next: P3.7, inventory calendar.
+
 ## 26 Oct 2026 · P3.5 · Areas
 - P3.4 merged (PR #49). Prateek: Operations admins may pause, resume and roll back the fleet's player update (DECISIONS).
 - **Records**: each area version now keeps why it was saved (migration 0030); `areaRecords` gives every version with who, when and why. The area rules themselves are unchanged (P1.1).

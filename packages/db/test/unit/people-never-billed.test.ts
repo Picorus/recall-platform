@@ -33,7 +33,7 @@ const ALLOWED = [
 ];
 /** Lines allowed elsewhere: loading the people settings with the price book. */
 const ALLOWED_LINES = [
-  'people: { ...DEFAULT_PEOPLE_RULES, ...x.book.people },',
+  'people: { ...DEFAULT_PEOPLE_RULES, ...book.people },',
   'DEFAULT_PEOPLE_RULES,',
 ];
 const SKIP = new Set(['node_modules', 'dist', 'build', '.turbo', '.next', 'test', 'tests', 'docs']);
