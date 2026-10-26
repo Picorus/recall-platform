@@ -10,8 +10,10 @@ import {
   DEFAULT_REPORT_RULES,
   DEFAULT_TAX_RULES,
   DEFAULT_PLAY_RULES,
+  CALENDAR_HOURS,
   capacityProblems,
   checkPriceBook,
+  hourText,
   isoAt,
   lineStartsAt,
   paise,
@@ -92,7 +94,7 @@ type StoredBook = Partial<PriceBook> &
 function withDefaults(book: StoredBook): PriceBook {
   return {
     ...book,
-    capacity: book.capacity ?? DEFAULT_CAPACITY_RULES,
+    capacity: { ...DEFAULT_CAPACITY_RULES, ...book.capacity },
     plays: book.plays ?? DEFAULT_PLAY_RULES,
     makeUps: book.makeUps ?? DEFAULT_MAKE_UP_RULES,
     cancelRefundHours: book.cancelRefundHours ?? 72,
@@ -251,6 +253,8 @@ export async function setAreaHourLimit(
 ): Promise<void> {
   if (maxBikes !== null && (!Number.isSafeInteger(maxBikes) || maxBikes < 0))
     throw new RangeError('A limit is a whole number of bikes, 0 or more');
+  if (!CALENDAR_HOURS.includes(l.startHour))
+    throw new RangeError(`${l.startHour} is not a start hour (8 to 25)`);
   lineStartsAt(l);
   await inTransaction(pool, async (c) => {
     await lockInventory(c);
@@ -278,7 +282,9 @@ export async function placeHold(
 ): Promise<void> {
   if (hold.until <= now) throw new RangeError('A hold must end in the future');
   for (const l of hold.lines) {
-    lineStartsAt(l);
+    // A hold keeps hours still to come (an hour already started cannot be sold any more).
+    if (lineStartsAt(l) <= now)
+      throw new RangeError(`${l.date} ${hourText(l.startHour)} has already started`);
     if (!Number.isSafeInteger(l.bikes) || l.bikes < 1)
       throw new RangeError('bikes must be a whole number');
   }

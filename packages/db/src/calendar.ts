@@ -7,6 +7,7 @@ import {
   cellOf,
   isoAt,
   lineIdOf,
+  lineStartsAt,
   priceBookAt,
   usualBikes,
   type BookingLine,
@@ -138,14 +139,24 @@ export async function calendarWeek(
               ORDER BY seq DESC LIMIT 1) <> 'cancelled'`,
     [areaId, days],
   );
-  const books = paid.rows.length > 0 ? await priceBooks(pool) : [];
+  // Only hours already over show "delivered": count those lines' plays (all at once), no others.
+  const over = paid.rows.filter(
+    (l) => lineStartsAt({ date: l.day, startHour: l.start_hour }) + 3600 <= now,
+  );
+  const books = over.length > 0 ? await priceBooks(pool) : [];
+  const counted = await Promise.all(
+    over.map(
+      async (l) =>
+        (await lineTotalsFor(pool, lineIdOf(l.booking_id, areaId, l.day, l.start_hour), books))
+          .plays,
+    ),
+  );
   const delivered = new Map<string, DeliveredLine[]>();
-  for (const l of paid.rows) {
+  over.forEach((l, i) => {
     const k = `${areaId}|${l.day}|${l.start_hour}`;
-    const lineId = lineIdOf(l.booking_id, areaId, l.day, l.start_hour);
-    const counted = (await lineTotalsFor(pool, lineId, books)).plays;
-    delivered.set(k, [...(delivered.get(k) ?? []), { bikes: l.bikes, plays: l.plays, counted }]);
-  }
+    const line = { bikes: l.bikes, plays: l.plays, counted: counted[i] ?? 0 };
+    delivered.set(k, [...(delivered.get(k) ?? []), line]);
+  });
 
   const cells = slots.map((s) => {
     const k = areaHourKey(s);

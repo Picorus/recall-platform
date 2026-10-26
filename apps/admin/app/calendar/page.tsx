@@ -76,6 +76,9 @@ export default function CalendarPage() {
         if (p.week) {
           setArea(p.week.areaId);
           setFrom(p.week.days[0] ?? '');
+          // A hold covers only days on screen: days ticked in another week are dropped.
+          const shown = p.week.days;
+          setDays((d) => d.filter((x) => shown.includes(x)));
         }
         setPicked((c) =>
           c ? p.week?.cells.find((x) => x.date === c.date && x.startHour === c.startHour) : c,
@@ -151,7 +154,7 @@ export default function CalendarPage() {
       const r = await api<{ holdId: string }>('/holds', {
         brandId: String(f.get('brand') ?? '').trim(),
         areaId: area,
-        dates: days,
+        dates: days.filter((d) => week?.days.includes(d)),
         hours,
         bikes: Number(bikes),
         until,
@@ -299,14 +302,18 @@ export default function CalendarPage() {
                 {picked.deliveredTenths !== null && (
                   <>
                     <dt>Delivered</dt>
-                    <dd>
-                      {tenths(picked.deliveredTenths)} of {picked.booked} bike-hours
-                    </dd>
+                    <dd>{tenths(picked.deliveredTenths)} bike-hours (paid lines)</dd>
                   </>
                 )}
               </dl>
               {isSuper(me) && (
-                <form className="stack" onSubmit={setLimit} aria-label="Manual limit">
+                <form
+                  className="stack"
+                  onSubmit={setLimit}
+                  aria-label="Manual limit"
+                  // A new form for each cell, so a box never keeps another hour's limit.
+                  key={`${area}|${picked.date}|${picked.startHour}`}
+                >
                   <label className="rc-field">
                     <span className="rc-field__label">Limit (bikes; empty lifts it)</span>
                     <input

@@ -2,6 +2,26 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 26 Oct 2026 · P3.7 · Inventory calendar
+- P3.6 merged (PR #51) once GitHub Actions ran again (Prateek fixed billing).
+- **The grid** (`packages/domain/src/calendar.ts`, `packages/db/src/calendar.ts`): one area's week, every start hour 08:00–01:00: bikes booked (awaiting payment or later; drafts keep nothing), held by live holds, the limit (a super admin's manual limit, or after the POC the forecast), free, bikes usually seen (past weeks, as the forecast reads them, before its margin), and for hours already over the bike-hours delivered (paid lines, by the share of plays counted).
+- **Holds**: Sales keeps hours, days and bikes for a client until a set time (no money); releasing one early puts its bikes back on sale at once (migration 0032, `hold_ends`, with who and why); "Turn into a booking" makes one draft booking for the hold's brand with its hours still to come. Holds and limits now keep why they were set. Booking refusals come back in words (`bookingProblemText`).
+- **API** (`services/api/src/calendar-api.ts`): `GET /calendar?area&from`; `POST /calendar/limit` (super admin); `POST /holds`, `/holds/<id>/end`, `/holds/<id>/book` (Sales admin). Sales and Operations look, read-only members too.
+- **Admin site**: the Calendar page (area, week back and forward, the grid, an area-hour's details, the limit, the hold form, holds this week with Release and Turn into a booking).
+- **Fixed on the way**: the admin site's pass-through dropped the query (`?area=…`), so choosing an area or week did nothing. It now passes a plain query (letters, digits, `_ . : = & -`, up to 300 characters). Day names are built by hand (browsers and Node wrote "Tue, 27 Oct" and "Tue 27 Oct").
+- Tests: domain 5 (days, a cell's sums, delivered, usual bikes, a hold's lines), database 4 (booked vs drafts, a limit and a hold that does not fit, released early, a hold turned into a booking counted once), API 4 (who may do what, refusals, a hold booked and released, a hold below the minimum spend), admin unit 3, browser 1 (a limit and a hold in Madhapur from a cell, then released).
+- Second-agent review: no double counting, races or security holes (all changes take the inventory lock; the query pass-through allows nothing that can change the address); 14 findings, fixed or recorded:
+  - the limit box kept the previous cell's number (a limit could land on the wrong hour). Now a new form for each cell;
+  - days ticked in another week stayed in the hold. Now only days on screen;
+  - "delivered" read every paid line of the week one by one. Now only hours already over, all at once;
+  - a bad start hour or unknown area on a limit gave a 500. Now refused with why;
+  - holds could cover hours already started, and a partly over hold could never be booked. Now refused; booking from a hold takes its hours still to come;
+  - "Turn into a booking" made a new draft each press. Now one booking per hold (409 with its id);
+  - the 30-day hold length was a fixed number. Now a price-book setting (`capacity.holdMaxDays`);
+  - messages show hours as 01:00, not 25.
+- Open: brand ids are typed (checked only for shape) until brand accounts arrive (P3.8); the calendar reads the supply history twice in forecast mode and the price book a few times per load (fine at POC size).
+- Next: P3.8, brands and bookings.
+
 ## 26 Oct 2026 · P3.6 · Prices and rules
 - P3.5 merged (PR #50). Slow test groups (report PDF, scheduler property tests) now have 20 s on the CI machine.
 - **The editor** (`packages/domain/src/price-editor.ts`): `applyPriceChange` makes the next price book version from the current one (or, when none was ever saved, the plan's book) with only the asked settings changed: band prices, which band each start hour sells in, deal offers, the deal spread, the floor, minimum bikes and spend, the portal lead time, the ad deadline, the trial length and bike-hours. Every other setting (plays, make-ups, rider pay, taxes, reports) is carried over. `checkPriceChange` = the price book rules plus page rules (limits against typing slips, ads due before the portal lead time, offers 2–36 months). `describePriceChange` gives each change in words (before → after).

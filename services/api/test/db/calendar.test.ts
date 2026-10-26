@@ -113,6 +113,13 @@ describe('inventory calendar routes (P3.7)', () => {
     };
     expect((await post('/calendar/limit', sana, limit)).status).toBe(403);
     expect((await post('/calendar/limit', sup, { ...limit, maxBikes: -1 })).status).toBe(400);
+    for (const startHour of [3, 8.5, 26])
+      expect((await post('/calendar/limit', sup, { ...limit, startHour })).body.error).toBe(
+        'startHour must be a start hour (8 to 25)',
+      );
+    expect(
+      (await post('/calendar/limit', sup, { ...limit, areaId: 'hyd-nowhere' })).body.error,
+    ).toBe('No such area');
     expect((await post('/calendar/limit', sup, limit)).status).toBe(200);
     const hold = {
       brandId: 'chai-co',
@@ -138,7 +145,7 @@ describe('inventory calendar routes (P3.7)', () => {
     });
     expect(over).toMatchObject({
       status: 409,
-      body: { error: 'Not enough bikes left: 2027-08-27 19 has 15 free' },
+      body: { error: 'Not enough bikes left: 2027-08-27 19:00 has 15 free' },
     });
     // Refused with why.
     expect((await post('/holds', sana, { ...hold, bikes: 0 })).body.error).toBe(
@@ -150,6 +157,10 @@ describe('inventory calendar routes (P3.7)', () => {
     expect((await post('/holds', sana, { ...hold, areaId: 'nowhere' })).body.error).toBe(
       'That area is not on sale',
     );
+    // Hours already started cannot be held (10:00 today has started at 10:00).
+    expect(
+      (await post('/holds', sana, { ...hold, dates: ['2027-08-23'], hours: [8, 19] })).body.error,
+    ).toBe('2027-08-23 08:00 has already started');
     expect((await post('/holds', sana, { ...hold, reason: 'x' })).body.error).toBe(
       'Give a reason (3 to 200 characters)',
     );
@@ -187,7 +198,11 @@ describe('inventory calendar routes (P3.7)', () => {
     expect((await post(`/holds/${holdId}/end`, sana, { reason: 'again' })).body.error).toBe(
       'This hold was already released',
     );
-    expect((await post(`/holds/${holdId}/book`, sana, {})).body.error).toBe('This hold has ended');
+    const again = await post(`/holds/${holdId}/book`, sana, {});
+    expect(again).toMatchObject({
+      status: 409,
+      body: { error: `Booking ${String(booked.body.bookingId)} was already made from this hold` },
+    });
     expect((await post('/holds/HLD-NOPE/book', sana, {})).status).toBe(404);
   });
 

@@ -9,8 +9,13 @@
 import {
   BookingError,
   bookingProblemText,
+  CALENDAR_HOURS,
   can,
   holdLinesOf,
+  hourText,
+  isoAt,
+  lineStartsAt,
+  priceBookAt,
   todayOf,
   type StaffAccess,
 } from '@recall/domain';
@@ -21,6 +26,7 @@ import {
   createBooking,
   endHold,
   placeHold,
+  priceBooks,
   Refusal,
   setAreaHourLimit,
 } from '@recall/db';
@@ -48,7 +54,12 @@ function refused(e: unknown): never {
   if (e instanceof CapacityError)
     throw new HttpError(
       409,
-      `Not enough bikes left: ${e.shortfalls.map((s) => `${s.key.split('|').slice(1).join(' ')} has ${s.free} free`).join('; ')}`,
+      `Not enough bikes left: ${e.shortfalls
+        .map((s) => {
+          const [, date, hour] = s.key.split('|');
+          return `${date} ${hourText(Number(hour))} has ${s.free} free`;
+        })
+        .join('; ')}`,
     );
   if (e instanceof BookingError)
     throw new HttpError(400, e.problems.map(bookingProblemText).join('; '));
@@ -128,11 +139,15 @@ export async function handleCalendar(
       (typeof max !== 'number' || !Number.isSafeInteger(max) || max < 0 || max > 100_000)
     )
       throw new HttpError(400, 'The limit is a whole number of bikes (0 to 1,00,000), or none');
-    if (typeof b.startHour !== 'number') throw new HttpError(400, 'startHour must be a number');
+    if (typeof b.startHour !== 'number' || !CALENDAR_HOURS.includes(b.startHour))
+      throw new HttpError(400, 'startHour must be a start hour (8 to 25)');
+    const limitArea = str(b, 'areaId', 60);
+    if (!(await allAreaVersions(pool)).some((v) => v.areaId === limitArea))
+      throw new HttpError(400, 'No such area');
     const who = `${me.name} (${me.id})`.slice(0, 120);
     await setAreaHourLimit(
       pool,
-      { areaId: str(b, 'areaId', 60), date: str(b, 'date', 10), startHour: b.startHour },
+      { areaId: limitArea, date: str(b, 'date', 10), startHour: b.startHour },
       max,
       who,
       reason,
@@ -160,7 +175,11 @@ export async function handleCalendar(
       throw new HttpError(400, 'bikes and until must be numbers');
     const until = Math.floor(b.until);
     if (until <= now) throw new HttpError(400, 'A hold must end in the future');
-    if (until > now + 30 * 86_400) throw new HttpError(400, 'A hold lasts at most 30 days');
+    // How long a hold may last is a setting (price book → capacity.holdMaxDays).
+    const book = priceBookAt(await priceBooks(pool), isoAt(now));
+    const maxDays = book?.capacity.holdMaxDays ?? 30;
+    if (until > now + maxDays * 86_400)
+      throw new HttpError(400, `A hold lasts at most ${maxDays} days`);
     const holdId = newId('HLD');
     try {
       const lines = holdLinesOf(areaId, b.dates as string[], b.hours as number[], b.bikes);
@@ -180,7 +199,8 @@ export async function handleCalendar(
     send(res, 200, { ok: true });
     return true;
   }
-  // Turn into a draft booking: the hold's lines, for its brand; the bikes stay held until it is sold.
+  // Turn into a draft booking: the hold's hours still to come, for its brand. The hold keeps the
+  // bikes until it ends or is released; the draft itself keeps nothing until it is awaiting payment.
   const h = await pool.query<{
     brand_id: string;
     lines: { areaId: string; date: string; startHour: number; bikes: number }[];
@@ -195,6 +215,19 @@ export async function handleCalendar(
   );
   const hold = h.rows[0];
   if (!hold) throw new HttpError(404, 'No such hold');
+  // One booking per hold: a second press must not leave duplicate drafts.
+  const made = await pool.query<{ booking_id: string }>(
+    `SELECT b.booking_id FROM bookings b
+      WHERE b.hold_id = $1
+        AND (SELECT state FROM booking_events e WHERE e.booking_id = b.booking_id
+              ORDER BY seq DESC LIMIT 1) <> 'cancelled'
+      ORDER BY b.created_at LIMIT 1`,
+    [holdId],
+  );
+  if (made.rows[0])
+    throw new HttpError(409, `Booking ${made.rows[0].booking_id} was already made from this hold`);
+  const ahead = hold.lines.filter((l) => lineStartsAt(l) > now);
+  if (ahead.length === 0) throw new HttpError(400, 'Every hour of this hold has already started');
   const bookingId = newId('BK');
   try {
     const quote = await createBooking(
@@ -202,7 +235,7 @@ export async function handleCalendar(
       {
         bookingId,
         brandId: hold.brand_id,
-        request: { lines: hold.lines, repeatMonths: 1, channel: 'admin' },
+        request: { lines: ahead, repeatMonths: 1, channel: 'admin' },
         by: who,
         holdId,
       },

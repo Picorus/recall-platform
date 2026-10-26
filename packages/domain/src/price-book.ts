@@ -193,8 +193,10 @@ export function checkPriceBook(b: PriceBook): PriceBookProblem[] {
     c.minSecondsInside,
     c.nearbyMeters,
     c.makeUpMarginBp,
+    c.holdMaxDays,
   ];
   if (!counts.every(whole)) problems.push('capacity settings must be whole numbers');
+  if (c.holdMaxDays < 1 || c.holdMaxDays > 365) problems.push('a hold lasts 1 to 365 days at most');
   if (c.levelWeeks < 1 || c.levelWeeks > c.lookbackWeeks || c.makeUpMarginBp >= 10_000) {
     problems.push('capacity: level weeks must be 1 to lookback weeks, margin under 100%');
   }

@@ -10,7 +10,7 @@ import { randomBytes } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { chromium, type Browser } from 'playwright';
-import { dayName } from '../../lib/format';
+import { dayName } from '../../lib/format.js';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 
 const PORT = 3101;
