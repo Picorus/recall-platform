@@ -16,6 +16,9 @@ const secret = (name: string) => {
 };
 
 const pool = new pg.Pool({ connectionString: need('DATABASE_URL') });
+// A connection the database drops while idle (a restart, a failover) is logged and replaced, never
+// allowed to stop the gateway.
+pool.on('error', (e) => console.error(`gateway: database connection lost: ${e.message}`));
 const gw = await startGateway(pool, {
   mqttUrl: need('GATEWAY_MQTT_URL'),
   hookHost: process.env.GATEWAY_HOOK_HOST || '127.0.0.1',

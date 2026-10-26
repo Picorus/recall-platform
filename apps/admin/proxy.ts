@@ -6,13 +6,16 @@ import { NextResponse, type NextRequest } from 'next/server';
 export function proxy(request: NextRequest) {
   const nonce = btoa(crypto.randomUUID());
   const dev = process.env.NODE_ENV === 'development';
+  const map = mapOrigins();
   const csp = [
     "default-src 'self'",
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${dev ? " 'unsafe-eval'" : ''}`,
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com",
-    "img-src 'self' data:",
-    "connect-src 'self'",
+    `img-src 'self' data: blob:${map}`,
+    `connect-src 'self'${map}`,
+    // The map's worker comes from this site (copied at build).
+    "worker-src 'self'",
     "frame-ancestors 'none'",
     "base-uri 'none'",
     "form-action 'self'",
@@ -24,6 +27,24 @@ export function proxy(request: NextRequest) {
   const response = NextResponse.next({ request: { headers } });
   response.headers.set('content-security-policy', csp);
   return response;
+}
+
+/**
+ * Where the base map style and its tiles come from (P3.3): the origin of ADMIN_MAP_STYLE_URL and
+ * those in ADMIN_MAP_ORIGINS (list the tile, font and icon hosts there when they differ from the
+ * style's own). Empty: the plain map, nothing from outside.
+ */
+function mapOrigins(): string {
+  const listed = (process.env.ADMIN_MAP_ORIGINS ?? '').split(',').map((x) => x.trim());
+  const style = process.env.ADMIN_MAP_STYLE_URL ?? '';
+  let own: string[] = [];
+  try {
+    own = style ? [new URL(style).origin] : [];
+  } catch {
+    // A mistyped setting must never take the whole site down: the map is just plain.
+  }
+  const all = [...listed, ...own].filter((x) => /^https:\/\/[a-z0-9.-]+(:\d+)?$/i.test(x));
+  return [...new Set(all)].map((x) => ` ${x}`).join('');
 }
 
 export const config = {

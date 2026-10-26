@@ -2,6 +2,24 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 26 Oct 2026 · P3.3 · Fleet map
+- P3.2 merged (PR #47).
+- **Records** (`packages/db/src/fleet.ts`, read only): `fleetScreens` (every screen: moving / stopped / offline / at hub by the Today rules, last position within 24 hours, bike and rider, player version, open alerts), `screenDetail` (route for the last 2 hours, latest health, fittings, command log), `freshCommands` (commands issued in the last few seconds and not answered).
+- **Gateway**: every 5 seconds sends commands just issued to their screens, so a screen with its line open gets one within seconds, not at its next hello (up to 15 minutes).
+- **API** (`services/api/src/fleet-api.ts`): `GET /fleet` (screens, areas sold now, the commands staff may send), `GET /fleet/screens/<id>`, `POST /fleet/screens/<id>/commands` (Operations admin, with a reason; logged with who before it goes; the fitting check is left to the fitter's app).
+- **Admin site**: the Fleet map page (MapLibre 6): filters by state, area and plate; bikes coloured by state (moving in volt); click a bike on the map or in the list for its panel: rider, last heard, area, alerts, health in words (battery, temperatures, signal, storage), its route drawn on the map, send a command, command log, fittings. Refreshes every 30 seconds. Without a base map setting it shows plain ground with our areas and bikes; without WebGL it says so and the list still works. MapLibre's worker is served by the site (copied at build).
+- Tests: database 4 (states, positions only from the screen and dropped after a day, open alerts; route and fittings; commands just issued for the gateway, within a minute; the same command twice is one); API 3 (a second click returns the first command) (who may look and who may send; refused commands, values, reasons and screens; areas and commands for the map); admin unit 4 (filters, areas from positions, health in words); browser 1 (the list, a bike's panel, a command sent and shown as waiting, no page or console errors).
+- Second-agent review: no security holes found (access, forgery, inputs, page scripts all checked); 9 findings, 8 fixed:
+  - a command whose request took over a second, or made on a clock a little behind, could miss the quick send (it still went at the next hello). Now the gateway looks back a whole minute and remembers which ids it already sent;
+  - gateway runs could pile up when the database is slow. Now one run at a time, and none after stopping;
+  - a double click sent a command twice (a screen could restart twice). Now the button waits, and the same command for the same screen within 30 seconds is the first one again (checked under a lock, so two clicks at once are one command);
+  - the map and Today read every report a screen ever sent to find its latest. Now indexed (migration 0028); one screen's panel reads that screen only;
+  - a mistyped map setting could take the whole admin site down. Now ignored (plain map); only https styles are used; the page rules no longer allow blob workers.
+  - CI found the API and gateway would stop if the database dropped an idle connection (a restart, a failover). Now it is logged and replaced. Test databases ignore the connections cut when they are dropped.
+  - Left for Prateek: Operations read-only members can see riders' ids and their last 2 hours of route. Fine for the team; to decide before outside viewers (an auditor) get Operations.
+- Open: the gateway's quick send is covered by the database test and code review, not yet by the broker test; positions come only from live reports (the box sends them with its uploads); at thousands of bikes the map needs clustering and the list paging (P7 load test); area names in the list and clicking an alert on Today to open its bike (P3.4/P3.5).
+- Next: P3.4, screens (stock, fitting, health, repairs, swaps, update rollouts).
+
 ## 26 Oct 2026 · P3.2 · Today
 - P3.1 merged (PR #46).
 - **The rules** (`packages/domain/src/today.ts`): where each screen stands now (moving, stopped, at hub, offline), which business day the page shows (between 2 and 8 am, the one that just ended), the week from Monday India time, and hours sold vs delivered (delivered never above what was promised, in tenths of a bike-hour). Limits are settings (`DEFAULT_TODAY_RULES`).

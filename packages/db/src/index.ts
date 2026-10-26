@@ -25,3 +25,4 @@ export * from './updates.js';
 export * from './fitting.js';
 export * from './staff.js';
 export * from './today.js';
+export * from './fleet.js';

@@ -4,3 +4,4 @@ export * from './http.js';
 export * from './secrets.js';
 export * from './staff-api.js';
 export * from './today-api.js';
+export * from './fleet-api.js';

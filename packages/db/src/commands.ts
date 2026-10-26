@@ -32,8 +32,14 @@ export async function issueCommand(
     readonly reason: string;
     readonly nowMs: number;
     readonly lifeMs?: number;
+    /**
+     * When the same command (same value) for the same screen was issued this recently and is not
+     * answered yet, that one is returned instead of a new one: a double click never restarts a
+     * screen twice (review P3.3).
+     */
+    readonly unlessRepeatWithinMs?: number;
   },
-): Promise<IssuedCommand> {
+): Promise<IssuedCommand & { readonly repeated?: boolean }> {
   const id = randomUUID();
   const until = o.nowMs + Math.min(o.lifeMs ?? 10 * 60_000, MAX_COMMAND_LIFE_MS);
   // Built first: a command the screen would refuse is never logged as sent.
@@ -45,7 +51,33 @@ export async function issueCommand(
     do: o.command,
     value: o.value,
   });
-  await inTransaction(pool, async (c) => {
+  return inTransaction(pool, async (c) => {
+    if (o.unlessRepeatWithinMs !== undefined) {
+      // One at a time per screen, so two clicks at once cannot both pass this check.
+      await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`recall-command:${o.screenId}`]);
+      const same = await c.query<{ id: string; made: string; until_ms: string }>(
+        `SELECT c.id, (extract(epoch FROM c.made_at) * 1000)::bigint AS made,
+                (extract(epoch FROM c.until) * 1000)::bigint AS until_ms
+           FROM screen_commands c
+          WHERE c.screen_id = $1 AND c.command = $2 AND c.value IS NOT DISTINCT FROM $3
+            AND c.made_at > to_timestamp($4 / 1000.0) AND c.until > to_timestamp($5 / 1000.0)
+            AND NOT EXISTS (SELECT 1 FROM screen_command_results r WHERE r.id = c.id)
+          ORDER BY c.made_at DESC LIMIT 1`,
+        [o.screenId, o.command, o.value, o.nowMs - o.unlessRepeatWithinMs, o.nowMs],
+      );
+      const prev = same.rows[0];
+      if (prev) {
+        const again = commandText({
+          id: prev.id,
+          screen: o.screenId,
+          made: Number(prev.made),
+          until: Number(prev.until_ms),
+          do: o.command,
+          value: o.value,
+        });
+        return { id: prev.id, text: again, repeated: true };
+      }
+    }
     await c.query('INSERT INTO screen_inboxes (screen_id) VALUES ($1) ON CONFLICT DO NOTHING', [
       o.screenId,
     ]);
@@ -54,8 +86,8 @@ export async function issueCommand(
        VALUES ($1, $2, $3, $4, to_timestamp($5 / 1000.0), to_timestamp($6 / 1000.0), $7, $8)`,
       [id, o.screenId, o.command, o.value, o.nowMs, until, o.by, o.reason.trim()],
     );
+    return { id, text };
   });
-  return { id, text };
 }
 
 /** Commands where only the newest counts: an older blank must never undo a newer unblank. */

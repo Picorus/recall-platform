@@ -1,13 +1,11 @@
 // GET /today: every signed-in member may open it; each part only when their areas cover it.
-import { acceptInvite, addStaff, signIn } from '@recall/db';
 import { freshDatabase } from '@recall/db/test-db';
-import type { StaffAccess } from '@recall/domain';
 import { randomBytes } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { newToken, tokenHash } from '../../src/secrets.js';
+import { members } from './members.js';
 import { apiHandler, type StaffApiConfig } from '../../src/staff-api.js';
 
 let db: Awaited<ReturnType<typeof freshDatabase>>;
@@ -22,38 +20,7 @@ const CFG: StaffApiConfig = {
   proxyHops: 0,
 };
 
-let superId = '';
-/** A member with this access, signed in: their session cookie. */
-async function member(email: string, access: StaffAccess): Promise<string> {
-  const invite = newToken();
-  const m = await addStaff(pool, {
-    email,
-    name: email.split('@')[0] ?? 'x',
-    access,
-    byId: superId || 'setup',
-    reason: 'today test',
-    invite: { tokenHash: tokenHash(invite), totpSealed: 'unused', untilMs: NOW + 3_600_000 },
-    nowMs: NOW,
-  });
-  if (!superId) superId = m.id;
-  await acceptInvite(pool, {
-    tokenHash: tokenHash(invite),
-    passwordHash: 'scrypt$test',
-    totpStep: 0,
-    nowMs: NOW,
-  });
-  const session = newToken();
-  const r = await signIn(pool, {
-    email,
-    ip: '192.0.2.1',
-    agent: 'test',
-    sessionHash: tokenHash(session),
-    nowMs: NOW + 1000,
-    check: async () => ({ passwordOk: true, step: 1 }),
-  });
-  expect(r.ok).toBe(true);
-  return `__Host-recall_staff=${session}`;
-}
+const member = members(() => pool, NOW);
 
 beforeAll(async () => {
   db = await freshDatabase();

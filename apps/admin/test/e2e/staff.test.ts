@@ -2,7 +2,8 @@
 // opens their invite, sets a password and the two-step code, signs in, adds an admin and signs out.
 // Needs `next build` first and DATABASE_URL (pnpm services:up).
 import { apiHandler, newToken, newTotpSecret, seal, tokenHash, totpCode } from '@recall/api';
-import { addStaff } from '@recall/db';
+import { newScreenId } from '@recall/domain';
+import { addStaff, storeUpload } from '@recall/db';
 import { freshDatabase } from '@recall/db/test-db';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
@@ -71,6 +72,8 @@ afterAll(async () => {
 });
 
 const step = () => Math.floor(clock() / 30_000);
+/** The super admin's two-step secret, from the first test. */
+const SECRET = { value: '' };
 
 it('first super admin: invite, sign in, add an admin, sign out', async () => {
   const token = newToken();
@@ -103,6 +106,7 @@ it('first super admin: invite, sign in, add an admin, sign out', async () => {
     true,
   );
   const secret = (await page.locator('.mono').innerText()).trim();
+  SECRET.value = secret;
   await page.getByLabel('New password').fill(PW);
   await page.getByLabel('Password again').fill(PW);
   await page.getByLabel('The 6-digit code the app shows').fill(totpCode(secret, step()));
@@ -157,3 +161,72 @@ it('the pass-through takes only plain paths and small bodies', async () => {
   const ok = await fetch(`${SITE}/api/health`);
   expect(ok.status, await ok.text()).toBe(200);
 });
+
+it('the fleet map: bikes in the list, one bike in its panel, a command sent and logged', async () => {
+  const now = Math.floor(clock() / 1000);
+  const id = newScreenId([2, 7, 1, 8, 2, 8, 1]);
+  await db.pool.query(
+    `INSERT INTO screens (screen_id, hardware_serial, model, enrolled_by, enrolled_at)
+     VALUES ($1, 'RK-E2E-1', 'VendorX LED28 v1', 'warehouse-1', now())`,
+    [id],
+  );
+  await db.pool.query(
+    `INSERT INTO screen_fittings (screen_id, from_at, bike, rider_id, reason, set_by)
+     VALUES ($1, to_timestamp($2), 'TS09EA4321', 'R-77', 'first fitting', 'fitter')`,
+    [id, now - 3600],
+  );
+  await storeUpload(
+    db.pool,
+    id,
+    [
+      {
+        seq: 1,
+        at: now - 20,
+        report: {
+          kind: 'live',
+          t: now - 20,
+          lat: 17.4435,
+          lng: 78.3772,
+          place: 'outside',
+          moving: true,
+        },
+      },
+    ],
+    1,
+    now,
+  );
+
+  const page = await browser.newPage();
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  const consoleLines: string[] = [];
+  page.on('console', (m) => consoleLines.push(`${m.type()}: ${m.text()}`));
+  // Sign in again (the first test signed out).
+  shift += 30_000;
+  await page.goto(`${SITE}/sign-in`);
+  await page.getByLabel('Email').fill('prateek@recall.in');
+  await page.getByLabel('Password').fill(PW);
+  await page.getByLabel('Code from your authenticator app').fill(totpCode(SECRET.value, step()));
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.getByText('Prateek · Super admin').waitFor();
+  await page.getByRole('link', { name: 'Fleet map' }).click();
+  await page.getByRole('heading', { name: 'Fleet map' }).waitFor();
+  // The map draws (or, without WebGL, says it cannot, and the list still works).
+  await page.locator('.fleet-map canvas, .fleet-map p').first().waitFor();
+  await page.getByRole('button', { name: 'TS09EA4321' }).click();
+  await page.getByText('R-77', { exact: true }).waitFor();
+  await page.getByLabel('Command').selectOption('blank');
+  await page.getByLabel('Reason (logged)').fill('rider asked');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await page.getByText(/^Sent\./).waitFor();
+  await page.getByText(/Blank the screen · waiting · Prateek/).waitFor();
+  // A picture for the record when asked (SCREENSHOT_DIR), e.g. to show the page in review.
+  if (process.env.SCREENSHOT_DIR) {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.waitForTimeout(2000);
+    await page.screenshot({ path: `${process.env.SCREENSHOT_DIR}/fleet-map.png`, fullPage: true });
+  }
+  expect(errors).toEqual([]);
+  // MapLibre's worker loaded and ran (a missing worker only shows as a console error).
+  expect(consoleLines.filter((l) => l.startsWith('error'))).toEqual([]);
+}, 120_000);
