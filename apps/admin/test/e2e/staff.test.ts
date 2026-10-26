@@ -540,5 +540,44 @@ it('booking for a brand: a draft from its page, the payment link, paid, the time
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.screenshot({ path: `${process.env.SCREENSHOT_DIR}/booking.png`, fullPage: true });
   }
+  const bookingId = (await panel.getAttribute('aria-label'))?.replace('Booking ', '') ?? '';
+
+  // P3.9.2: the reviewer approves both (every rule ticked); the 3-second one can only be rejected.
+  await page.getByRole('link', { name: 'Ad review' }).click();
+  const queue = page.getByRole('region', { name: 'Waiting for review' });
+  const card = (name: string) => queue.getByRole('listitem').filter({ hasText: name });
+  await card('Evening video').getByText(`for ${bookingId}`).waitFor();
+  await card('Too short').getByText('no booking yet').waitFor();
+  expect(await card('Too short').getByRole('button', { name: 'Approve' }).count()).toBe(0);
+  for (const name of ['Evening video', 'Logo card']) {
+    const review = card(name).getByRole('form', { name: `Review ${name}` });
+    expect(await review.getByRole('button', { name: 'Approve' }).isDisabled()).toBe(true);
+    for (const box of await review.getByRole('checkbox').all()) await box.check();
+    await review.getByRole('button', { name: 'Approve' }).click();
+    await page
+      .getByRole('status')
+      .filter({ hasText: `${name}: approved.` })
+      .waitFor();
+  }
+  // Its first hour is tomorrow: past the 7-day deadline, so it waits for a short-notice reason.
+  await page.getByText(`${bookingId} waits: a short-notice approval needs a reason`).waitFor();
+  const late = page.getByRole('region', { name: 'Short notice' });
+  await late.getByLabel(`Why approve ${bookingId} on short notice`).fill('Brand sent files late');
+  await late.getByRole('button', { name: `Approve ${bookingId}` }).click();
+  await page.getByText(`${bookingId}: approved on short notice; ready to run.`).waitFor();
+  await page
+    .getByRole('region', { name: 'Latest decisions' })
+    .getByText(/Logo card · .* · Approved by/)
+    .waitFor();
+  const tooShort = card('Too short').getByRole('form', { name: 'Review Too short' });
+  await tooShort.getByLabel('Why, for Too short').fill('Only 3 seconds: needs 15');
+  await tooShort.getByRole('button', { name: 'Reject' }).click();
+  await page.getByRole('status').filter({ hasText: 'Too short: rejected.' }).waitFor();
+  await page
+    .getByRole('region', { name: 'Latest decisions' })
+    .getByText(/Too short · .* · Rejected by .*: Only 3 seconds: needs 15/)
+    .waitFor();
+  if (process.env.SCREENSHOT_DIR)
+    await page.screenshot({ path: `${process.env.SCREENSHOT_DIR}/reviews.png`, fullPage: true });
   expect(errors).toEqual([]);
 }, 120_000);

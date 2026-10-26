@@ -12,6 +12,7 @@ import type { LinkStatus, PaymentEvent, PaymentsAdapter } from '@recall/adapters
 import { isoAt, moneyToReturn, priceBookAt, type BookingState } from '@recall/domain';
 import type { Pool, PoolClient } from 'pg';
 import { bookingState, CapacityError, moveBooking, priceBooks, StepRace } from './bookings.js';
+import { advanceIfReady } from './ads.js';
 import { postEntry } from './ledger.js';
 import { inTransaction } from './makeups.js';
 import { Refusal } from './refusal.js';
@@ -319,6 +320,8 @@ export async function applyLinkStatus(
     const out = await moneyBack(pool, l, 'paid-late', paid, why, now);
     return out === 'already' ? 'already' : 'paid-late';
   }
+  // Its ads may all be approved already (P3.9.2): then it is ready to run (before its deadline).
+  await advanceIfReady(pool, bookingId, { by: 'payments', actor: 'system' }, now);
   return 'paid';
 }
 

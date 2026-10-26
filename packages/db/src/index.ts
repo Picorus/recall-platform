@@ -32,3 +32,4 @@ export * from './calendar.js';
 export * from './brands.js';
 export * from './booking-desk.js';
 export * from './ads.js';
+export * from './ad-reviews.js';

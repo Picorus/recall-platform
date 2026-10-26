@@ -16,6 +16,22 @@ export interface AdView {
   readonly checks: readonly AdCheck[];
   readonly outcome: 'pass' | 'warn' | 'fail';
   readonly preview: string;
+  /** The Ad review decision (P3.9.2), or null while it waits. */
+  readonly review: {
+    readonly decision: 'approved' | 'rejected';
+    readonly reason: string | null;
+    readonly by: string;
+    readonly at: number;
+  } | null;
+}
+
+/** "Waiting for review", "Approved by …" or "Rejected by …: why". */
+export function reviewText(a: AdView): string {
+  if (!a.review) return a.outcome === 'fail' ? 'Cannot run' : 'Waiting for review';
+  const who = a.review.by.replace(/ \(.*\)$/, '');
+  return a.review.decision === 'approved'
+    ? `Approved by ${who}`
+    : `Rejected by ${who}: ${a.review.reason ?? ''}`;
 }
 
 /** A booking's ads take turns: at least 2, at most 5 (the scheduler's rule). */

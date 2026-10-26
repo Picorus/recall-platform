@@ -4,7 +4,7 @@
 // runs (they take turns). An ad that failed a check cannot be chosen.
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { api, ApiError } from '../../lib/api';
-import { adSummary, MAX_ADS, MIN_ADS, type AdView } from '../../lib/ads';
+import { adSummary, MAX_ADS, MIN_ADS, reviewText, type AdView } from '../../lib/ads';
 
 export default function BookingAds({
   bookingId,
@@ -105,7 +105,7 @@ export default function BookingAds({
               <input
                 type="checkbox"
                 checked={chosen.includes(a.adId)}
-                disabled={!canAct || a.outcome === 'fail'}
+                disabled={!canAct || a.outcome === 'fail' || a.review?.decision === 'rejected'}
                 onChange={() => toggle(a.adId)}
                 aria-label={`Run ${a.name}`}
               />
@@ -119,6 +119,9 @@ export default function BookingAds({
             <div>
               <strong>{a.name}</strong>
               <div className={a.outcome === 'fail' ? 'error' : 'muted'}>{adSummary(a)}</div>
+              <div className={a.review?.decision === 'rejected' ? 'error' : 'muted'}>
+                {reviewText(a)}
+              </div>
             </div>
           </li>
         ))}
