@@ -15,7 +15,8 @@ import type { Pool, PoolClient } from 'pg';
 import { inTransaction } from './makeups.js';
 
 type Q = Pick<PoolClient, 'query'>;
-type State = 'started' | 'advanced' | 'finished' | 'rolled-back' | 'replaced';
+type State =
+  'started' | 'advanced' | 'finished' | 'rolled-back' | 'replaced' | 'paused' | 'resumed';
 
 interface Row {
   id: string;
@@ -153,7 +154,8 @@ export async function updateFor(
   const badRow = bad.rows[0];
   if (badRow) return send(release(badRow).rollback);
   const now = await current(pool);
-  if (!now || now.state === 'rolled-back') return undefined;
+  // Rolled back, or paused by staff: no new screen is offered it (P3.4).
+  if (!now || now.state === 'rolled-back' || now.state === 'paused') return undefined;
   const { release: r, state, stage } = now;
   if (appCode >= r.apk.versionCode) return undefined;
   const share = state === 'finished' ? 10_000 : (rules.stagesBp[stage] ?? 10_000);
@@ -227,6 +229,7 @@ export async function rollBack(
     await c.query("SELECT pg_advisory_xact_lock(hashtext('recall-player-releases'))");
     const now = await current(c);
     if (!now || now.state === 'rolled-back') return false;
+    // (a paused rollout can still be rolled back)
     await event(c, now.release.id, 'rolled-back', now.stage, nowMs, why, by);
     return true;
   });
@@ -244,7 +247,7 @@ export async function driveRollout(
   return inTransaction(pool, async (c) => {
     await c.query("SELECT pg_advisory_xact_lock(hashtext('recall-player-releases'))");
     const now = await current(c);
-    if (!now || (now.state !== 'started' && now.state !== 'advanced')) return undefined;
+    if (!now || !['started', 'advanced', 'resumed'].includes(now.state)) return undefined;
     const code = now.release.apk.versionCode;
     const step = nextStep(
       {
@@ -276,10 +279,64 @@ export async function driveRollout(
   });
 }
 
+/**
+ * Staff pause the running rollout (no new screens get it; it does not move on) or resume it at the
+ * stage it was at (its 24 hours start again), logged with who and why (P3.4).
+ */
+export async function pauseRollout(
+  pool: Pool,
+  pause: boolean,
+  by: string,
+  why: string,
+  nowMs: number,
+): Promise<boolean> {
+  if (why.trim().length < 3) throw new RangeError('Give a reason');
+  return inTransaction(pool, async (c) => {
+    await c.query("SELECT pg_advisory_xact_lock(hashtext('recall-player-releases'))");
+    const now = await current(c);
+    if (!now) return false;
+    const running = ['started', 'advanced', 'resumed'].includes(now.state);
+    if (pause ? !running : now.state !== 'paused') return false;
+    await event(c, now.release.id, pause ? 'paused' : 'resumed', now.stage, nowMs, why.trim(), by);
+    return true;
+  });
+}
+
 /** Where the rollout stands, for admin (P3). */
-export async function rolloutStatus(
-  pool: Pick<Pool, 'query'>,
-): Promise<{ releaseId: string; state: State; stage: number; since: number } | undefined> {
+export async function rolloutStatus(pool: Pick<Pool, 'query'>): Promise<
+  | {
+      releaseId: string;
+      state: State;
+      stage: number;
+      since: number;
+      versionName: string;
+      versionCode: number;
+      rollbackName: string;
+    }
+  | undefined
+> {
   const now = await current(pool);
-  return now && { releaseId: now.release.id, state: now.state, stage: now.stage, since: now.since };
+  return (
+    now && {
+      releaseId: now.release.id,
+      state: now.state,
+      stage: now.stage,
+      since: now.since,
+      versionName: now.release.apk.versionName,
+      versionCode: now.release.apk.versionCode,
+      rollbackName: now.release.rollback.versionName,
+    }
+  );
+}
+
+/** How many screens run each player version (their latest hello), newest version first. */
+export async function versionsInUse(
+  pool: Pick<Pool, 'query'>,
+): Promise<{ app: string; code: number | null; screens: number }[]> {
+  const r = await pool.query<{ app: string; app_code: number | null; n: string }>(
+    `SELECT app, app_code, count(*) AS n FROM (
+       SELECT DISTINCT ON (screen_id) app, app_code FROM screen_hellos ORDER BY screen_id, at DESC) h
+      GROUP BY app, app_code ORDER BY app_code DESC NULLS LAST, app`,
+  );
+  return r.rows.map((x) => ({ app: x.app, code: x.app_code, screens: Number(x.n) }));
 }

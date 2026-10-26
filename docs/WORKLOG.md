@@ -2,6 +2,17 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 26 Oct 2026 · P3.4 · Screens
+- P3.3 merged (PR #48). Prateek: Operations read-only members and admins may both see riders and routes on the map (DECISIONS).
+- **A screen's service life** (migration 0029, `packages/db/src/screens.ts`): to repair, repaired, retired, each with who and why. Screens in repair or retired cannot be fitted; a fitted screen must come off first. `swapScreen`: the old screen off and to repair, a spare on the same bike and rider, one step. Fitting and taking off now share one set of checks.
+- **Pausing an update** (`packages/db/src/updates.ts`): `pauseRollout` (paused: offered to no new screen, does not move on; resumed: back at its stage), roll back still works when paused. `rolloutStatus` names the version and its rollback build; `versionsInUse` counts screens per player version.
+- **The list** (`packages/db/src/screen-list.ts`): every screen with where it is in its life, bike and rider, state now, player version, battery and box temperature, open alerts, last fitting check, certificate; `stockCounts` with spares wanted (5%).
+- **API** (`services/api/src/screens-api.ts`): `GET /screens`; repair / repaired / retire, take off, swap; pause / resume / roll back the update. Operations to look; an Operations admin with a reason to change. The rules' refusals come back as plain 400s with the reason.
+- **Admin site**: the Screens page (stock tiles, the update with pause / resume / roll back, filters, the list with health, fitting check and certificate warnings, Manage per screen).
+- Tests: database 4 (each part of a screen's life and its refusals; a swap all at once, refused whole when the spare is in repair; nothing edited; pausing and resuming an update, rolling back a paused one); API 2 (who may look and change; refusals as 400 / 409 with why); admin unit 3; browser 1 (a spare sent to repair from the page).
+- Open: renewing a screen's certificate from this page (the certificate authority adapter, with the warehouse tools); a screen reported lost or stolen (revoked key) shown as such; releases are added by the release pipeline (P7), not from this page.
+- Next: P3.5, areas (draw and edit shapes, edge zone, versions, overlaps; on/off by a super admin).
+
 ## 26 Oct 2026 · P3.3 · Fleet map
 - P3.2 merged (PR #47).
 - **Records** (`packages/db/src/fleet.ts`, read only): `fleetScreens` (every screen: moving / stopped / offline / at hub by the Today rules, last position within 24 hours, bike and rider, player version, open alerts), `screenDetail` (route for the last 2 hours, latest health, fittings, command log), `freshCommands` (commands issued in the last few seconds and not answered).
