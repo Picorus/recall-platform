@@ -36,10 +36,14 @@ const MAX_UPLOADS = 2;
 const UPLOAD_SECONDS = 180;
 let uploading = 0;
 
-/** The body as bytes, refused past `max` (read as it arrives, never more held) or when it takes
- * longer than `seconds` (a slow sender cannot hold the memory). */
+/** The body as bytes, refused past `max` (read as it arrives, never more held), when it takes
+ * longer than `seconds` (a slow sender cannot hold the memory), or when it is not exactly the
+ * size declared (the admin site passes the browser's as x-upload-bytes): a cut-off upload is
+ * never kept as a whole file. */
 async function bodyBytes(req: IncomingMessage, max: number, seconds: number): Promise<Buffer> {
-  const declared = Number(req.headers['content-length'] ?? 0);
+  const declared = Number(req.headers['x-upload-bytes'] ?? req.headers['content-length'] ?? NaN);
+  if (!Number.isSafeInteger(declared) || declared < 0)
+    throw new HttpError(411, 'Send the file with its size');
   if (declared > max) throw new HttpError(413, 'The file is too large');
   const late = setTimeout(
     () => req.destroy(new HttpError(408, 'The upload took too long. Try again.')),
@@ -53,6 +57,7 @@ async function bodyBytes(req: IncomingMessage, max: number, seconds: number): Pr
       if (size > max) throw new HttpError(413, 'The file is too large');
       chunks.push(c as Buffer);
     }
+    if (size !== declared) throw new HttpError(400, 'The upload was cut off. Try again.');
     return Buffer.concat(chunks, size);
   } finally {
     clearTimeout(late);

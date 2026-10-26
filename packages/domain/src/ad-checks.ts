@@ -47,6 +47,8 @@ export interface AdFacts {
   /** The file holds picture data (a picture) or a video track with its frames (a video), not
    * just a header. */
   readonly media: boolean;
+  /** Why a video's frames or length could not be accepted, in words (when known). */
+  readonly problem?: string | null;
 }
 
 export type CheckOutcome = 'pass' | 'warn' | 'fail';
@@ -203,9 +205,11 @@ export function mp4Facts(b: Uint8Array): {
   height: number | null;
   codec: string | null;
   media: boolean;
+  problem: string | null;
 } {
   let movieMs: number | null = null;
   let mdat = false;
+  let fragmented = false;
   let steps = 0;
   const tracks: Track[] = [];
   const walk = (start: number, end: number, depth: number, track: Track | null) => {
@@ -237,6 +241,7 @@ export function mp4Facts(b: Uint8Array): {
         walk(body, stop, depth + 1, t);
       } else if (CONTAINERS.has(type)) walk(body, stop, depth + 1, track);
       else if (type === 'mdat' && depth === 0) mdat = size > head;
+      else if (type === 'moof' || type === 'mvex') fragmented = true;
       else if ((type === 'mvhd' || type === 'mdhd') && body + (b[body] === 1 ? 32 : 20) <= stop) {
         const v1 = b[body] === 1;
         const scale = u32be(b, body + (v1 ? 20 : 12));
@@ -254,8 +259,17 @@ export function mp4Facts(b: Uint8Array): {
         const v1 = b[body] === 1;
         const wAt = body + (v1 ? 88 : 76);
         if (wAt + 8 <= stop) {
-          track.width = Math.floor(u32be(b, wAt) / 65_536);
-          track.height = Math.floor(u32be(b, wAt + 4) / 65_536);
+          const w = Math.floor(u32be(b, wAt) / 65_536);
+          const h = Math.floor(u32be(b, wAt + 4) / 65_536);
+          // The display matrix (a b . c d .): a and d zero means turned a quarter (it plays
+          // upright the other way round), so width and height swap.
+          const m = body + (v1 ? 52 : 40);
+          const turned =
+            u32be(b, m) === 0 &&
+            u32be(b, m + 16) === 0 &&
+            (u32be(b, m + 4) | u32be(b, m + 12)) !== 0;
+          track.width = turned ? h : w;
+          track.height = turned ? w : h;
         }
       } else if (type === 'stsd' && track && body + 16 <= stop) {
         const c = ascii(b, body + 12, 4);
@@ -273,7 +287,10 @@ export function mp4Facts(b: Uint8Array): {
   };
   walk(0, b.length, 0, null);
   const video = tracks.find((t) => t.handler === 'vide');
-  if (!video) return { durationMs: null, width: null, height: null, codec: null, media: false };
+  const none = { durationMs: null, width: null, height: null, codec: null, media: false };
+  if (fragmented)
+    return { ...none, problem: 'a fragmented (streaming) MP4: export it as a normal MP4' };
+  if (!video) return { ...none, problem: 'no video track in it' };
   const lengths = [
     movieMs,
     lengthMs(video.mediaDur, video.scale, false),
@@ -283,6 +300,12 @@ export function mp4Facts(b: Uint8Array): {
   const agree =
     lengths.every((x) => x !== null) &&
     Math.max(...(lengths as number[])) - Math.min(...(lengths as number[])) <= 1_000;
+  const [movie, track, frames] = lengths;
+  const problem = agree
+    ? null
+    : movie != null && track != null && frames != null && movie > Math.max(track, frames) + 1_000
+      ? `the sound or another track runs ${(movie / 1000).toFixed(1)} s, longer than the video (${(frames / 1000).toFixed(1)} s)`
+      : 'its length is recorded inconsistently (the file may be damaged)';
   const sized =
     video.width !== null && video.height !== null && video.width > 0 && video.height > 0;
   return {
@@ -291,6 +314,7 @@ export function mp4Facts(b: Uint8Array): {
     height: sized ? video.height : null,
     codec: video.codec,
     media: mdat && (video.sampleDur ?? 0) > 0,
+    problem,
   };
 }
 
@@ -312,6 +336,7 @@ export function adFacts(b: Uint8Array): AdFacts {
     durationMs: f.durationMs,
     codec: f.codec,
     media: f.media ?? false,
+    problem: 'problem' in f ? f.problem : null,
   };
 }
 
@@ -340,7 +365,9 @@ export function checkAd(f: AdFacts, rules: AdRules = DEFAULT_AD_RULES): AdCheck[
       : {
           check: 'content',
           outcome: 'fail',
-          detail: video ? 'no video track with frames in it' : 'no picture data in it',
+          detail: video
+            ? (f.problem ?? 'no video track with frames in it')
+            : 'no picture data in it',
         },
   );
   const max = video ? rules.maxVideoBytes : rules.maxPictureBytes;
@@ -379,7 +406,11 @@ export function checkAd(f: AdFacts, rules: AdRules = DEFAULT_AD_RULES): AdCheck[
   if (video) {
     const target = rules.spotMs;
     if (f.durationMs === null)
-      out.push({ check: 'length', outcome: 'fail', detail: 'its length cannot be read' });
+      out.push({
+        check: 'length',
+        outcome: 'fail',
+        detail: (f.media && f.problem) || 'its length cannot be read',
+      });
     else
       out.push(
         Math.abs(f.durationMs - target) > rules.lengthToleranceMs

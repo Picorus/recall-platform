@@ -21,19 +21,23 @@ const MAX_UPLOAD = 64 * 1024 * 1024;
 const MAX_UPLOADS = 2;
 let uploading = 0;
 
-/** The request body passed on as it arrives, cut off past `max` bytes (then `over()` is true). */
-function cappedStream(req: NextRequest, max: number) {
+/** The request body passed on as it arrives; stopped if it runs past `declared` bytes (then
+ * `over()` is true) or ends short of it (a cut-off upload is never passed on as a whole file). */
+function cappedStream(req: NextRequest, declared: number) {
   let size = 0;
   const stream = req.body?.pipeThrough(
     new TransformStream<Uint8Array, Uint8Array>({
       transform(chunk, out) {
         size += chunk.length;
-        if (size > max) out.error(new Error('too large'));
+        if (size > declared) out.error(new Error('too large'));
         else out.enqueue(chunk);
+      },
+      flush(out) {
+        if (size !== declared) out.error(new Error('cut off'));
       },
     }),
   );
-  return { stream: stream ?? null, over: () => size > max };
+  return { stream: stream ?? null, over: () => size > declared, short: () => size < declared };
 }
 
 /** The request body, read up to `max` bytes (never more is held), or null when it is larger. */
@@ -85,8 +89,12 @@ async function pass(req: NextRequest, path: string[]): Promise<Response> {
     // Not signed in: refused before a byte of the file is read (the API checks who it is).
     if (!req.headers.get('cookie'))
       return Response.json({ error: 'Please sign in' }, { status: 401 });
-    if (Number(req.headers.get('content-length') ?? 0) > MAX_UPLOAD)
-      return Response.json({ error: 'Too large' }, { status: 413 });
+    const declared = Number(req.headers.get('content-length') ?? NaN);
+    if (!Number.isSafeInteger(declared) || declared < 0)
+      return Response.json({ error: 'Send the file with its size' }, { status: 411 });
+    if (declared > MAX_UPLOAD) return Response.json({ error: 'Too large' }, { status: 413 });
+    // The API checks it received exactly this many bytes.
+    headers.set('x-upload-bytes', String(declared));
     if (uploading >= MAX_UPLOADS)
       return Response.json(
         { error: 'Other uploads are running. Try again in a minute.' },
@@ -95,7 +103,7 @@ async function pass(req: NextRequest, path: string[]): Promise<Response> {
   }
   const body = req.method === 'POST' && !upload ? await smallBody(req, MAX_BODY) : undefined;
   if (body === null) return Response.json({ error: 'Too large' }, { status: 413 });
-  const sent = upload ? cappedStream(req, MAX_UPLOAD) : null;
+  const sent = upload ? cappedStream(req, Number(headers.get('x-upload-bytes'))) : null;
   let r: Response;
   if (upload) uploading += 1;
   try {
@@ -110,6 +118,8 @@ async function pass(req: NextRequest, path: string[]): Promise<Response> {
     } as RequestInit);
   } catch {
     if (sent?.over()) return Response.json({ error: 'Too large' }, { status: 413 });
+    if (sent?.short())
+      return Response.json({ error: 'The upload was cut off. Try again.' }, { status: 400 });
     return Response.json({ error: 'The server did not answer. Try again.' }, { status: 502 });
   } finally {
     if (upload) uploading -= 1;

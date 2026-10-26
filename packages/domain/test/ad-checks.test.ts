@@ -159,6 +159,24 @@ describe('ad checks (P3.9.1)', () => {
     }
   });
 
+  it('names why a real video cannot run; reads a turned video as upright', () => {
+    const fail = (name: string, check: string) =>
+      checkAd(adFacts(file(name))).find((c) => c.check === check);
+    expect(fail('ad-long-sound.mp4', 'length')).toEqual({
+      check: 'length',
+      outcome: 'fail',
+      detail: 'the sound or another track runs 17.0 s, longer than the video (15.0 s)',
+    });
+    expect(fail('ad-fragmented.mp4', 'content')).toEqual({
+      check: 'content',
+      outcome: 'fail',
+      detail: 'a fragmented (streaming) MP4: export it as a normal MP4',
+    });
+    // Recorded wide but marked to play turned a quarter: it plays tall.
+    expect(adFacts(file('ad-15s-rotated.mp4'))).toMatchObject({ width: 720, height: 1280 });
+    expect(fail('ad-15s-rotated.mp4', 'shape')?.outcome).toBe('warn');
+  });
+
   it('reads a large hostile file quickly (a bounded number of boxes)', () => {
     // 16 MB of empty 8-byte boxes after a real header.
     const many = new Uint8Array(16 * 1024 * 1024);

@@ -91,6 +91,21 @@ describe('ad routes (P3.9.1)', () => {
     expect((await upload(sana, '', fixture('ad-1280x720.png'))).body.error).toBe(
       'Give the ad a name (1 to 80 characters)',
     );
+    // A file that arrives shorter than its declared size (the browser dropped) is not kept.
+    const cut = await fetch(`${url}/ads/upload?brand=chai-co&name=Cut`, {
+      method: 'POST',
+      headers: {
+        cookie: sana,
+        origin: ORIGIN,
+        'content-type': 'application/octet-stream',
+        'x-upload-bytes': String(fixture('ad-1280x720.jpg').length + 100),
+      },
+      body: fixture('ad-1280x720.jpg'),
+    });
+    expect([cut.status, ((await cut.json()) as { error: string }).error]).toEqual([
+      400,
+      'The upload was cut off. Try again.',
+    ]);
     // A control character in the name is refused (not a database error).
     expect(await upload(sana, 'a\u0000b', fixture('ad-1280x720.png'))).toEqual({
       status: 400,
