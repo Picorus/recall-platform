@@ -19,6 +19,7 @@
     "@recall/adapters": "workspace:*",
     "@recall/db": "workspace:*",
     "@recall/domain": "workspace:*",
+    "@recall/workers": "workspace:*",
     "pg": "8.23.1"
   },
   "devDependencies": {

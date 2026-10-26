@@ -6,6 +6,8 @@ import {
   fakeEsign,
   fakeFileStore,
   fakeKyc,
+  fakeMaps,
+  fakeMessages,
   fakePayments,
   fakePayouts,
 } from '@recall/adapters';
@@ -14,9 +16,12 @@ import { launchAreas, moneyToReturn, newScreenId, refundApproved } from '@recall
 import {
   addStaff,
   createAccount,
+  createBooking,
+  moveBooking,
   post,
   preparePayoutRun,
   saveAreaVersion,
+  setBrandContact,
   storeUpload,
 } from '@recall/db';
 import { checkedPayoutAccount, freshDatabase } from '@recall/db/test-db';
@@ -33,6 +38,7 @@ const SITE = `http://localhost:${PORT}`;
 const KEY = randomBytes(32);
 const PW = 'green kettle 42 mango';
 const payments = fakePayments();
+const messages = fakeMessages();
 const files = fakeFileStore({ baseUrl: `${SITE}/api/files`, secret: 'e2e' });
 const fixture = (name: string) =>
   new URL(`../../../../packages/domain/test/fixtures/ads/${name}`, import.meta.url).pathname;
@@ -62,6 +68,7 @@ beforeAll(async () => {
           bank: fakeBankCheck(),
         },
         payouts: fakePayouts(),
+        reports: { maps: fakeMaps(), messages, portalUrl: 'http://localhost:3000' },
       },
       (l) => console.error(l),
       clock,
@@ -898,6 +905,109 @@ it('the Money page: where money stands, the payment and its tax invoice, the acc
   if (process.env.SCREENSHOT_DIR) {
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.screenshot({ path: `${process.env.SCREENSHOT_DIR}/money.png`, fullPage: true });
+  }
+  expect(errors).toEqual([]);
+}, 120_000);
+
+it('the Reports page: an ended campaign, its report as the brand sees it, sent again by email', async () => {
+  // A campaign booked now for tomorrow evening; then the clock moves four days on: it has ended and
+  // its report is built (the build itself is tested elsewhere).
+  const day = new Date(clock() + 86_400_000 + 330 * 60_000).toISOString().slice(0, 10);
+  const startAt = (h: number) =>
+    Date.parse(`${day}T${String(h).padStart(2, '0')}:00:00+05:30`) / 1000;
+  const booked = Math.floor(clock() / 1000);
+  await createBooking(
+    db.pool,
+    {
+      bookingId: 'BK-E2E-REPORT',
+      brandId: 'dosa-co',
+      request: {
+        // Six peak hours of 10 bikes (₹18,000): the laptop's supply has room for 10.
+        lines: [17, 18, 19, 20, 21, 22].map((startHour) => ({
+          areaId: 'hyd-madhapur',
+          date: day,
+          startHour,
+          bikes: 10,
+        })),
+        repeatMonths: 1,
+        channel: 'admin',
+      },
+      by: 'e2e',
+    },
+    booked,
+  );
+  const sys = { by: 'system', actor: 'system' } as const;
+  await moveBooking(
+    db.pool,
+    'BK-E2E-REPORT',
+    'awaiting-payment',
+    { by: 'e2e', actor: 'admin' },
+    booked,
+  );
+  await moveBooking(db.pool, 'BK-E2E-REPORT', 'paid', sys, booked + 60);
+  await moveBooking(
+    db.pool,
+    'BK-E2E-REPORT',
+    'ads-approved',
+    { by: 'e2e', actor: 'admin', reason: 'test campaign for the report' },
+    booked + 120,
+  );
+  await moveBooking(db.pool, 'BK-E2E-REPORT', 'running', sys, startAt(17));
+  await moveBooking(db.pool, 'BK-E2E-REPORT', 'done', sys, startAt(23));
+  const report = {
+    bookingId: 'BK-E2E-REPORT',
+    brandId: 'dosa-co',
+    from: startAt(17),
+    until: startAt(23),
+    builtAt: startAt(23) + 48 * 3600,
+    lines: [],
+    promised: 12_000,
+    delivered: 11_400,
+    deliveredBp: 9_500,
+    missing: 600,
+    bikes: 57,
+    makeUps: { opened: 0, plays: 0 },
+    heatMap: [],
+    streets: [],
+    people: { low: 30_000, high: 40_000, approximate: true, text: '30,000–40,000 (approximate)' },
+  };
+  await db.pool.query(
+    `INSERT INTO campaign_reports (booking_id, built_at, report) VALUES ($1, to_timestamp($2), $3)`,
+    ['BK-E2E-REPORT', report.builtAt, JSON.stringify(report)],
+  );
+  await setBrandContact(db.pool, 'dosa-co', { email: 'dosa@example.in' }, 'e2e');
+  shift += 4 * 86_400_000;
+
+  const page = await browser.newPage();
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  shift += 30_000;
+  await page.goto(`${SITE}/sign-in`);
+  await page.getByLabel('Email').fill('prateek@recall.in');
+  await page.getByLabel('Password').fill(PW);
+  await page.getByLabel('Code from your authenticator app').fill(totpCode(SECRET.value, step()));
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.getByText('Prateek · Super admin').waitFor();
+  await page.getByRole('link', { name: 'Reports' }).click();
+  const row = page
+    .getByRole('table', { name: 'Reports' })
+    .getByRole('row', { name: /BK-E2E-REPORT/ });
+  await row.getByText('11,400 of 12,000 (95%)').waitFor();
+  await row.getByText('Built, being sent').waitFor();
+  await row.getByRole('button', { name: 'Open' }).click();
+  const panel = page.getByRole('region', { name: 'Report BK-E2E-REPORT' });
+  await panel
+    .frameLocator('iframe')
+    .getByText(/BK-E2E-REPORT/)
+    .first()
+    .waitFor();
+  await panel.getByRole('button', { name: 'Send again by email' }).click();
+  await panel.getByText('Sent again on email.').waitFor();
+  await row.getByText('Email: Sent to dosa@example.in').waitFor();
+  expect(messages.sent.map((m) => m.to)).toContain('dosa@example.in');
+  if (process.env.SCREENSHOT_DIR) {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.screenshot({ path: `${process.env.SCREENSHOT_DIR}/reports.png`, fullPage: true });
   }
   expect(errors).toEqual([]);
 }, 120_000);

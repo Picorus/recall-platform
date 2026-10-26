@@ -1,4 +1,8 @@
 {
   "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // @recall/workers (report rendering) imports @recall/design from source, which uses .ts paths.
+    "allowImportingTsExtensions": true
+  },
   "include": ["src", "test"]
 }

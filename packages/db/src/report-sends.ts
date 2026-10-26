@@ -55,7 +55,7 @@ export interface ReportsSent {
   readonly undelivered: readonly string[];
 }
 
-type Channel = 'whatsapp' | 'email';
+export type Channel = 'whatsapp' | 'email';
 
 /**
  * Sends every built report not yet sent (P1.9.2). Safe to run as often as wanted, from several
@@ -123,7 +123,7 @@ export async function sendDueReports(
           state[ch] = 'open';
           continue;
         }
-        const result = await send(messages, ch, address, d.report, render).catch(
+        const result = await sendReportMessage(messages, ch, address, d.report, render).catch(
           (e: unknown) =>
             ({
               status: 'failed',
@@ -174,15 +174,18 @@ export async function sendDueReports(
   return { sent, noContact, undelivered };
 }
 
-async function send(
+/**
+ * Sends one report on one channel. `key` (P3.14.1: a staff re-send has its own) defaults to one per
+ * address: a new address is a new message, never the old one replayed.
+ */
+export async function sendReportMessage(
   messages: MessagesAdapter,
   channel: Channel,
   to: string,
   r: CampaignReport,
   render: ReportRender,
+  key = `report:${r.bookingId}:${channel}:${to}`,
 ) {
-  // The address is part of the key: a new address is a new message, never the old one replayed.
-  const key = `report:${r.bookingId}:${channel}:${to}`;
   const link = render.link(r.bookingId);
   const summary = reportSummary(r);
   if (channel === 'whatsapp')

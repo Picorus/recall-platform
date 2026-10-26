@@ -1,7 +1,7 @@
 // Brand payments in the API's settings (review P3.8.2): the fake only on a laptop, never with the
 // public key on a server others can reach; production without a real provider runs without payments.
 import { describe, expect, it } from 'vitest';
-import { paymentsFrom, payoutsFrom, riderChecksFrom } from '../../src/config.js';
+import { paymentsFrom, payoutsFrom, reportsFrom, riderChecksFrom } from '../../src/config.js';
 
 describe('payments settings (P3.8.2)', () => {
   it('a laptop gets the fake; a reachable server needs its own key; production never the fake', () => {
@@ -37,5 +37,16 @@ describe('payments settings (P3.8.2)', () => {
     expect(() => payoutsFrom({ API_PROXY_HOPS: '1' }, false)).toThrow('laptop only');
     expect(() => payoutsFrom({ PAYOUTS_PROVIDER: 'fake' }, true)).toThrow('laptop only');
     expect(() => payoutsFrom({ PAYOUTS_PROVIDER: 'razorpayx' }, false)).toThrow('P6');
+  });
+
+  it('reports: the fake maps and messages only on a laptop; none in production (P3.14.1)', () => {
+    expect(reportsFrom({}, false)?.portalUrl).toBe('http://localhost:3000');
+    expect(reportsFrom({ BRAND_PORTAL_URL: 'http://localhost:3000/' }, false)?.portalUrl).toBe(
+      'http://localhost:3000',
+    );
+    expect(reportsFrom({}, true)).toBeUndefined();
+    expect(() => reportsFrom({ API_HOST: '0.0.0.0' }, false)).toThrow('laptop only');
+    expect(() => reportsFrom({ REPORTS_PROVIDER: 'fake' }, true)).toThrow('laptop only');
+    expect(() => reportsFrom({ REPORTS_PROVIDER: 'gupshup' }, false)).toThrow('P6');
   });
 });

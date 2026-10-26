@@ -11,6 +11,8 @@ import type {
   EsignAdapter,
   FileStore,
   KycAdapter,
+  MapsAdapter,
+  MessagesAdapter,
   PaymentsAdapter,
   PayoutsAdapter,
 } from '@recall/adapters';
@@ -55,6 +57,7 @@ import { handleDelivery } from './delivery-api.js';
 import { handleRiders } from './riders-api.js';
 import { handlePayouts } from './payouts-api.js';
 import { handleMoney } from './money-api.js';
+import { handleReportsDesk } from './reports-desk-api.js';
 import {
   decoyHash,
   hashPassword,
@@ -94,6 +97,12 @@ export interface StaffApiConfig {
   };
   /** Paying riders (P3.12): the provider, or its fake on a laptop. Absent: runs cannot be sent. */
   readonly payouts?: PayoutsAdapter;
+  /** Final reports (P3.14.1): maps, messages and the brand portal. Absent: none built or sent. */
+  readonly reports?: {
+    readonly maps: MapsAdapter;
+    readonly messages: MessagesAdapter;
+    readonly portalUrl: string;
+  };
 }
 
 const cookieName = (cfg: StaffApiConfig) =>
@@ -473,6 +482,7 @@ export function apiHandler(
       if (await handleRiders(pool, cfg, req, res, nowMs)) return;
       if (await handlePayouts(pool, cfg, req, res, nowMs)) return;
       if (await handleMoney(pool, cfg, req, res, nowMs)) return;
+      if (await handleReportsDesk(pool, cfg, req, res, nowMs)) return;
       throw new HttpError(404, 'Not found');
     })().catch((e: unknown) => {
       if (e instanceof HttpError) return send(res, e.status, { error: e.message });
