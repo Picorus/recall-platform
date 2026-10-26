@@ -23,3 +23,4 @@ export * from './health.js';
 export * from './commands.js';
 export * from './updates.js';
 export * from './fitting.js';
+export * from './staff.js';
