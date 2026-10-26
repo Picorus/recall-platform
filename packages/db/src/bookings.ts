@@ -468,6 +468,8 @@ export interface StepBy {
    * (an expiry racing a payment) is refused instead of applied to whatever the booking is now.
    */
   readonly expectFrom?: BookingState;
+  /** Written in the same transaction as the step (a payment's record with its booking step). */
+  readonly alsoWrite?: (c: PoolClient) => Promise<unknown>;
 }
 
 /** The booking moved on since the caller looked (see `StepBy.expectFrom`). */
@@ -588,5 +590,6 @@ export async function moveBooking(
         });
       }
     }
+    if (who.alsoWrite) await who.alsoWrite(c);
   });
 }

@@ -15,7 +15,7 @@ import {
   paymentMessage,
   sendForPayment,
 } from '../../src/booking-desk.js';
-import { bookingState, createBooking, savePriceBook } from '../../src/bookings.js';
+import { bookingState, createBooking, moveBooking, savePriceBook } from '../../src/bookings.js';
 import { setBrandContact } from '../../src/report-sends.js';
 import { freshDatabase } from './fresh-db.js';
 
@@ -202,6 +202,14 @@ describe('booking for a brand (P3.8.2)', () => {
     expect(await paymentMessage(pool, payments, body, payments.sign(body), now)).toBe('unknown');
     const inbox = await pool.query('SELECT link_id FROM payment_inbox');
     expect(inbox.rows).toEqual([{ link_id: 'plink_nobody' }]);
+    // The money behind it is on the books as owed back, once.
+    const unknown = await pool.query<{ kind: string }>(
+      "SELECT kind FROM ledger_entries WHERE ref = 'plink_nobody'",
+    );
+    expect(unknown.rows.map((x) => x.kind)).toEqual(['money-to-return']);
+    // The booking with the wrong amount still ends when its link does (its bikes are not kept).
+    expect(await expireUnpaid(pool, payments, a.expiresAt + 600)).toEqual(['BK-W-1']);
+    expect(await bookingState(pool, 'BK-W-1')).toBe('cancelled');
   });
 
   it('review P3.8.2: too late to pay by link; sent with no link made is let go; one bad link never stops the run', async () => {
@@ -227,5 +235,50 @@ describe('booking for a brand (P3.8.2)', () => {
     expect(await expireUnpaid(pool, forgetful, after, (l) => lines.push(l))).toEqual(['BK-L-1']);
     expect(lines).toEqual([expect.stringContaining('No link')]);
     expect(await expireUnpaid(pool, payments, after)).toEqual(['BK-L-2']);
+  });
+
+  it('re-review P3.8.2: a half-done expiry is finished next run; a silent provider is given up on; a link made too late is stopped', async () => {
+    now += 3600;
+    // A link already marked ended, but the booking's cancel never happened (a crash in between).
+    await draft('BK-H-1', [line('2027-09-10', 19), line('2027-09-10', 20)]);
+    const a = await sendForPayment(pool, payments, 'BK-H-1', 'Sana', now);
+    await pool.query(
+      "INSERT INTO payment_link_events (link_id, state, at) VALUES ($1, 'expired', to_timestamp($2))",
+      [a.linkId, a.expiresAt],
+    );
+    expect(await expireUnpaid(pool, payments, a.expiresAt + 600)).toEqual(['BK-H-1']);
+    // The provider can say nothing about a link: an hour after its end the booking is let go.
+    await draft('BK-H-2', [line('2027-09-11', 19), line('2027-09-11', 20)]);
+    const b = await sendForPayment(pool, payments, 'BK-H-2', 'Sana', now);
+    const silent = { ...payments, status: () => Promise.reject(new Error('timeout')) };
+    const quiet: string[] = [];
+    expect(await expireUnpaid(pool, silent, b.expiresAt + 600, (l) => quiet.push(l))).toEqual([]);
+    expect(await expireUnpaid(pool, silent, b.expiresAt + 3600, (l) => quiet.push(l))).toEqual([
+      'BK-H-2',
+    ]);
+    // Cancelled while its link was being made: the link is stopped, never handed out.
+    await draft('BK-H-3', [line('2027-09-12', 19), line('2027-09-12', 20)]);
+    let made = '';
+    const slow = {
+      ...payments,
+      createLink: async (req: Parameters<typeof payments.createLink>[0]) => {
+        const l = await payments.createLink(req);
+        made = l.linkId;
+        await moveBooking(
+          pool,
+          'BK-H-3',
+          'cancelled',
+          { by: 'payments', actor: 'system', reason: 'no payment link could be made' },
+          now,
+        );
+        return l;
+      },
+    };
+    await expect(sendForPayment(pool, slow, 'BK-H-3', 'Sana', now)).rejects.toThrow(
+      'cancelled while its link was being made',
+    );
+    expect(await payments.status(made)).toEqual({ state: 'cancelled' });
+    const filed = await pool.query("SELECT 1 FROM payment_links WHERE booking_id = 'BK-H-3'");
+    expect(filed.rowCount).toBe(0);
   });
 });

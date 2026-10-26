@@ -21,6 +21,15 @@ Newest first. Each entry: date · step id · what changed · tests · open issue
   - messages about unknown links were dropped. Now kept in an inbox;
   - the fake's public key could take "payments" on a reachable test server. Now a server reachable from outside must set its own key; production never runs the fake, and without a real provider runs without payments (pay routes say so) instead of refusing to start.
   - Also: the provider's payment time is kept within the link's life; clearer "Check payment" answers; no "send a new link" that could not work; a warning before cancelling a paid booking; the timeline in India time and in a sensible order within a second; deal offers from the prices in force.
+- Second review of the fixes: no payment can be both paid and owed back, every path balances; 9 more findings, all fixed:
+  - a wrong-amount payment, or an expiry whose cancel failed half-way, left the booking waiting (bikes kept) for ever. Now the expiry run picks bookings by their state and their newest link's end, and any booking still waiting after that end is let go; the cancel and the link's "ended" record are written together (`alsoWrite` on a booking step), or neither, and retried next run;
+  - a booking cancelled while its link was being made could be handed a working link. Now the link is filed only under the booking's lock while it still waits, else stopped and refused;
+  - the "paid" record on the link and the booking's move to paid are written together;
+  - money on an unknown link is now also on the books as owed back;
+  - a provider that can say nothing about a link: the booking is let go an hour after the link's end; the fake answers "ran out" for links it forgot;
+  - payments are recorded at the time we learn of them (invoices stay in date order; closed months never change), the provider's time is kept on the payment record;
+  - a test server behind a proxy, or serving a reachable admin site, must set its own payments key;
+  - link ids have one shape everywhere; a booking that moved meanwhile is a 409, a provider not answering a 400.
 - Open: a finance list of money owed back and the inbox (P3.13); sending the link to the brand on WhatsApp (messages adapter) rather than staff copying it; the real provider (P6).
 - Next: P3.9, ad review.
 

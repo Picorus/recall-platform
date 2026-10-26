@@ -10,7 +10,7 @@
 // payment has just paid, and a payment can never land on a booking cancelled in between.
 import type { LinkStatus, PaymentEvent, PaymentsAdapter } from '@recall/adapters';
 import { isoAt, moneyToReturn, priceBookAt, type BookingState } from '@recall/domain';
-import type { Pool } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 import { bookingState, CapacityError, moveBooking, priceBooks, StepRace } from './bookings.js';
 import { postEntry } from './ledger.js';
 import { inTransaction } from './makeups.js';
@@ -23,6 +23,8 @@ const secs = (d: Date) => Math.floor(d.getTime() / 1000);
 export const MIN_LINK_SECONDS = 15 * 60;
 /** A link that ran out is acted on this long after its end: a payment started in time may finish. */
 export const EXPIRY_GRACE_SECONDS = 2 * 60;
+/** A link the provider cannot report on is treated as run out this long after its end. */
+export const PROVIDER_SILENT_SECONDS = 60 * 60;
 /** A booking sent for payment with no link made (a crash, the provider down) is let go after this. */
 export const NO_LINK_SECONDS = 10 * 60;
 
@@ -39,6 +41,10 @@ function asRefusal(e: unknown): never {
   if (e instanceof Error && !(e as { code?: string }).code) throw new Refusal(e.message);
   throw e;
 }
+
+/** A link is over once it was paid, ran out or was stopped (money owed back does not end it). */
+const ended = (states: readonly string[]) =>
+  states.some((x) => x === 'paid' || x === 'expired' || x === 'cancelled');
 
 /** A booking's links, newest first, with what has happened to each. */
 async function linksOf(pool: Q, bookingId: string) {
@@ -89,7 +95,7 @@ export async function sendForPayment(
   const links = await linksOf(pool, bookingId);
   const state = await bookingState(pool, bookingId);
   if (state === 'awaiting-payment') {
-    const live = links.find((l) => l.states.length === 0 && secs(l.expires_at) > now);
+    const live = links.find((l) => !ended(l.states) && secs(l.expires_at) > now);
     if (live)
       return {
         linkId: live.link_id,
@@ -135,26 +141,38 @@ export async function sendForPayment(
     ...(c?.email ? { email: c.email } : {}),
     expiresAt,
   });
-  await inTransaction(pool, (tx) =>
-    tx.query(
+  // Filed under the booking's lock, and only while it still waits for payment: a booking cancelled
+  // meanwhile (its link took too long to make) must never get a working link (review P3.8.2).
+  const filed = await inTransaction(pool, async (tx) => {
+    await tx.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`booking:${bookingId}`]);
+    const st = await tx.query<{ state: BookingState }>(
+      'SELECT state FROM booking_events WHERE booking_id = $1 ORDER BY seq DESC LIMIT 1',
+      [bookingId],
+    );
+    if (st.rows[0]?.state !== 'awaiting-payment') return 'moved' as const;
+    await tx.query(
       `INSERT INTO payment_links (link_id, booking_id, amount_paise, url, expires_at, created_by, created_at)
        VALUES ($1, $2, $3, $4, to_timestamp($5), $6, to_timestamp($7)) ON CONFLICT (link_id) DO NOTHING`,
       [link.linkId, bookingId, total, link.url, expiresAt, by, now],
-    ),
-  );
+    );
+    const kept = await tx.query<{ booking_id: string; amount_paise: string; expires_at: Date }>(
+      'SELECT booking_id, amount_paise, expires_at FROM payment_links WHERE link_id = $1',
+      [link.linkId],
+    );
+    return kept.rows[0];
+  });
+  if (filed === 'moved') {
+    await payments.cancelLink(link.linkId).catch(() => undefined);
+    throw new Refusal('This booking was cancelled while its link was being made');
+  }
   // A link id already filed under another booking must never be handed out (paying it would settle
   // the other booking).
-  const kept = await pool.query<{ booking_id: string; amount_paise: string; expires_at: Date }>(
-    'SELECT booking_id, amount_paise, expires_at FROM payment_links WHERE link_id = $1',
-    [link.linkId],
-  );
-  const row = kept.rows[0];
-  if (!row || row.booking_id !== bookingId || Number(row.amount_paise) !== total)
+  if (!filed || filed.booking_id !== bookingId || Number(filed.amount_paise) !== total)
     throw new Error(`Payment provider gave link ${link.linkId}, already used for another booking`);
   return {
     linkId: link.linkId,
     url: link.url,
-    expiresAt: secs(row.expires_at),
+    expiresAt: secs(filed.expires_at),
     amountPaise: total,
   };
 }
@@ -205,10 +223,9 @@ export async function applyLinkStatus(
   const r = await pool.query<{
     booking_id: string;
     amount_paise: string;
-    created_at: Date;
     brand_id: string;
   }>(
-    `SELECT l.booking_id, l.amount_paise, l.created_at, b.brand_id
+    `SELECT l.booking_id, l.amount_paise, b.brand_id
        FROM payment_links l JOIN bookings b USING (booking_id) WHERE l.link_id = $1`,
     [linkId],
   );
@@ -218,33 +235,39 @@ export async function applyLinkStatus(
   const l = { linkId, bookingId, brandId: link.brand_id };
   if (status.state === 'created') return 'waiting';
   if (status.state !== 'paid') {
-    await inTransaction(pool, (tx) =>
-      tx.query(
+    const linkEnded = (c: Pick<PoolClient, 'query'>) =>
+      c.query(
         `INSERT INTO payment_link_events (link_id, state, at)
          VALUES ($1, $2, to_timestamp($3)) ON CONFLICT DO NOTHING`,
         [linkId, status.state, now],
-      ),
-    );
-    await moveBooking(
-      pool,
-      bookingId,
-      'cancelled',
-      {
-        by: 'payments',
-        actor: 'system',
-        reason: `payment link ${status.state}, not paid`,
-        expectFrom: 'awaiting-payment',
-      },
-      now,
-    ).catch((e: unknown) => {
-      // Paid (or cancelled) in between: nothing to cancel.
+      );
+    try {
+      // The booking is cancelled and the link marked ended in one step, or neither: a failure is
+      // simply tried again by the next run (review P3.8.2).
+      await moveBooking(
+        pool,
+        bookingId,
+        'cancelled',
+        {
+          by: 'payments',
+          actor: 'system',
+          reason: `payment link ${status.state}, not paid`,
+          expectFrom: 'awaiting-payment',
+          alsoWrite: linkEnded,
+        },
+        now,
+      );
+    } catch (e) {
       if (!(e instanceof StepRace)) throw e;
-    });
+      // Paid in between: nothing to cancel. Cancelled by staff in between: the link ended too.
+      if (e.now !== 'cancelled') return 'already';
+      await inTransaction(pool, linkEnded);
+    }
     return 'expired';
   }
-  // The provider's clock decides when it was paid, within the link's life (never in the future, and
-  // never before the link existed: books already closed must not change).
-  const at = Math.min(Math.max(status.paidAt, secs(link.created_at)), now);
+  // Recorded when we learn of it, so invoices keep their numbers in date order and books already
+  // closed never change; the provider's own time is kept on the payment's record.
+  const at = now;
   const paid = { paymentId: status.paymentId, amountPaise: status.amountPaise };
   if (status.amountPaise !== Number(link.amount_paise)) {
     const out = await moneyBack(
@@ -272,6 +295,13 @@ export async function applyLinkStatus(
         actor: 'system',
         paymentId: status.paymentId,
         expectFrom: 'awaiting-payment',
+        // The link's record of the payment goes in with the booking step, never apart.
+        alsoWrite: (c) =>
+          c.query(
+            `INSERT INTO payment_link_events (link_id, state, payment_id, amount_paise, at)
+             VALUES ($1, 'paid', $2, $3, to_timestamp($4)) ON CONFLICT DO NOTHING`,
+            [linkId, status.paymentId, status.amountPaise, Math.min(status.paidAt, now)],
+          ),
       },
       at,
     );
@@ -289,13 +319,6 @@ export async function applyLinkStatus(
     const out = await moneyBack(pool, l, 'paid-late', paid, why, now);
     return out === 'already' ? 'already' : 'paid-late';
   }
-  await inTransaction(pool, (tx) =>
-    tx.query(
-      `INSERT INTO payment_link_events (link_id, state, payment_id, amount_paise, at)
-       VALUES ($1, 'paid', $2, $3, to_timestamp($4)) ON CONFLICT DO NOTHING`,
-      [linkId, status.paymentId, status.amountPaise, at],
-    ),
-  );
   return 'paid';
 }
 
@@ -310,15 +333,30 @@ export async function paymentMessage(
   const e: PaymentEvent | null = payments.verifyEvent(rawBody, signature);
   if (!e) return 'forged';
   const out = await applyLinkStatus(pool, e.linkId, e.status, now);
-  if (out === 'unknown')
-    // A link we have no record of: kept for finance (money may be behind it).
-    await inTransaction(pool, (tx) =>
-      tx.query(
+  // A payment for a link we have no record of: kept for finance and on the books as owed back, in
+  // one step and once per payment (other news about unknown links carries no money).
+  if (out === 'unknown' && e.status.state === 'paid') {
+    const st = e.status;
+    await inTransaction(pool, async (tx) => {
+      const r = await tx.query(
         `INSERT INTO payment_inbox (link_id, payment_id, event, received_at)
          VALUES ($1, $2, $3, to_timestamp($4)) ON CONFLICT DO NOTHING`,
-        [e.linkId, e.status.state === 'paid' ? e.status.paymentId : null, JSON.stringify(e), now],
-      ),
-    );
+        [e.linkId, st.paymentId, JSON.stringify(e), now],
+      );
+      if (r.rowCount && st.amountPaise > 0)
+        await postEntry(
+          tx,
+          moneyToReturn({
+            paymentId: st.paymentId,
+            ref: e.linkId,
+            amount: st.amountPaise,
+            why: 'paid on a link we have no record of',
+            at: now,
+          }),
+          'payments',
+        );
+    });
+  }
   return out;
 }
 
@@ -353,25 +391,38 @@ export async function expireUnpaid(
   log: (line: string) => void = (l) => console.error(l),
 ): Promise<string[]> {
   const cancelled: string[] = [];
-  const r = await pool.query<{ link_id: string; booking_id: string }>(
-    `SELECT l.link_id, l.booking_id FROM payment_links l
-      WHERE l.expires_at <= to_timestamp($1)
-        AND NOT EXISTS (SELECT 1 FROM payment_link_events e WHERE e.link_id = l.link_id)
-        AND (SELECT state FROM booking_events be WHERE be.booking_id = l.booking_id
-              ORDER BY seq DESC LIMIT 1) = 'awaiting-payment'`,
-    [now - EXPIRY_GRACE_SECONDS],
+  const r = await pool.query<{ link_id: string; booking_id: string; expires_at: Date }>(
+    // Chosen by the booking (still waiting) and its newest link's end, never by what was recorded on
+    // the link: a wrong amount, or a cancel that failed half-way, must not keep bikes for ever.
+    `SELECT DISTINCT ON (l.booking_id) l.link_id, l.booking_id, l.expires_at FROM payment_links l
+      WHERE (SELECT state FROM booking_events be WHERE be.booking_id = l.booking_id
+              ORDER BY seq DESC LIMIT 1) = 'awaiting-payment'
+      ORDER BY l.booking_id, l.created_at DESC`,
   );
-  for (const x of r.rows) {
+  for (const x of r.rows.filter((y) => secs(y.expires_at) <= now - EXPIRY_GRACE_SECONDS)) {
     try {
-      await payments.cancelLink(x.link_id);
-      const s = await payments.status(x.link_id);
+      await payments.cancelLink(x.link_id).catch(() => undefined);
+      let s: LinkStatus;
+      try {
+        s = await payments.status(x.link_id);
+      } catch (e) {
+        // The provider cannot say (a link it no longer knows): after an hour past the link's end the
+        // booking is let go anyway; money that still comes is owed back.
+        if (secs(x.expires_at) + PROVIDER_SILENT_SECONDS > now) throw e;
+        log(`payments: no answer for link ${x.link_id}; letting its booking go`);
+        s = { state: 'expired' };
+      }
       // Still "created" after being stopped: the link's end decides.
-      const out = await applyLinkStatus(
+      let out = await applyLinkStatus(
         pool,
         x.link_id,
         s.state === 'created' ? { state: 'expired' } : s,
         now,
       );
+      // Whatever that recorded (a wrong amount owed back), a booking still waiting after its link's
+      // end is let go: its bikes never stay kept unpaid.
+      if ((await bookingState(pool, x.booking_id)) === 'awaiting-payment')
+        out = await applyLinkStatus(pool, x.link_id, { state: 'expired' }, now);
       if (out === 'expired' && (await bookingState(pool, x.booking_id)) === 'cancelled')
         cancelled.push(x.booking_id);
     } catch (e) {
@@ -434,7 +485,7 @@ export async function cancelBooking(
       throw new Refusal(`${e.message}: reload and check before cancelling`);
     asRefusal(e);
   }
-  const open = (await linksOf(pool, bookingId)).find((l) => l.states.length === 0);
+  const open = (await linksOf(pool, bookingId)).find((l) => !ended(l.states));
   if (open) {
     try {
       await payments.cancelLink(open.link_id);

@@ -91,6 +91,8 @@ export function fakePayments(
       return Promise.resolve({ linkId, url: `${base}/${linkId}` });
     },
     status(linkId) {
+      // A link it does not know (the fake forgets everything on a restart) has run out.
+      if (!links.has(linkId)) return Promise.resolve({ state: 'expired' });
       return Promise.resolve(current(linkId));
     },
     cancelLink(linkId) {

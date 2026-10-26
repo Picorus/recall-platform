@@ -70,8 +70,21 @@ export function paymentsFrom(
       `PAYMENTS_PROVIDER ${provider} is not available yet (real providers come in P6)`,
     );
   if (production) throw new Error('The fake payments provider is for a laptop only');
+  // Reachable from outside: bound beyond this machine, behind a proxy, or serving an admin site
+  // that is not on this machine.
+  const loopback = (h: string) => /^(127\.0\.0\.1|localhost|::1|\[::1\])$/.test(h);
   const host = env.API_HOST || '127.0.0.1';
-  const local = host === '127.0.0.1' || host === 'localhost' || host === '::1';
+  const origins = (env.ADMIN_ORIGINS || 'http://localhost:3001').split(',').map((o) => o.trim());
+  const local =
+    loopback(host) &&
+    Number(env.API_PROXY_HOPS || 0) === 0 &&
+    origins.every((o) => {
+      try {
+        return loopback(new URL(o).hostname);
+      } catch {
+        return false;
+      }
+    });
   if (!local && !env.PAYMENTS_WEBHOOK_SECRET)
     throw new Error('PAYMENTS_WEBHOOK_SECRET must be set when the API is reachable from outside');
   return fakePayments(env.PAYMENTS_WEBHOOK_SECRET ? { secret: env.PAYMENTS_WEBHOOK_SECRET } : {});

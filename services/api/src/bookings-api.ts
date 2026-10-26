@@ -28,6 +28,7 @@ import {
   paymentMessage,
   Refusal,
   sendForPayment,
+  StepRace,
 } from '@recall/db';
 import { randomBytes } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -45,7 +46,7 @@ const MAX_LINES = 500;
 const newBookingId = () => `BK-${randomBytes(5).toString('hex').toUpperCase()}`;
 
 function refused(e: unknown): never {
-  if (e instanceof CapacityError) throw new HttpError(409, e.message);
+  if (e instanceof CapacityError || e instanceof StepRace) throw new HttpError(409, e.message);
   if (e instanceof BookingError)
     throw new HttpError(400, e.problems.map(bookingProblemText).join('; '));
   if (e instanceof Refusal || e instanceof RangeError) throw new HttpError(400, e.message);
@@ -176,7 +177,7 @@ export async function handleBookings(
     return true;
   }
   if (action === 'check') {
-    send(res, 200, { outcome: await checkPayment(pool, payments, id, now) });
+    send(res, 200, { outcome: await checkPayment(pool, payments, id, now).catch(refused) });
     return true;
   }
   if (action === 'cancel') {

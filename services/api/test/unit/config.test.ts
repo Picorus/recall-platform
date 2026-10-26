@@ -10,6 +10,11 @@ describe('payments settings (P3.8.2)', () => {
     expect(
       paymentsFrom({ API_HOST: '0.0.0.0', PAYMENTS_WEBHOOK_SECRET: 'x'.repeat(32) }, false),
     ).toBeDefined();
+    // Bound to this machine but behind a proxy, or serving a reachable admin site: still outside.
+    expect(() => paymentsFrom({ API_PROXY_HOPS: '1' }, false)).toThrow('PAYMENTS_WEBHOOK_SECRET');
+    expect(() => paymentsFrom({ ADMIN_ORIGINS: 'https://staging.recall.in' }, false)).toThrow(
+      'PAYMENTS_WEBHOOK_SECRET',
+    );
     expect(paymentsFrom({}, true)).toBeUndefined();
     expect(() => paymentsFrom({ PAYMENTS_PROVIDER: 'fake' }, true)).toThrow('laptop only');
     expect(() => paymentsFrom({ PAYMENTS_PROVIDER: 'razorpay' }, false)).toThrow('P6');

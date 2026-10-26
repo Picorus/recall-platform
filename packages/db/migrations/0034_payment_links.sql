@@ -3,7 +3,8 @@
 -- or paid after the booking was cancelled: money that arrives is always recorded), and staff notes
 -- on a booking. Append-only (hard rule 3).
 CREATE TABLE payment_links (
-  link_id      text        PRIMARY KEY CHECK (length(link_id) BETWEEN 1 AND 80),
+  -- The same shape the provider's messages are checked against, so every stored link can be paid.
+  link_id      text        PRIMARY KEY CHECK (link_id ~ '^[A-Za-z0-9_-]{1,80}$'),
   booking_id   text        NOT NULL REFERENCES bookings (booking_id),
   amount_paise bigint      NOT NULL CHECK (amount_paise > 0),
   url          text        NOT NULL CHECK (url ~ '^https?://' AND length(url) <= 500),
