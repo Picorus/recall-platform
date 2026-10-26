@@ -8,6 +8,13 @@ Newest first. Each entry: date · step id · what changed · tests · open issue
 - **API** (`services/api/src/areas-api.ts`): `GET /areas` (every area with its history), `POST /areas/check` (the rules' verdict in words, nothing saved), `POST /areas` (super admin adds), `POST /areas/<id>/versions` (Operations admin: shape, edge zone, name, draft), `POST /areas/<id>/active` (super admin: on or off). Changes start now or later, never in the past. An overlap names the other area.
 - **Admin site**: the Areas page: every area on the map; open one to drag its corners, click the map to add corners, or type them (one "latitude, longitude" per line, the fallback without a map); Check before saving; edge zone, name, start time (India time), draft, reason; the version history with who and why; super admin: add an area, turn it on or off. Shared map set-up for the admin pages (`lib/map.ts`).
 - Tests: API 2 (who may look, edit, add and turn on or off; an overlap refused naming Kondapur; a crossing border; never back-dated; a too-wide edge zone; an unknown area); admin unit 3 (corners read back from their text for any shape; bad lines refused; India time to UTC); browser 1 (open Madhapur, check, save a narrower edge zone with a reason, see version 2 with its reason).
+- Second-agent review: 8 findings, all fixed or decided:
+  - a super admin's "off" was lost when a draft was pending (it copied the draft, and drafts never take effect: plays kept counting). Now on/off builds on the published shape and takes effect at once;
+  - a version scheduled for later blocked every change before it, even an urgent "off". Now changes start when saved (never ahead, never in the past, rounded up to the next second); a version set for later by a script is refused with why;
+  - two edits at once, or a repeated id, gave a server error. Now one wins and the other is told to reload (409);
+  - overlaps were checked against old shapes no longer in force (blocking new areas), and the database check could miss a published shape when a draft was pending. Now both check the shape in force, the newest one and any coming (`othersInForce`);
+  - publishing an area for the first time puts it on sale, so it needs a super admin.
+- Tests after the review: domain 2 (on/off over a pending draft; which shapes count), API 4 (off with a draft pending; first publish; an old shape not blocking; a version set for later, and two edits at once).
 - Open: drawing the edge zone itself on the map (shown as metres for now); area names on a plain map (needs a font source with the base map).
 - Next: P3.6, prices and rules.
 

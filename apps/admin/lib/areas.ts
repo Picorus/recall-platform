@@ -1,5 +1,4 @@
-// The Areas page's helpers: corners as text (one "lat, lng" per line: easy to check and paste) and
-// India time for when a change starts.
+// The Areas page's helpers: corners as text (one "lat, lng" per line: easy to check and paste).
 
 export interface Corner {
   readonly lat: number;
@@ -28,15 +27,4 @@ export function parseCorners(text: string): { ring: Corner[] } | { problem: stri
   }
   if (ring.length < 3) return { problem: 'An area needs at least 3 corners' };
   return { ring };
-}
-
-/**
- * A "datetime-local" value read as India time ("2026-11-01T06:00") → UTC ISO
- * ("2026-11-01T00:30:00.000Z"); empty means now (the server's time).
- */
-export function indiaToUtc(local: string): string | undefined {
-  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(local);
-  if (!m) return undefined;
-  const [, y, mo, d, h, mi] = m.map(Number) as [number, number, number, number, number, number];
-  return new Date(Date.UTC(y, mo - 1, d, h, mi) - 330 * 60_000).toISOString();
 }

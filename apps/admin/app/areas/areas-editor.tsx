@@ -6,7 +6,7 @@
 import type { GeoJSONSource, Map as MapLibre, MapMouseEvent } from 'maplibre-gl';
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { api, ApiError, type Member } from '../../lib/api';
-import { cornersText, indiaToUtc, parseCorners, type Corner } from '../../lib/areas';
+import { cornersText, parseCorners, type Corner } from '../../lib/areas';
 import { count, dayOfIndia, clock } from '../../lib/format';
 import { mapColours, newMap } from '../../lib/map';
 import { Shell, useMember } from '../../lib/session';
@@ -268,7 +268,6 @@ export default function AreasEditor({ styleUrl }: { readonly styleUrl: string })
     const r = parseCorners(text);
     if ('problem' in r) return setProblems([r.problem]);
     const edgeMeters = Number(f.get('edge'));
-    const validFrom = indiaToUtc(String(f.get('from') ?? ''));
     const reason = String(f.get('reason') ?? '');
     void call(async () => {
       if (open === 'new') {
@@ -279,7 +278,6 @@ export default function AreasEditor({ styleUrl }: { readonly styleUrl: string })
           ring: r.ring,
           edgeMeters,
           draft: f.get('draft') === 'on',
-          validFrom,
           reason,
         });
       } else {
@@ -288,7 +286,6 @@ export default function AreasEditor({ styleUrl }: { readonly styleUrl: string })
           ring: r.ring,
           edgeMeters,
           draft: f.get('draft') === 'on',
-          validFrom,
           reason,
         });
       }
@@ -442,10 +439,7 @@ export default function AreasEditor({ styleUrl }: { readonly styleUrl: string })
                   ))}
                 </ul>
               ))}
-            <label className="rc-field">
-              <span className="rc-field__label">Starts (India time; empty: now)</span>
-              <input className="rc-input" name="from" type="datetime-local" />
-            </label>
+            <p className="muted">The change starts as soon as it is saved.</p>
             <label>
               <input type="checkbox" name="draft" defaultChecked={latest?.draft ?? false} /> Draft
               (cannot be sold until a later version is not a draft)

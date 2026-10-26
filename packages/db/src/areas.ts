@@ -76,9 +76,12 @@ export async function saveAreaVersion(
     const others = await c.query<Row>(
       `SELECT ${COLUMNS} FROM area_versions a
         WHERE a.area_id <> $1
-          AND (a.valid_from > $2 OR a.version = (
-                SELECT max(b.version) FROM area_versions b
-                 WHERE b.area_id = a.area_id AND b.valid_from <= $2))`,
+          AND (a.valid_from > $2
+               OR a.version = (SELECT max(b.version) FROM area_versions b
+                                WHERE b.area_id = a.area_id AND b.valid_from <= $2)
+               -- The published shape in force too, when a newer draft is pending (review P3.5).
+               OR a.version = (SELECT max(b.version) FROM area_versions b
+                                WHERE b.area_id = a.area_id AND b.valid_from <= $2 AND NOT b.draft))`,
       [area.areaId, area.validFrom],
     );
     const problems = checkArea(area, others.rows.map(toArea));

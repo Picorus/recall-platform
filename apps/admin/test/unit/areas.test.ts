@@ -1,6 +1,6 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { cornersText, indiaToUtc, parseCorners } from '../../lib/areas';
+import { cornersText, parseCorners } from '../../lib/areas';
 
 describe('Areas page helpers', () => {
   it('corners read back from their text', () => {
@@ -36,11 +36,5 @@ describe('Areas page helpers', () => {
       problem: 'Line 2 is not "latitude, longitude"',
     });
     expect(parseCorners('17.4, 78.3')).toEqual({ problem: 'An area needs at least 3 corners' });
-  });
-
-  it('India time to UTC', () => {
-    expect(indiaToUtc('2026-11-01T06:00')).toBe('2026-11-01T00:30:00.000Z');
-    expect(indiaToUtc('2026-11-01T02:00')).toBe('2026-10-31T20:30:00.000Z');
-    expect(indiaToUtc('')).toBeUndefined();
   });
 });

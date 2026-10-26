@@ -2,7 +2,7 @@
 // rules' refusals in words; never back-dated.
 import { areaHistory, saveAreaVersion } from '@recall/db';
 import { freshDatabase } from '@recall/db/test-db';
-import { launchAreas } from '@recall/domain';
+import { launchAreas, publishedAt } from '@recall/domain';
 import { randomBytes } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -162,13 +162,17 @@ describe('Areas page routes (P3.5)', () => {
     expect((await post('/areas/check', ops, { ring: bow, edgeMeters: 300 })).body.problems).toEqual(
       ['needs 3+ corners and its border must not cross itself'],
     );
+    // Changes start now: never back-dated, never scheduled ahead.
     const past = new Date(now - 3_600_000).toISOString();
     const back = await post('/areas/hyd-madhapur/versions', ops, {
       edgeMeters: 250,
       validFrom: past,
       reason: 'tidy',
     });
-    expect(back).toEqual({ status: 400, body: { error: 'A change cannot start in the past' } });
+    expect(back).toEqual({
+      status: 400,
+      body: { error: 'Changes start now: they are not scheduled ahead' },
+    });
     expect(
       (await post('/areas/hyd-madhapur/versions', ops, { edgeMeters: 5000, reason: 'wide' }))
         .status,
@@ -176,5 +180,132 @@ describe('Areas page routes (P3.5)', () => {
     expect(
       (await post('/areas/hyd-nowhere/versions', ops, { edgeMeters: 200, reason: 'x y' })).status,
     ).toBe(404);
+  });
+
+  it('turning off with a draft pending takes effect at once (it builds on the published shape)', async () => {
+    const sup = await member('third@recall.in', { role: 'super-admin', areas: [] });
+    const ops = await member('lata@recall.in', { role: 'admin', areas: ['operations'] });
+    now += 60_000;
+    expect(
+      (
+        await post('/areas/hyd-gachibowli/versions', ops, {
+          edgeMeters: 150,
+          draft: true,
+          reason: 'proposal',
+        })
+      ).status,
+    ).toBe(200);
+    now += 60_000;
+    expect(
+      (await post('/areas/hyd-gachibowli/active', sup, { active: false, reason: 'flooding' }))
+        .status,
+    ).toBe(200);
+    const h = await areaHistory(pool, 'hyd-gachibowli');
+    const last = h[h.length - 1];
+    expect(last).toMatchObject({ active: false, draft: false, edgeMeters: 300 });
+    expect(publishedAt(h, new Date(now + 1000).toISOString())?.active).toBe(false);
+  });
+
+  it('a new area published for the first time needs a super admin', async () => {
+    const sup = await member('fourth@recall.in', { role: 'super-admin', areas: [] });
+    const ops = await member('ravi@recall.in', { role: 'admin', areas: ['operations'] });
+    now += 60_000;
+    const add = {
+      areaId: 'hyd-test-draft',
+      name: 'Draft test',
+      city: 'Hyderabad',
+      ring: square(17.2, 78.6),
+      edgeMeters: 300,
+      draft: true,
+      reason: 'proposal',
+    };
+    expect((await post('/areas', sup, add)).status).toBe(200);
+    now += 60_000;
+    const pub = await post('/areas/hyd-test-draft/versions', ops, {
+      draft: false,
+      reason: 'ready',
+    });
+    expect(pub).toEqual({
+      status: 403,
+      body: { error: 'Only a super admin publishes a new area for the first time' },
+    });
+    // Shape fixes as a draft are fine for Operations.
+    expect(
+      (await post('/areas/hyd-test-draft/versions', ops, { edgeMeters: 200, reason: 'fix' }))
+        .status,
+    ).toBe(200);
+  });
+
+  it('an old shape no longer in force never blocks a new area', async () => {
+    const sup = await member('fifth@recall.in', { role: 'super-admin', areas: [] });
+    const ops = await member('sita@recall.in', { role: 'admin', areas: ['operations'] });
+    now += 60_000;
+    const big = {
+      areaId: 'hyd-test-big',
+      name: 'Big test',
+      city: 'Hyderabad',
+      ring: square(17.1, 78.5, 0.02),
+      edgeMeters: 300,
+      reason: 'pilot',
+    };
+    expect((await post('/areas', sup, big)).status).toBe(200);
+    now += 60_000;
+    expect(
+      (
+        await post('/areas/hyd-test-big/versions', ops, {
+          ring: square(17.1, 78.5, 0.005),
+          reason: 'smaller',
+        })
+      ).status,
+    ).toBe(200);
+    now += 60_000;
+    // Where the old, bigger shape was: allowed now.
+    const next = {
+      areaId: 'hyd-test-next',
+      name: 'Next test',
+      city: 'Hyderabad',
+      ring: square(17.11, 78.51, 0.005),
+      edgeMeters: 300,
+      reason: 'pilot 2',
+    };
+    expect(
+      (await post('/areas/check', ops, { ring: next.ring, edgeMeters: 300 })).body.problems,
+    ).toEqual([]);
+    expect((await post('/areas', sup, next)).status).toBe(200);
+  });
+
+  it('a version already set for later: a change now is refused with why; two edits at once: one wins, one is told to reload', async () => {
+    const ops = await member('uma@recall.in', { role: 'admin', areas: ['operations'] });
+    const h = await areaHistory(pool, 'hyd-banjara-hills');
+    const last = h[h.length - 1];
+    if (!last) throw new Error('no area');
+    // Set up by a script for next month (the page itself never schedules).
+    await saveAreaVersion(
+      pool,
+      {
+        ...last,
+        version: last.version + 1,
+        edgeMeters: 280,
+        validFrom: new Date(now + 30 * 86_400_000).toISOString(),
+      },
+      'system',
+    );
+    now += 60_000;
+    const r = await post('/areas/hyd-banjara-hills/versions', ops, {
+      edgeMeters: 260,
+      reason: 'now',
+    });
+    expect(r.status).toBe(409);
+    expect(r.body.error).toMatch(/^A change to this area already starts at /);
+
+    now += 60_000;
+    const both = await Promise.all([
+      post('/areas/hyd-jubilee-hills/versions', ops, { edgeMeters: 250, reason: 'one' }),
+      post('/areas/hyd-jubilee-hills/versions', ops, { edgeMeters: 240, reason: 'two' }),
+    ]);
+    expect(both.map((x) => x.status).sort()).toEqual([200, 409]);
+    expect(both.find((x) => x.status === 409)?.body.error).toBe(
+      'Someone changed this area just now: reload the page and try again',
+    );
   });
 });
