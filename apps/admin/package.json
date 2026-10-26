@@ -26,6 +26,7 @@
     "@recall/domain": "workspace:*",
     "playwright": "1.56.1",
     "@recall/api": "workspace:*",
-    "@recall/db": "workspace:*"
+    "@recall/db": "workspace:*",
+    "fast-check": "4.10.2"
   }
 }

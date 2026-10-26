@@ -117,6 +117,11 @@ it('first super admin: invite, sign in, add an admin, sign out', async () => {
   await page.getByLabel('Code from your authenticator app').fill(totpCode(secret, step()));
   await page.getByRole('button', { name: 'Sign in' }).click();
   await page.getByText('Prateek · Super admin').waitFor();
+  // Today (P3.2): a super admin sees every part; an empty business shows zeros, not errors.
+  await page.getByRole('heading', { name: 'Bikes now' }).waitFor();
+  await page.getByRole('heading', { name: 'Hours sold and delivered' }).waitFor();
+  await page.getByText('No open alerts.').waitFor();
+  await page.getByText('None owed.').waitFor();
   const cookie = (await page.context().cookies()).find((c) => c.name === '__Host-recall_staff');
   expect(cookie?.httpOnly).toBe(true);
   expect(cookie?.sameSite).toBe('Strict');

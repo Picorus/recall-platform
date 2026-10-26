@@ -2,6 +2,16 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 26 Oct 2026 · P3.2 · Today
+- P3.1 merged (PR #46).
+- **The rules** (`packages/domain/src/today.ts`): where each screen stands now (moving, stopped, at hub, offline), which business day the page shows (between 2 and 8 am, the one that just ended), the week from Monday India time, and hours sold vs delivered (delivered never above what was promised, in tenths of a bike-hour). Limits are settings (`DEFAULT_TODAY_RULES`).
+- **From the records** (`packages/db/src/today.ts`, read only): `fleetNow` (screens, fittings, latest position, last heard), `hoursSoldToday` (paid, not-cancelled lines and their counted plays by the rules they were sold on), `makeUpsOwed`, `refundsThisWeek` (waiting / approved / rejected, with GST and top-ups), `alertsNow` (open alerts with the bike each screen is on).
+- **API** `GET /today` (`services/api/src/today-api.ts`): any signed-in member; each part only when their areas cover it (bikes and alerts: Operations; hours and make-ups: Sales or Operations; refunds: Finance, Sales or Operations; super admin: all).
+- **Admin site**: the Today page (tiles for bikes and hours, tables for make-ups and alerts, refunds by decision), refreshed every minute, India time, rupees with Indian grouping (`lib/format.ts`).
+- Tests: domain 5 (each screen state, the day shown at 1:30 am / 5 am / 8 am, Monday start, a sample day's hours; property: delivered never above due, never negative); database 5 (a sample day: 3 paid lines, a cancelled and an unpaid one left out, 900 of 1,000 plays = 4.5 bike-hours; a make-up owed until its window ends; refunds this week by decision with GST and a top-up, last week's left out; bikes moving / stopped / hello only / silent / not fitted / taken off; open alerts with the bike); API 3 (each role sees its parts; an empty business shows zeros; 401); admin unit 3 (rupees match the domain's money rules for any amount; India time); browser: Today shows every part to a super admin.
+- Open: the page reads each line's plays one by one: fine for the POC (a few hundred lines a day), to be summed in one query before thousands of bikes (P7 load test). Clicking a bike or alert to open its screen (P3.3 / P3.4). Area names instead of ids once the Areas page exists (P3.5).
+- Next: P3.3, the fleet map.
+
 ## 25 Oct 2026 · P3.1 · Staff sign-in and roles
 - P2.13 + P2.14 merged (PR #45). P3, the admin portal, starts here.
 - **Roles** (`packages/domain/src/staff.ts`): super admin (everything; the only one who manages staff), admin with ticked areas (Sales, Ad review, Operations, Finance, Support), read-only (looks at ticked areas). One table, `can()`, answers every request on the server. `moneyRole()` gives the money code its 'super-admin' / 'finance' role.
