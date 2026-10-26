@@ -9,7 +9,8 @@ Newest first. Each entry: date · step id · what changed · tests · open issue
 - **Payments** (migration 0043): finance records a bank transfer to a partner with its bank reference, never more than it is owed; the ledger moves it out of what is owed and out of the bank. Its invoices are recorded too (GST claimed only against them; one per number).
 - **API**: `GET /money/partners`, `GET /money/partners/statement`, `POST /money/partners/pay`, `/invoice`, `/cut`. **Money page**: an "Agencies and aggregators" card.
 - Tests: database 3 (a cut once, by a super admin; the statement with GST and TDS; paid never more than owed, the next month opens with what is left; invoices once; append-only; ledger balances); API 1; browser (a cut given, the statement, an invoice recorded, a payment over what is owed refused).
-- Open: partners are paid by bank transfer recorded by hand until a payout provider is contracted (P6).
+- **Second review, all fixed with tests:** the same bank transfer could be recorded twice (a lost reply, a second press): now one reference per partner, refused again; an invoice for a mistyped partner or an impossible date (30 Feb) is refused; the statement file now lists the partner's invoices; an open statement reloads after a cut. Checked and sound: never paid more than owed (one lock with the cut accruals), TDS stays with the government, balances add up month to month, negative cuts after refunds.
+- Open: partners are paid by bank transfer recorded by hand until a payout provider is contracted (P6). A partner's invoices are kept per partner, not per kind (an agency that is also an aggregator shares them; DECISIONS).
 - Next: P3.14, reports.
 
 ## 27 Oct 2026 · P3.13.2 · Money owed back to brands

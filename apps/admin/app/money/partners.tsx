@@ -310,6 +310,8 @@ function GiveCut({ onDone }: { readonly onDone: () => void }) {
 export default function Partners({ month }: { readonly month: string }) {
   const [list, setList] = useState<PartnerList>();
   const [open, setOpen] = useState<PartnerRow>();
+  // Bumped when a cut is given, so an open statement loads again.
+  const [version, setVersion] = useState(0);
   const [error, setError] = useState('');
   const load = useCallback(() => {
     api<PartnerList>('/money/partners')
@@ -364,14 +366,21 @@ export default function Partners({ month }: { readonly month: string }) {
       )}
       {open && month && (
         <Statement
-          key={`${open.kind}:${open.partnerId}:${month}`}
+          key={`${open.kind}:${open.partnerId}:${month}:${version}`}
           partner={open}
           month={month}
           canPay={list.canPay}
           onChanged={load}
         />
       )}
-      {list.canGiveCut && <GiveCut onDone={load} />}
+      {list.canGiveCut && (
+        <GiveCut
+          onDone={() => {
+            load();
+            setVersion((v) => v + 1);
+          }}
+        />
+      )}
     </section>
   );
 }

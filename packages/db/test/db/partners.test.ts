@@ -61,7 +61,12 @@ afterAll(async () => db.drop());
 
 describe('partners (P3.13.3)', () => {
   it('a cut is given once per kind and booking, by a super admin, on a paid booking', async () => {
-    const { rateBp: _r, tdsBp: _t, ...given } = CUT;
+    const given = {
+      bookingId: CUT.bookingId,
+      kind: CUT.kind,
+      partnerId: CUT.partnerId,
+      gstBp: CUT.gstBp,
+    };
     await expect(giveCut(pool, given, FINANCE, 'agency deal', NOW + 100)).rejects.toThrow(
       /super admin/,
     );
@@ -147,6 +152,21 @@ describe('partners (P3.13.3)', () => {
         SEPT,
       ),
     ).toBe(1);
+    // The same transfer again (a lost reply, a second press): refused.
+    await expect(
+      payPartner(
+        pool,
+        {
+          partnerId: 'adwise',
+          kind: 'agency',
+          amountPaise: 100_000,
+          reference: 'UTR11112222',
+          note: '',
+        },
+        FINANCE,
+        SEPT + 60,
+      ),
+    ).rejects.toThrow(/already recorded/);
     await recordPartnerInvoice(
       pool,
       {

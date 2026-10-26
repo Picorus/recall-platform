@@ -13,7 +13,9 @@ CREATE TABLE partner_payments (
   entry_id     text        NOT NULL UNIQUE REFERENCES ledger_entries (entry_id),
   by_who       text        NOT NULL CHECK (length(by_who) BETWEEN 1 AND 120),
   at           timestamptz NOT NULL,
-  PRIMARY KEY (partner_id, kind, seq)
+  PRIMARY KEY (partner_id, kind, seq),
+  -- One bank transfer is recorded once (a lost reply and a second press never pay twice).
+  UNIQUE (partner_id, kind, reference)
 );
 
 CREATE TRIGGER partner_payments_no_change BEFORE UPDATE OR DELETE ON partner_payments

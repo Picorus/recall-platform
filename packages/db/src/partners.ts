@@ -198,6 +198,13 @@ export function statementCsv(s: PartnerStatement): { name: string; csv: string }
       rupees(-p.amountPaise),
     ]),
     ['owed at the end', '', '', '', rupees(s.closingPaise)],
+    ...s.invoices.map((i) => [
+      `their invoice ${i.invoiceNo} of ${i.invoiceDate}`,
+      rupees(i.taxablePaise),
+      rupees(i.gstPaise),
+      '',
+      '',
+    ]),
   ];
   return {
     name: `statement-${s.kind}-${s.partnerId}-${s.month}.csv`,
@@ -241,6 +248,12 @@ export async function payPartner(
         WHERE account = $1 AND party = $2`,
       [PAYABLE[p.kind], p.partnerId],
     );
+    const dup = await c.query(
+      'SELECT 1 FROM partner_payments WHERE partner_id = $1 AND kind = $2 AND reference = $3',
+      [p.partnerId, p.kind, reference],
+    );
+    if (dup.rows.length > 0)
+      throw new Refusal(`The transfer ${reference} to ${p.partnerId} is already recorded`);
     const due = Number(owed.rows[0]?.n ?? 0);
     if (p.amountPaise > due)
       throw new Refusal(

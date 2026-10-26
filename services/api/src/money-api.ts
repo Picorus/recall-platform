@@ -228,6 +228,19 @@ async function partnerAction(
     const taxablePaise = whole('taxablePaise');
     const gstPaise = whole('gstPaise');
     if (invoiceNo.length < 1) throw new HttpError(400, 'The invoice number');
+    if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(partnerId)) throw new HttpError(400, 'Which partner?');
+    // A real calendar date ("2027-02-30" is refused, not rolled over).
+    if (
+      !/^20\d{2}-\d{2}-\d{2}$/.test(invoiceDate) ||
+      Number.isNaN(Date.parse(`${invoiceDate}T00:00:00Z`)) ||
+      new Date(`${invoiceDate}T00:00:00Z`).toISOString().slice(0, 10) !== invoiceDate
+    )
+      throw new HttpError(400, 'The invoice date (YYYY-MM-DD)');
+    // Only a partner with a cut: a mistyped id would never show on any statement.
+    const known = await pool.query('SELECT 1 FROM booking_cuts WHERE partner_id = $1 LIMIT 1', [
+      partnerId,
+    ]);
+    if (known.rows.length === 0) throw new HttpError(404, `No cut was given to ${partnerId}`);
     await refused(() =>
       recordPartnerInvoice(
         pool,

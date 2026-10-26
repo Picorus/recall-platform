@@ -276,5 +276,19 @@ describe('money routes (P3.13.1)', () => {
     };
     expect((await send(fin, '/money/partners/invoice', inv)).status).toBe(200);
     expect((await send(fin, '/money/partners/invoice', inv)).status).toBe(409);
+    expect((await send(fin, '/money/partners/pay', pay)).status).toBe(409);
+    expect(
+      (
+        await send(fin, '/money/partners/invoice', {
+          ...inv,
+          invoiceNo: 'X1',
+          invoiceDate: '2027-02-30',
+        })
+      ).status,
+    ).toBe(400);
+    expect(
+      (await send(fin, '/money/partners/invoice', { ...inv, invoiceNo: 'X1', partnerId: 'nobody' }))
+        .status,
+    ).toBe(404);
   });
 });
