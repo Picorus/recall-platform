@@ -41,6 +41,7 @@ interface Page {
   readonly counts: {
     onBike: number;
     inStock: number;
+    cannotFit: number;
     inRepair: number;
     retired: number;
     sparesWanted: number;
@@ -330,6 +331,13 @@ export default function ScreensPage() {
                 : `${count(c.sparesWanted)} wanted (5%)`
             }
           />
+          {c.cannotFit > 0 && (
+            <Stat
+              label="Cannot be fitted"
+              value={count(c.cannotFit)}
+              note="no valid certificate, or reported lost"
+            />
+          )}
           <Stat label="In repair" value={count(c.inRepair)} />
           <Stat label="Retired" value={count(c.retired)} />
         </div>

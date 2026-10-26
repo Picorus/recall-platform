@@ -71,7 +71,8 @@ describe('Screens page routes (P3.4)', () => {
     expect(seen.status).toBe(200);
     expect(seen.body.counts).toEqual({
       onBike: 0,
-      inStock: 1,
+      inStock: 0,
+      cannotFit: 1, // no certificate yet: not counted as stock
       inRepair: 0,
       retired: 0,
       sparesWanted: 0,

@@ -2,10 +2,12 @@
 // bike, in stock, in repair, retired), the bike and rider, where it stands now (the Today rules),
 // its player version, latest health, last fitting check and certificate. Nothing here writes.
 import {
+  DEFAULT_STOCK_RULES,
   DEFAULT_TODAY_RULES,
   fleetState,
   type FleetState,
   type FittingVerdict,
+  type StockRules,
   type TodayRules,
 } from '@recall/domain';
 import type { Pool } from 'pg';
@@ -31,6 +33,8 @@ export interface ScreenRow {
   /** The last fitting check: when, and whether every part passed. */
   readonly fittingCheck: { readonly at: number; readonly ready: boolean } | null;
   readonly certificateUntil: number | null;
+  /** It could be fitted now: a valid certificate and its play key not given up (lost or stolen). */
+  readonly fittable: boolean;
 }
 
 /** Every enrolled screen for the Screens page, bikes first. Times in seconds. */
@@ -58,6 +62,7 @@ export async function screenList(
     check_at: string | null;
     verdict: FittingVerdict | null;
     cert_until: string | null;
+    key_ok: boolean;
   }>(
     `SELECT s.screen_id, s.hardware_serial, s.model, extract(epoch FROM s.enrolled_at)::bigint AS enrolled,
             v.kind AS service, v.reason AS service_reason, f.bike, f.rider_id,
@@ -72,7 +77,9 @@ export async function screenList(
                 WHERE a.screen_id = s.screen_id ORDER BY kind, id DESC) x WHERE state = 'raised') AS alerts,
             extract(epoch FROM fc.at)::bigint AS check_at, fc.verdict,
             (SELECT extract(epoch FROM max(not_after))::bigint FROM screen_certificates c
-              WHERE c.screen_id = s.screen_id) AS cert_until
+              WHERE c.screen_id = s.screen_id) AS cert_until,
+            EXISTS (SELECT 1 FROM screen_keys k LEFT JOIN screen_key_revocations rv USING (screen_id, key_id)
+                     WHERE k.screen_id = s.screen_id AND rv.key_id IS NULL) AS key_ok
        FROM screens s
        LEFT JOIN LATERAL (SELECT kind, reason FROM screen_service_events WHERE screen_id = s.screen_id
                             AND at <= to_timestamp($1) ORDER BY id DESC LIMIT 1) v ON true
@@ -126,22 +133,35 @@ export async function screenList(
           ? null
           : { at: Number(x.check_at), ready: x.verdict.ready },
       certificateUntil: x.cert_until === null ? null : Number(x.cert_until),
+      fittable: x.key_ok && x.cert_until !== null && Number(x.cert_until) > now,
     };
   });
 }
 
-/** Counts for the top of the page, and the spares the fleet should hold (a setting, 5%). */
+/**
+ * Counts for the top of the page, and the spares the fleet should hold (a setting). Spares that
+ * cannot be fitted (no valid certificate, or reported lost) are counted apart, not as stock.
+ */
 export function stockCounts(
   rows: readonly ScreenRow[],
-  spareShare = 0.05,
-): { onBike: number; inStock: number; inRepair: number; retired: number; sparesWanted: number } {
+  rules: StockRules = DEFAULT_STOCK_RULES,
+): {
+  onBike: number;
+  inStock: number;
+  cannotFit: number;
+  inRepair: number;
+  retired: number;
+  sparesWanted: number;
+} {
   const n = (l: ScreenLife) => rows.filter((r) => r.life === l).length;
   const onBike = n('on-bike');
+  const cannotFit = rows.filter((r) => r.life === 'in-stock' && !r.fittable).length;
   return {
     onBike,
-    inStock: n('in-stock'),
+    inStock: n('in-stock') - cannotFit,
+    cannotFit,
     inRepair: n('in-repair'),
     retired: n('retired'),
-    sparesWanted: Math.ceil(onBike * spareShare),
+    sparesWanted: Math.ceil(onBike * rules.spareShare),
   };
 }

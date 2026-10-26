@@ -15,7 +15,14 @@ import { enrolmentBytes } from '@recall/domain';
 import { generateKeyPairSync, sign } from 'node:crypto';
 import { recordHello } from '../../src/screen-line.js';
 import { enrolScreen } from '../../src/screens.js';
-import { addRelease, driveRollout, rollBack, rolloutStatus, updateFor } from '../../src/updates.js';
+import {
+  addRelease,
+  driveRollout,
+  pauseRollout,
+  rollBack,
+  rolloutStatus,
+  updateFor,
+} from '../../src/updates.js';
 import { freshDatabase } from './fresh-db.js';
 
 let db: Awaited<ReturnType<typeof freshDatabase>>;
@@ -202,5 +209,77 @@ describe('player updates (P2.13)', () => {
     );
     expect(await rolloutStatus(pool)).toMatchObject({ releaseId: 'rel-13', state: 'rolled-back' });
     expect(await rollBack(pool, 'ops-1', 'again', since + 3 * HOUR + 2)).toBe(false);
+  });
+
+  describe('paused by staff (P3.4)', () => {
+    /** Health each minute from `fromMs`; the crash count (since setup) goes from `c0` up by one at each minute in `crashAt`. */
+    async function healthRun(
+      screen: string,
+      fromMs: number,
+      minutes: number,
+      seq0: number,
+      c0: number,
+      crashAt: number[],
+    ) {
+      const t0 = Math.floor(fromMs / 60_000) * 60;
+      let c = c0;
+      const batch: Numbered[] = Array.from({ length: minutes }, (_, i) => {
+        if (crashAt.includes(i)) c++;
+        return { seq: seq0 + i, at: t0 + i * 60, report: health(t0 + i * 60, 300, c) };
+      });
+      await storeUpload(pool, screen, batch, seq0, t0 + minutes * 60);
+      return c;
+    }
+
+    it('a paused update still rolls back by itself when it crashes; resuming never wipes the crashes counted', async () => {
+      const S = T + 20 * HOUR;
+      await addRelease(
+        pool,
+        { id: 'rel-30', apk: apk(300), rollback: apk(301) },
+        'ci',
+        'brightness',
+        S,
+      );
+      // Judged on crash counts alone here: more than 0.05 × 100 screen-hours = more than 5 crashes.
+      const R = { ...RULES, minScreenHours: 100 };
+      // Two screens on it, one crash each in the first half hour: not enough to judge yet.
+      const a = await healthRun('SCR-P300001', S + 60_000, 30, 1, 0, [20]);
+      const b = await healthRun('SCR-P300002', S + 60_000, 30, 1, 0, [25]);
+      expect(await driveRollout(pool, S + 32 * 60_000, R)).toMatch(/^hold/);
+      // Paused and resumed: the two crashes still count with the next two.
+      expect(
+        await pauseRollout(pool, true, 'Arjun', 'riders report flicker', S + 33 * 60_000),
+      ).toBe(true);
+      expect(await driveRollout(pool, S + 34 * 60_000, R)).toBe('hold: paused by staff');
+      expect(await pauseRollout(pool, false, 'Arjun', 'not the update', S + 35 * 60_000)).toBe(
+        true,
+      );
+      // Two more each after resuming: 4 since the resume (would hold), 6 in the stage (rolls back).
+      await healthRun('SCR-P300001', S + 36 * 60_000, 10, 100, a, [3, 6]);
+      await healthRun('SCR-P300002', S + 36 * 60_000, 10, 100, b, [4, 7]);
+      expect(await driveRollout(pool, S + 47 * 60_000, R)).toBe('roll-back');
+    });
+
+    it('crashes while paused roll it back', async () => {
+      const S = T + 30 * HOUR;
+      await addRelease(pool, { id: 'rel-32', apk: apk(320), rollback: apk(321) }, 'ci', 'gps', S);
+      expect(await pauseRollout(pool, true, 'Arjun', 'checking a report', S + 60_000)).toBe(true);
+      const crash = async (screen: string) => {
+        const t0 = Math.floor((S + 2 * 60_000) / 60_000) * 60;
+        const batch: Numbered[] = Array.from({ length: 30 }, (_, i) => ({
+          seq: 1 + i,
+          at: t0 + i * 60,
+          report: health(t0 + i * 60, 320, Math.floor(i / 5)),
+        }));
+        await storeUpload(pool, screen, batch, 1, t0 + 30 * 60);
+      };
+      await crash('SCR-P320001');
+      await crash('SCR-P320002');
+      expect(await driveRollout(pool, S + 33 * 60_000, RULES)).toBe('roll-back');
+      expect(await rolloutStatus(pool)).toMatchObject({
+        releaseId: 'rel-32',
+        state: 'rolled-back',
+      });
+    });
   });
 });

@@ -9,6 +9,7 @@
 import { isScreenId } from '@recall/domain';
 import {
   pauseRollout,
+  Refusal,
   rollBack,
   rolloutStatus,
   screenList,
@@ -28,14 +29,12 @@ const look = { area: 'operations', change: false } as const;
 const act = { area: 'operations', change: true } as const;
 const KINDS: readonly ServiceKind[] = ['to-repair', 'repaired', 'retired'];
 
-/** A rule the database refused (a plain Error with its reason) is the caller's 400, not a fault. */
+/** A rule's refusal (or a value out of range) is the caller's 400 with its reason; anything else is a fault. */
 async function refusedAs400<T>(f: () => Promise<T>): Promise<T> {
   try {
     return await f();
   } catch (e) {
-    if (e instanceof HttpError) throw e;
-    // Database faults carry a code (e.g. '23505'); the rules' own refusals do not.
-    if (e instanceof Error && !('code' in e)) throw new HttpError(400, e.message);
+    if (e instanceof Refusal || e instanceof RangeError) throw new HttpError(400, e.message);
     throw e;
   }
 }

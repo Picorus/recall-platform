@@ -67,11 +67,22 @@ async function event(
 }
 
 /** The newest release that is not replaced, with where its rollout stands. */
-async function current(
-  c: Q,
-): Promise<{ release: Release; state: State; stage: number; since: number } | undefined> {
-  const r = await c.query<Row & { kind: State; stage: number; since: string }>(
-    `SELECT p.*, e.kind, e.stage, (extract(epoch FROM e.at) * 1000)::bigint AS since
+async function current(c: Q): Promise<
+  | {
+      release: Release;
+      state: State;
+      stage: number;
+      since: number;
+      /** When the stage itself began (started or advanced), not moved by a pause or resume. */
+      stageStart: number;
+    }
+  | undefined
+> {
+  const r = await c.query<Row & { kind: State; stage: number; since: string; stage_start: string }>(
+    `SELECT p.*, e.kind, e.stage, (extract(epoch FROM e.at) * 1000)::bigint AS since,
+            (SELECT (extract(epoch FROM s.at) * 1000)::bigint FROM release_events s
+              WHERE s.release_id = p.id AND s.kind IN ('started', 'advanced')
+              ORDER BY s.id DESC LIMIT 1) AS stage_start
        FROM player_releases p
        JOIN LATERAL (SELECT kind, stage, at FROM release_events WHERE release_id = p.id
                       ORDER BY id DESC LIMIT 1) e ON true
@@ -80,7 +91,13 @@ async function current(
   );
   const x = r.rows[0];
   return x
-    ? { release: release(x), state: x.kind, stage: x.stage, since: Number(x.since) }
+    ? {
+        release: release(x),
+        state: x.kind,
+        stage: x.stage,
+        since: Number(x.since),
+        stageStart: Number(x.stage_start ?? x.since),
+      }
     : undefined;
 }
 
@@ -159,7 +176,13 @@ export async function updateFor(
   const { release: r, state, stage } = now;
   if (appCode >= r.apk.versionCode) return undefined;
   const share = state === 'finished' ? 10_000 : (rules.stagesBp[stage] ?? 10_000);
-  const fleet = await pool.query<{ screen_id: string }>('SELECT screen_id FROM screen_inboxes');
+  // Retired screens are out of the fleet: they never skew the 1% and 10% shares (review P3.4).
+  const fleet = await pool.query<{ screen_id: string }>(
+    `SELECT i.screen_id FROM screen_inboxes i
+      WHERE NOT EXISTS (SELECT 1 FROM (SELECT kind FROM screen_service_events v
+                                        WHERE v.screen_id = i.screen_id ORDER BY id DESC LIMIT 1) x
+                         WHERE x.kind = 'retired')`,
+  );
   const members = stageScreens([...fleet.rows.map((x) => x.screen_id), screenId], r.id, share);
   return members.has(screenId) ? send(r.apk) : undefined;
 }
@@ -247,19 +270,25 @@ export async function driveRollout(
   return inTransaction(pool, async (c) => {
     await c.query("SELECT pg_advisory_xact_lock(hashtext('recall-player-releases'))");
     const now = await current(c);
-    if (!now || !['started', 'advanced', 'resumed'].includes(now.state)) return undefined;
+    const paused = now?.state === 'paused';
+    if (!now || !(paused || ['started', 'advanced', 'resumed'].includes(now.state)))
+      return undefined;
     const code = now.release.apk.versionCode;
+    // Crashes are judged over the whole stage, a pause and resume included (review P3.4: resuming
+    // must never wipe the evidence). The stage's 24 hours start again on a resume.
     const step = nextStep(
       {
         stage: now.stage,
-        stageSince: now.since,
+        stageSince: now.state === 'resumed' ? now.since : now.stageStart,
         now: nowMs,
-        fresh: await stats(c, now.since, true, code),
-        old: await stats(c, now.since, false, code),
-        connected: await connected(c, now.since, code),
+        fresh: await stats(c, now.stageStart, true, code),
+        old: await stats(c, now.stageStart, false, code),
+        connected: await connected(c, now.stageStart, code),
       },
       rules,
     );
+    // Paused: it never moves on, but a crashing version is still rolled back by itself.
+    if (paused && step.do !== 'roll-back') return `hold: paused by staff`;
     const id = now.release.id;
     if (step.do === 'advance')
       await event(c, id, 'advanced', step.toStage, nowMs, 'stage passed', 'rollout');

@@ -106,6 +106,7 @@ describe('screens: stock, repairs, swaps (P3.4)', () => {
     expect(stockCounts(rows)).toEqual({
       onBike: 1,
       inStock: 1,
+      cannotFit: 0,
       inRepair: 1,
       retired: 1,
       sparesWanted: 1,
@@ -244,7 +245,7 @@ describe('pausing a player update (P3.4)', () => {
     expect(await pauseRollout(pool, true, 'Arjun', 'riders report flicker', T + 1000)).toBe(true);
     expect(await pauseRollout(pool, true, 'Arjun', 'again', T + 1001)).toBe(false);
     expect(await offered(T + 2000)).toBe(0);
-    expect(await driveRollout(pool, T + 48 * 3_600_000)).toBeUndefined();
+    expect(await driveRollout(pool, T + 48 * 3_600_000)).toBe('hold: paused by staff');
     expect(await rolloutStatus(pool)).toMatchObject({
       state: 'paused',
       stage: 0,

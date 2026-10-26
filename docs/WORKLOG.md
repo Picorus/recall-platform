@@ -10,6 +10,15 @@ Newest first. Each entry: date · step id · what changed · tests · open issue
 - **API** (`services/api/src/screens-api.ts`): `GET /screens`; repair / repaired / retire, take off, swap; pause / resume / roll back the update. Operations to look; an Operations admin with a reason to change. The rules' refusals come back as plain 400s with the reason.
 - **Admin site**: the Screens page (stock tiles, the update with pause / resume / roll back, filters, the list with health, fitting check and certificate warnings, Manage per screen).
 - Tests: database 4 (each part of a screen's life and its refusals; a swap all at once, refused whole when the spare is in repair; nothing edited; pausing and resuming an update, rolling back a paused one); API 2 (who may look and change; refusals as 400 / 409 with why); admin unit 3; browser 1 (a spare sent to repair from the page).
+- Second-agent review: swaps and rider pay correct (one step, no gap, nothing half done); 8 findings, 7 fixed:
+  - pausing an update switched off its automatic roll-back on rising crashes. Now a paused update never moves on but still rolls back by itself;
+  - resuming started the crash count again from zero (pausing and resuming could keep a bad build forever). Now crashes are counted over the whole stage; only the 24-hour wait starts again;
+  - any error without a database code came back as "400, your mistake" with internal text (a bug, a lost connection). Now only the rules' own refusals (`Refusal`) are 400s; everything else is a 500 and logged;
+  - retired screens still counted in the 1% and 10% shares. Now left out;
+  - spares that cannot be fitted (no valid certificate, or reported lost) were counted as stock. Now shown apart;
+  - the spares share is a named setting (`DEFAULT_STOCK_RULES`); a confusing variable renamed.
+  - Kept: Operations admins may pause and roll back the fleet's update (recorded in DECISIONS, from the approved Screens design: ops and tech).
+- Tests after the review: database 2 more (crashes while paused roll it back; crashes before a pause still count after the resume).
 - Open: renewing a screen's certificate from this page (the certificate authority adapter, with the warehouse tools); a screen reported lost or stolen (revoked key) shown as such; releases are added by the release pipeline (P7), not from this page.
 - Next: P3.5, areas (draw and edit shapes, edge zone, versions, overlaps; on/off by a super admin).
 
