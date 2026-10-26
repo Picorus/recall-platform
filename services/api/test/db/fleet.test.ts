@@ -78,6 +78,9 @@ describe('fleet map routes (P3.3)', () => {
     expect((await post(`/fleet/screens/${SCREEN}/commands`, sales, cmd)).status).toBe(403);
     const ok = await post(`/fleet/screens/${SCREEN}/commands`, ops, cmd);
     expect(ok.status).toBe(200);
+    // A second click: the same command, not a second one.
+    const twice = await post(`/fleet/screens/${SCREEN}/commands`, ops, cmd);
+    expect(twice.body).toEqual({ id: ok.body.id, repeated: true });
     // Logged with who and why, waiting for the screen.
     const waiting = await pendingCommands(pool, SCREEN, NOW + 3000);
     expect(waiting.map((t) => parseCommand(t))).toEqual([

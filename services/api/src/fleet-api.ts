@@ -81,9 +81,12 @@ export async function handleFleet(
       throw new HttpError(400, 'value must be a whole number or empty');
     const reason = str(b, 'reason', 200).trim();
     if (reason.length < 3) throw new HttpError(400, 'Give a reason (3 to 200 characters)');
-    if (!(await screenDetail(pool, screenId, now))) throw new HttpError(404, 'No such screen');
+    const known = await pool.query('SELECT 1 FROM screens WHERE screen_id = $1', [screenId]);
+    if (known.rowCount === 0) throw new HttpError(404, 'No such screen');
     try {
       const c = await issueCommand(pool, {
+        // A second click within 30 seconds returns the first command, not a new one.
+        unlessRepeatWithinMs: 30_000,
         screenId,
         command,
         value,
@@ -91,7 +94,7 @@ export async function handleFleet(
         reason,
         nowMs,
       });
-      send(res, 200, { id: c.id });
+      send(res, 200, { id: c.id, repeated: c.repeated === true });
     } catch (e) {
       if (e instanceof RangeError)
         throw new HttpError(400, e.message.replace(/^command: /, 'Command: '));

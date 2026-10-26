@@ -45,7 +45,7 @@ interface Row {
   heard: string | null;
   app: string | null;
   live_t: string | null;
-  live: { lat: number; lng: number; moving: boolean; place: string } | null;
+  live: { lat: number; lng: number; moving: boolean; place?: string } | null;
   alerts: AlertKind[] | null;
 }
 
@@ -54,6 +54,8 @@ export async function fleetScreens(
   pool: Q,
   now: number,
   rules: TodayRules = DEFAULT_TODAY_RULES,
+  /** Only this screen. */
+  only?: string,
 ): Promise<FleetScreen[]> {
   const r = await pool.query<Row>(
     `SELECT s.screen_id, f.bike, f.rider_id,
@@ -73,8 +75,9 @@ export async function fleetScreens(
                             AND kind = 'live' AND made_at <= to_timestamp($1)
                             AND made_at > to_timestamp($1) - make_interval(hours => $2)
                           ORDER BY made_at DESC LIMIT 1) l ON true
+      WHERE $3::text IS NULL OR s.screen_id = $3
       ORDER BY f.bike IS NULL, f.bike, s.screen_id`,
-    [now, POSITION_HOURS],
+    [now, POSITION_HOURS, only ?? null],
   );
   return r.rows.map((x) => {
     const position: Position | null =
@@ -84,7 +87,7 @@ export async function fleetScreens(
             lat: x.live.lat,
             lng: x.live.lng,
             moving: x.live.moving === true,
-            place: String(x.live.place),
+            place: x.live.place ?? 'outside',
           }
         : null;
     const lastHeard = x.heard === null ? null : Number(x.heard);
@@ -136,7 +139,7 @@ export async function screenDetail(
   now: number,
   routeHours = 2,
 ): Promise<ScreenDetail | undefined> {
-  const screen = (await fleetScreens(pool, now)).find((s) => s.screenId === screenId);
+  const [screen] = await fleetScreens(pool, now, DEFAULT_TODAY_RULES, screenId);
   if (!screen) return undefined;
   const route = await pool.query<{ t: string; body: Position & { kind: string } }>(
     `SELECT extract(epoch FROM made_at)::bigint AS t, body FROM screen_reports
@@ -182,7 +185,7 @@ export async function screenDetail(
         lat: p.body.lat,
         lng: p.body.lng,
         moving: p.body.moving === true,
-        place: String(p.body.place),
+        place: p.body.place ?? 'outside',
       }))
       .reverse(),
     health: x
@@ -210,24 +213,26 @@ export async function screenDetail(
 }
 
 /**
- * Commands issued since `sinceMs` and not yet answered, as messages per screen: the gateway sends
- * them at once (a screen whose line is open gets them within seconds instead of at its next hello).
- * Sending one twice is harmless: the box carries out each id once.
+ * Commands issued in the last `windowMs` and not yet answered, with their ids, as messages per
+ * screen: the gateway sends each once at once (remembering the ids it sent), so a screen whose line
+ * is open gets it within seconds instead of at its next hello. The window is wide (a minute) so a
+ * command whose request took a while to commit, or made on a clock a little behind, is not missed.
  */
 export async function freshCommands(
   pool: Q,
-  sinceMs: number,
   nowMs: number,
-): Promise<{ screenId: string; text: string }[]> {
+  windowMs = 60_000,
+): Promise<{ screenId: string; id: string; text: string }[]> {
   const r = await pool.query<{ screen_id: string }>(
     `SELECT DISTINCT screen_id FROM screen_commands
-      WHERE made_at > to_timestamp($1 / 1000.0) AND made_at <= to_timestamp($2 / 1000.0)
-      ORDER BY screen_id`,
-    [sinceMs, nowMs],
+      WHERE made_at > to_timestamp($1 / 1000.0) ORDER BY screen_id`,
+    [nowMs - windowMs],
   );
-  const out: { screenId: string; text: string }[] = [];
+  const out: { screenId: string; id: string; text: string }[] = [];
   for (const s of r.rows)
-    for (const text of await pendingCommands(pool, s.screen_id, nowMs))
-      out.push({ screenId: s.screen_id, text });
+    for (const text of await pendingCommands(pool, s.screen_id, nowMs)) {
+      const id = (JSON.parse(text) as { id: string }).id;
+      out.push({ screenId: s.screen_id, id, text });
+    }
   return out;
 }

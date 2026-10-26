@@ -122,10 +122,13 @@ describe('the fleet map (P3.3)', () => {
       reason: 'rider asked',
       nowMs,
     });
-    const fresh = await freshCommands(pool, nowMs - 5_000, nowMs);
-    expect(fresh.map((f) => f.screenId)).toEqual([A]);
+    const fresh = await freshCommands(pool, nowMs);
+    expect(fresh.map((f) => [f.screenId, f.id])).toEqual([[A, c.id]]);
     expect(parseCommand(fresh[0]?.text ?? '')).toMatchObject({ id: c.id, do: 'blank', screen: A });
-    expect(await freshCommands(pool, nowMs, nowMs + 5_000)).toEqual([]);
+    // A command made a little before (a slow request, a clock a little behind) is still picked up;
+    // after a minute it is left to the screen's next hello.
+    expect(await freshCommands(pool, nowMs + 50_000)).toHaveLength(1);
+    expect(await freshCommands(pool, nowMs + 61_000)).toEqual([]);
     const d = await screenDetail(pool, A, NOW);
     expect(d?.commands[0]).toMatchObject({
       id: c.id,
@@ -133,5 +136,33 @@ describe('the fleet map (P3.3)', () => {
       state: 'waiting',
       reason: 'rider asked',
     });
+  });
+
+  it('the same command twice within 30 seconds is one command (a double click never restarts twice)', async () => {
+    const nowMs = NOW * 1000 + 100_000;
+    const o = {
+      screenId: B,
+      command: 'reboot' as const,
+      value: null,
+      by: 'Arjun (STF-1)',
+      reason: 'frozen',
+      nowMs,
+      unlessRepeatWithinMs: 30_000,
+    };
+    const first = await issueCommand(pool, o);
+    const again = await issueCommand(pool, { ...o, nowMs: nowMs + 5_000 });
+    expect(again).toMatchObject({ id: first.id, repeated: true });
+    expect(parseCommand(again.text)).toMatchObject({ id: first.id, do: 'reboot' });
+    // Two clicks at the same moment: still one.
+    const [x, y] = await Promise.all([
+      issueCommand(pool, { ...o, command: 'clear-cache', nowMs: nowMs + 6_000 }),
+      issueCommand(pool, { ...o, command: 'clear-cache', nowMs: nowMs + 6_000 }),
+    ]);
+    expect(x.id).toBe(y.id);
+    // A different value, or after 30 seconds, is a new command.
+    const b1 = await issueCommand(pool, { ...o, command: 'brightness', value: 40 });
+    const b2 = await issueCommand(pool, { ...o, command: 'brightness', value: 60 });
+    expect(b2.id).not.toBe(b1.id);
+    expect((await issueCommand(pool, { ...o, nowMs: nowMs + 31_000 })).id).not.toBe(first.id);
   });
 });

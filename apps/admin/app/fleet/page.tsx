@@ -3,6 +3,16 @@
 // ground, so it works on a laptop with no keys or network (hard rule 4).
 import FleetMap from './fleet-map';
 
+/** The style URL when it is a proper https address; anything else is ignored (plain map). */
+function styleUrl(): string {
+  try {
+    const u = new URL(process.env.ADMIN_MAP_STYLE_URL ?? '');
+    return u.protocol === 'https:' ? u.href : '';
+  } catch {
+    return '';
+  }
+}
+
 export default function FleetPage() {
-  return <FleetMap styleUrl={process.env.ADMIN_MAP_STYLE_URL ?? ''} />;
+  return <FleetMap styleUrl={styleUrl()} />;
 }

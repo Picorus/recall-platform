@@ -118,6 +118,7 @@ function Panel({
   const [error, setError] = useState('');
   const [note, setNote] = useState('');
   const [command, setCommand] = useState('reboot');
+  const [sending, setSending] = useState(false);
   const canAct =
     me.role === 'super-admin' || (me.role === 'admin' && me.areas.includes('operations'));
 
@@ -139,18 +140,23 @@ function Panel({
     const raw = String(f.get('value') ?? '').trim();
     setError('');
     setNote('');
+    setSending(true);
     try {
-      await api(`/fleet/screens/${id}/commands`, {
+      const r = await api<{ repeated: boolean }>(`/fleet/screens/${id}/commands`, {
         command,
         value: raw === '' ? null : Number(raw),
         reason: String(f.get('reason') ?? ''),
       });
       setNote(
-        'Sent. The screen answers within a minute when its line is open, else when it next connects.',
+        r.repeated
+          ? 'Already sent a moment ago: not sent twice.'
+          : 'Sent. The screen answers within a minute when its line is open, else when it next connects.',
       );
       load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not reach the server.');
+    } finally {
+      setSending(false);
     }
   };
 
@@ -254,8 +260,8 @@ function Panel({
                 <input className="rc-input" name="reason" minLength={3} maxLength={200} required />
               </label>
               {note && <p role="status">{note}</p>}
-              <button className="rc-button rc-button--primary" type="submit">
-                Send
+              <button className="rc-button rc-button--primary" type="submit" disabled={sending}>
+                {sending ? 'Sending…' : 'Send'}
               </button>
             </form>
           )}

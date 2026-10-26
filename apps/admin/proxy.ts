@@ -14,9 +14,8 @@ export function proxy(request: NextRequest) {
     "font-src 'self' https://fonts.gstatic.com",
     `img-src 'self' data: blob:${map}`,
     `connect-src 'self'${map}`,
-    // The map draws in workers it makes from blobs.
-    "worker-src 'self' blob:",
-    "child-src 'self' blob:",
+    // The map's worker comes from this site (copied at build).
+    "worker-src 'self'",
     "frame-ancestors 'none'",
     "base-uri 'none'",
     "form-action 'self'",
@@ -31,15 +30,20 @@ export function proxy(request: NextRequest) {
 }
 
 /**
- * Where the base map style and its tiles come from (P3.3): the origins in ADMIN_MAP_ORIGINS, else
- * the origin of ADMIN_MAP_STYLE_URL. Empty: the plain map, nothing from outside.
+ * Where the base map style and its tiles come from (P3.3): the origin of ADMIN_MAP_STYLE_URL and
+ * those in ADMIN_MAP_ORIGINS (list the tile, font and icon hosts there when they differ from the
+ * style's own). Empty: the plain map, nothing from outside.
  */
 function mapOrigins(): string {
   const listed = (process.env.ADMIN_MAP_ORIGINS ?? '').split(',').map((x) => x.trim());
   const style = process.env.ADMIN_MAP_STYLE_URL ?? '';
-  const all = [...listed, ...(style ? [new URL(style).origin] : [])].filter((x) =>
-    /^https:\/\/[a-z0-9.-]+(:\d+)?$/i.test(x),
-  );
+  let own: string[] = [];
+  try {
+    own = style ? [new URL(style).origin] : [];
+  } catch {
+    // A mistyped setting must never take the whole site down: the map is just plain.
+  }
+  const all = [...listed, ...own].filter((x) => /^https:\/\/[a-z0-9.-]+(:\d+)?$/i.test(x));
   return [...new Set(all)].map((x) => ` ${x}`).join('');
 }
 
