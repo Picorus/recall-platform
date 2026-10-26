@@ -15,6 +15,7 @@ Newest first. Each entry: date · step id · what changed · tests · open issue
   - a double click sent a command twice (a screen could restart twice). Now the button waits, and the same command for the same screen within 30 seconds is the first one again (checked under a lock, so two clicks at once are one command);
   - the map and Today read every report a screen ever sent to find its latest. Now indexed (migration 0028); one screen's panel reads that screen only;
   - a mistyped map setting could take the whole admin site down. Now ignored (plain map); only https styles are used; the page rules no longer allow blob workers.
+  - CI found the API and gateway would stop if the database dropped an idle connection (a restart, a failover). Now it is logged and replaced. Test databases ignore the connections cut when they are dropped.
   - Left for Prateek: Operations read-only members can see riders' ids and their last 2 hours of route. Fine for the team; to decide before outside viewers (an auditor) get Operations.
 - Open: the gateway's quick send is covered by the database test and code review, not yet by the broker test; positions come only from live reports (the box sends them with its uploads); at thousands of bikes the map needs clustering and the list paging (P7 load test); area names in the list and clicking an alert on Today to open its bike (P3.4/P3.5).
 - Next: P3.4, screens (stock, fitting, health, repairs, swaps, update rollouts).

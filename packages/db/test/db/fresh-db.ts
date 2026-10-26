@@ -14,6 +14,8 @@ export async function freshDatabase(): Promise<{ pool: pg.Pool; drop: () => Prom
   const testUrl = new URL(url);
   testUrl.pathname = `/${name}`;
   const pool = new pg.Pool({ connectionString: testUrl.toString(), max: 8 });
+  // Dropping the database at the end cuts any connection still open: expected, not a failure.
+  pool.on('error', () => {});
   await migrate(pool);
   return {
     pool,

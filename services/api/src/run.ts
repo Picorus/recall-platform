@@ -9,5 +9,8 @@ process.on('unhandledRejection', (e) => console.error('api: unhandled', e));
 
 const cfg = readConfig();
 const pool = new pg.Pool({ connectionString: cfg.databaseUrl });
+// A connection the database drops while idle (a restart, a failover) is logged and replaced, never
+// allowed to stop the API.
+pool.on('error', (e) => console.error(`api: database connection lost: ${e.message}`));
 const server = createServer(apiHandler(pool, cfg));
 server.listen(cfg.port, cfg.host, () => console.log(`api: listening on ${cfg.host}:${cfg.port}`));
