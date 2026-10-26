@@ -2,6 +2,21 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 27 Oct 2026 · P3.11.2 · Rider checks: identity, agreement, bank (and P3.11.1 review fixes)
+- **Adapters** (`packages/adapters/src/rider-checks.ts`) with working fakes: identity (KYC: Aadhaar through DigiLocker and PAN, through a provider), e-sign of the rider agreement, and a ₹1 bank check (penny drop). Real providers come with their contracts (P4); production runs without them until then.
+- **Checks** (migration 0039, `packages/db/src/rider-checks.ts`): each check started and its one result kept. Only what is needed (DPDP Act): the name on his ID and its last 4 characters, never the ID number; the bank check keeps a fingerprint of the account, and only an account that passed becomes where he is paid. Pending checks are asked about when his page opens and before an approval.
+- **Approval now needs** identity verified with the name on his ID matching his (every word of the shorter name in the longer; an initial matches its word), the current agreement signed, and his bank or UPI checked (in his name, the account he has now).
+- **Review of P3.11.1, all fixed with tests:**
+  - Fitting a screen did not check the rider at all (an unknown, unapproved or rejected rider, or someone else's plate, could get a screen and be paid): now the rider must be on record, approved (or riding or paused), and the plate must be his. Fitting, steps and detail changes take the same locks in the same order; a plate cannot change while a screen is on the bike.
+  - Riding again re-checks his documents (insurance in date); an insurance already ended cannot be accepted; rejecting, like leaving, needs the screen off.
+  - Phones and plates come free when a rider leaves or is turned down (numbers are given out again, bikes sold); coming back checks them again.
+  - Personal documents: previews only for Operations admins (who look at them), never the file's fingerprint; read-only members see phones masked.
+  - Pressing Enter in the step reason no longer moves the rider; document buttons cannot be pressed twice.
+  - Phone search with a 0 in front, plates with dashes; uploads checked (which document, whose) before the file is read; ads and documents each have their own upload slots; timeline ties in a fixed order; an index for screens by rider.
+- Tests: adapters 2; domain 6 (names, the new checklist items, back on the road); database 4 riders (the whole check flow with the fakes, a mismatched name and a closed account refused; fitting rules; phones and plates freed and re-checked); screens tests now fit real approved riders; API 1 (checks, privacy, early refusals); browser (identity, agreement and a UPI id checked from the panel before approval; Enter does not move him).
+- Open for Prateek: (1) how long rider records and documents are kept after he leaves (DPDP: erasure path), and (2) the agreement text from the lawyer (version rider-v1 is a placeholder). The real KYC, e-sign and bank-check providers need contracts.
+- Next: P3.11.3, fitting slots, earnings and leaving.
+
 ## 27 Oct 2026 · P3.11.1 · Rider records
 - P3.10 merged (PR #58). P3.11 is built in two parts: P3.11.1 rider records (this), P3.11.2 identity (KYC), agreement, bank check, fitting slots, earnings and leaving.
 - **Rules** (`packages/domain/src/riders.ts`): rider ids "RD-000123" in order; phones put in one form (+91 and 10 digits) and number plates too (as screens' fittings store them); steps applied → approved or rejected → riding → paused → left (a rejected or departed rider may apply again), each with why. Approval needs the plate and the photo, registration and insurance accepted, the insurance still in date; riding needs a screen fitted to him; leaving needs it taken off first.

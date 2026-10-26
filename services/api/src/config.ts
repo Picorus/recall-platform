@@ -1,6 +1,9 @@
 // The API's settings from the environment (names in .env.example; values never in the repository).
 import {
+  fakeBankCheck,
+  fakeEsign,
   fakeFileStore,
+  fakeKyc,
   fakePayments,
   type FileStore,
   type PaymentsAdapter,
@@ -48,6 +51,11 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     throw new Error('API_PROXY_HOPS must be at least 1 in production (a load balancer in front)');
   const payments = paymentsFrom(env, production);
   const files = filesFrom(env, production);
+  // Rider checks (P3.11.2): the providers come with their contracts (P4); a laptop uses fakes that
+  // pass at once, so the whole flow can be tried. Production runs without them until then.
+  const riderChecks = production
+    ? undefined
+    : { kyc: fakeKyc({ auto: true }), esign: fakeEsign({ auto: true }), bank: fakeBankCheck() };
   return {
     databaseUrl: need('DATABASE_URL'),
     host: env.API_HOST || '127.0.0.1',
@@ -58,6 +66,7 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     proxyHops,
     ...(payments ? { payments } : {}),
     ...(files ? { files } : {}),
+    ...(riderChecks ? { riderChecks } : {}),
   };
 }
 

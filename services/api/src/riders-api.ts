@@ -8,9 +8,20 @@
 //   POST /riders/<id>/documents?kind=photo|rc|insurance   the file as the body (at most 10 MB)
 //   POST /riders/<id>/documents/<docId>/review       { decision, reason, expiresOn? }
 //   POST /riders/<id>/notes                          { note }
+//   POST /riders/<id>/identity                       start his identity check (KYC): a link for him
+//   POST /riders/<id>/agreement                      send him the rider agreement to sign
+//   POST /riders/<id>/bank                           { kind: 'bank', accountNumber, ifsc, name }
+//                                                    or { kind: 'upi', vpa, name }: a ₹1 check
+//   POST /riders/<id>/checks                         ask the providers about checks still waiting
+// Personal documents: previews only for those who look at them (Operations admins); read-only
+// members see phones masked.
 import {
   addRiderNote,
+  checkRiderBank,
   createRider,
+  refreshRiderChecks,
+  sendAgreement,
+  startIdentityCheck,
   Refusal,
   reviewRiderDocument,
   reviseRider,
@@ -22,6 +33,7 @@ import {
 import {
   can,
   MAX_DOCUMENT_BYTES,
+  RIDER_DOCUMENTS,
   phoneOf,
   plateOf,
   RIDER_STATUSES,
@@ -30,10 +42,19 @@ import {
   type RiderStatus,
   type StaffAccess,
 } from '@recall/domain';
+import type { PayoutDestination } from '@recall/adapters';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Pool } from 'pg';
 import { HttpError, jsonBody, send, str, withUpload } from './http.js';
 import { staffFor, type StaffApiConfig } from './staff-api.js';
+
+/** "+91 98480 •••45": enough to recognise, not to call. */
+const maskPhone = (p: string) => `+91 ${p.slice(3, 8)} •••${p.slice(-2)}`;
+
+async function riderExists(pool: Pool, riderId: string): Promise<boolean> {
+  const r = await pool.query('SELECT 1 FROM riders WHERE rider_id = $1', [riderId]);
+  return (r.rowCount ?? 0) > 0;
+}
 
 const mayLook = (a: StaffAccess) =>
   can(a, { area: 'operations', change: false }) || can(a, { area: 'support', change: false });
@@ -80,7 +101,7 @@ export async function handleRiders(
   const method = req.method ?? 'GET';
   const now = Math.floor(nowMs / 1000);
   const m =
-    /^\/riders\/(RD-\d{6})(?:\/(details|step|notes|documents)(?:\/(DOC-[0-9A-F]{10})\/review)?)?$/.exec(
+    /^\/riders\/(RD-\d{6})(?:\/(details|step|notes|documents|identity|agreement|bank|checks)(?:\/(DOC-[0-9A-F]{10})\/review)?)?$/.exec(
       path,
     );
   if (path !== '/riders' && !m) throw new HttpError(404, 'Not found');
@@ -96,24 +117,35 @@ export async function handleRiders(
       if (status !== null && !(RIDER_STATUSES as readonly string[]).includes(status))
         throw new HttpError(400, 'Which status?');
       const text = (q.get('q') ?? '').slice(0, 60);
+      const riders = await riderList(pool, {
+        ...(status ? { status: status as RiderStatus } : {}),
+        q: text,
+      });
+      const masked = me.access.role === 'read-only';
       send(res, 200, {
-        riders: await riderList(pool, {
-          ...(status ? { status: status as RiderStatus } : {}),
-          q: text,
-        }),
+        riders: masked ? riders.map((r) => ({ ...r, phone: maskPhone(r.phone) })) : riders,
       });
       return true;
     }
     if (part) throw new HttpError(404, 'Not found');
+    // Checks still waiting: ask the providers first (cheap; a failure leaves them waiting).
+    if (cfg.riderChecks)
+      await refreshRiderChecks(pool, cfg.riderChecks, riderId, now).catch(() => 0);
     const page = await riderPage(pool, riderId, now);
     if (!page) throw new HttpError(404, `No rider ${riderId}`);
     const store = cfg.files;
+    const reviewer = can(me.access, operations);
     send(res, 200, {
       at: now,
       ...page,
-      documents: page.documents.map((d) => ({
+      rider:
+        me.access.role === 'read-only'
+          ? { ...page.rider, phone: maskPhone(page.rider.phone) }
+          : page.rider,
+      // The file's fingerprint never leaves; a preview link only for those who look at them.
+      documents: page.documents.map(({ fileKey, ...d }) => ({
         ...d,
-        preview: store ? store.readLink(d.fileKey, now + PREVIEW_SECONDS) : null,
+        preview: store && reviewer ? store.readLink(fileKey, now + PREVIEW_SECONDS) : null,
       })),
     });
     return true;
@@ -161,6 +193,9 @@ export async function handleRiders(
     const to = b.to;
     if (typeof to !== 'string' || !(RIDER_STATUSES as readonly string[]).includes(to))
       throw new HttpError(400, 'Which step?');
+    // Checks still waiting may have been answered: ask before the approval list is read.
+    if (to === 'approved' && cfg.riderChecks)
+      await refreshRiderChecks(pool, cfg.riderChecks, riderId, now).catch(() => 0);
     await refusedAs400(() =>
       stepRider(pool, riderId, to as RiderStatus, who, str(b, 'reason', 300), now),
     );
@@ -171,14 +206,63 @@ export async function handleRiders(
     const store = cfg.files;
     if (!store) throw new HttpError(503, 'File storage is not set up');
     const kind = q.get('kind') ?? '';
-    await withUpload(req, MAX_DOCUMENT_BYTES, async (data) => {
-      const doc = await refusedAs400(() =>
+    // Before a byte of the file is read: which document, and whose.
+    if (!(RIDER_DOCUMENTS as readonly string[]).includes(kind))
+      throw new HttpError(400, 'Which document? (photo, rc or insurance)');
+    if (!(await riderExists(pool, riderId))) throw new HttpError(404, `No rider ${riderId}`);
+    await withUpload(req, 'documents', MAX_DOCUMENT_BYTES, async (data) => {
+      const { fileKey, ...doc } = await refusedAs400(() =>
         uploadRiderDocument(pool, store, { riderId, kind, data, by: who }, now),
       );
       send(res, 200, {
-        document: { ...doc, preview: store.readLink(doc.fileKey, now + PREVIEW_SECONDS) },
+        document: { ...doc, preview: store.readLink(fileKey, now + PREVIEW_SECONDS) },
       });
     });
+    return true;
+  }
+  if (part === 'identity' || part === 'agreement' || part === 'bank' || part === 'checks') {
+    const checks = cfg.riderChecks;
+    if (!checks) throw new HttpError(503, 'Rider checks are not set up yet');
+    if (part === 'identity') {
+      send(
+        res,
+        200,
+        await refusedAs400(() => startIdentityCheck(pool, checks.kyc, riderId, who, now)),
+      );
+      return true;
+    }
+    if (part === 'agreement') {
+      send(
+        res,
+        200,
+        await refusedAs400(() => sendAgreement(pool, checks.esign, riderId, who, now)),
+      );
+      return true;
+    }
+    if (part === 'checks') {
+      send(res, 200, { answered: await refreshRiderChecks(pool, checks, riderId, now) });
+      return true;
+    }
+    const b = await jsonBody(req);
+    const name = str(b, 'name', 120).trim();
+    const to: PayoutDestination =
+      b.kind === 'upi'
+        ? { kind: 'upi', vpa: str(b, 'vpa', 256).trim(), name }
+        : b.kind === 'bank'
+          ? {
+              kind: 'bank',
+              accountNumber: str(b, 'accountNumber', 18).replace(/\s/g, ''),
+              ifsc: str(b, 'ifsc', 11).trim().toUpperCase(),
+              name,
+            }
+          : (() => {
+              throw new HttpError(400, 'kind must be bank or upi');
+            })();
+    send(
+      res,
+      200,
+      await refusedAs400(() => checkRiderBank(pool, checks.bank, riderId, to, who, now)),
+    );
     return true;
   }
   if (part === 'documents' && docId) {

@@ -21,7 +21,7 @@ import {
   rolloutStatus,
   updateFor,
 } from '../../src/updates.js';
-import { freshDatabase } from './fresh-db.js';
+import { approvedRider, freshDatabase } from './fresh-db.js';
 
 let db: Awaited<ReturnType<typeof freshDatabase>>;
 let pool: pg.Pool;
@@ -59,6 +59,9 @@ async function enrol(serial: string): Promise<string> {
 beforeAll(async () => {
   db = await freshDatabase();
   pool = db.pool;
+  await approvedRider(pool, 'RD-000101', 'TS09EA1111');
+  await approvedRider(pool, 'RD-000102', 'TS09EA2222');
+  await approvedRider(pool, 'RD-000103', 'TS09EA3333');
   for (const s of ['RK-SVC-A', 'RK-SVC-B', 'RK-SVC-C', 'RK-SVC-D']) ids.push(await enrol(s));
 }, 120_000);
 afterAll(async () => db.drop());
@@ -71,7 +74,7 @@ describe('screens: stock, repairs, swaps (P3.4)', () => {
     const [a, b, c, d] = ids as [string, string, string, string];
     await fitScreen(
       pool,
-      { qr: `RECALL1:${a}`, plate: 'TS09EA1111', riderId: 'R-1' },
+      { qr: `RECALL1:${a}`, plate: 'TS09EA1111', riderId: 'RD-000101' },
       'fitter',
       NOW + 10,
     );
@@ -99,7 +102,7 @@ describe('screens: stock, repairs, swaps (P3.4)', () => {
     expect(rows[0]).toMatchObject({
       screenId: a,
       bike: 'TS09EA1111',
-      riderId: 'R-1',
+      riderId: 'RD-000101',
       state: 'offline',
     });
     expect(rows.find((r) => r.screenId === c)?.serviceNote).toBe('cracked panel');
@@ -125,7 +128,7 @@ describe('screens: stock, repairs, swaps (P3.4)', () => {
     await expect(
       fitScreen(
         pool,
-        { qr: `RECALL1:${c}`, plate: 'TS09EA2222', riderId: 'R-2' },
+        { qr: `RECALL1:${c}`, plate: 'TS09EA2222', riderId: 'RD-000102' },
         'fitter',
         NOW + 40,
       ),
@@ -133,7 +136,7 @@ describe('screens: stock, repairs, swaps (P3.4)', () => {
     await expect(
       fitScreen(
         pool,
-        { qr: `RECALL1:${d}`, plate: 'TS09EA2222', riderId: 'R-2' },
+        { qr: `RECALL1:${d}`, plate: 'TS09EA2222', riderId: 'RD-000102' },
         'fitter',
         NOW + 40,
       ),
@@ -167,7 +170,7 @@ describe('screens: stock, repairs, swaps (P3.4)', () => {
       by: 'Arjun',
       now: NOW + 100,
     });
-    expect(f).toEqual({ screenId: b, bike: 'TS09EA1111', riderId: 'R-1', from: NOW + 100 });
+    expect(f).toEqual({ screenId: b, bike: 'TS09EA1111', riderId: 'RD-000101', from: NOW + 100 });
     expect(await life(NOW + 101)).toMatchObject({ [a]: 'in-repair', [b]: 'on-bike' });
     const why = await pool.query<{ reason: string }>(
       'SELECT reason FROM screen_fittings WHERE screen_id = $1 ORDER BY from_at DESC LIMIT 1',
@@ -196,7 +199,7 @@ describe('screens: stock, repairs, swaps (P3.4)', () => {
     await unfitScreen(pool, b, 'rider left', 'Arjun', NOW + 310);
     await fitScreen(
       pool,
-      { qr: `RECALL1:${c}`, plate: 'TS09EA3333', riderId: 'R-3' },
+      { qr: `RECALL1:${c}`, plate: 'TS09EA3333', riderId: 'RD-000103' },
       'fitter',
       NOW + 320,
     );

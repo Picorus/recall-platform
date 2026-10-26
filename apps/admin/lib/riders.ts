@@ -94,6 +94,32 @@ export interface RiderDocument {
   } | null;
 }
 
+export interface CheckView {
+  readonly kind: 'identity' | 'agreement' | 'bank';
+  readonly state: 'pending' | 'passed' | 'failed';
+  readonly link: string | null;
+  readonly name: string | null;
+  readonly idLast4: string | null;
+  readonly reason: string | null;
+  readonly startedAt: number;
+  readonly at: number | null;
+}
+
+export const CHECKS = [
+  { kind: 'identity', name: 'Identity (KYC)' },
+  { kind: 'agreement', name: 'Agreement' },
+  { kind: 'bank', name: 'Bank or UPI' },
+] as const;
+
+/** "Passed: RAVI KUMAR (ID ••••1234)", "Waiting for him", "Failed: account closed", "Not started". */
+export function checkText(c: CheckView | undefined): string {
+  if (!c) return 'Not started';
+  if (c.state === 'pending') return 'Waiting for him';
+  if (c.state === 'failed') return `Failed: ${c.reason ?? ''}`;
+  const id = c.idLast4 ? ` (ID ••••${c.idLast4})` : '';
+  return c.name ? `Passed: ${c.name}${id}` : 'Passed';
+}
+
 export interface RiderPage {
   readonly at: number;
   readonly rider: RiderRow;
@@ -101,6 +127,8 @@ export interface RiderPage {
   readonly checklist: readonly { item: string; done: boolean; detail: string }[];
   readonly screenId: string | null;
   readonly documents: readonly RiderDocument[];
+  readonly checks: readonly CheckView[];
+  readonly payoutAccount: string | null;
   readonly timeline: readonly { at: number; by: string; text: string }[];
 }
 

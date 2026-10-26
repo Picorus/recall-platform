@@ -23,6 +23,7 @@ import {
 import { randomBytes } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
 import { inTransaction } from './makeups.js';
+import { checkFacts, latestChecks, payoutAccountOf, type CheckView } from './rider-checks.js';
 import { Refusal } from './refusal.js';
 
 type Q = Pick<Pool, 'query'>;
@@ -76,13 +77,20 @@ const reasonOk = (reason: string) => {
   return r;
 };
 
-/** Refuses details that do not pass, or a phone or plate another rider already has. */
+/**
+ * Refuses details that do not pass, or a phone or plate another rider has. A rider who left or was
+ * turned down no longer holds his (numbers are given out again, bikes are sold); if he comes back
+ * they are checked again.
+ */
 async function checkDetails(c: Q, d: RiderDetails, riderId: string | null): Promise<void> {
   const problems = riderProblems(d);
   if (problems.length) throw new Refusal(problems.join('; '));
+  // Only riders who ever had this phone or plate (the indexes find them), then their latest.
   const taken = await c.query<{ rider_id: string; phone: string; bike_plate: string | null }>(
-    `SELECT rider_id, phone, bike_plate FROM (${LATEST}) l
+    `SELECT rider_id, phone, bike_plate FROM (${LATEST}
+       WHERE r.rider_id IN (SELECT rider_id FROM rider_versions WHERE phone = $1 OR bike_plate = $2)) l
       WHERE (l.phone = $1 OR (l.bike_plate IS NOT NULL AND l.bike_plate = $2))
+        AND l.status NOT IN ('left', 'rejected')
         AND l.rider_id IS DISTINCT FROM $3 LIMIT 1`,
     [d.phone, d.bikePlate, riderId],
   );
@@ -96,6 +104,11 @@ async function checkDetails(c: Q, d: RiderDetails, riderId: string | null): Prom
 }
 
 const lockRiders = (c: PoolClient) => c.query("SELECT pg_advisory_xact_lock(hashtext('riders'))");
+/** A rider's own lock, after the screen-fittings lock (the order fitting a screen takes them). */
+async function lockRider(c: PoolClient, riderId: string) {
+  await c.query("SELECT pg_advisory_xact_lock(hashtext('screen-fittings'))");
+  await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`rider:${riderId}`]);
+}
 
 const insertVersion = (
   c: PoolClient,
@@ -157,13 +170,18 @@ export async function reviseRider(
 ): Promise<number> {
   const why = reasonOk(reason);
   return inTransaction(pool, async (c) => {
+    // Locks in one order everywhere: riders, screen fittings, then the rider.
     await lockRiders(c);
-    const r = await c.query<{ v: number }>(
-      'SELECT max(version) AS v FROM rider_versions WHERE rider_id = $1',
+    await lockRider(c, riderId);
+    const r = await c.query<{ v: number; bike_plate: string | null }>(
+      `SELECT version AS v, bike_plate FROM rider_versions WHERE rider_id = $1
+        ORDER BY version DESC LIMIT 1`,
       [riderId],
     );
     const v = r.rows[0]?.v;
     if (!v) throw new Refusal(`No rider ${riderId}`);
+    if (details.bikePlate !== r.rows[0]?.bike_plate && (await screenFittedTo(c, riderId, now)))
+      throw new Refusal('His screen is on the bike: take it off before changing the number plate');
     await checkDetails(c, details, riderId);
     await insertVersion(c, riderId, v + 1, details, by, why, now);
     return v + 1;
@@ -176,12 +194,13 @@ export async function riderList(
   f: { readonly status?: RiderStatus; readonly q?: string },
 ): Promise<RiderRow[]> {
   const q = (f.q ?? '').trim();
-  const digits = q.replace(/\D/g, '');
+  // A phone typed any way ("098480…", "+91 98480…"): its last 10 digits at most.
+  const digits = q.replace(/\D/g, '').replace(/^(0091|91|0)(?=\d{10}$)/, '');
   const r = await pool.query<LatestRow>(
     `SELECT * FROM (${LATEST}) l
       WHERE ($1::text IS NULL OR l.status = $1)
         AND ($2 = '' OR l.name ILIKE '%' || $2 || '%' OR l.rider_id ILIKE '%' || $2 || '%'
-             OR coalesce(l.bike_plate, '') ILIKE '%' || replace(upper($2), ' ', '') || '%'
+             OR coalesce(l.bike_plate, '') ILIKE '%' || regexp_replace(upper($2), '[ .-]', '', 'g') || '%'
              OR ($3 <> '' AND l.phone LIKE '%' || $3 || '%'))
       ORDER BY l.created_at DESC, l.rider_id DESC LIMIT 200`,
     [f.status ?? null, q.replace(/[%_\\]/g, ''), digits.length >= 4 ? digits : ''],
@@ -285,6 +304,7 @@ async function factsOf(c: Q, riderId: string, now: number): Promise<RiderFacts |
     details: rider,
     documents,
     screenFitted: (await screenFittedTo(c, riderId, now)) !== null,
+    ...(await checkFacts(c, riderId)),
   };
 }
 
@@ -298,11 +318,14 @@ export async function stepRider(
   now: number,
 ): Promise<void> {
   await inTransaction(pool, async (c) => {
-    await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`rider:${riderId}`]);
+    // Coming back: his phone and plate must still be his (another rider may hold them now).
+    if (to === 'applied') await lockRiders(c);
+    await lockRider(c, riderId);
     const f = await factsOf(c, riderId, now);
     if (!f) throw new Refusal(`No rider ${riderId}`);
     const problem = riderStepProblem(f, to, reason, now);
     if (problem) throw new Refusal(problem);
+    if (to === 'applied') await checkDetails(c, f.details, riderId);
     await c.query(
       `INSERT INTO rider_steps (rider_id, seq, status, reason, by_who, at)
        SELECT $1, coalesce(max(seq), 0) + 1, $2, $3, $4, to_timestamp($5)
@@ -388,6 +411,11 @@ export async function reviewRiderDocument(
     if (r.decision === 'accepted' && kind === 'insurance') {
       if (!r.expiresOn || !isDay(r.expiresOn))
         throw new Refusal('Give the last day the insurance covers (YYYY-MM-DD)');
+      const today = new Date((now + 19_800) * 1000).toISOString().slice(0, 10);
+      if (r.expiresOn < today)
+        throw new Refusal(
+          `This insurance ended on ${r.expiresOn}: reject it and ask for the new one`,
+        );
       expires = r.expiresOn;
     }
     const saved = await c.query(
@@ -429,6 +457,10 @@ export interface RiderPage {
   /** The screen fitted to him now, if any. */
   readonly screenId: string | null;
   readonly documents: readonly RiderDocument[];
+  /** The newest identity, agreement and bank check (P3.11.2). */
+  readonly checks: readonly CheckView[];
+  /** Where he is paid, masked (never the whole number). */
+  readonly payoutAccount: string | null;
   /** Everything that happened, newest first: steps, details changed, documents, reviews, notes. */
   readonly timeline: readonly { readonly at: number; readonly by: string; readonly text: string }[];
 }
@@ -441,26 +473,29 @@ export async function riderPage(
 ): Promise<RiderPage | undefined> {
   const facts = await factsOf(pool, riderId, now);
   if (!facts) return undefined;
-  const [row, base, steps, versions, notes, documents, screenId] = await Promise.all([
-    pool.query<LatestRow>(`SELECT * FROM (${LATEST}) l WHERE l.rider_id = $1`, [riderId]),
-    pool.query<{ channel: 'app' | 'admin' }>('SELECT channel FROM riders WHERE rider_id = $1', [
-      riderId,
-    ]),
-    pool.query<{ seq: number; status: string; reason: string; by_who: string; at: Date }>(
-      'SELECT seq, status, reason, by_who, at FROM rider_steps WHERE rider_id = $1',
-      [riderId],
-    ),
-    pool.query<{ version: number; reason: string; set_by: string; set_at: Date }>(
-      'SELECT version, reason, set_by, set_at FROM rider_versions WHERE rider_id = $1 AND version > 1',
-      [riderId],
-    ),
-    pool.query<{ note: string; by_who: string; at: Date }>(
-      'SELECT note, by_who, at FROM rider_notes WHERE rider_id = $1',
-      [riderId],
-    ),
-    documentsOf(pool, riderId),
-    screenFittedTo(pool, riderId, now),
-  ]);
+  const [row, base, steps, versions, notes, documents, screenId, checks, account] =
+    await Promise.all([
+      pool.query<LatestRow>(`SELECT * FROM (${LATEST}) l WHERE l.rider_id = $1`, [riderId]),
+      pool.query<{ channel: 'app' | 'admin' }>('SELECT channel FROM riders WHERE rider_id = $1', [
+        riderId,
+      ]),
+      pool.query<{ seq: number; status: string; reason: string; by_who: string; at: Date }>(
+        'SELECT seq, status, reason, by_who, at FROM rider_steps WHERE rider_id = $1',
+        [riderId],
+      ),
+      pool.query<{ version: number; reason: string; set_by: string; set_at: Date }>(
+        'SELECT version, reason, set_by, set_at FROM rider_versions WHERE rider_id = $1 AND version > 1',
+        [riderId],
+      ),
+      pool.query<{ seq: number; note: string; by_who: string; at: Date }>(
+        'SELECT seq, note, by_who, at FROM rider_notes WHERE rider_id = $1',
+        [riderId],
+      ),
+      documentsOf(pool, riderId),
+      screenFittedTo(pool, riderId, now),
+      latestChecks(pool, riderId),
+      payoutAccountOf(pool, riderId),
+    ]);
   const rider = row.rows[0];
   if (!rider) return undefined;
   const STEP: Record<string, string> = {
@@ -476,13 +511,13 @@ export async function riderPage(
       at: secs(s.at),
       by: s.by_who,
       text: `${STEP[s.status] ?? s.status}: ${s.reason}`,
-      order: s.seq,
+      order: 1000 + s.seq,
     })),
     ...versions.rows.map((v) => ({
       at: secs(v.set_at),
       by: v.set_by,
       text: `Details changed: ${v.reason}`,
-      order: 0,
+      order: 2,
     })),
     ...documents.flatMap((d) => [
       { at: d.uploadedAt, by: d.uploadedBy, text: `Sent: ${DOCUMENT_NAMES[d.kind]}`, order: 0 },
@@ -492,12 +527,17 @@ export async function riderPage(
               at: d.review.at,
               by: d.review.by,
               text: `${DOCUMENT_NAMES[d.kind]} ${d.review.decision}: ${d.review.reason}`,
-              order: 0,
+              order: 1,
             },
           ]
         : []),
     ]),
-    ...notes.rows.map((n) => ({ at: secs(n.at), by: n.by_who, text: `Note: ${n.note}`, order: 0 })),
+    ...notes.rows.map((n) => ({
+      at: secs(n.at),
+      by: n.by_who,
+      text: `Note: ${n.note}`,
+      order: 3000 + n.seq,
+    })),
   ].sort((a, b) => b.at - a.at || b.order - a.order);
   return {
     rider: toRider(rider),
@@ -505,6 +545,8 @@ export async function riderPage(
     checklist: approvalChecklist(facts, now),
     screenId,
     documents,
+    checks,
+    payoutAccount: account?.shown ?? null,
     timeline: events.map(({ at, by, text }) => ({ at, by, text })),
   };
 }

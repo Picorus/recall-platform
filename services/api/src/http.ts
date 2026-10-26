@@ -74,7 +74,7 @@ export function cookies(req: IncomingMessage): Map<string, string> {
 /** Uploads at once (each holds a file of up to 64 MB in memory), and how long one may take. */
 const MAX_UPLOADS = 2;
 const UPLOAD_SECONDS = 180;
-let uploading = 0;
+const uploading = new Map<string, number>();
 
 /** The body as bytes, refused past `max` (read as it arrives, never more held), when it takes
  * longer than `seconds` (a slow sender cannot hold the memory), or when it is not exactly the
@@ -105,20 +105,23 @@ async function bodyBytes(req: IncomingMessage, max: number, seconds: number): Pr
 }
 
 /**
- * A file upload (ads, riders' documents): at most MAX_UPLOADS at once across the API, each read
+ * A file upload (ads, riders' documents): at most MAX_UPLOADS of each kind at once, each read
  * whole (see bodyBytes) and handed to `use`.
  */
 export async function withUpload(
   req: IncomingMessage,
+  /** Each kind has its own slots (slow phone uploads never hold up ads). */
+  kind: 'ads' | 'documents',
   max: number,
   use: (data: Buffer) => Promise<void>,
 ): Promise<void> {
-  if (uploading >= MAX_UPLOADS)
+  const n = uploading.get(kind) ?? 0;
+  if (n >= MAX_UPLOADS)
     throw new HttpError(503, 'Other uploads are running. Try again in a minute.');
-  uploading += 1;
+  uploading.set(kind, n + 1);
   try {
     await use(await bodyBytes(req, max, UPLOAD_SECONDS));
   } finally {
-    uploading -= 1;
+    uploading.set(kind, (uploading.get(kind) ?? 1) - 1);
   }
 }

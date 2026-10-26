@@ -246,6 +246,23 @@ async function fitIn(
     if (current)
       throw new Refusal(`${screenId} is on ${current.bike}: take it off that bike first`);
     await lastChange(c, screenId, now);
+    // The rider (P3.11): on his record, approved (or riding, or paused), and this is his bike. The
+    // rider's lock after the fittings lock: the same order as his steps take them.
+    await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`rider:${riderId}`]);
+    const who = await c.query<{ status: string | null; bike_plate: string | null }>(
+      `SELECT (SELECT status FROM rider_steps WHERE rider_id = $1 ORDER BY seq DESC LIMIT 1) AS status,
+              (SELECT bike_plate FROM rider_versions WHERE rider_id = $1
+                ORDER BY version DESC LIMIT 1) AS bike_plate`,
+      [riderId],
+    );
+    const rider = who.rows[0];
+    if (!rider?.status) throw new Refusal(`No rider ${riderId}: add him on the Riders page first`);
+    if (!['approved', 'active', 'paused'].includes(rider.status))
+      throw new Refusal(`${riderId} is ${rider.status}: only an approved rider gets a screen`);
+    if (rider.bike_plate !== bike)
+      throw new Refusal(
+        `${bike} is not ${riderId}'s bike (his record says ${rider.bike_plate ?? 'no plate'})`,
+      );
     const onBike = await c.query<{ screen_id: string }>(
       `SELECT screen_id FROM (
          SELECT DISTINCT ON (screen_id) screen_id, bike FROM screen_fittings

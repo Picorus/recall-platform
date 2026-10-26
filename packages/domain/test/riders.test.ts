@@ -3,6 +3,7 @@ import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import {
   approvalChecklist,
+  namesMatch,
   phoneOf,
   plateOf,
   riderIdOf,
@@ -28,6 +29,9 @@ const ready: RiderFacts = {
     { kind: 'insurance', decision: 'accepted', expiresOn: '2027-12-31' },
   ],
   screenFitted: false,
+  identity: { state: 'passed', name: 'RAVI KUMAR', current: true, reason: null },
+  agreement: { state: 'passed', name: null, current: true, reason: null },
+  bank: { state: 'passed', name: 'RAVI KUMAR REDDY', current: true, reason: null },
 };
 
 describe('riders (P3.11.1)', () => {
@@ -108,8 +112,58 @@ describe('riders (P3.11.1)', () => {
     expect(riderStepProblem(ready, 'active', 'skip ahead', NOW)).toBe(
       'cannot go from applied to active',
     );
+    // Back on the road only with documents still good; rejecting needs the screen off too.
+    const paused = { ...ready, status: 'paused' as const, screenFitted: true };
+    expect(
+      riderStepProblem(
+        {
+          ...paused,
+          documents: [
+            ...ready.documents.slice(0, 2),
+            { kind: 'insurance' as const, decision: 'accepted' as const, expiresOn: '2027-05-31' },
+          ],
+        },
+        'active',
+        'back from leave',
+        NOW,
+      ),
+    ).toBe('not on the road: Insurance expired 2027-05-31');
+    expect(riderStepProblem(paused, 'active', 'back from leave', NOW)).toBeUndefined();
     expect(
       riderStepProblem({ ...ready, status: 'left' }, 'applied', 'back in Hyderabad', NOW),
     ).toBeUndefined();
+  });
+
+  it('approval also needs identity, the current agreement and the bank checked, in his name (P3.11.2)', () => {
+    expect(namesMatch('Ravi Kumar', 'RAVI KUMAR REDDY')).toBe(true);
+    expect(namesMatch('Ravi K.', 'RAVI KUMAR')).toBe(true);
+    expect(namesMatch('Ravi Kumar', 'SURESH KUMAR')).toBe(false);
+    const items = (f: Partial<RiderFacts>) =>
+      approvalChecklist({ ...ready, ...f }, NOW)
+        .filter((c) => !c.done)
+        .map((c) => `${c.item}: ${c.detail}`);
+    expect(items({})).toEqual([]);
+    expect(
+      items({
+        identity: null,
+        agreement: { state: 'pending', name: null, current: true, reason: null },
+        bank: { state: 'failed', name: null, current: true, reason: 'account closed' },
+      }),
+    ).toEqual([
+      'Identity (KYC): not started',
+      'Agreement: waiting for him',
+      'Bank or UPI: failed: account closed',
+    ]);
+    expect(
+      items({
+        identity: { state: 'passed', name: 'SURESH KUMAR', current: true, reason: null },
+        agreement: { state: 'passed', name: null, current: false, reason: null },
+        bank: { state: 'passed', name: 'RAVI KUMAR', current: false, reason: null },
+      }),
+    ).toEqual([
+      'Identity (KYC): verified: "SURESH KUMAR" does not match "Ravi Kumar"',
+      'Agreement: signed an older version: send the new one',
+      'Bank or UPI: changed since the check: check again',
+    ]);
   });
 });

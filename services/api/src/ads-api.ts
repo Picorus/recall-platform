@@ -99,7 +99,7 @@ export async function handleAds(
   if (path === '/ads/upload') {
     const brandId = q.get('brand') ?? '';
     if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(brandId)) throw new HttpError(400, 'Which brand?');
-    await withUpload(req, MAX_AD_UPLOAD_BYTES, async (data) => {
+    await withUpload(req, 'ads', MAX_AD_UPLOAD_BYTES, async (data) => {
       const ad = await refusedAs400(() =>
         uploadAd(pool, store, { brandId, name: q.get('name') ?? '', data, by: who }, now),
       );

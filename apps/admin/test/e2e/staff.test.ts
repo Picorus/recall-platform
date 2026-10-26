@@ -1,7 +1,7 @@
 // The admin site in a real browser against the real API and a real database: the first super admin
 // opens their invite, sets a password and the two-step code, signs in, adds an admin and signs out.
 // Needs `next build` first and DATABASE_URL (pnpm services:up).
-import { fakeFileStore, fakePayments } from '@recall/adapters';
+import { fakeBankCheck, fakeEsign, fakeFileStore, fakeKyc, fakePayments } from '@recall/adapters';
 import { apiHandler, newToken, newTotpSecret, seal, tokenHash, totpCode } from '@recall/api';
 import { launchAreas, newScreenId } from '@recall/domain';
 import { addStaff, createAccount, saveAreaVersion, storeUpload } from '@recall/db';
@@ -35,7 +35,19 @@ beforeAll(async () => {
   api = createServer(
     apiHandler(
       db.pool,
-      { secretKey: KEY, origins: [SITE], secureCookies: true, proxyHops: 1, payments, files },
+      {
+        secretKey: KEY,
+        origins: [SITE],
+        secureCookies: true,
+        proxyHops: 1,
+        payments,
+        files,
+        riderChecks: {
+          kyc: fakeKyc({ auto: true }),
+          esign: fakeEsign({ auto: true }),
+          bank: fakeBankCheck(),
+        },
+      },
       (l) => console.error(l),
       clock,
     ),
@@ -625,7 +637,7 @@ it('the Riders page: a walk-in rider added, his documents checked, approved, a n
     await send.getByRole('button', { name: 'Send' }).click();
     await panel.getByText(`${kind} sent: waiting for a look.`).waitFor();
   }
-  const approve = panel.getByRole('form', { name: 'Rider step' });
+  const approve = panel.getByRole('group', { name: 'Rider step' });
   await approve.getByLabel('Why (logged)').fill('documents not checked yet');
   await approve.getByRole('button', { name: 'Approve' }).click();
   await panel
@@ -639,6 +651,29 @@ it('the Riders page: a walk-in rider added, his documents checked, approved, a n
     await look.getByRole('button', { name: 'Accept' }).click();
     await panel.getByText(`${kind} accepted.`).waitFor();
   }
+  // Identity, the agreement and a UPI id checked with ₹1 (the providers' fakes pass at once).
+  const checks = panel.getByRole('list', { name: 'Checks' });
+  await checks
+    .getByRole('listitem')
+    .filter({ hasText: 'Identity (KYC)' })
+    .getByRole('button', { name: 'Start' })
+    .click();
+  await panel.getByText('Identity check started: the link is on its way to him.').waitFor();
+  await checks
+    .getByRole('listitem')
+    .filter({ hasText: 'Agreement' })
+    .getByRole('button', { name: 'Send' })
+    .click();
+  await panel.getByText('Agreement sent to him to sign.').waitFor();
+  const bank = panel.getByRole('form', { name: 'Check a bank account or UPI' });
+  await bank.getByLabel('UPI id').fill('ravi@okaxis');
+  await bank.getByLabel("Holder's name").fill('Ravi Kumar');
+  await bank.getByRole('button', { name: 'Check with ₹1' }).click();
+  await panel.getByText('Bank check passed: the bank holds it as RAVI KUMAR.').waitFor();
+  await panel.getByText('Paid to: UPI ravi@okaxis · Ravi Kumar').waitFor();
+  // Enter in the reason never moves him.
+  await approve.getByLabel('Why (logged)').fill('all documents checked');
+  await approve.getByLabel('Why (logged)').press('Enter');
   await approve.getByLabel('Why (logged)').fill('all documents checked');
   await approve.getByRole('button', { name: 'Approve' }).click();
   await panel.getByRole('status').getByText('Approved.').waitFor();

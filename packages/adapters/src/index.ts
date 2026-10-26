@@ -5,3 +5,4 @@ export * from './messages.js';
 export * from './device-ca.js';
 export * from './payments.js';
 export * from './storage.js';
+export * from './rider-checks.js';

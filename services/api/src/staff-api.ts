@@ -6,7 +6,13 @@
 // - A new member (or one reset) gets a one-time invite link to set a password and add RECALL to
 //   their authenticator app; the code from the app is checked before the invite is used.
 // - `staffFor(req, need)` is how every other admin route asks who is calling and whether they may.
-import type { FileStore, PaymentsAdapter } from '@recall/adapters';
+import type {
+  BankCheckAdapter,
+  EsignAdapter,
+  FileStore,
+  KycAdapter,
+  PaymentsAdapter,
+} from '@recall/adapters';
 import {
   accessProblem,
   can,
@@ -77,6 +83,12 @@ export interface StaffApiConfig {
   readonly payments?: PaymentsAdapter;
   /** Ad files (P3.9.1): the store, or its fake on a laptop. Absent: ad routes say so. */
   readonly files?: FileStore;
+  /** Rider checks (P3.11.2): identity, e-sign, bank. Fakes on a laptop; absent: their routes say so. */
+  readonly riderChecks?: {
+    readonly kyc: KycAdapter;
+    readonly esign: EsignAdapter;
+    readonly bank: BankCheckAdapter;
+  };
 }
 
 const cookieName = (cfg: StaffApiConfig) =>

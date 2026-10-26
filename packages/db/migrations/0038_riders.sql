@@ -65,6 +65,9 @@ CREATE TABLE rider_document_reviews (
   reviewed_at timestamptz NOT NULL
 );
 
+-- Screens fitted to a rider (his page, his steps).
+CREATE INDEX screen_fittings_rider ON screen_fittings (rider_id);
+
 CREATE TABLE rider_notes (
   rider_id text        NOT NULL REFERENCES riders (rider_id),
   seq      integer     NOT NULL CHECK (seq >= 1),

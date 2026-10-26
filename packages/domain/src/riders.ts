@@ -1,8 +1,9 @@
 // P3.11.1: riders as staff see them. A rider applies (in the rider app, P4, or at the warehouse through
 // Operations), sends his photo and his vehicle's registration and insurance, is approved, gets a
 // screen fitted, rides, may pause, and may leave (after the screen comes off). Each step is logged
-// with who and why; details change as versions (hard rule 3). Identity (KYC), the agreement and the
-// bank check come in P3.11.2 and join the approval checklist then.
+// with who and why; details change as versions (hard rule 3). Approval also needs his identity
+// checked (KYC), the rider agreement signed and his bank or UPI checked (P3.11.2), each through an
+// outside provider (packages/adapters).
 import { adKind } from './ad-checks.js';
 
 export const RIDER_STATUSES = [
@@ -53,6 +54,8 @@ export const DOCUMENT_NAMES: Readonly<Record<RiderDocumentKind, string>> = {
   rc: 'Registration (RC)',
   insurance: 'Insurance',
 };
+const DOCUMENT_ITEMS: readonly string[] = Object.values(DOCUMENT_NAMES);
+
 /** Largest document file (a phone photo or a scan). */
 export const MAX_DOCUMENT_BYTES = 10 * 1024 * 1024;
 
@@ -122,6 +125,20 @@ export interface DocumentState {
   readonly expiresOn: string | null;
 }
 
+/** The rider agreement in force: its version is kept with each signature. The text is the
+ * lawyer's; it includes the camera line "This screen counts people. It records nothing." (P4.2.5). */
+export const RIDER_AGREEMENT = { version: 'rider-v1' } as const;
+
+/** Where one outside check stands (the newest one of its kind), or null if never started. */
+export type CheckFact = {
+  readonly state: 'pending' | 'passed' | 'failed';
+  /** Identity: the name on his ID; bank: the name the bank holds. */
+  readonly name: string | null;
+  /** Agreement: the version signed. Bank: whether it was for the account he has now. */
+  readonly current: boolean;
+  readonly reason: string | null;
+} | null;
+
 export interface RiderFacts {
   readonly status: RiderStatus;
   readonly details: RiderDetails;
@@ -129,6 +146,33 @@ export interface RiderFacts {
   readonly documents: readonly DocumentState[];
   /** A screen is fitted to him now (screens' fittings). */
   readonly screenFitted: boolean;
+  readonly identity: CheckFact;
+  readonly agreement: CheckFact;
+  readonly bank: CheckFact;
+}
+
+/** The letters of a name, for comparing ("Ravi  Kumar." and "RAVI KUMAR" are the same). */
+const nameWords = (n: string) =>
+  n
+    .toUpperCase()
+    .replace(/[^A-Z ]/g, ' ')
+    .split(/\s+/)
+    .filter((w) => w.length > 0);
+
+/**
+ * Does the name on a document or account match the name he gave? Every word of the shorter name
+ * must be in the longer one ("RAVI KUMAR" matches "Ravi Kumar Reddy"; an initial matches its word).
+ */
+export function namesMatch(given: string, other: string): boolean {
+  const a = nameWords(given);
+  const b = nameWords(other);
+  if (a.length === 0 || b.length === 0) return false;
+  const [short, long] = a.length <= b.length ? [a, b] : [b, a];
+  return short.every((w) =>
+    long.some(
+      (x) => x === w || (w.length === 1 && x.startsWith(w)) || (x.length === 1 && w.startsWith(x)),
+    ),
+  );
 }
 
 export interface CheckItem {
@@ -140,7 +184,7 @@ export interface CheckItem {
 /** The India date of a UTC instant (seconds). */
 const indiaDate = (s: number) => new Date((s + 19_800) * 1000).toISOString().slice(0, 10);
 
-/** What approval needs, each ticked or not (P3.11.2 adds identity, agreement and bank). */
+/** What approval needs, each ticked or not. */
 export function approvalChecklist(f: RiderFacts, now: number): CheckItem[] {
   const doc = (kind: RiderDocumentKind): CheckItem => {
     const d = f.documents.find((x) => x.kind === kind);
@@ -157,6 +201,21 @@ export function approvalChecklist(f: RiderFacts, now: number): CheckItem[] {
       detail: kind === 'insurance' ? `accepted, covers until ${d.expiresOn}` : 'accepted',
     };
   };
+  const check = (
+    item: string,
+    c: CheckFact,
+    passed: (c: NonNullable<CheckFact>) => CheckItem,
+  ): CheckItem => {
+    if (!c) return { item, done: false, detail: 'not started' };
+    if (c.state === 'pending') return { item, done: false, detail: 'waiting for him' };
+    if (c.state === 'failed')
+      return { item, done: false, detail: `failed: ${c.reason ?? ''}`.trim() };
+    return passed(c);
+  };
+  const named = (item: string, c: NonNullable<CheckFact>, what: string): CheckItem =>
+    c.name !== null && !namesMatch(f.details.name, c.name)
+      ? { item, done: false, detail: `${what} "${c.name}" does not match "${f.details.name}"` }
+      : { item, done: true, detail: `${what} ${c.name ?? ''}`.trim() };
   return [
     {
       item: 'Number plate',
@@ -164,6 +223,17 @@ export function approvalChecklist(f: RiderFacts, now: number): CheckItem[] {
       detail: f.details.bikePlate ?? 'not given',
     },
     ...RIDER_DOCUMENTS.map(doc),
+    check('Identity (KYC)', f.identity, (c) => named('Identity (KYC)', c, 'verified:')),
+    check('Agreement', f.agreement, (c) =>
+      c.current
+        ? { item: 'Agreement', done: true, detail: `signed (${RIDER_AGREEMENT.version})` }
+        : { item: 'Agreement', done: false, detail: 'signed an older version: send the new one' },
+    ),
+    check('Bank or UPI', f.bank, (c) =>
+      c.current
+        ? named('Bank or UPI', c, 'checked:')
+        : { item: 'Bank or UPI', done: false, detail: 'changed since the check: check again' },
+    ),
   ];
 }
 
@@ -182,7 +252,16 @@ export function riderStepProblem(
     if (missing.length)
       return `not ready: ${missing.map((c) => `${c.item} ${c.detail}`).join('; ')}`;
   }
-  if (to === 'active' && !f.screenFitted) return 'fit a screen to his bike first (Screens)';
-  if (to === 'left' && f.screenFitted) return 'take his screen off first (Screens)';
+  if (to === 'active') {
+    if (!f.screenFitted) return 'fit a screen to his bike first (Screens)';
+    // Back on the road only with his documents still good (insurance in date, none rejected since).
+    const lapsed = approvalChecklist(f, now).filter(
+      (c) => !c.done && (c.item === 'Number plate' || DOCUMENT_ITEMS.includes(c.item)),
+    );
+    if (lapsed.length)
+      return `not on the road: ${lapsed.map((c) => `${c.item} ${c.detail}`).join('; ')}`;
+  }
+  if ((to === 'left' || to === 'rejected') && f.screenFitted)
+    return 'take his screen off first (Screens)';
   return undefined;
 }

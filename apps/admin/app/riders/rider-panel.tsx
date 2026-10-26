@@ -13,9 +13,12 @@ import {
   phoneText,
   STATUS_CHIP,
   STATUS_NAMES,
+  checkText,
+  CHECKS,
   type DocumentKind,
   type RiderDocument,
   type RiderPage,
+  type RiderStatus,
 } from '../../lib/riders';
 
 const when = (s: number) => `${dayOfIndia(s)} ${clock(s)}`;
@@ -33,8 +36,10 @@ function DocumentRow({
 }) {
   const [reason, setReason] = useState('');
   const [expires, setExpires] = useState('');
-  const decide = (decision: 'accepted' | 'rejected') =>
-    api(`/riders/${riderId}/documents/${d.docId}/review`, {
+  const [sending, setSending] = useState(false);
+  const decide = (decision: 'accepted' | 'rejected') => {
+    setSending(true);
+    return api(`/riders/${riderId}/documents/${d.docId}/review`, {
       decision,
       reason: reason.trim(),
       expiresOn: expires || null,
@@ -42,8 +47,10 @@ function DocumentRow({
       .then(() => onDone(`${DOCUMENT_NAMES[d.kind]} ${decision}.`))
       .catch((e: unknown) =>
         onDone('', e instanceof ApiError ? e.message : 'Could not reach the server.'),
-      );
-  const ok = reason.trim().length >= 3;
+      )
+      .finally(() => setSending(false));
+  };
+  const ok = reason.trim().length >= 3 && !sending;
   return (
     <li className="ad-row">
       {d.preview && d.fileType !== 'pdf' ? (
@@ -54,7 +61,7 @@ function DocumentRow({
           Open PDF
         </a>
       ) : (
-        <span className="muted">No preview</span>
+        <span className="muted">Preview for Operations only</span>
       )}
       <div className="stack">
         <div>
@@ -131,6 +138,7 @@ export default function RiderPanel({
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [stepReason, setStepReason] = useState('');
   const asked = useRef(0);
 
   const load = useCallback(() => {
@@ -187,17 +195,45 @@ export default function RiderPanel({
   if (!p) return <p className="muted">{error || 'Loading…'}</p>;
   const r = p.rider;
 
-  const step = (e: FormEvent<HTMLFormElement>) => {
+  // A step only from its own button: Enter in the reason never picks one.
+  const step = (to: RiderStatus) => {
+    const reason = stepReason.trim();
+    if (reason.length < 5) return setError('Say why (5 letters or more)');
+    act(`/riders/${r.riderId}/step`, { to, reason }, `${STATUS_NAMES[to]}.`, undefined, () =>
+      setStepReason(''),
+    );
+  };
+  const bankCheck = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const form = e.currentTarget;
     const f = new FormData(form);
-    const to = (e.nativeEvent as SubmitEvent).submitter?.getAttribute('value') ?? '';
-    act(
-      `/riders/${r.riderId}/step`,
-      { to, reason: String(f.get('reason') ?? '') },
-      `${STATUS_NAMES[to as keyof typeof STATUS_NAMES] ?? to}.`,
-      form,
-    );
+    const kind = String(f.get('kind') ?? 'upi');
+    setBusy(true);
+    setError('');
+    setNote('');
+    api<{ outcome: string; reason: string | null; nameAtBank: string | null }>(
+      `/riders/${r.riderId}/bank`,
+      kind === 'upi'
+        ? { kind, vpa: String(f.get('vpa') ?? ''), name: String(f.get('holder') ?? '') }
+        : {
+            kind,
+            accountNumber: String(f.get('accountNumber') ?? ''),
+            ifsc: String(f.get('ifsc') ?? ''),
+            name: String(f.get('holder') ?? ''),
+          },
+    )
+      .then((x) => {
+        form.reset();
+        done(
+          x.outcome === 'passed'
+            ? `Bank check passed: the bank holds it as ${x.nameAtBank ?? ''}.`
+            : `Bank check failed: ${x.reason ?? ''}.`,
+        );
+      })
+      .catch((err: unknown) =>
+        setError(err instanceof ApiError ? err.message : 'Could not reach the server.'),
+      )
+      .finally(() => setBusy(false));
   };
   const save = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -360,22 +396,102 @@ export default function RiderPanel({
       </ul>
 
       {canAct && (
-        <form className="cal-bar" onSubmit={step} aria-label="Rider step">
+        <div className="cal-bar" role="group" aria-label="Rider step">
           <label className="rc-field">
             <span className="rc-field__label">Why (logged)</span>
-            <input className="rc-input" name="reason" minLength={5} maxLength={300} required />
+            <input
+              className="rc-input"
+              value={stepReason}
+              onChange={(e) => setStepReason(e.target.value)}
+              maxLength={300}
+            />
           </label>
           {NEXT_STEPS[r.status].map((s) => (
             <button
               key={s.to}
               className="rc-button rc-button--secondary"
-              type="submit"
-              value={s.to}
-              disabled={busy}
+              type="button"
+              disabled={busy || stepReason.trim().length < 5}
+              onClick={() => step(s.to)}
             >
               {s.label}
             </button>
           ))}
+        </div>
+      )}
+
+      <h4 style={{ margin: 0 }}>Checks</h4>
+      <ul className="plain" aria-label="Checks">
+        {CHECKS.map(({ kind, name }) => {
+          const c = p.checks.find((x) => x.kind === kind);
+          return (
+            <li key={kind} className="cal-bar">
+              <span>
+                <strong>{name}</strong>: {checkText(c)}
+              </span>
+              {canAct && kind !== 'bank' && (
+                <button
+                  className="rc-button rc-button--secondary"
+                  type="button"
+                  disabled={busy}
+                  onClick={() =>
+                    act(
+                      `/riders/${r.riderId}/${kind}`,
+                      {},
+                      kind === 'identity'
+                        ? 'Identity check started: the link is on its way to him.'
+                        : 'Agreement sent to him to sign.',
+                    )
+                  }
+                >
+                  {c ? 'Start again' : kind === 'identity' ? 'Start' : 'Send'}
+                </button>
+              )}
+              {c?.state === 'pending' && (
+                <button
+                  className="rc-button rc-button--quiet"
+                  type="button"
+                  disabled={busy}
+                  onClick={() =>
+                    act(`/riders/${r.riderId}/checks`, {}, 'Checked with the providers.')
+                  }
+                >
+                  Check again
+                </button>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      <p className="muted">Paid to: {p.payoutAccount ?? 'no account checked yet'}</p>
+      {canAct && (
+        <form className="cal-bar" onSubmit={bankCheck} aria-label="Check a bank account or UPI">
+          <label className="rc-field">
+            <span className="rc-field__label">Paid by</span>
+            <select className="rc-input" name="kind" defaultValue="upi">
+              <option value="upi">UPI</option>
+              <option value="bank">Bank account</option>
+            </select>
+          </label>
+          <label className="rc-field">
+            <span className="rc-field__label">UPI id</span>
+            <input className="rc-input" name="vpa" maxLength={100} />
+          </label>
+          <label className="rc-field">
+            <span className="rc-field__label">Account number</span>
+            <input className="rc-input" name="accountNumber" maxLength={22} inputMode="numeric" />
+          </label>
+          <label className="rc-field">
+            <span className="rc-field__label">IFSC</span>
+            <input className="rc-input" name="ifsc" maxLength={11} />
+          </label>
+          <label className="rc-field">
+            <span className="rc-field__label">Holder&apos;s name</span>
+            <input className="rc-input" name="holder" maxLength={120} required />
+          </label>
+          <button className="rc-button rc-button--secondary" type="submit" disabled={busy}>
+            Check with ₹1
+          </button>
         </form>
       )}
 

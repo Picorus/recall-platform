@@ -12,7 +12,7 @@ import {
   unfitScreen,
   type SignedEnrolment,
 } from '../../src/screens.js';
-import { freshDatabase } from './fresh-db.js';
+import { approvedRider, freshDatabase } from './fresh-db.js';
 
 let db: Awaited<ReturnType<typeof freshDatabase>>;
 let pool: pg.Pool;
@@ -22,6 +22,12 @@ const ca = fakeDeviceCa();
 beforeAll(async () => {
   db = await freshDatabase();
   pool = db.pool;
+  await approvedRider(pool, 'RD-000001', 'TS09EA1234');
+  await approvedRider(pool, 'RD-000002', 'TS09EA1234');
+  await approvedRider(pool, 'RD-000003', 'TS10AB5678');
+  await approvedRider(pool, 'RD-000009', 'TS11CD4321');
+  await approvedRider(pool, 'RD-000401', 'TS09EB1234');
+  await approvedRider(pool, 'RD-000402', 'TS09EB1234');
 }, 120_000);
 afterAll(async () => db.drop());
 
@@ -88,40 +94,50 @@ describe('screens: enrolment and fitting (P2.1)', () => {
     const t = NOW + 3600;
     const f = await fitScreen(
       pool,
-      { qr: a.qr, plate: 'ts 09 ea 1234', riderId: 'R-001' },
+      { qr: a.qr, plate: 'ts 09 ea 1234', riderId: 'RD-000001' },
       'fitter',
       t,
     );
-    expect(f).toEqual({ screenId: a.screenId, bike: 'TS09EA1234', riderId: 'R-001', from: t });
+    expect(f).toEqual({ screenId: a.screenId, bike: 'TS09EA1234', riderId: 'RD-000001', from: t });
     expect(
-      await fitScreen(pool, { qr: a.qr, plate: 'TS09EA1234', riderId: 'R-001' }, 'fitter', t + 60),
+      await fitScreen(
+        pool,
+        { qr: a.qr, plate: 'TS09EA1234', riderId: 'RD-000001' },
+        'fitter',
+        t + 60,
+      ),
     ).toEqual(f);
     await expect(
-      fitScreen(pool, { qr: b.qr, plate: 'TS09EA1234', riderId: 'R-002' }, 'fitter', t + 60),
+      fitScreen(pool, { qr: b.qr, plate: 'TS09EA1234', riderId: 'RD-000002' }, 'fitter', t + 60),
     ).rejects.toThrow('TS09EA1234 already carries');
     await expect(
-      fitScreen(pool, { qr: b.qr, plate: 'TS10AB5678', riderId: 'R-001' }, 'fitter', t + 60),
-    ).rejects.toThrow('R-001 is on');
+      fitScreen(pool, { qr: b.qr, plate: 'TS10AB5678', riderId: 'RD-000001' }, 'fitter', t + 60),
+    ).rejects.toThrow("TS10AB5678 is not RD-000001's bike");
     await expect(
-      fitScreen(pool, { qr: a.qr, plate: 'TS10AB5678', riderId: 'R-003' }, 'fitter', t + 60),
+      fitScreen(pool, { qr: a.qr, plate: 'TS10AB5678', riderId: 'RD-000003' }, 'fitter', t + 60),
     ).rejects.toThrow('take it off that bike first');
     await expect(
-      fitScreen(pool, { qr: 'hello', plate: 'TS10AB5678', riderId: 'R-003' }, 'fitter', t),
+      fitScreen(pool, { qr: 'hello', plate: 'TS10AB5678', riderId: 'RD-000003' }, 'fitter', t),
     ).rejects.toThrow('not a RECALL screen QR');
     await expect(
-      fitScreen(pool, { qr: b.qr, plate: '1234', riderId: 'R-003' }, 'fitter', t),
+      fitScreen(pool, { qr: b.qr, plate: '1234', riderId: 'RD-000003' }, 'fitter', t),
     ).rejects.toThrow('number plate');
     const rider = await pool.query<{ rider_id: string }>(
       `SELECT rider_id FROM rider_screens WHERE screen_id = $1 ORDER BY from_at DESC LIMIT 1`,
       [a.screenId],
     );
-    expect(rider.rows[0]?.rider_id).toBe('R-001');
+    expect(rider.rows[0]?.rider_id).toBe('RD-000001');
 
     // Taken off, then the bike can take another screen and the rider another bike.
     await unfitScreen(pool, a.screenId, 'rider left', 'ops', t + 7200);
     expect((await screenStatus(pool, a.screenId, t + 7200))?.fitting).toBeUndefined();
     expect((await screenStatus(pool, a.screenId, t + 100))?.fitting?.bike).toBe('TS09EA1234'); // history kept
-    await fitScreen(pool, { qr: b.qr, plate: 'TS09EA1234', riderId: 'R-001' }, 'fitter', t + 7300);
+    await fitScreen(
+      pool,
+      { qr: b.qr, plate: 'TS09EA1234', riderId: 'RD-000001' },
+      'fitter',
+      t + 7300,
+    );
     await expect(unfitScreen(pool, a.screenId, 'again', 'ops', t + 7400)).rejects.toThrow(
       'not on a bike',
     );
@@ -131,12 +147,12 @@ describe('screens: enrolment and fitting (P2.1)', () => {
     const s = await enrolScreen(pool, ca, boxRequest('RK-S-0003'), 'w', NOW);
     await revokeScreenKey(pool, s.screenId, 'k1', 'ops', 'stolen from the bike', NOW + 10);
     await expect(
-      fitScreen(pool, { qr: s.qr, plate: 'TS11CD4321', riderId: 'R-009' }, 'fitter', NOW + 20),
+      fitScreen(pool, { qr: s.qr, plate: 'TS11CD4321', riderId: 'RD-000009' }, 'fitter', NOW + 20),
     ).rejects.toThrow('lost or stolen');
     await expect(
       fitScreen(
         pool,
-        { qr: 'RECALL1:SCR-7K3M9SYX', plate: 'TS11CD4321', riderId: 'R-009' },
+        { qr: 'RECALL1:SCR-7K3M9SYX', plate: 'TS11CD4321', riderId: 'RD-000009' },
         'fitter',
         NOW,
       ),
@@ -192,14 +208,14 @@ describe('screens: enrolment and fitting (P2.1)', () => {
       const a = await enrolScreen(pool, ca, boxRequest('RK-PL-0001'), 'w', NOW);
       const b = await enrolScreen(pool, ca, boxRequest('RK-PL-0002'), 'w', NOW);
       const t = NOW + 50_000;
-      await fitScreen(pool, { qr: a.qr, plate: 'TS9EB1234', riderId: 'R-401' }, 'f', t);
+      await fitScreen(pool, { qr: a.qr, plate: 'TS9EB1234', riderId: 'RD-000401' }, 'f', t);
       await expect(
-        fitScreen(pool, { qr: b.qr, plate: 'TS09EB1234', riderId: 'R-402' }, 'f', t + 5),
+        fitScreen(pool, { qr: b.qr, plate: 'TS09EB1234', riderId: 'RD-000402' }, 'f', t + 5),
       ).rejects.toThrow('TS09EB1234 already carries');
       await expect(unfitScreen(pool, a.screenId, 'swap', 'ops', t)).rejects.toThrow('try again');
       await unfitScreen(pool, a.screenId, 'swap', 'ops', t + 1);
       await expect(
-        fitScreen(pool, { qr: a.qr, plate: 'TS09EB1234', riderId: 'R-401' }, 'f', t + 1),
+        fitScreen(pool, { qr: a.qr, plate: 'TS09EB1234', riderId: 'RD-000401' }, 'f', t + 1),
       ).rejects.toThrow('try again');
     });
   });
