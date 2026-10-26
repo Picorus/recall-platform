@@ -30,3 +30,4 @@ export * from './screen-list.js';
 export * from './refusal.js';
 export * from './calendar.js';
 export * from './brands.js';
+export * from './booking-desk.js';

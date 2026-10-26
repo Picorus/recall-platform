@@ -1,6 +1,7 @@
 // The admin site in a real browser against the real API and a real database: the first super admin
 // opens their invite, sets a password and the two-step code, signs in, adds an admin and signs out.
 // Needs `next build` first and DATABASE_URL (pnpm services:up).
+import { fakePayments } from '@recall/adapters';
 import { apiHandler, newToken, newTotpSecret, seal, tokenHash, totpCode } from '@recall/api';
 import { launchAreas, newScreenId } from '@recall/domain';
 import { addStaff, createAccount, saveAreaVersion, storeUpload } from '@recall/db';
@@ -17,6 +18,7 @@ const PORT = 3101;
 const SITE = `http://localhost:${PORT}`;
 const KEY = randomBytes(32);
 const PW = 'green kettle 42 mango';
+const payments = fakePayments();
 let shift = 0;
 const clock = () => Date.now() + shift;
 
@@ -30,7 +32,7 @@ beforeAll(async () => {
   api = createServer(
     apiHandler(
       db.pool,
-      { secretKey: KEY, origins: [SITE], secureCookies: true, proxyHops: 1 },
+      { secretKey: KEY, origins: [SITE], secureCookies: true, proxyHops: 1, payments },
       (l) => console.error(l),
       clock,
     ),
@@ -447,6 +449,54 @@ it('the Brands page: add an agency and a brand it handles, a contact and a note'
   if (process.env.SCREENSHOT_DIR) {
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.screenshot({ path: `${process.env.SCREENSHOT_DIR}/brands.png`, fullPage: true });
+  }
+  expect(errors).toEqual([]);
+}, 120_000);
+
+it('booking for a brand: a draft from its page, the payment link, paid, the timeline', async () => {
+  const page = await browser.newPage();
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  shift += 30_000;
+  await page.goto(`${SITE}/sign-in`);
+  await page.getByLabel('Email').fill('prateek@recall.in');
+  await page.getByLabel('Password').fill(PW);
+  await page.getByLabel('Code from your authenticator app').fill(totpCode(SECRET.value, step()));
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.getByText('Prateek · Super admin').waitFor();
+  await page.getByRole('link', { name: 'Brands' }).click();
+  await page
+    .getByRole('row', { name: /Dosa Co/ })
+    .getByRole('button', { name: 'Open' })
+    .click();
+  await page.getByRole('button', { name: 'New booking' }).click();
+  const form = page.getByRole('form', { name: 'New booking' });
+  const tomorrow = new Date(clock() + 86_400_000 + 330 * 60_000).toISOString().slice(0, 10);
+  await form.getByLabel('Area').selectOption({ label: 'Madhapur' });
+  await form.getByLabel('First day').fill(tomorrow);
+  await form.getByLabel('Last day').fill(tomorrow);
+  await form.getByLabel('Bikes in each hour').fill('30');
+  await form.getByLabel('19:00').check();
+  await form.getByLabel('20:00').check();
+  await form.getByRole('button', { name: 'Make the booking' }).click();
+  await page.getByText(/^Draft booking BK-.* made\.$/).waitFor();
+  const panel = page.getByRole('region', { name: /^Booking BK-/ });
+  // Priced at the prices in force (an earlier test changed them), GST on top.
+  await panel.getByText(/^₹[\d,]+ \+ GST ₹[\d,]+ = ₹[\d,]+$/).waitFor();
+  await panel.getByRole('button', { name: 'Send payment link' }).click();
+  await panel.getByText(/^Payment link ready: https:/).waitFor();
+  // The brand pays on the provider's page (the fake provider here), and its message is lost.
+  const link = [...payments.links.values()].at(-1);
+  payments.pay(link?.linkId ?? '');
+  await panel.getByRole('button', { name: 'Check payment' }).click();
+  await panel.getByText('Paid.', { exact: true }).waitFor();
+  await panel
+    .getByRole('list', { name: 'Timeline' })
+    .getByText(/^Payment received/)
+    .waitFor();
+  if (process.env.SCREENSHOT_DIR) {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.screenshot({ path: `${process.env.SCREENSHOT_DIR}/booking.png`, fullPage: true });
   }
   expect(errors).toEqual([]);
 }, 120_000);

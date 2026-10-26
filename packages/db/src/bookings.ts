@@ -87,7 +87,13 @@ export async function savePriceBook(
 type StoredBook = Partial<PriceBook> &
   Omit<
     PriceBook,
-    'capacity' | 'plays' | 'makeUps' | 'cancelRefundHours' | 'cancelRefundDecideHours' | 'cuts'
+    | 'capacity'
+    | 'plays'
+    | 'makeUps'
+    | 'cancelRefundHours'
+    | 'cancelRefundDecideHours'
+    | 'cuts'
+    | 'payLinkHours'
   >;
 
 /** A book as stored; a book saved before a setting existed gets its default (the rule then). */
@@ -99,6 +105,7 @@ function withDefaults(book: StoredBook): PriceBook {
     makeUps: book.makeUps ?? DEFAULT_MAKE_UP_RULES,
     cancelRefundHours: book.cancelRefundHours ?? 72,
     cancelRefundDecideHours: book.cancelRefundDecideHours ?? 168,
+    payLinkHours: book.payLinkHours ?? 24,
     cuts: book.cuts ?? { agency: 1_000, aggregator: 200 },
     cutTdsBp: book.cutTdsBp ?? 200,
     riderPay: book.riderPay ?? DEFAULT_RIDER_PAY_RULES,

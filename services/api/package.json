@@ -16,13 +16,14 @@
     "reset-staff": "tsx src/reset-staff.ts"
   },
   "dependencies": {
+    "@recall/adapters": "workspace:*",
     "@recall/db": "workspace:*",
     "@recall/domain": "workspace:*",
     "pg": "8.23.1"
   },
   "devDependencies": {
     "@types/pg": "8.23.1",
-    "tsx": "4.23.15",
-    "fast-check": "4.10.2"
+    "fast-check": "4.10.2",
+    "tsx": "4.23.15"
   }
 }

@@ -60,6 +60,11 @@ export interface PriceBook {
    * taken as rejected ("not approved = no refund"), so the money does not stay held for ever.
    */
   readonly cancelRefundDecideHours: number;
+  /**
+   * A payment link sent by staff works this many hours (and never past the first hour); unpaid by
+   * then, the booking is cancelled and its bikes go back on sale (P3.8.2).
+   */
+  readonly payLinkHours: number;
   /** Cut rates used when RECALL decides to give one (basis points; never automatic). */
   readonly cuts: { readonly agency: number; readonly aggregator: number };
   /** TDS held back from a cut (basis points; 2% under section 194H, to confirm with the CA). */
@@ -119,6 +124,7 @@ export const PRICE_BOOK_V1: PriceBook = {
   makeUps: DEFAULT_MAKE_UP_RULES,
   cancelRefundHours: 72,
   cancelRefundDecideHours: 168,
+  payLinkHours: 24,
   cuts: { agency: 1_000, aggregator: 200 },
   cutTdsBp: 200,
   riderPay: DEFAULT_RIDER_PAY_RULES,
@@ -171,6 +177,7 @@ export function checkPriceBook(b: PriceBook): PriceBookProblem[] {
     ['repeatSpreadBp', b.repeatSpreadBp],
     ['cancelRefundHours', b.cancelRefundHours],
     ['cancelRefundDecideHours', b.cancelRefundDecideHours],
+    ['payLinkHours', b.payLinkHours],
     ['cuts.agency', b.cuts.agency],
     ['cuts.aggregator', b.cuts.aggregator],
     ['cutTdsBp', b.cutTdsBp],
@@ -178,6 +185,8 @@ export function checkPriceBook(b: PriceBook): PriceBookProblem[] {
     if (!whole(v)) problems.push(`${name} must be a whole number`);
   }
   if (b.cancelRefundDecideHours < 1) problems.push('cancelRefundDecideHours must be at least 1');
+  if (b.payLinkHours < 1 || b.payLinkHours > 720)
+    problems.push('a payment link works 1 to 720 hours');
   for (const v of [b.cuts.agency, b.cuts.aggregator])
     if (v < 1 || v > CUT_MAX_BP) problems.push('a cut rate must be 0.01–50%');
   if (b.cutTdsBp > 2_000) problems.push('TDS on a cut must be 0–20%');

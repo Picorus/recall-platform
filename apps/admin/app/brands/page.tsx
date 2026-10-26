@@ -8,6 +8,8 @@ import { api, ApiError, type Member } from '../../lib/api';
 import { idFromName, matches, phoneText, STEP_NAMES, type AccountRow } from '../../lib/brands';
 import { clock, dayOfIndia, rupees } from '../../lib/format';
 import { Shell, useMember } from '../../lib/session';
+import BookingPanel from './booking-panel';
+import NewBooking from './new-booking';
 
 interface Page {
   readonly account: AccountRow;
@@ -58,6 +60,8 @@ export default function BrandsPage() {
   const [page, setPage] = useState<Page>();
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState('');
+  const [booking, setBooking] = useState('');
+  const [newBooking, setNewBooking] = useState(false);
   const [error, setError] = useState('');
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
@@ -511,6 +515,27 @@ export default function BrandsPage() {
 
           <section className="rc-card stack">
             <h3 style={{ margin: 0 }}>Bookings</h3>
+            {isSales(me) && a.kind === 'brand' && a.active && (
+              <button
+                className="rc-button rc-button--secondary"
+                type="button"
+                onClick={() => setNewBooking(!newBooking)}
+              >
+                New booking
+              </button>
+            )}
+            {newBooking && (
+              <NewBooking
+                brandId={a.brandId}
+                onMade={(id) => {
+                  setNewBooking(false);
+                  setBooking(id);
+                  setNote(`Draft booking ${id} made.`);
+                  loadList();
+                  loadOne(openRef.current);
+                }}
+              />
+            )}
             {page.bookings.length === 0 ? (
               <p className="muted">None yet.</p>
             ) : (
@@ -522,6 +547,7 @@ export default function BrandsPage() {
                       <th>Step</th>
                       <th>First hour</th>
                       <th>Total with GST</th>
+                      <th />
                     </tr>
                   </thead>
                   <tbody>
@@ -534,11 +560,31 @@ export default function BrandsPage() {
                         <td>{STEP_NAMES[b.state] ?? b.state}</td>
                         <td>{when(b.firstHour)}</td>
                         <td>{rupees(b.totalPaise)}</td>
+                        <td>
+                          <button
+                            className="rc-button rc-button--quiet"
+                            type="button"
+                            onClick={() => setBooking(b.bookingId)}
+                          >
+                            Open
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
+            )}
+            {booking && page.bookings.some((x) => x.bookingId === booking) && (
+              <BookingPanel
+                key={booking}
+                bookingId={booking}
+                canAct={isSales(me)}
+                onChange={() => {
+                  loadList();
+                  loadOne(openRef.current);
+                }}
+              />
             )}
           </section>
 

@@ -1,4 +1,5 @@
 // The API's settings from the environment (names in .env.example; values never in the repository).
+import { fakePayments } from '@recall/adapters';
 import { readKey } from './secrets.js';
 import type { StaffApiConfig } from './staff-api.js';
 
@@ -47,5 +48,21 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     origins,
     secureCookies,
     proxyHops,
+    payments: paymentsFrom(env, production),
   };
+}
+
+/**
+ * Brand payments (P3.8.2): on a laptop, the fake provider (no keys, no money). A real provider is
+ * plugged in at P6 by its keys; until then production refuses to start rather than run on the fake.
+ */
+function paymentsFrom(env: NodeJS.ProcessEnv, production: boolean) {
+  const provider = env.PAYMENTS_PROVIDER || (production ? '' : 'fake');
+  if (provider === 'fake' && !production)
+    return fakePayments(env.PAYMENTS_WEBHOOK_SECRET ? { secret: env.PAYMENTS_WEBHOOK_SECRET } : {});
+  throw new Error(
+    provider
+      ? `PAYMENTS_PROVIDER ${provider} is not available yet (real providers come in P6)`
+      : 'PAYMENTS_PROVIDER is not set',
+  );
 }

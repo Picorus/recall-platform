@@ -1,0 +1,112 @@
+// P3.8.2: brand payments (hard rule 4: behind an adapter with a working fake). A payment link is
+// made with a key that never changes for the same booking and amount, so asking again (a retry, a
+// double click) gives the same link, never a second one. The provider tells us a link was paid by a
+// signed message (checked here), and we can also ask it directly.
+import { createHmac, timingSafeEqual } from 'node:crypto';
+
+export interface LinkRequest {
+  /** The same for every attempt of one link. */
+  readonly linkKey: string;
+  readonly bookingId: string;
+  /** Whole paise, more than 0 (GST included). */
+  readonly amountPaise: number;
+  /** Shown on the payment page. */
+  readonly description: string;
+  readonly phone?: string;
+  readonly email?: string;
+  /** UTC seconds: the link stops working then. */
+  readonly expiresAt: number;
+}
+
+export interface PaymentLink {
+  readonly linkId: string;
+  readonly url: string;
+}
+
+export type LinkStatus =
+  | { readonly state: 'created' }
+  | { readonly state: 'paid'; readonly paymentId: string; readonly paidAt: number }
+  | { readonly state: 'expired' }
+  | { readonly state: 'cancelled' };
+
+/** What a provider's signed message says, once its signature is checked. */
+export interface PaymentEvent {
+  readonly linkId: string;
+  readonly status: LinkStatus;
+}
+
+export interface PaymentsAdapter {
+  createLink(req: LinkRequest): Promise<PaymentLink>;
+  status(linkId: string): Promise<LinkStatus>;
+  /** Stops a link that is no longer wanted (booking cancelled). Safe to repeat. */
+  cancelLink(linkId: string): Promise<void>;
+  /** The event in a provider's message, or null when its signature is wrong (never trusted). */
+  verifyEvent(rawBody: string, signature: string): PaymentEvent | null;
+}
+
+/**
+ * A working fake: links on a fake site, remembered by key; `pay` marks one paid (as a brand paying
+ * would) and returns the signed message the provider would send. Time comes from `clock`.
+ */
+export function fakePayments(
+  opts: { readonly secret?: string; readonly clock?: () => number; readonly baseUrl?: string } = {},
+): PaymentsAdapter & {
+  readonly links: Map<string, LinkRequest & { linkId: string; status: LinkStatus }>;
+  pay(linkId: string): { body: string; signature: string };
+  sign(body: string): string;
+} {
+  const secret = opts.secret ?? 'fake-payments-secret';
+  const clock = opts.clock ?? (() => Math.floor(Date.now() / 1000));
+  const base = opts.baseUrl ?? 'https://pay.fake.recall.example/l';
+  const links = new Map<string, LinkRequest & { linkId: string; status: LinkStatus }>();
+  const byKey = new Map<string, string>();
+  const sign = (body: string) => createHmac('sha256', secret).update(body).digest('hex');
+  const current = (linkId: string): LinkStatus => {
+    const l = links.get(linkId);
+    if (!l) throw new Error(`No link ${linkId}`);
+    if (l.status.state === 'created' && clock() >= l.expiresAt) l.status = { state: 'expired' };
+    return l.status;
+  };
+  return {
+    links,
+    sign,
+    createLink(req) {
+      if (!Number.isSafeInteger(req.amountPaise) || req.amountPaise <= 0)
+        return Promise.reject(new RangeError('amount must be whole paise above 0'));
+      const known = byKey.get(req.linkKey);
+      const linkId = known ?? `plink_${String(links.size + 1).padStart(6, '0')}`;
+      if (!known) {
+        byKey.set(req.linkKey, linkId);
+        links.set(linkId, { ...req, linkId, status: { state: 'created' } });
+      }
+      return Promise.resolve({ linkId, url: `${base}/${linkId}` });
+    },
+    status(linkId) {
+      return Promise.resolve(current(linkId));
+    },
+    cancelLink(linkId) {
+      const l = links.get(linkId);
+      if (l && current(linkId).state === 'created') l.status = { state: 'cancelled' };
+      return Promise.resolve();
+    },
+    verifyEvent(rawBody, signature) {
+      const want = Buffer.from(sign(rawBody), 'hex');
+      const got = Buffer.from(/^[0-9a-f]{64}$/.test(signature) ? signature : '', 'hex');
+      if (got.length !== want.length || !timingSafeEqual(got, want)) return null;
+      try {
+        const e = JSON.parse(rawBody) as PaymentEvent;
+        return typeof e.linkId === 'string' && typeof e.status?.state === 'string' ? e : null;
+      } catch {
+        return null;
+      }
+    },
+    pay(linkId) {
+      const l = links.get(linkId);
+      if (!l || current(linkId).state !== 'created')
+        throw new Error(`Link ${linkId} cannot be paid`);
+      l.status = { state: 'paid', paymentId: `pay_fake_${linkId.slice(6)}`, paidAt: clock() };
+      const body = JSON.stringify({ linkId, status: l.status });
+      return { body, signature: sign(body) };
+    },
+  };
+}
