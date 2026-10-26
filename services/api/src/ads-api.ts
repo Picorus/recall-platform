@@ -11,7 +11,7 @@ import { can, MAX_AD_UPLOAD_BYTES, type StaffAccess } from '@recall/domain';
 import { bookingAds, brandAds, Refusal, setBookingAds, uploadAd, type Ad } from '@recall/db';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Pool } from 'pg';
-import { HttpError, jsonBody, send } from './http.js';
+import { HttpError, jsonBody, send, withUpload } from './http.js';
 import { staffFor, type StaffApiConfig } from './staff-api.js';
 
 const mayLook = (a: StaffAccess) =>
@@ -28,39 +28,6 @@ async function refusedAs400<T>(f: () => Promise<T>): Promise<T> {
   } catch (e) {
     if (e instanceof Refusal || e instanceof RangeError) throw new HttpError(400, e.message);
     throw e;
-  }
-}
-
-/** Uploads at once (each holds a file of up to 64 MB in memory), and how long one may take. */
-const MAX_UPLOADS = 2;
-const UPLOAD_SECONDS = 180;
-let uploading = 0;
-
-/** The body as bytes, refused past `max` (read as it arrives, never more held), when it takes
- * longer than `seconds` (a slow sender cannot hold the memory), or when it is not exactly the
- * size declared (the admin site passes the browser's as x-upload-bytes): a cut-off upload is
- * never kept as a whole file. */
-async function bodyBytes(req: IncomingMessage, max: number, seconds: number): Promise<Buffer> {
-  const declared = Number(req.headers['x-upload-bytes'] ?? req.headers['content-length'] ?? NaN);
-  if (!Number.isSafeInteger(declared) || declared < 0)
-    throw new HttpError(411, 'Send the file with its size');
-  if (declared > max) throw new HttpError(413, 'The file is too large');
-  const late = setTimeout(
-    () => req.destroy(new HttpError(408, 'The upload took too long. Try again.')),
-    seconds * 1000,
-  );
-  try {
-    const chunks: Buffer[] = [];
-    let size = 0;
-    for await (const c of req) {
-      size += (c as Buffer).length;
-      if (size > max) throw new HttpError(413, 'The file is too large');
-      chunks.push(c as Buffer);
-    }
-    if (size !== declared) throw new HttpError(400, 'The upload was cut off. Try again.');
-    return Buffer.concat(chunks, size);
-  } finally {
-    clearTimeout(late);
   }
 }
 
@@ -132,18 +99,12 @@ export async function handleAds(
   if (path === '/ads/upload') {
     const brandId = q.get('brand') ?? '';
     if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(brandId)) throw new HttpError(400, 'Which brand?');
-    if (uploading >= MAX_UPLOADS)
-      throw new HttpError(503, 'Other uploads are running. Try again in a minute.');
-    uploading += 1;
-    try {
-      const data = await bodyBytes(req, MAX_AD_UPLOAD_BYTES, UPLOAD_SECONDS);
+    await withUpload(req, 'ads', MAX_AD_UPLOAD_BYTES, async (data) => {
       const ad = await refusedAs400(() =>
         uploadAd(pool, store, { brandId, name: q.get('name') ?? '', data, by: who }, now),
       );
       send(res, 200, { ad: shown(ad) });
-    } finally {
-      uploading -= 1;
-    }
+    });
     return true;
   }
   if (booking) {

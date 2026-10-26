@@ -70,3 +70,58 @@ export function cookies(req: IncomingMessage): Map<string, string> {
   }
   return out;
 }
+
+/** Uploads at once (each holds a file of up to 64 MB in memory), and how long one may take. */
+const MAX_UPLOADS = 2;
+const UPLOAD_SECONDS = 180;
+const uploading = new Map<string, number>();
+
+/** The body as bytes, refused past `max` (read as it arrives, never more held), when it takes
+ * longer than `seconds` (a slow sender cannot hold the memory), or when it is not exactly the
+ * size declared (the admin site passes the browser's as x-upload-bytes): a cut-off upload is
+ * never kept as a whole file. */
+async function bodyBytes(req: IncomingMessage, max: number, seconds: number): Promise<Buffer> {
+  const declared = Number(req.headers['x-upload-bytes'] ?? req.headers['content-length'] ?? NaN);
+  if (!Number.isSafeInteger(declared) || declared < 0)
+    throw new HttpError(411, 'Send the file with its size');
+  if (declared > max) throw new HttpError(413, 'The file is too large');
+  const late = setTimeout(
+    () => req.destroy(new HttpError(408, 'The upload took too long. Try again.')),
+    seconds * 1000,
+  );
+  try {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    for await (const c of req) {
+      size += (c as Buffer).length;
+      if (size > max) throw new HttpError(413, 'The file is too large');
+      chunks.push(c as Buffer);
+    }
+    if (size !== declared) throw new HttpError(400, 'The upload was cut off. Try again.');
+    return Buffer.concat(chunks, size);
+  } finally {
+    clearTimeout(late);
+  }
+}
+
+/**
+ * A file upload (ads, riders' documents): at most MAX_UPLOADS of each kind at once, each read
+ * whole (see bodyBytes) and handed to `use`.
+ */
+export async function withUpload(
+  req: IncomingMessage,
+  /** Each kind has its own slots (slow phone uploads never hold up ads). */
+  kind: 'ads' | 'documents',
+  max: number,
+  use: (data: Buffer) => Promise<void>,
+): Promise<void> {
+  const n = uploading.get(kind) ?? 0;
+  if (n >= MAX_UPLOADS)
+    throw new HttpError(503, 'Other uploads are running. Try again in a minute.');
+  uploading.set(kind, n + 1);
+  try {
+    await use(await bodyBytes(req, max, UPLOAD_SECONDS));
+  } finally {
+    uploading.set(kind, (uploading.get(kind) ?? 1) - 1);
+  }
+}

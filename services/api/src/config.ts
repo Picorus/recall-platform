@@ -1,6 +1,9 @@
 // The API's settings from the environment (names in .env.example; values never in the repository).
 import {
+  fakeBankCheck,
+  fakeEsign,
   fakeFileStore,
+  fakeKyc,
   fakePayments,
   type FileStore,
   type PaymentsAdapter,
@@ -48,6 +51,7 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     throw new Error('API_PROXY_HOPS must be at least 1 in production (a load balancer in front)');
   const payments = paymentsFrom(env, production);
   const files = filesFrom(env, production);
+  const riderChecks = riderChecksFrom(env, production);
   return {
     databaseUrl: need('DATABASE_URL'),
     host: env.API_HOST || '127.0.0.1',
@@ -58,6 +62,7 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     proxyHops,
     ...(payments ? { payments } : {}),
     ...(files ? { files } : {}),
+    ...(riderChecks ? { riderChecks } : {}),
   };
 }
 
@@ -96,6 +101,43 @@ export function paymentsFrom(
   if (!local && !env.PAYMENTS_WEBHOOK_SECRET)
     throw new Error('PAYMENTS_WEBHOOK_SECRET must be set when the API is reachable from outside');
   return fakePayments(env.PAYMENTS_WEBHOOK_SECRET ? { secret: env.PAYMENTS_WEBHOOK_SECRET } : {});
+}
+
+/** The API can be reached only from this machine (bound to loopback, no proxy, a local admin site). */
+function onlyLocal(env: NodeJS.ProcessEnv): boolean {
+  const loopback = (h: string) => /^(127\.0\.0\.1|localhost|::1|\[::1\])$/.test(h);
+  const origins = (env.ADMIN_ORIGINS || 'http://localhost:3001').split(',').map((o) => o.trim());
+  return (
+    loopback(env.API_HOST || '127.0.0.1') &&
+    Number(env.API_PROXY_HOPS || 0) === 0 &&
+    origins.every((o) => {
+      try {
+        return loopback(new URL(o).hostname);
+      } catch {
+        return false;
+      }
+    })
+  );
+}
+
+/**
+ * Rider checks (P3.11.2): identity, e-sign, bank. The providers come with their contracts (P4);
+ * until then no rider can be approved outside a laptop. On a laptop (only one nobody else can reach)
+ * the fakes pass at once, so the whole flow can be tried: anywhere else they would let anyone through.
+ */
+export function riderChecksFrom(
+  env: NodeJS.ProcessEnv,
+  production: boolean,
+): StaffApiConfig['riderChecks'] {
+  const provider = env.RIDER_CHECKS_PROVIDER || (production ? '' : 'fake');
+  if (provider === '') return undefined;
+  if (provider !== 'fake')
+    throw new Error(
+      `RIDER_CHECKS_PROVIDER ${provider} is not available yet (real ones come in P4)`,
+    );
+  if (production || !onlyLocal(env))
+    throw new Error('The fake rider checks are for a laptop only (nobody else can reach it)');
+  return { kyc: fakeKyc({ auto: true }), esign: fakeEsign({ auto: true }), bank: fakeBankCheck() };
 }
 
 /**

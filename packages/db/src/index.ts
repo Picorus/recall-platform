@@ -34,3 +34,5 @@ export * from './booking-desk.js';
 export * from './ads.js';
 export * from './ad-reviews.js';
 export * from './delivery.js';
+export * from './riders.js';
+export * from './rider-checks.js';
