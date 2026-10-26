@@ -15,6 +15,7 @@ import {
 } from '../../lib/riders';
 import { Shell, useMember } from '../../lib/session';
 import RiderPanel from './rider-panel';
+import FittingSlots from './fitting-slots';
 
 const isSuper = (m: Member) => m.role === 'super-admin';
 const canAct = (m: Member) => isSuper(m) || (m.role === 'admin' && m.areas.includes('operations'));
@@ -26,6 +27,7 @@ export default function RidersPage() {
   const [q, setQ] = useState('');
   const [status, setStatus] = useState<RiderStatus | ''>('');
   const [open, setOpen] = useState('');
+  const [slotsSeen, setSlotsSeen] = useState(0);
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState('');
   const [note, setNote] = useState('');
@@ -171,6 +173,7 @@ export default function RidersPage() {
           </button>
         </form>
       )}
+      <FittingSlots canAct={canAct(me)} onChanged={() => setSlotsSeen((n) => n + 1)} />
       {riders && (
         <div className="rc-table-wrap">
           <table className="rc-table" aria-label="Riders">
@@ -213,6 +216,7 @@ export default function RidersPage() {
       )}
       {open && (
         <RiderPanel
+          key={`${open}:${slotsSeen}`}
           riderId={open}
           canAct={canAct(me)}
           canNote={canNote(me)}

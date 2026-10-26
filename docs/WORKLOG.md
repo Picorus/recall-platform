@@ -2,6 +2,17 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 27 Oct 2026 · P3.11.3 · Fitting slots, a rider's money, leaving
+- P3.11.1–2 merged (PR #59).
+- **Fitting slots** (migration 0040, `packages/db/src/rider-fitting.ts`): Operations open a slot at a fitting centre (a start in India time, up to 90 days ahead; how long; how many bikes) and book an approved rider into it. One booking per rider (booking again moves it, the old one cancelled with why); a slot never takes more bikes than it has room for (one lock for slots and bookings); a booking is cancelled with why. Each booking and cancellation is an event. Fitting centres become a setting in P3.17.
+- **His money**: what he is owed now (rider pay in the ledger, less what was paid) and his recent payouts with how each went.
+- **If he leaves**: the screen returned (leaving needs it), the final pay (owed and paid in the next Monday run to his checked account, or a warning that he has none), and any screen loan still open with the bank (tell the bank).
+- **API**: fitting slots (look; open), book and cancel; the rider's page carries his booking, money and the leaving list.
+- **Admin site**: a Fitting slots card on the Riders page (open a slot); in a rider's panel: Fitting (book, move, cancel), Money, If he leaves.
+- Tests: database 2 (slots: approved riders only, room never exceeded, a booking moved and cancelled, a started slot refused; money and the leaving list with pay owed, a loan and a checked account); API (slots, booking, the page); browser (a slot opened and the rider booked into it).
+- Open: the rider app (P4) books his own slot; fitting centres as a setting (P3.17).
+- Next: P3.12, payouts.
+
 ## 27 Oct 2026 · P3.11.2 · Rider checks: identity, agreement, bank (and P3.11.1 review fixes)
 - **Adapters** (`packages/adapters/src/rider-checks.ts`) with working fakes: identity (KYC: Aadhaar through DigiLocker and PAN, through a provider), e-sign of the rider agreement, and a ₹1 bank check (penny drop). Real providers come with their contracts (P4); production runs without them until then.
 - **Checks** (migration 0039, `packages/db/src/rider-checks.ts`): each check started and its one result kept. Only what is needed (DPDP Act): the name on his ID and its last 4 characters, never the ID number; the bank check keeps a fingerprint of the account, and only an account that passed becomes where he is paid. Pending checks are asked about when his page opens and before an approval.
