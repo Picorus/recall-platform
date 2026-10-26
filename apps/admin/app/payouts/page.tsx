@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../../lib/api';
 import { clock, dayName, dayOfIndia, rupees } from '../../lib/format';
 import {
+  cancellable,
   paidText,
   runStage,
   sendable,
@@ -42,11 +43,12 @@ function LineActions({
         ? { riderId: row.riderId, reason: reason.trim() }
         : { riderId: row.riderId, held: what === 'hold', reason: reason.trim() };
     api(`/payouts/run/${runId}/${what === 'drop' ? 'drop' : 'hold'}`, body)
-      .then(() =>
+      .then(() => {
+        setReason('');
         onDone(
           `${row.riderId}: ${what === 'hold' ? 'held' : what === 'release' ? 'released' : 'dropped, owed in the next run'}.`,
-        ),
-      )
+        );
+      })
       .catch((e: unknown) => setError(failed(e, what)))
       .finally(() => setBusy(false));
   };
@@ -160,7 +162,7 @@ function Run({
       {note && <p role="status">{note}</p>}
       {run.canAct && (
         <div className="cal-bar">
-          {!run.approvedBy && run.lines > 0 && (
+          {run.canApprove && run.lines > 0 && (
             <button
               className="rc-button"
               type="button"
@@ -186,7 +188,7 @@ function Run({
               {(run.states.failed ?? 0) + (run.states.pending ?? 0) > 0 ? 'Send again' : 'Send'}
             </button>
           )}
-          {sendable(run) || (run.states.held ?? 0) > 0 ? (
+          {cancellable(run) ? (
             <>
               <label className="rc-field">
                 <span className="rc-field__label">Why cancel the rest (logged)</span>
@@ -376,6 +378,29 @@ export default function PayoutsPage() {
         </p>
       )}
       {note && <p role="status">{note}</p>}
+      {list && list.openOlder.length > 0 && (
+        <section className="rc-card stack" aria-label="Still open in older runs">
+          <h2 style={{ margin: 0 }}>Still open in older runs ({list.openOlder.length})</h2>
+          <p className="muted">
+            This money is not in any new run until it is released and sent, or dropped.
+          </p>
+          <ul>
+            {list.openOlder.map((l) => (
+              <li key={`${l.runId}/${l.riderId}`}>
+                <button
+                  className="rc-button rc-button--quiet"
+                  type="button"
+                  onClick={() => setOpen(l.runId)}
+                >
+                  {dayName(l.runId)}
+                </button>{' '}
+                <span className="mono">{l.riderId}</span> · {rupees(l.amountPaise)} ·{' '}
+                {STATE_NAMES[l.state]}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       {list && list.runs.length === 0 && <p className="muted">No payout runs yet.</p>}
       {list && list.runs.length > 0 && (
         <div className="rc-table-wrap">

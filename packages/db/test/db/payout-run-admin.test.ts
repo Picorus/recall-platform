@@ -13,6 +13,8 @@ import {
   approvePayoutRun,
   dropPayoutLine,
   holdPayoutLine,
+  openOlderLines,
+  payoutRunExists,
   payoutRunDue,
   payoutRunPage,
   payoutRuns,
@@ -95,6 +97,10 @@ describe('the payout run in admin (P3.12)', () => {
     );
     expect(await payoutRunPage(pool, '2027-08-02')).toBeNull();
     expect(await payoutRunPage(pool, 'nonsense')).toBeNull();
+    expect([await payoutRunExists(pool, MON), await payoutRunExists(pool, '2027-08-02')]).toEqual([
+      true,
+      false,
+    ]);
   });
 
   it('a held line is never sent until it is released', async () => {
@@ -106,7 +112,7 @@ describe('the payout run in admin (P3.12)', () => {
     );
     await expect(
       holdPayoutLine(pool, MON, 'RD-000904', true, FINANCE, 'no line', at),
-    ).rejects.toThrow(/has no line/);
+    ).rejects.toThrow(/No line for/);
     await holdPayoutLine(pool, MON, 'RD-000901', true, FINANCE, 'he says his UPI changed', at);
     await expect(
       holdPayoutLine(pool, MON, 'RD-000901', true, FINANCE, 'again', at),
@@ -177,15 +183,40 @@ describe('the payout run in admin (P3.12)', () => {
     await expect(
       approvePayoutRun(pool, '2027-08-16', FINANCE, ist('2027-08-16T11:00:00')),
     ).rejects.toThrow(/someone else/);
+    // The old run has nothing open; the new one is the latest.
+    expect(await openOlderLines(pool)).toEqual([]);
+  });
+
+  it('money held in an older run is shown until it is released', async () => {
+    const at16 = ist('2027-08-16T10:00:00');
+    await approvePayoutRun(pool, '2027-08-16', SUPER, at16 + 3600);
+    await holdPayoutLine(pool, '2027-08-16', 'RD-000902', true, FINANCE, 'checking', at16 + 3600);
+    await preparePayoutRun(pool, '2027-08-23', ist('2027-08-23T10:00:00'), 'meena');
+    expect(await openOlderLines(pool)).toEqual([
+      {
+        runId: '2027-08-16',
+        riderId: 'RD-000901',
+        amountPaise: netFor(15) - netFor(8),
+        state: 'waiting',
+      },
+      {
+        runId: '2027-08-16',
+        riderId: 'RD-000902',
+        amountPaise: netFor(15) - netFor(8),
+        state: 'held',
+      },
+      { runId: '2027-08-16', riderId: 'RD-000903', amountPaise: netFor(15), state: 'waiting' },
+    ]);
   });
 
   it('runs are listed newest first with their totals; holds are never edited', async () => {
     const runs = await payoutRuns(pool);
     expect(runs.map((r) => [r.runId, r.lines, r.approvedBy])).toEqual([
-      ['2027-08-16', 3, null],
+      ['2027-08-23', 3, null],
+      ['2027-08-16', 3, 'prateek'],
       [MON, 3, 'meena'],
     ]);
-    expect(runs[1]).toMatchObject({ paidPaise: 2 * netFor(8), states: { paid: 2, cancelled: 1 } });
+    expect(runs[2]).toMatchObject({ paidPaise: 2 * netFor(8), states: { paid: 2, cancelled: 1 } });
     await expect(pool.query('UPDATE payout_holds SET reason = $1', ['x'])).rejects.toThrow();
     await expect(pool.query('DELETE FROM payout_run_findings')).rejects.toThrow();
     const t = await trialBalance(pool);

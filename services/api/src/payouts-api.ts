@@ -15,7 +15,9 @@ import {
   cancelPayoutRun,
   dropPayoutLine,
   holdPayoutLine,
+  openOlderLines,
   payoutRunDue,
+  payoutRunExists,
   payoutRunPage,
   payoutRuns,
   preparePayoutRun,
@@ -31,6 +33,11 @@ import { staffFor, type StaffApiConfig } from './staff-api.js';
 const mayLook = (a: StaffAccess) => can(a, { area: 'finance', change: false });
 const mayAct = (a: StaffAccess) => ['finance', 'super-admin'].includes(moneyRole(a));
 const RIDER = /^RD-\d{6}$/;
+/** A UPI id (often his phone number) inside any text, with its bank kept. */
+const maskUpi = (t: string) =>
+  t.replace(/[A-Za-z0-9._-]{2,256}@([A-Za-z][A-Za-z0-9.]{1,63})/g, '••••@$1');
+const addDays = (date: string, n: number) =>
+  new Date(Date.parse(`${date}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
 
 /** A real Monday "YYYY-MM-DD" (2000–2099). */
 const isMonday = (x: string) =>
@@ -52,7 +59,7 @@ async function refused<T>(f: () => Promise<T>): Promise<T> {
   } catch (e) {
     if (!(e instanceof Refusal) && !(e instanceof RangeError)) throw e;
     if (e.message.startsWith('Only')) throw new HttpError(403, e.message);
-    if (e.message.startsWith('No payout run')) throw new HttpError(404, e.message);
+    if (/^No (payout run|line for)/.test(e.message)) throw new HttpError(404, e.message);
     if (/already|being sent|cannot be/.test(e.message)) throw new HttpError(409, e.message);
     throw new HttpError(400, e.message);
   }
@@ -73,9 +80,12 @@ export async function handlePayouts(
     const me = await staffFor(pool, cfg, req, nowMs);
     if (!mayLook(me.access)) throw new HttpError(403, 'Your access does not cover this');
     if (path === '/payouts') {
+      const open = await openOlderLines(pool);
       send(res, 200, {
         at: now,
         runs: await payoutRuns(pool),
+        // Money still waiting in older runs (held, not sent, failed): kept out of new runs.
+        openOlder: open,
         lastMonday: lastMonday(now),
         dueNow: payoutRunDue(now),
         canAct: mayAct(me.access),
@@ -87,11 +97,25 @@ export async function handlePayouts(
     if (!m) throw new HttpError(404, 'Not found');
     const page = await payoutRunPage(pool, m[1] ?? '');
     if (!page) throw new HttpError(404, `No payout run ${m[1] ?? ''}`);
-    // Read-only members see a UPI id's bank only (it is often his phone number).
-    const rows = mayAct(me.access)
+    // Read-only members see a UPI id's bank only (it is often his phone number), wherever it is.
+    const act = mayAct(me.access);
+    const rows = act
       ? page.rows
-      : page.rows.map((r) => ({ ...r, to: r.to.replace(/^UPI [^@ ]+@/, 'UPI ••••@') }));
-    send(res, 200, { at: now, ...page, rows, canAct: mayAct(me.access) });
+      : page.rows.map((r) => ({
+          ...r,
+          to: maskUpi(r.to),
+          reason: r.reason === null ? null : maskUpi(r.reason),
+          history: r.history.map((h) => ({ ...h, text: maskUpi(h.text) })),
+        }));
+    const { preparedById, ...shown } = page;
+    send(res, 200, {
+      at: now,
+      ...shown,
+      rows,
+      canAct: act,
+      // Whoever prepared a run by hand does not approve it.
+      canApprove: act && page.approvedBy === null && preparedById !== me.id,
+    });
     return true;
   }
   if (method !== 'POST') throw new HttpError(405, 'Not allowed');
@@ -105,6 +129,10 @@ export async function handlePayouts(
   if (path === '/payouts/prepare') {
     const monday = str(b, 'monday', 10);
     if (!isMonday(monday)) throw new HttpError(400, 'Which Monday? (YYYY-MM-DD)');
+    // This week's run, or last week's if it was missed: never an old week by mistake.
+    const latest = lastMonday(now);
+    if (monday !== latest && monday !== addDays(latest, -7))
+      throw new HttpError(400, `Only this Monday's run (${latest}) or last week's can be prepared`);
     const run = await refused(() => preparePayoutRun(pool, monday, now, me.id));
     send(res, 200, { runId: run.runId, lines: run.lines.length });
     return true;
@@ -114,8 +142,7 @@ export async function handlePayouts(
   const runId = m[1] ?? '';
   const action = m[2];
   // A run that does not exist is a 404 whatever is asked of it.
-  if ((await payoutRuns(pool, 200)).every((r) => r.runId !== runId))
-    throw new HttpError(404, `No payout run ${runId}`);
+  if (!(await payoutRunExists(pool, runId))) throw new HttpError(404, `No payout run ${runId}`);
   const rider = () => {
     const id = str(b, 'riderId', 9);
     if (!RIDER.test(id)) throw new HttpError(400, 'Which rider?');

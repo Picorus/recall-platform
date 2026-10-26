@@ -147,7 +147,7 @@ export async function approvePayoutRun(
     if (!run.rows[0]) throw new Refusal(`No payout run ${runId}`);
     // Whoever prepared a run by hand cannot approve it too.
     if (run.rows[0].prepared_by === by.id)
-      throw new Refusal('A run is approved by someone else than who prepared it');
+      throw new Refusal('Only someone else than who prepared a run can approve it');
     const before = await c.query('SELECT 1 FROM payout_approvals WHERE run_id = $1', [runId]);
     if (before.rows.length > 0) throw new Refusal(`The run for ${runId} is already approved`);
     await c.query(
@@ -432,7 +432,7 @@ async function cancelLines(
       [runId, only],
     );
     if (only !== null && lines.rows.length === 0)
-      throw new Refusal(`${only} has no line in the run for ${runId}`);
+      throw new Refusal(`No line for ${only} in the run for ${runId}`);
     const cancelled: string[] = [];
     for (const l of lines.rows) {
       const before = await triesOf(t, runId, l.rider_id);
@@ -511,7 +511,7 @@ export async function holdPayoutLine(
       runId,
       riderId,
     ]);
-    if (line.rows.length === 0) throw new Refusal(`${riderId} has no line in the run for ${runId}`);
+    if (line.rows.length === 0) throw new Refusal(`No line for ${riderId} in the run for ${runId}`);
     const before = await triesOf(t, runId, riderId);
     if (before.last !== null && before.last !== 'failed')
       throw new Refusal(`${riderId}'s payout is ${before.last}: it cannot be held or released now`);
@@ -563,6 +563,8 @@ export interface PayoutRunSummary {
   readonly runId: string;
   readonly preparedAt: number;
   readonly preparedBy: string;
+  /** Who prepared it, as stored (a staff id, or "system"). */
+  readonly preparedById: string;
   readonly approvedBy: string | null;
   readonly approvedAt: number | null;
   readonly lines: number;
@@ -577,8 +579,11 @@ const WHO = (col: string) => `coalesce((SELECT name FROM staff WHERE id = ${col}
 
 const secs = (d: Date | null) => (d === null ? null : Math.floor(d.getTime() / 1000));
 
-/** Each line of runs with its state now (`runId` null: all runs). */
-async function lineStates(c: Q, runId: string | null) {
+/**
+ * Each line of the runs from `from` to `to` (India dates; null: no limit) with its state now;
+ * `open`: only lines not yet paid, given up or dropped.
+ */
+async function lineStates(c: Q, from: string | null, to: string | null, open = false) {
   const r = await c.query<{
     run_id: string;
     rider_id: string;
@@ -602,9 +607,10 @@ async function lineStates(c: Q, runId: string | null) {
        LEFT JOIN LATERAL (SELECT held, reason FROM payout_holds x
                            WHERE x.run_id = l.run_id AND x.rider_id = l.rider_id
                            ORDER BY seq DESC LIMIT 1) h ON true
-      WHERE $1::date IS NULL OR l.run_id = $1::date
+      WHERE ($1::date IS NULL OR l.run_id >= $1::date) AND ($2::date IS NULL OR l.run_id <= $2::date)
+        AND (NOT $3 OR last.status IS NULL OR last.status IN ('pending', 'failed'))
       ORDER BY l.run_id DESC, l.rider_id`,
-    [runId],
+    [from, to, open],
   );
   return r.rows.map((x) => {
     // A hold counts only while the line is not at the provider or settled.
@@ -626,23 +632,61 @@ async function lineStates(c: Q, runId: string | null) {
 
 /** The latest runs, newest first, each with its totals and how many lines stand where. */
 export async function payoutRuns(c: Q, limit = 26): Promise<PayoutRunSummary[]> {
+  return runSummaries(c, limit, null);
+}
+
+/** Whether a run was prepared for this Monday. */
+export async function payoutRunExists(c: Q, runId: string): Promise<boolean> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(runId)) return false;
+  const r = await c.query('SELECT 1 FROM payout_runs WHERE run_id = $1::date', [runId]);
+  return r.rows.length > 0;
+}
+
+/**
+ * Money still waiting in runs before the latest one: lines held, not sent, failed or pending at the
+ * provider. Kept out of every new run until finance releases, sends or drops them, so admin shows
+ * them whatever their age.
+ */
+export async function openOlderLines(
+  c: Q,
+): Promise<{ runId: string; riderId: string; amountPaise: number; state: LineState }[]> {
+  const latest = await c.query<{ run_id: string | null }>(
+    'SELECT max(run_id)::text AS run_id FROM payout_runs',
+  );
+  const before = latest.rows[0]?.run_id;
+  if (!before) return [];
+  const prev = new Date(Date.parse(`${before}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
+  return (await lineStates(c, null, prev, true)).map((l) => ({
+    runId: l.runId,
+    riderId: l.riderId,
+    amountPaise: l.amountPaise,
+    state: l.state,
+  }));
+}
+
+async function runSummaries(c: Q, limit: number, only: string | null): Promise<PayoutRunSummary[]> {
   const runs = await c.query<{
     run_id: string;
     prepared_at: Date;
     prepared_by: string;
+    prepared_by_id: string;
     approved_by: string | null;
     approved_at: Date | null;
   }>(
     `SELECT r.run_id::text AS run_id, r.prepared_at, ${WHO('r.prepared_by')} AS prepared_by,
+            r.prepared_by AS prepared_by_id,
             ${WHO('a.approved_by')} AS approved_by, a.approved_at
        FROM payout_runs r LEFT JOIN payout_approvals a USING (run_id)
+      WHERE $2::date IS NULL OR r.run_id = $2::date
       ORDER BY r.run_id DESC LIMIT $1`,
-    [Math.max(1, Math.min(limit, 200))],
+    [Math.max(1, Math.min(limit, 200)), only],
   );
   const oldest = runs.rows.at(-1)?.run_id;
-  const lines = oldest
-    ? (await lineStates(c, null)).filter((l) => l.runId >= oldest)
-    : ([] as Awaited<ReturnType<typeof lineStates>>);
+  const newest = runs.rows[0]?.run_id;
+  const lines =
+    oldest && newest
+      ? await lineStates(c, oldest, newest)
+      : ([] as Awaited<ReturnType<typeof lineStates>>);
   return runs.rows.map((r) => {
     const mine = lines.filter((l) => l.runId === r.run_id);
     const states: Partial<Record<LineState, number>> = {};
@@ -651,6 +695,7 @@ export async function payoutRuns(c: Q, limit = 26): Promise<PayoutRunSummary[]> 
       runId: r.run_id,
       preparedAt: secs(r.prepared_at) ?? 0,
       preparedBy: r.prepared_by,
+      preparedById: r.prepared_by_id,
       approvedBy: r.approved_by,
       approvedAt: secs(r.approved_at),
       lines: mine.length,
@@ -684,10 +729,10 @@ export interface PayoutRunPage extends PayoutRunSummary {
 /** One run as admin shows it, or null if there is no such run. */
 export async function payoutRunPage(c: Q, runId: string): Promise<PayoutRunPage | null> {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(runId)) return null;
-  const summary = (await payoutRuns(c, 200)).find((r) => r.runId === runId);
+  const [summary] = await runSummaries(c, 1, runId);
   if (!summary) return null;
   const [lines, attempts, holds, found] = await Promise.all([
-    lineStates(c, runId),
+    lineStates(c, runId, runId),
     c.query<{ rider_id: string; status: string; reason: string | null; at: Date }>(
       `SELECT rider_id, status, reason, at FROM payout_attempts WHERE run_id = $1
         ORDER BY rider_id, attempt`,

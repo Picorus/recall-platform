@@ -50,6 +50,13 @@ export interface RunSummary {
 export interface RunList {
   readonly at: number;
   readonly runs: readonly RunSummary[];
+  /** Money still waiting in older runs (held, not sent, failed, pending). */
+  readonly openOlder: readonly {
+    runId: string;
+    riderId: string;
+    amountPaise: number;
+    state: LineState;
+  }[];
   readonly lastMonday: string;
   readonly dueNow: string | null;
   readonly canAct: boolean;
@@ -75,6 +82,8 @@ export interface RunPage extends RunSummary {
     readonly lateChanges: readonly { riderId: string; grossChange: number; month: string }[];
   } | null;
   readonly canAct: boolean;
+  /** Not yet approved, and this member did not prepare it. */
+  readonly canApprove: boolean;
 }
 
 /** "2 paid · 1 held", in a fixed order. */
@@ -100,6 +109,10 @@ export function runStage(r: RunSummary): string {
 export function paidText(r: RunSummary): string {
   return `${rupees(r.paidPaise)} of ${rupees(r.totalPaise)} paid`;
 }
+
+/** Lines a cancel would move to the next run: not sent, held or failed. */
+export const cancellable = (r: RunSummary) =>
+  (['waiting', 'held', 'failed'] as const).some((k) => (r.states[k] ?? 0) > 0);
 
 /** Lines that may still be sent (or asked again). */
 export const sendable = (r: RunSummary) =>

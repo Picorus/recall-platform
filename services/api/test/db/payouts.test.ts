@@ -102,6 +102,7 @@ describe('payout routes (P3.12)', () => {
     const list = (await (await get(look, '/payouts')).json()) as Record<string, unknown>;
     expect(list).toMatchObject({
       runs: [],
+      openOlder: [],
       lastMonday: '2027-08-09',
       dueNow: '2027-08-09',
       canAct: false,
@@ -109,6 +110,8 @@ describe('payout routes (P3.12)', () => {
     });
     expect((await post(look, '/payouts/prepare', { monday: '2027-08-09' })).status).toBe(403);
     expect((await post(finA, '/payouts/prepare', { monday: '2027-08-10' })).status).toBe(400);
+    // Never an old week by mistake (this Monday or the one before only).
+    expect((await post(finA, '/payouts/prepare', { monday: '2027-07-26' })).status).toBe(400);
     const noOrigin = await fetch(`${url}/payouts/prepare`, {
       method: 'POST',
       headers: { cookie: finA, 'content-type': 'application/json' },
@@ -120,13 +123,25 @@ describe('payout routes (P3.12)', () => {
     expect(await prepared.json()).toEqual({ runId: '2027-08-09', lines: 2 });
     expect((await post(finA, '/payouts/prepare', { monday: '2027-08-09' })).status).toBe(409);
     // Whoever prepared it cannot approve it; someone else can, once.
-    expect((await post(finA, `${RUN}/approve`)).status).toBe(400);
+    const canApprove = async (cookie: string) =>
+      ((await (await get(cookie, RUN)).json()) as { canApprove: boolean }).canApprove;
+    expect([await canApprove(finA), await canApprove(finB), await canApprove(look)]).toEqual([
+      false,
+      true,
+      false,
+    ]);
+    expect((await post(finA, `${RUN}/approve`)).status).toBe(403);
     expect((await post(finB, `${RUN}/approve`)).status).toBe(200);
     expect((await post(finB, `${RUN}/approve`)).status).toBe(409);
 
     expect(
-      (await post(finA, `${RUN}/hold`, { riderId: 'RD-000701', held: true, reason: 'checking' }))
-        .status,
+      (
+        await post(finA, `${RUN}/hold`, {
+          riderId: 'RD-000701',
+          held: true,
+          reason: 'he says use 9848099999@okicici now',
+        })
+      ).status,
     ).toBe(200);
     expect((await post(finA, `${RUN}/hold`, { riderId: 'RD-000701', held: 'yes' })).status).toBe(
       400,
@@ -138,7 +153,13 @@ describe('payout routes (P3.12)', () => {
 
     // A read-only member sees a UPI id's bank only.
     const seen = (await (await get(look, RUN)).json()) as {
-      rows: { riderId: string; to: string; state: string }[];
+      rows: {
+        riderId: string;
+        to: string;
+        state: string;
+        reason: string;
+        history: { text: string }[];
+      }[];
       canAct: boolean;
     };
     expect(seen.canAct).toBe(false);
@@ -146,6 +167,9 @@ describe('payout routes (P3.12)', () => {
       ['RD-000701', 'UPI ••••@okbank · RD-000701', 'held'],
       ['RD-000702', 'UPI ••••@okaxis · RD-000702', 'paid'],
     ]);
+    expect(seen.rows[0]?.reason).toBe('he says use ••••@okicici now');
+    expect(seen.rows[0]?.history[0]?.text).toBe('held: he says use ••••@okicici now');
+    expect(JSON.stringify(seen)).not.toContain('9848');
     const full = (await (await get(finA, RUN)).json()) as { rows: { to: string }[] };
     expect(full.rows[0]?.to).toBe('UPI 9848012345@okbank · RD-000701');
 
@@ -161,6 +185,9 @@ describe('payout routes (P3.12)', () => {
       (await post(finA, `${RUN}/drop`, { riderId: 'RD-000702', reason: 'too late now' })).status,
     ).toBe(409);
     expect((await post(finA, `${RUN}/drop`, { riderId: 'nobody', reason: 'x' })).status).toBe(400);
+    expect(
+      (await post(finA, `${RUN}/drop`, { riderId: 'RD-000799', reason: 'no such line' })).status,
+    ).toBe(404);
 
     expect((await get(finA, '/payouts/run/2027-08-02')).status).toBe(404);
     expect((await post(finA, '/payouts/run/2027-08-02/approve')).status).toBe(404);
