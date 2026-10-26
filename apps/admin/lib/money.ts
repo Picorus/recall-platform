@@ -116,3 +116,43 @@ export interface OwedBackList {
   readonly canPay: boolean;
   readonly canSend: boolean;
 }
+
+/** P3.13.3: agencies and aggregators. */
+export type PartnerKind = 'agency' | 'aggregator';
+
+export interface PartnerRow {
+  readonly partnerId: string;
+  readonly kind: PartnerKind;
+  readonly name: string;
+  readonly owedPaise: number;
+  readonly bookings: number;
+}
+
+export interface PartnerList {
+  readonly partners: readonly PartnerRow[];
+  readonly canPay: boolean;
+  readonly canGiveCut: boolean;
+}
+
+export interface PartnerStatement {
+  readonly partnerId: string;
+  readonly kind: PartnerKind;
+  readonly name: string;
+  readonly month: string;
+  readonly openingPaise: number;
+  readonly cuts: readonly {
+    bookingId: string;
+    cutPaise: number;
+    gstPaise: number;
+    tdsPaise: number;
+    netPaise: number;
+  }[];
+  readonly payments: readonly { at: number; amountPaise: number; reference: string; by: string }[];
+  readonly invoices: readonly {
+    invoiceNo: string;
+    invoiceDate: string;
+    taxablePaise: number;
+    gstPaise: number;
+  }[];
+  readonly closingPaise: number;
+}

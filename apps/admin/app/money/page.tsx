@@ -8,6 +8,7 @@ import { clock, dayOfIndia, rupees } from '../../lib/format';
 import { E_INVOICE, PAYMENT_NAMES, type MoneyMonth } from '../../lib/money';
 import { Shell, useMember } from '../../lib/session';
 import OwedBack from './owed-back';
+import Partners from './partners';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 /** "Oct 2026" from "2026-10". */
@@ -129,6 +130,7 @@ export default function MoneyPage() {
           Download files for the accountant
         </button>
       </div>
+      <Partners month={month} />
       {g && (
         <section className="stack" aria-label="GST for the month">
           <h2 style={{ margin: 0 }}>GST for {monthName(g.month)}</h2>

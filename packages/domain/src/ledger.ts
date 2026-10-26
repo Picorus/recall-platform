@@ -362,3 +362,36 @@ export function cutAccrued(
     ],
   };
 }
+
+/**
+ * P3.13.3: a partner paid what it is owed for its cuts, by a bank transfer finance made (with its
+ * statement): out of what is owed to the partner, out of the bank.
+ */
+export function partnerPaid(p: {
+  readonly partnerId: string;
+  readonly kind: 'agency' | 'aggregator';
+  readonly seq: number;
+  readonly amount: number;
+  readonly reference: string;
+  readonly at: number;
+}): Entry {
+  return {
+    entryId: `partner-paid:${p.kind}:${p.partnerId}:${p.seq}`,
+    at: p.at,
+    kind: 'partner-paid',
+    ref: p.partnerId,
+    memo: `${p.kind === 'agency' ? 'Agency' : 'Aggregator'} ${p.partnerId} paid by bank transfer ${p.reference}`.slice(
+      0,
+      300,
+    ),
+    postings: [
+      ...post(
+        p.kind === 'agency' ? 'agency-payable' : 'aggregator-payable',
+        'debit',
+        p.amount,
+        p.partnerId,
+      ),
+      ...post('bank', 'credit', p.amount, p.partnerId),
+    ],
+  };
+}

@@ -7,16 +7,29 @@
 //   GET  /money/owed-back             what is still owed back, with each try
 //   POST /money/owed-back/send        { owedEntry }  through the payment provider (again: retries)
 //   POST /money/owed-back/by-hand     { owedEntry, reference, note }  a bank transfer made by hand
+// P3.13.3: agencies and aggregators:
+//   GET  /money/partners                       each partner with a cut and what it is owed
+//   GET  /money/partners/statement?partner=&kind=&month=   a month's statement (and its CSV)
+//   POST /money/partners/pay      { partnerId, kind, amountPaise, reference, note }  finance
+//   POST /money/partners/invoice  { partnerId, invoiceNo, invoiceDate, gstin?, taxablePaise,
+//                                   gstPaise }  finance
+//   POST /money/partners/cut      { bookingId, kind, partnerId, gstBp, rateBp?, reason }  super admin
 import {
   accountantExport,
+  giveCut,
   gstDocuments,
   gstSummary,
   moneyOwedBack,
   moneyPosition,
+  partners,
+  partnerStatement,
   paymentsIn,
+  payPartner,
   recordMoneyBackByHand,
+  recordPartnerInvoice,
   Refusal,
   sendMoneyBack,
+  statementCsv,
   unknownPayments,
 } from '@recall/db';
 import { can, moneyRole } from '@recall/domain';
@@ -40,6 +53,8 @@ export async function handleMoney(
   if (path !== '/money' && !path.startsWith('/money/')) return false;
   if (req.method === 'POST' && path.startsWith('/money/owed-back/'))
     return payBack(pool, cfg, req, res, nowMs, path);
+  if (req.method === 'POST' && path.startsWith('/money/partners/'))
+    return partnerAction(pool, cfg, req, res, nowMs, path);
   if ((req.method ?? 'GET') !== 'GET') throw new HttpError(405, 'Not allowed');
   const me = await staffFor(pool, cfg, req, nowMs);
   if (!can(me.access, { area: 'finance', change: false }))
@@ -79,6 +94,26 @@ export async function handleMoney(
       canPay: ['finance', 'super-admin'].includes(moneyRole(me.access)),
       canSend: cfg.payments !== undefined,
     });
+    return true;
+  }
+  if (path === '/money/partners') {
+    send(res, 200, {
+      at: now,
+      partners: await partners(pool),
+      canPay: ['finance', 'super-admin'].includes(moneyRole(me.access)),
+      canGiveCut: me.access.role === 'super-admin',
+    });
+    return true;
+  }
+  if (path === '/money/partners/statement') {
+    const q = new URLSearchParams(query);
+    const partner = q.get('partner') ?? '';
+    const kind = q.get('kind');
+    if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(partner)) throw new HttpError(400, 'Which partner?');
+    if (kind !== 'agency' && kind !== 'aggregator')
+      throw new HttpError(400, 'kind must be agency or aggregator');
+    const statement = await partnerStatement(pool, partner, kind, month);
+    send(res, 200, { at: now, statement, file: statementCsv(statement) });
     return true;
   }
   if (path === '/money/export') {
@@ -131,6 +166,105 @@ async function payBack(
     const note = typeof b.note === 'string' ? b.note : '';
     await refused(() => recordMoneyBackByHand(pool, owedEntry, { reference, note }, by, now));
     send(res, 200, { owedEntry, state: 'by-hand' });
+    return true;
+  }
+  throw new HttpError(404, 'Not found');
+}
+
+/** Pays a partner, records its invoice (finance) or gives a cut on a booking (super admin). */
+async function partnerAction(
+  pool: Pool,
+  cfg: StaffApiConfig,
+  req: IncomingMessage,
+  res: ServerResponse,
+  nowMs: number,
+  path: string,
+): Promise<boolean> {
+  const origin = req.headers.origin;
+  if (!origin || !cfg.origins.includes(origin)) throw new HttpError(403, 'Not from the admin site');
+  const me = await staffFor(pool, cfg, req, nowMs);
+  const by = { id: me.id, role: moneyRole(me.access) };
+  const now = Math.floor(nowMs / 1000);
+  const b = await jsonBody(req);
+  const kind = b.kind;
+  if (kind !== 'agency' && kind !== 'aggregator')
+    throw new HttpError(400, 'kind must be agency or aggregator');
+  const partnerId = str(b, 'partnerId', 64);
+  const whole = (key: string) => {
+    const v = b[key];
+    if (typeof v !== 'number' || !Number.isSafeInteger(v) || v < 0)
+      throw new HttpError(400, `${key} must be whole paise`);
+    return v;
+  };
+  const refused = async <T>(f: () => Promise<T>): Promise<T> => {
+    try {
+      return await f();
+    } catch (e) {
+      if (!(e instanceof Refusal) && !(e instanceof RangeError)) throw e;
+      if (e.message.startsWith('Only')) throw new HttpError(403, e.message);
+      if (e.message.startsWith('No booking')) throw new HttpError(404, e.message);
+      if (/already/.test(e.message)) throw new HttpError(409, e.message);
+      throw new HttpError(400, e.message);
+    }
+  };
+  if (path === '/money/partners/pay') {
+    if (by.role !== 'finance' && by.role !== 'super-admin')
+      throw new HttpError(403, 'Only finance or a super admin records a payment to a partner');
+    const amountPaise = whole('amountPaise');
+    const reference = str(b, 'reference', 60);
+    const note = typeof b.note === 'string' ? b.note : '';
+    const seq = await refused(() =>
+      payPartner(pool, { partnerId, kind, amountPaise, reference, note }, by, now),
+    );
+    send(res, 200, { partnerId, kind, seq });
+    return true;
+  }
+  if (path === '/money/partners/invoice') {
+    if (by.role !== 'finance' && by.role !== 'super-admin')
+      throw new HttpError(403, 'Only finance or a super admin records a partner invoice');
+    const invoiceNo = str(b, 'invoiceNo', 16).trim();
+    const invoiceDate = str(b, 'invoiceDate', 10);
+    const gstin = typeof b.gstin === 'string' && b.gstin.trim() ? b.gstin.trim() : undefined;
+    const taxablePaise = whole('taxablePaise');
+    const gstPaise = whole('gstPaise');
+    if (invoiceNo.length < 1) throw new HttpError(400, 'The invoice number');
+    await refused(() =>
+      recordPartnerInvoice(
+        pool,
+        {
+          partnerId,
+          invoiceNo,
+          invoiceDate,
+          ...(gstin ? { gstin } : {}),
+          taxablePaise,
+          gstPaise,
+        },
+        me.id,
+      ),
+    );
+    send(res, 200, { partnerId, invoiceNo });
+    return true;
+  }
+  if (path === '/money/partners/cut') {
+    if (me.access.role !== 'super-admin')
+      throw new HttpError(403, 'Only a super admin gives a cut');
+    const bookingId = str(b, 'bookingId', 40);
+    if (!/^BK-[A-Za-z0-9-]{1,36}$/.test(bookingId)) throw new HttpError(400, 'Which booking?');
+    if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(partnerId)) throw new HttpError(400, 'Which partner?');
+    const gstBp = whole('gstBp');
+    const rateBp = b.rateBp === undefined || b.rateBp === null ? undefined : whole('rateBp');
+    const reason = str(b, 'reason', 300).trim();
+    if (reason.length < 5) throw new HttpError(400, 'Say why (5 letters or more)');
+    await refused(() =>
+      giveCut(
+        pool,
+        { bookingId, kind, partnerId, gstBp, ...(rateBp === undefined ? {} : { rateBp }) },
+        by,
+        reason,
+        now,
+      ),
+    );
+    send(res, 200, { bookingId, kind, partnerId });
     return true;
   }
   throw new HttpError(404, 'Not found');

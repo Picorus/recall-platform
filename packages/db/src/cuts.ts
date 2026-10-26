@@ -5,6 +5,7 @@ import { priceBooks } from './bookings.js';
 import type { Pool, PoolClient } from 'pg';
 import { postEntry } from './ledger.js';
 import { inTransaction } from './makeups.js';
+import { Refusal } from './refusal.js';
 
 /**
  * Records that RECALL gives a cut on a booking (Prateek, 24 Oct 2026: never automatic). Decided once
@@ -18,7 +19,7 @@ export async function giveCut(
   reason: string,
   now: number = Math.floor(Date.now() / 1000),
 ): Promise<void> {
-  if (by.role !== 'super-admin') throw new Error('Only a super admin can give a cut');
+  if (by.role !== 'super-admin') throw new Refusal('Only a super admin can give a cut');
   if (
     cut.rateBp !== undefined &&
     !(Number.isSafeInteger(cut.rateBp) && cut.rateBp >= 1 && cut.rateBp <= CUT_MAX_BP)
@@ -39,16 +40,22 @@ export async function giveCut(
       [cut.bookingId],
     );
     const row = r.rows[0];
-    if (!row) throw new Error(`No booking ${cut.bookingId}`);
+    if (!row) throw new Refusal(`No booking ${cut.bookingId}`);
     // Cuts are on delivered plays: only a paid booking that can still deliver can have one.
-    if (row.trial) throw new Error('A trial has no cut: nothing is paid');
-    if (!row.paid) throw new Error('A cut can only be given on a paid booking');
+    if (row.trial) throw new Refusal('A trial has no cut: nothing is paid');
+    if (!row.paid) throw new Refusal('A cut can only be given on a paid booking');
     if (row.state === 'cancelled' || row.state === 'ads-missing')
-      throw new Error(`A ${row.state} booking delivers nothing, so it has no cut`);
+      throw new Refusal(`A ${row.state} booking delivers nothing, so it has no cut`);
     // The rates in force when the cut is given (not when the booking was sold).
     const book = priceBookAt(await priceBooks(c), isoAt(now));
-    if (!book) throw new Error('No price book in force');
+    if (!book) throw new Refusal('No price book in force');
     const rate = cut.rateBp ?? book.cuts[cut.kind];
+    const given = await c.query(
+      'SELECT partner_id FROM booking_cuts WHERE booking_id = $1 AND kind = $2',
+      [cut.bookingId, cut.kind],
+    );
+    if (given.rows.length > 0)
+      throw new Refusal(`An ${cut.kind} cut on ${cut.bookingId} was already given`);
     await c.query(
       `INSERT INTO booking_cuts
          (booking_id, kind, partner_id, rate_bp, gst_bp, tds_bp, decided_by, reason)

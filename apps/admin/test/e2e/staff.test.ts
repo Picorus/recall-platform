@@ -863,6 +863,35 @@ it('the Money page: where money stands, the payment and its tax invoice, the acc
     .getByRole('region', { name: 'Owed back to brands' })
     .getByText('Nothing owed back.')
     .waitFor();
+  // P3.13.3: a cut for an agency on the paid booking; its statement; their invoice recorded.
+  const partnersCard = page.getByRole('region', { name: 'Agencies and aggregators' });
+  const give = partnersCard.getByRole('form', { name: 'Give a cut on a booking' });
+  await give.getByLabel('Booking').fill(bk);
+  await give.getByLabel('Partner id').fill('adwise');
+  await give.getByLabel('Why (logged)').fill('agency brought this brand');
+  await give.getByRole('button', { name: 'Give cut' }).click();
+  await give.getByText(`Cut given on ${bk}.`).waitFor();
+  const partnerRow = partnersCard
+    .getByRole('table', { name: 'Partners' })
+    .getByRole('row', { name: /adwise/ });
+  await partnerRow.getByRole('button', { name: 'Statement' }).click();
+  const statement = partnersCard.getByRole('region', { name: 'Statement of adwise' });
+  await statement.getByText('Owed at the end').waitFor();
+  const inv = statement.getByRole('form', { name: 'Record their invoice' });
+  await inv.getByLabel('Invoice number').fill('AW/26/001');
+  await inv.getByLabel('Date').fill(new Date(clock() + 330 * 60_000).toISOString().slice(0, 10));
+  await inv.getByLabel('Before GST (₹)').fill('100');
+  await inv.getByRole('button', { name: 'Record invoice' }).click();
+  await statement.getByText('Invoice AW/26/001 of adwise recorded.').waitFor();
+  // Nothing delivered yet, so nothing owed: a payment is refused.
+  const pay = statement.getByRole('form', { name: 'Record a payment' });
+  await pay.getByLabel('Paid (₹)').fill('100');
+  await pay.getByLabel('Bank reference (UTR)').fill('UTR12345678');
+  await pay.getByRole('button', { name: 'Record payment' }).click();
+  await statement
+    .getByRole('alert')
+    .getByText(/adwise is owed nothing/)
+    .waitFor();
   const download = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Download files for the accountant' }).click();
   expect((await download).suggestedFilename()).toMatch(/^invoices-\d{4}-\d{2}\.csv$/);

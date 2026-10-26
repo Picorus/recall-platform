@@ -10,7 +10,13 @@ import {
   sendForPayment,
 } from '@recall/db';
 import { freshDatabase } from '@recall/db/test-db';
-import { launchAreas, moneyToReturn, PRICE_BOOK_V1, refundApproved } from '@recall/domain';
+import {
+  cutAccrued,
+  launchAreas,
+  moneyToReturn,
+  PRICE_BOOK_V1,
+  refundApproved,
+} from '@recall/domain';
 import { randomBytes } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -186,5 +192,89 @@ describe('money routes (P3.13.1)', () => {
       await fetch(`${url}/money/owed-back`, { headers: { cookie: fin } })
     ).json()) as { items: []; canPay: boolean };
     expect(after).toMatchObject({ items: [], canPay: true });
+  });
+
+  it('partners: a super admin gives a cut; finance sees the statement, pays and records invoices', async () => {
+    const boss = await member('prateek@recall.in', { role: 'super-admin', areas: [] });
+    const fin = await member('farah2@recall.in', { role: 'admin', areas: ['finance'] });
+    const look = await member('lata3@recall.in', { role: 'read-only', areas: ['finance'] });
+    const send = (cookie: string, path: string, body: object) =>
+      fetch(`${url}${path}`, {
+        method: 'POST',
+        headers: { cookie, origin: 'https://admin.test', 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    const cut = {
+      bookingId: 'BK-MY-1',
+      kind: 'agency',
+      partnerId: 'adwise',
+      gstBp: 1_800,
+      reason: 'agency deal',
+    };
+    expect((await send(fin, '/money/partners/cut', cut)).status).toBe(403);
+    expect((await send(boss, '/money/partners/cut', { ...cut, bookingId: 'BK-NONE' })).status).toBe(
+      404,
+    );
+    expect((await send(boss, '/money/partners/cut', cut)).status).toBe(200);
+    expect((await send(boss, '/money/partners/cut', cut)).status).toBe(409);
+    // Plays delivered: ₹18,000 earned, the agency's cut brought up to date.
+    const e = cutAccrued(
+      {
+        bookingId: 'BK-MY-1',
+        kind: 'agency',
+        partnerId: 'adwise',
+        rateBp: 1_000,
+        gstBp: 1_800,
+        tdsBp: 200,
+      },
+      1_800_000,
+      { cut: 0, gst: 0, tds: 0 },
+      1,
+      NOW + 100,
+    );
+    if (e) await post(pool, e, 'closer');
+    const list = (await (
+      await fetch(`${url}/money/partners`, { headers: { cookie: look } })
+    ).json()) as {
+      partners: { partnerId: string; owedPaise: number }[];
+      canPay: boolean;
+    };
+    expect(list).toMatchObject({
+      partners: [{ partnerId: 'adwise', owedPaise: 176_949 }],
+      canPay: false,
+    });
+    const st = (await (
+      await fetch(`${url}/money/partners/statement?partner=adwise&kind=agency&month=2027-08`, {
+        headers: { cookie: look },
+      })
+    ).json()) as { statement: { closingPaise: number }; file: { name: string } };
+    expect(st.statement.closingPaise).toBe(176_949);
+    expect(st.file.name).toBe('statement-agency-adwise-2027-08.csv');
+    const pay = {
+      partnerId: 'adwise',
+      kind: 'agency',
+      amountPaise: 176_949,
+      reference: 'UTR55556666',
+    };
+    expect((await send(look, '/money/partners/pay', pay)).status).toBe(403);
+    expect((await send(fin, '/money/partners/pay', { ...pay, amountPaise: 176_950 })).status).toBe(
+      400,
+    );
+    expect((await send(fin, '/money/partners/pay', { ...pay, amountPaise: 1.5 })).status).toBe(400);
+    expect(await (await send(fin, '/money/partners/pay', pay)).json()).toEqual({
+      partnerId: 'adwise',
+      kind: 'agency',
+      seq: 1,
+    });
+    const inv = {
+      partnerId: 'adwise',
+      kind: 'agency',
+      invoiceNo: 'AW/27/031',
+      invoiceDate: '2027-08-31',
+      taxablePaise: 152_542,
+      gstPaise: 0,
+    };
+    expect((await send(fin, '/money/partners/invoice', inv)).status).toBe(200);
+    expect((await send(fin, '/money/partners/invoice', inv)).status).toBe(409);
   });
 });

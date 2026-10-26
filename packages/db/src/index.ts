@@ -39,3 +39,4 @@ export * from './rider-checks.js';
 export * from './rider-fitting.js';
 export * from './money.js';
 export * from './money-back.js';
+export * from './partners.js';
