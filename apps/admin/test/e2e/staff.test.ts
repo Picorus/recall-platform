@@ -2,8 +2,8 @@
 // opens their invite, sets a password and the two-step code, signs in, adds an admin and signs out.
 // Needs `next build` first and DATABASE_URL (pnpm services:up).
 import { apiHandler, newToken, newTotpSecret, seal, tokenHash, totpCode } from '@recall/api';
-import { newScreenId } from '@recall/domain';
-import { addStaff, storeUpload } from '@recall/db';
+import { launchAreas, newScreenId } from '@recall/domain';
+import { addStaff, saveAreaVersion, storeUpload } from '@recall/db';
 import { freshDatabase } from '@recall/db/test-db';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
@@ -258,5 +258,44 @@ it('the Screens page: stock counts, a spare sent to repair with a reason', async
   await page.getByRole('button', { name: 'Save' }).click();
   await page.getByText(`${spare}: send to repair done.`).waitFor();
   await page.getByRole('row', { name: new RegExp(`${spare}.*In repair.*dead pixels`) }).waitFor();
+  expect(errors).toEqual([]);
+}, 120_000);
+
+it('the Areas page: check a shape, save a new version with a reason, see it in the history', async () => {
+  // In force since January (a new version must start after the one it replaces).
+  for (const a of launchAreas('2026-01-01T00:00:00.000Z'))
+    await saveAreaVersion(db.pool, { ...a, draft: false }, 'system');
+  const page = await browser.newPage();
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  shift += 30_000;
+  await page.goto(`${SITE}/sign-in`);
+  await page.getByLabel('Email').fill('prateek@recall.in');
+  await page.getByLabel('Password').fill(PW);
+  await page.getByLabel('Code from your authenticator app').fill(totpCode(SECRET.value, step()));
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.getByText('Prateek · Super admin').waitFor();
+  await page.getByRole('link', { name: 'Areas' }).click();
+  await page.getByRole('heading', { name: 'Areas', exact: true }).waitFor();
+  await page
+    .getByRole('row', { name: /Madhapur/ })
+    .getByRole('button', { name: 'Open' })
+    .click();
+  await page.getByRole('button', { name: 'Check' }).click();
+  await page.getByText('The shape passes every rule.').waitFor();
+  if (process.env.SCREENSHOT_DIR) {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.waitForTimeout(2500);
+    await page.screenshot({ path: `${process.env.SCREENSHOT_DIR}/areas.png`, fullPage: true });
+  }
+  await page.getByLabel('Edge zone (metres around the border, 0–2,000)').fill('250');
+  await page.getByLabel('Reason (logged)').fill('narrower edge on the flyover');
+  await page.getByRole('button', { name: 'Save' }).click();
+  await page.getByText('New version saved.').waitFor();
+  await page
+    .getByRole('row', { name: /Madhapur/ })
+    .getByRole('button', { name: 'Open' })
+    .click();
+  await page.getByRole('row', { name: /^2 .*250 m.*narrower edge on the flyover/ }).waitFor();
   expect(errors).toEqual([]);
 }, 120_000);

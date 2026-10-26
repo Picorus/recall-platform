@@ -175,14 +175,49 @@ export function reviseArea(
   return next;
 }
 
-/** Turn an area on or off from `validFrom`: a new version, checked like any other change. */
+/**
+ * Turn an area on or off from `validFrom`: a new version, checked like any other change. It builds
+ * on the newest published version, never on a pending draft: a draft is a proposal, and an on/off
+ * that copied it would be a draft too and never take effect (review P3.5). The pending draft is
+ * left behind in the history; it can be saved again later.
+ */
 export function setAreaActive(
   history: readonly AreaVersion[],
   active: boolean,
   validFrom: string,
   others: readonly AreaVersion[],
 ): AreaVersion {
-  return reviseArea(history, { active }, validFrom, others);
+  const latest = latestVersion(history);
+  const published = history
+    .filter((v) => !v.draft)
+    .reduce<AreaVersion | undefined>((a, b) => (!a || b.version > a.version ? b : a), undefined);
+  if (!latest.draft || !published) return reviseArea(history, { active }, validFrom, others);
+  // The newest number, the published shape.
+  const base: AreaVersion = { ...published, version: latest.version, validFrom: latest.validFrom };
+  return reviseArea([base], { active }, validFrom, others);
+}
+
+/**
+ * The other areas' versions a change starting at `validFrom` must not meet: for each other area,
+ * the version in force then (its newest one, and its newest published one, which may differ when a
+ * draft is pending) and every version starting later. Old shapes no longer in force never block.
+ */
+export function othersInForce(
+  all: readonly AreaVersion[],
+  areaId: string,
+  validFrom: string,
+): AreaVersion[] {
+  const at = parseUtcIso(validFrom);
+  const out: AreaVersion[] = [];
+  const ids = new Set(all.filter((a) => a.areaId !== areaId).map((a) => a.areaId));
+  for (const id of ids) {
+    const h = all.filter((a) => a.areaId === id);
+    const newest = versionAt(h, validFrom);
+    const published = publishedAt(h, validFrom);
+    for (const v of h)
+      if (v === newest || v === published || parseUtcIso(v.validFrom) > at) out.push(v);
+  }
+  return out;
 }
 
 /** The version in force at `instant` (UTC ISO), or undefined before the first one. */

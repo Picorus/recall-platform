@@ -9,6 +9,8 @@ import {
   locate,
   reviseArea,
   setAreaActive,
+  othersInForce,
+  publishedAt,
   versionAt,
   type AreaVersion,
 } from '../src/areas.js';
@@ -266,5 +268,39 @@ describe('review fixes', () => {
       { lat: 17.41645, lng: 78.39645 },
     ]);
     expect(() => createArea(b, [a])).toThrow(AreaError);
+  });
+});
+
+describe('on/off with a draft pending, and which shapes a change is checked against (review P3.5)', () => {
+  const T2 = '2027-01-01T00:00:00.000Z';
+  const T3 = '2027-02-01T00:00:00.000Z';
+  const a1 = createArea(new_('hyd-a', box(17.4, 78.4, 17.41, 78.41)), []);
+  const draft = reviseArea([a1], { edgeMeters: 100, draft: true }, T1, []);
+
+  it('turning off builds on the published shape, not the pending draft, and takes effect', () => {
+    const off = setAreaActive([a1, draft], false, T2, []);
+    expect(off).toMatchObject({
+      version: 3,
+      active: false,
+      draft: false,
+      edgeMeters: a1.edgeMeters,
+    });
+    expect(publishedAt([a1, draft, off], T3)?.active).toBe(false);
+  });
+
+  it('checked against shapes in force or coming, never old ones', () => {
+    const b1 = createArea(new_('hyd-b', box(17.5, 78.5, 17.52, 78.52)), []);
+    const b2 = reviseArea([b1], { ring: box(17.5, 78.5, 17.505, 78.505) }, T1, []);
+    const b3 = reviseArea([b1, b2], { ring: box(17.5, 78.5, 17.506, 78.506), draft: true }, T2, []);
+    const all = [a1, draft, b1, b2, b3];
+    // At T3: b2 is the published shape in force; b3 the newest (a draft); b1 is history.
+    expect(othersInForce(all, 'hyd-a', T3).map((v) => [v.areaId, v.version])).toEqual([
+      ['hyd-b', 2],
+      ['hyd-b', 3],
+    ]);
+    // Before T2, b3 is still to come.
+    expect(othersInForce(all, 'hyd-a', '2026-12-15T00:00:00.000Z').map((v) => v.version)).toEqual([
+      2, 3,
+    ]);
   });
 });
