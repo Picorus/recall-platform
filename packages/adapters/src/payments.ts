@@ -36,6 +36,24 @@ export type LinkStatus =
   | { readonly state: 'expired' }
   | { readonly state: 'cancelled' };
 
+/** P3.13.2: money sent back to the card, UPI or bank a payment came from. */
+export interface RefundRequest {
+  /** The same for every attempt of one refund: asking again never refunds twice. */
+  readonly refundKey: string;
+  /** The provider's id of the payment the money goes back against. */
+  readonly paymentId: string;
+  /** Whole paise, more than 0; never more than is left of the payment. */
+  readonly amountPaise: number;
+  readonly note: string;
+}
+
+export type RefundResult =
+  | { readonly status: 'refunded'; readonly providerRef: string }
+  /** Accepted, not settled yet: ask again (same key) later. */
+  | { readonly status: 'pending'; readonly providerRef: string }
+  /** `retryable`: a passing problem; otherwise it will never go through this way. */
+  | { readonly status: 'failed'; readonly reason: string; readonly retryable: boolean };
+
 /** What a provider's signed message says, once its signature is checked. */
 export interface PaymentEvent {
   readonly linkId: string;
@@ -49,6 +67,8 @@ export interface PaymentsAdapter {
   cancelLink(linkId: string): Promise<void>;
   /** The event in a provider's message, or null when its signature is wrong (never trusted). */
   verifyEvent(rawBody: string, signature: string): PaymentEvent | null;
+  /** Sends money back against a payment (P3.13.2). Same key, same answer. */
+  refund(req: RefundRequest): Promise<RefundResult>;
 }
 
 /**
@@ -56,9 +76,22 @@ export interface PaymentsAdapter {
  * would) and returns the signed message the provider would send. Time comes from `clock`.
  */
 export function fakePayments(
-  opts: { readonly secret?: string; readonly clock?: () => number; readonly baseUrl?: string } = {},
+  opts: {
+    readonly secret?: string;
+    readonly clock?: () => number;
+    readonly baseUrl?: string;
+    /** Refunds against these payments fail (`times`: only the first n tries). */
+    readonly refundFails?: ReadonlyMap<
+      string,
+      { reason: string; retryable: boolean; times?: number }
+    >;
+    /** Refunds against these payments are pending once, then refunded. */
+    readonly refundPending?: ReadonlySet<string>;
+  } = {},
 ): PaymentsAdapter & {
   readonly links: Map<string, LinkRequest & { linkId: string; status: LinkStatus }>;
+  /** Every refund asked for, in order (repeats included). */
+  readonly refunds: RefundRequest[];
   /** The brand pays (the full amount, or `amountPaise` to test a wrong payment). */
   pay(linkId: string, amountPaise?: number): { body: string; signature: string };
   sign(body: string): string;
@@ -69,15 +102,63 @@ export function fakePayments(
   const links = new Map<string, LinkRequest & { linkId: string; status: LinkStatus }>();
   const byKey = new Map<string, string>();
   const sign = (body: string) => createHmac('sha256', secret).update(body).digest('hex');
+  const refunds: RefundRequest[] = [];
+  const refundResults = new Map<string, RefundResult>();
+  const refundTries = new Map<string, number>();
+  const refunded = new Map<string, number>();
   const current = (linkId: string): LinkStatus => {
     const l = links.get(linkId);
     if (!l) throw new Error(`No link ${linkId}`);
     if (l.status.state === 'created' && clock() >= l.expiresAt) l.status = { state: 'expired' };
     return l.status;
   };
+  /** The amount a fake payment was for (its link's payment), or 0 if it does not know it. */
+  const paidAmount = (paymentId: string) => {
+    for (const l of links.values())
+      if (l.status.state === 'paid' && l.status.paymentId === paymentId)
+        return l.status.amountPaise;
+    return 0;
+  };
   return {
     links,
+    refunds,
     sign,
+    refund(req) {
+      refunds.push(req);
+      const before = refundResults.get(req.refundKey);
+      if (before?.status === 'pending') {
+        const done: RefundResult = { status: 'refunded', providerRef: before.providerRef };
+        refundResults.set(req.refundKey, done);
+        return Promise.resolve(done);
+      }
+      if (before) return Promise.resolve(before);
+      if (!Number.isSafeInteger(req.amountPaise) || req.amountPaise <= 0)
+        return Promise.reject(new RangeError('amount must be whole paise above 0'));
+      const n = refundTries.get(req.refundKey) ?? 0;
+      const fail = opts.refundFails?.get(req.paymentId);
+      if (fail && n < (fail.times ?? Infinity)) {
+        refundTries.set(req.refundKey, n + 1);
+        return Promise.resolve({
+          status: 'failed',
+          reason: fail.reason,
+          retryable: fail.retryable,
+        });
+      }
+      const left = paidAmount(req.paymentId) - (refunded.get(req.paymentId) ?? 0);
+      if (req.amountPaise > left)
+        return Promise.resolve({
+          status: 'failed',
+          reason: left > 0 ? 'more than is left of the payment' : 'no such payment',
+          retryable: false,
+        });
+      refunded.set(req.paymentId, (refunded.get(req.paymentId) ?? 0) + req.amountPaise);
+      const providerRef = `rfnd_fake_${randomBytes(6).toString('hex')}`;
+      const result: RefundResult = opts.refundPending?.has(req.paymentId)
+        ? { status: 'pending', providerRef }
+        : { status: 'refunded', providerRef };
+      refundResults.set(req.refundKey, result);
+      return Promise.resolve(result);
+    },
     createLink(req) {
       if (!Number.isSafeInteger(req.amountPaise) || req.amountPaise <= 0)
         return Promise.reject(new RangeError('amount must be whole paise above 0'));

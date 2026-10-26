@@ -3,18 +3,26 @@
 //   GET /money?month=YYYY-MM          where money stands now; the month's payments, tax invoices and
 //                                     credit notes, GST summary; provider messages for unknown links
 //   GET /money/export?month=YYYY-MM   the month's files for the accountant (CSV text)
+// P3.13.2: money owed back to brands (finance admins and a super admin send it):
+//   GET  /money/owed-back             what is still owed back, with each try
+//   POST /money/owed-back/send        { owedEntry }  through the payment provider (again: retries)
+//   POST /money/owed-back/by-hand     { owedEntry, reference, note }  a bank transfer made by hand
 import {
   accountantExport,
   gstDocuments,
   gstSummary,
+  moneyOwedBack,
   moneyPosition,
   paymentsIn,
+  recordMoneyBackByHand,
+  Refusal,
+  sendMoneyBack,
   unknownPayments,
 } from '@recall/db';
-import { can } from '@recall/domain';
+import { can, moneyRole } from '@recall/domain';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Pool } from 'pg';
-import { HttpError, send } from './http.js';
+import { HttpError, jsonBody, send, str } from './http.js';
 import { staffFor, type StaffApiConfig } from './staff-api.js';
 
 const MONTH = /^20\d{2}-(0[1-9]|1[0-2])$/;
@@ -30,6 +38,8 @@ export async function handleMoney(
 ): Promise<boolean> {
   const [path = '/', query = ''] = (req.url ?? '/').split('?');
   if (path !== '/money' && !path.startsWith('/money/')) return false;
+  if (req.method === 'POST' && path.startsWith('/money/owed-back/'))
+    return payBack(pool, cfg, req, res, nowMs, path);
   if ((req.method ?? 'GET') !== 'GET') throw new HttpError(405, 'Not allowed');
   const me = await staffFor(pool, cfg, req, nowMs);
   if (!can(me.access, { area: 'finance', change: false }))
@@ -59,8 +69,65 @@ export async function handleMoney(
     });
     return true;
   }
+  if (path === '/money/owed-back') {
+    send(res, 200, {
+      at: now,
+      items: await moneyOwedBack(pool),
+      canPay: ['finance', 'super-admin'].includes(moneyRole(me.access)),
+      canSend: cfg.payments !== undefined,
+    });
+    return true;
+  }
   if (path === '/money/export') {
     send(res, 200, { month, files: await accountantExport(pool, month) });
+    return true;
+  }
+  throw new HttpError(404, 'Not found');
+}
+
+/** Sends money owed back, or records a bank transfer made by hand (finance admins, super admin). */
+async function payBack(
+  pool: Pool,
+  cfg: StaffApiConfig,
+  req: IncomingMessage,
+  res: ServerResponse,
+  nowMs: number,
+  path: string,
+): Promise<boolean> {
+  const origin = req.headers.origin;
+  if (!origin || !cfg.origins.includes(origin)) throw new HttpError(403, 'Not from the admin site');
+  const me = await staffFor(pool, cfg, req, nowMs);
+  const by = { id: me.id, role: moneyRole(me.access) };
+  if (by.role !== 'finance' && by.role !== 'super-admin')
+    throw new HttpError(403, 'Only finance or a super admin sends money back');
+  const now = Math.floor(nowMs / 1000);
+  const b = await jsonBody(req);
+  const owedEntry = str(b, 'owedEntry', 200);
+  if (!/^(refund|to-return):[A-Za-z0-9#/._-]{1,180}$/.test(owedEntry))
+    throw new HttpError(400, 'Which amount owed back?');
+  const refused = async <T>(f: () => Promise<T>): Promise<T> => {
+    try {
+      return await f();
+    } catch (e) {
+      if (!(e instanceof Refusal)) throw e;
+      if (e.message.startsWith('Nothing owed back')) throw new HttpError(404, e.message);
+      if (/already|being sent|may still/.test(e.message)) throw new HttpError(409, e.message);
+      throw new HttpError(400, e.message);
+    }
+  };
+  if (path === '/money/owed-back/send') {
+    const provider = cfg.payments;
+    if (!provider)
+      throw new HttpError(503, 'Payments are not set up yet: send it by bank transfer');
+    const state = await refused(() => sendMoneyBack(pool, owedEntry, provider, by, now));
+    send(res, 200, { owedEntry, state });
+    return true;
+  }
+  if (path === '/money/owed-back/by-hand') {
+    const reference = str(b, 'reference', 60);
+    const note = typeof b.note === 'string' ? b.note : '';
+    await refused(() => recordMoneyBackByHand(pool, owedEntry, { reference, note }, by, now));
+    send(res, 200, { owedEntry, state: 'by-hand' });
     return true;
   }
   throw new HttpError(404, 'Not found');
