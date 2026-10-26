@@ -2,7 +2,7 @@
 // made with a key that never changes for the same booking and amount, so asking again (a retry, a
 // double click) gives the same link, never a second one. The provider tells us a link was paid by a
 // signed message (checked here), and we can also ask it directly.
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 
 export interface LinkRequest {
   /** The same for every attempt of one link. */
@@ -25,7 +25,14 @@ export interface PaymentLink {
 
 export type LinkStatus =
   | { readonly state: 'created' }
-  | { readonly state: 'paid'; readonly paymentId: string; readonly paidAt: number }
+  | {
+      readonly state: 'paid';
+      readonly paymentId: string;
+      /** UTC seconds, by the provider's clock. */
+      readonly paidAt: number;
+      /** What was really paid, in whole paise (checked against the link: never assumed). */
+      readonly amountPaise: number;
+    }
   | { readonly state: 'expired' }
   | { readonly state: 'cancelled' };
 
@@ -52,7 +59,8 @@ export function fakePayments(
   opts: { readonly secret?: string; readonly clock?: () => number; readonly baseUrl?: string } = {},
 ): PaymentsAdapter & {
   readonly links: Map<string, LinkRequest & { linkId: string; status: LinkStatus }>;
-  pay(linkId: string): { body: string; signature: string };
+  /** The brand pays (the full amount, or `amountPaise` to test a wrong payment). */
+  pay(linkId: string, amountPaise?: number): { body: string; signature: string };
   sign(body: string): string;
 } {
   const secret = opts.secret ?? 'fake-payments-secret';
@@ -74,7 +82,8 @@ export function fakePayments(
       if (!Number.isSafeInteger(req.amountPaise) || req.amountPaise <= 0)
         return Promise.reject(new RangeError('amount must be whole paise above 0'));
       const known = byKey.get(req.linkKey);
-      const linkId = known ?? `plink_${String(links.size + 1).padStart(6, '0')}`;
+      // Random, like a real provider's: ids never repeat across restarts.
+      const linkId = known ?? `plink_${randomBytes(8).toString('hex')}`;
       if (!known) {
         byKey.set(req.linkKey, linkId);
         links.set(linkId, { ...req, linkId, status: { state: 'created' } });
@@ -94,19 +103,59 @@ export function fakePayments(
       const got = Buffer.from(/^[0-9a-f]{64}$/.test(signature) ? signature : '', 'hex');
       if (got.length !== want.length || !timingSafeEqual(got, want)) return null;
       try {
-        const e = JSON.parse(rawBody) as PaymentEvent;
-        return typeof e.linkId === 'string' && typeof e.status?.state === 'string' ? e : null;
+        return eventShape(JSON.parse(rawBody));
       } catch {
         return null;
       }
     },
-    pay(linkId) {
+    pay(linkId, amountPaise) {
       const l = links.get(linkId);
       if (!l || current(linkId).state !== 'created')
         throw new Error(`Link ${linkId} cannot be paid`);
-      l.status = { state: 'paid', paymentId: `pay_fake_${linkId.slice(6)}`, paidAt: clock() };
+      l.status = {
+        state: 'paid',
+        paymentId: `pay_fake_${linkId.slice(6)}`,
+        paidAt: clock(),
+        amountPaise: amountPaise ?? l.amountPaise,
+      };
       const body = JSON.stringify({ linkId, status: l.status });
       return { body, signature: sign(body) };
     },
   };
+}
+
+const whole = (n: unknown): n is number =>
+  typeof n === 'number' && Number.isSafeInteger(n) && n >= 0;
+
+/** A provider message's content, checked field by field (even a signed message is not trusted blindly). */
+export function eventShape(x: unknown): PaymentEvent | null {
+  const e = x as { linkId?: unknown; status?: Record<string, unknown> };
+  if (typeof e?.linkId !== 'string' || !/^[A-Za-z0-9_-]{1,80}$/.test(e.linkId)) return null;
+  const st = e.status;
+  switch (st?.state) {
+    case 'created':
+    case 'expired':
+    case 'cancelled':
+      return { linkId: e.linkId, status: { state: st.state } };
+    case 'paid':
+      if (
+        typeof st.paymentId !== 'string' ||
+        !/^[A-Za-z0-9._-]{1,80}$/.test(st.paymentId) ||
+        !whole(st.paidAt) ||
+        st.paidAt > 9_999_999_999 || // seconds, never milliseconds
+        !whole(st.amountPaise)
+      )
+        return null;
+      return {
+        linkId: e.linkId,
+        status: {
+          state: 'paid',
+          paymentId: st.paymentId,
+          paidAt: st.paidAt,
+          amountPaise: st.amountPaise,
+        },
+      };
+    default:
+      return null;
+  }
 }

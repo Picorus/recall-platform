@@ -13,12 +13,32 @@ CREATE TABLE payment_links (
 );
 CREATE INDEX payment_links_booking ON payment_links (booking_id, created_at DESC);
 
+-- What happened to each link. A link runs out or is stopped once; each payment (by the provider's
+-- id) is recorded once, whatever arrives again. 'paid-late': paid after the booking was cancelled;
+-- 'wrong-amount': not the link's amount. Both are owed back (a ledger entry, for finance).
 CREATE TABLE payment_link_events (
+  id         bigint      GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   link_id    text        NOT NULL REFERENCES payment_links (link_id),
-  state      text        NOT NULL CHECK (state IN ('paid', 'expired', 'cancelled', 'paid-late')),
+  state      text        NOT NULL CHECK (state IN ('paid', 'expired', 'cancelled', 'paid-late', 'wrong-amount')),
   payment_id text        CHECK (payment_id IS NULL OR payment_id ~ '^[A-Za-z0-9._-]{1,80}$'),
+  amount_paise bigint    CHECK (amount_paise IS NULL OR amount_paise >= 0),
   at         timestamptz NOT NULL,
-  PRIMARY KEY (link_id, state)
+  CHECK ((state IN ('expired', 'cancelled')) = (payment_id IS NULL))
+);
+CREATE UNIQUE INDEX payment_link_events_once ON payment_link_events (link_id, state)
+  WHERE state IN ('expired', 'cancelled');
+CREATE UNIQUE INDEX payment_link_events_payment ON payment_link_events (payment_id)
+  WHERE payment_id IS NOT NULL;
+CREATE INDEX payment_link_events_link ON payment_link_events (link_id, id);
+
+-- Signed messages from the provider about a link we have no record of: kept for finance, never
+-- dropped (money may be behind them).
+CREATE TABLE payment_inbox (
+  id          bigint      GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  link_id     text        NOT NULL,
+  payment_id  text        UNIQUE,
+  event       jsonb       NOT NULL,
+  received_at timestamptz NOT NULL
 );
 
 CREATE TABLE booking_notes (
@@ -38,8 +58,12 @@ CREATE TRIGGER payment_link_events_no_change BEFORE UPDATE OR DELETE ON payment_
   FOR EACH ROW EXECUTE FUNCTION recall_append_only();
 CREATE TRIGGER payment_link_events_no_truncate BEFORE TRUNCATE ON payment_link_events
   FOR EACH STATEMENT EXECUTE FUNCTION recall_append_only();
+CREATE TRIGGER payment_inbox_no_change BEFORE UPDATE OR DELETE ON payment_inbox
+  FOR EACH ROW EXECUTE FUNCTION recall_append_only();
+CREATE TRIGGER payment_inbox_no_truncate BEFORE TRUNCATE ON payment_inbox
+  FOR EACH STATEMENT EXECUTE FUNCTION recall_append_only();
 CREATE TRIGGER booking_notes_no_change BEFORE UPDATE OR DELETE ON booking_notes
   FOR EACH ROW EXECUTE FUNCTION recall_append_only();
 CREATE TRIGGER booking_notes_no_truncate BEFORE TRUNCATE ON booking_notes
   FOR EACH STATEMENT EXECUTE FUNCTION recall_append_only();
-GRANT SELECT, INSERT ON payment_links, payment_link_events, booking_notes TO recall_app;
+GRANT SELECT, INSERT ON payment_links, payment_link_events, payment_inbox, booking_notes TO recall_app;

@@ -24,7 +24,12 @@ describe('fake payments (P3.8.2)', () => {
     const msg = p.pay(a.linkId);
     expect(p.verifyEvent(msg.body, msg.signature)).toEqual({
       linkId: a.linkId,
-      status: { state: 'paid', paymentId: expect.stringMatching(/^pay_fake_/), paidAt: T + 60 },
+      status: {
+        state: 'paid',
+        paymentId: expect.stringMatching(/^pay_fake_/),
+        paidAt: T + 60,
+        amountPaise: 2_124_000,
+      },
     });
     expect(p.verifyEvent(msg.body.replace('paid', 'paid '), msg.signature)).toBeNull();
     expect(p.verifyEvent(msg.body, 'nope')).toBeNull();

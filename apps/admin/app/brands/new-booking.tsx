@@ -25,8 +25,14 @@ export default function NewBooking({
     api<{ areas: { areaId: string; name: string }[] }>('/calendar')
       .then((r) => setAreas(r.areas))
       .catch(() => setError('Could not load the areas.'));
-    api<{ versions: { book: { repeatOffersBp: Record<string, number> } }[] }>('/prices')
-      .then((r) => setOffers(Object.keys(r.versions[0]?.book.repeatOffersBp ?? {}).map(Number)))
+    api<{
+      inForce: number | null;
+      versions: { version: number; book: { repeatOffersBp: Record<string, number> } }[];
+    }>('/prices')
+      .then((r) => {
+        const inForce = r.versions.find((v) => v.version === r.inForce);
+        setOffers(Object.keys(inForce?.book.repeatOffersBp ?? {}).map(Number));
+      })
       .catch(() => setOffers([]));
   }, []);
 

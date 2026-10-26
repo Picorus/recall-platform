@@ -83,7 +83,10 @@ describe('booking for a brand (P3.8.2)', () => {
     const a = await sendForPayment(pool, payments, 'BK-D-2', 'Sana', now);
     expect(a.expiresAt).toBe(Date.UTC(2027, 7, 23, 8, 30) / 1000);
     expect(await expireUnpaid(pool, payments, now + 60)).toEqual([]);
-    now = a.expiresAt;
+    // A short grace after the end (a payment started in time may still finish).
+    now = a.expiresAt + 60;
+    expect(await expireUnpaid(pool, payments, now)).toEqual([]);
+    now = a.expiresAt + 120;
     expect(await expireUnpaid(pool, payments, now)).toEqual(['BK-D-2']);
     expect(await bookingState(pool, 'BK-D-2')).toBe('cancelled');
     expect(await expireUnpaid(pool, payments, now + 60)).toEqual([]);
@@ -94,17 +97,21 @@ describe('booking for a brand (P3.8.2)', () => {
     await draft('BK-D-3', [line('2027-08-28', 19), line('2027-08-28', 20)]);
     const a = await sendForPayment(pool, payments, 'BK-D-3', 'Sana', now);
     const msg = payments.pay(a.linkId);
+    // Staff cancel before the payment's message arrives: asking the provider finds the money, and
+    // it is put on the books as owed back; the message then changes nothing.
     await cancelBooking(pool, payments, 'BK-D-3', 'Sana', 'client changed plans', now + 1);
-    expect(await paymentMessage(pool, payments, msg.body, msg.signature, now + 2)).toBe(
-      'paid-late',
+    expect(await paymentMessage(pool, payments, msg.body, msg.signature, now + 2)).toBe('already');
+    const back = await pool.query<{ kind: string }>(
+      "SELECT kind FROM ledger_entries WHERE ref = 'BK-D-3'",
     );
+    expect(back.rows.map((x) => x.kind)).toEqual(['money-to-return']);
     const v = await bookingView(pool, 'BK-D-3');
     expect(v?.timeline.map((t) => t.text)).toEqual([
       'Draft made',
       'Sent for payment (bikes kept)',
       expect.stringMatching(/^Payment link sent/),
       'Cancelled: client changed plans',
-      expect.stringMatching(/^Paid after the booking was cancelled .*finance to return it$/),
+      expect.stringMatching(/^Money received that cannot be kept .*finance to return it$/),
     ]);
     await draft('BK-D-4', [line('2027-08-29', 19), line('2027-08-29', 20)]);
     const b = await sendForPayment(pool, payments, 'BK-D-4', 'Sana', now);
@@ -139,12 +146,86 @@ describe('booking for a brand (P3.8.2)', () => {
       'step',
       'step',
       'link',
-      'step',
       'payment',
+      'step',
       'note',
     ]);
     expect(await checkPayment(pool, payments, 'BK-NONE', now)).toBe('unknown');
     await expect(pool.query('DELETE FROM payment_links')).rejects.toThrow();
     await expect(pool.query("UPDATE booking_notes SET note = 'x'")).rejects.toThrow();
+  });
+
+  it('review P3.8.2: an expiry racing a payment never cancels the paid booking; each payment counted once', async () => {
+    for (let i = 0; i < 5; i++) {
+      now += 3600;
+      const id = `BK-R-${i}`;
+      await draft(id, [line('2027-09-06', 19), line('2027-09-06', 20)]);
+      const a = await sendForPayment(pool, payments, id, 'Sana', now);
+      const msg = payments.pay(a.linkId); // paid in the last moments of the link
+      const late = a.expiresAt + 600;
+      const [hook] = await Promise.all([
+        paymentMessage(pool, payments, msg.body, msg.signature, late),
+        expireUnpaid(pool, payments, late),
+        checkPayment(pool, payments, id, late),
+      ]);
+      expect(['paid', 'already']).toContain(hook);
+      expect(await bookingState(pool, id)).toBe('paid');
+      const kinds = await pool.query<{ kind: string }>(
+        'SELECT kind FROM ledger_entries WHERE ref = $1',
+        [id],
+      );
+      expect(kinds.rows.map((x) => x.kind)).toEqual(['booking-paid']);
+    }
+  });
+
+  it('review P3.8.2: a wrong amount is owed back, not taken as paid; an unknown link is kept for finance', async () => {
+    now += 3600;
+    await draft('BK-W-1', [line('2027-09-07', 19), line('2027-09-07', 20)]);
+    const a = await sendForPayment(pool, payments, 'BK-W-1', 'Sana', now);
+    const msg = payments.pay(a.linkId, 100_000);
+    expect(await paymentMessage(pool, payments, msg.body, msg.signature, now + 5)).toBe(
+      'wrong-amount',
+    );
+    expect(await paymentMessage(pool, payments, msg.body, msg.signature, now + 6)).toBe('already');
+    expect(await bookingState(pool, 'BK-W-1')).toBe('awaiting-payment');
+    const e = await pool.query<{ kind: string; memo: string }>(
+      "SELECT kind, memo FROM ledger_entries WHERE ref = 'BK-W-1'",
+    );
+    expect(e.rows).toEqual([
+      { kind: 'money-to-return', memo: expect.stringContaining('paid 100000 paise') },
+    ]);
+    const body = JSON.stringify({
+      linkId: 'plink_nobody',
+      status: { state: 'paid', paymentId: 'pay_x1', paidAt: now, amountPaise: 5000 },
+    });
+    expect(await paymentMessage(pool, payments, body, payments.sign(body), now)).toBe('unknown');
+    expect(await paymentMessage(pool, payments, body, payments.sign(body), now)).toBe('unknown');
+    const inbox = await pool.query('SELECT link_id FROM payment_inbox');
+    expect(inbox.rows).toEqual([{ link_id: 'plink_nobody' }]);
+  });
+
+  it('review P3.8.2: too late to pay by link; sent with no link made is let go; one bad link never stops the run', async () => {
+    now += 3600;
+    const start = Math.floor(Date.parse('2027-09-08T13:30:00Z') / 1000); // 19:00 India time
+    await draft('BK-L-1', [line('2027-09-08', 19), line('2027-09-08', 20)]);
+    await expect(sendForPayment(pool, payments, 'BK-L-1', 'Sana', start - 600)).rejects.toThrow(
+      'Too close to the first hour',
+    );
+    expect(await bookingState(pool, 'BK-L-1')).toBe('draft');
+    // A booking sent for payment whose link was never made (the provider did not answer).
+    const broken = { ...payments, createLink: () => Promise.reject(new Error('provider down')) };
+    await expect(sendForPayment(pool, broken, 'BK-L-1', 'Sana', now)).rejects.toThrow(
+      'provider down',
+    );
+    expect(await bookingState(pool, 'BK-L-1')).toBe('awaiting-payment');
+    // A link the provider no longer knows (the fake after a restart) must not stop the others.
+    await draft('BK-L-2', [line('2027-09-09', 19), line('2027-09-09', 20)]);
+    const b = await sendForPayment(pool, payments, 'BK-L-2', 'Sana', now);
+    const forgetful = { ...payments, status: () => Promise.reject(new Error('No link')) };
+    const lines: string[] = [];
+    const after = b.expiresAt + 600;
+    expect(await expireUnpaid(pool, forgetful, after, (l) => lines.push(l))).toEqual(['BK-L-1']);
+    expect(lines).toEqual([expect.stringContaining('No link')]);
+    expect(await expireUnpaid(pool, payments, after)).toEqual(['BK-L-2']);
   });
 });

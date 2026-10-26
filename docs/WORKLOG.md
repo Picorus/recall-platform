@@ -2,6 +2,28 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 26 Oct 2026 · P3.8.2 · Booking for a brand
+- P3.8.1 merged (PR #54).
+- **Payments adapter** (`packages/adapters/src/payments.ts`) with a working fake: a link per booking attempt (asking again gives the same one), its status, stop, and the provider's signed messages (checked in constant time, and field by field: the amount paid, the payment id, the time in seconds).
+- **Booking desk** (`packages/db/src/booking-desk.ts`, migration 0034): a Sales admin makes a draft for a brand (any start date; last-minute too), sends it for payment (bikes kept, limits and prices checked again) with a link that works `payLinkHours` (a new price-book setting, 24) and never past the first hour; the signed message, or "Check payment", records the payment once; a link that runs out unpaid (2 minutes' grace) is stopped and the booking cancelled, so its bikes go back on sale (a loop every minute in the API). Money that cannot be kept (paid after a cancellation, a wrong amount, a second payment) is posted at once as owed back (`moneyToReturn`: gateway money against refunds payable) for finance; messages about links we do not know are kept in an inbox. Cancel with why, notes, and the booking's timeline.
+- **Rule**: the system may cancel an unpaid booking even after its first hour has started (it never ran and must not keep bikes); staff and paid bookings keep the old rule.
+- **API**: `GET /bookings/<id>`; `POST /bookings`, `/bookings/<id>/send|check|cancel|notes` (Sales admin); `POST /payments/webhook` (the signature is the only key). Payments come from `PAYMENTS_PROVIDER` (empty on a laptop: the fake).
+- **Admin site**: "New booking" on a brand's page (one area, a run of days, chosen hours, bikes; deal offers from the prices in force) and the booking panel (money, payment link, check, cancel, timeline, notes).
+- Tests: adapter 2; domain (+1 rule); database 7 (sent and paid once; last-minute link and expiry with grace; late money owed back; checking; an expiry racing a payment five times; a wrong amount; an unknown link; too late to pay by link; no link made; one bad link not stopping the run); API 2 + config 1; admin unit 2; browser 1 (booked, link sent, paid through the fake, timeline).
+- Second-agent review: signature checks, replays, permissions and the one-payment-per-booking lock were right; 9 serious findings, all fixed:
+  - **critical**: an expiry (or a check) racing a payment could cancel a booking that had just been paid, keeping the money and freeing the bikes. Now every step names the step it expects, checked under the booking's lock (`expectFrom`); a race is refused, never applied; tested with all three paths at once;
+  - money paid after a cancellation was only a note. Now it is on the books as owed back, with a finance line on the timeline;
+  - a booking sent for payment whose link was never made (provider down, a crash) kept its bikes for ever. Now let go after 10 minutes; links must work at least 15 minutes;
+  - a link id given twice by a provider could be filed under the wrong booking. Now refused; the fake's ids are random;
+  - one failing link stopped the whole expiry run. Now each link on its own;
+  - a payment finishing just after the link's end was lost. Now the link is stopped first, asked, then acted on, after 2 minutes' grace;
+  - the amount paid was never checked, and a second payment was dropped. Now checked; a wrong amount or a second payment is owed back;
+  - messages about unknown links were dropped. Now kept in an inbox;
+  - the fake's public key could take "payments" on a reachable test server. Now a server reachable from outside must set its own key; production never runs the fake, and without a real provider runs without payments (pay routes say so) instead of refusing to start.
+  - Also: the provider's payment time is kept within the link's life; clearer "Check payment" answers; no "send a new link" that could not work; a warning before cancelling a paid booking; the timeline in India time and in a sensible order within a second; deal offers from the prices in force.
+- Open: a finance list of money owed back and the inbox (P3.13); sending the link to the brand on WhatsApp (messages adapter) rather than staff copying it; the real provider (P6).
+- Next: P3.9, ad review.
+
 ## 26 Oct 2026 · P3.8.1 · Brands and agencies
 - P3.7 merged (PR #52). Prateek: selling is dynamic; bookings and holds both use up what an area-hour can carry, spare bikes run make-ups, aggregator or RECALL ads; after the POC the aim is the most business, with nearby slots offered when an area-hour is full (DECISIONS, PR #53).
 - P3.8 is built in two parts: P3.8.1 accounts (this), P3.8.2 booking for a brand with a payment link, the booking timeline, cancel and notes.

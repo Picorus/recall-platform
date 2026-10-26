@@ -1,5 +1,5 @@
 // The API's settings from the environment (names in .env.example; values never in the repository).
-import { fakePayments } from '@recall/adapters';
+import { fakePayments, type PaymentsAdapter } from '@recall/adapters';
 import { readKey } from './secrets.js';
 import type { StaffApiConfig } from './staff-api.js';
 
@@ -40,6 +40,7 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
   // header on unchanged).
   if (production && proxyHops < 1)
     throw new Error('API_PROXY_HOPS must be at least 1 in production (a load balancer in front)');
+  const payments = paymentsFrom(env, production);
   return {
     databaseUrl: need('DATABASE_URL'),
     host: env.API_HOST || '127.0.0.1',
@@ -48,21 +49,30 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     origins,
     secureCookies,
     proxyHops,
-    payments: paymentsFrom(env, production),
+    ...(payments ? { payments } : {}),
   };
 }
 
 /**
- * Brand payments (P3.8.2): on a laptop, the fake provider (no keys, no money). A real provider is
- * plugged in at P6 by its keys; until then production refuses to start rather than run on the fake.
+ * Brand payments (P3.8.2). On a laptop: the fake provider (no keys, no money). A real provider is
+ * plugged in at P6 by its keys; until then a production API runs without payments (its pay routes
+ * answer that payments are not set up) rather than on the fake. The fake's message key is public in
+ * the code, so a server anyone can reach must set its own, or anyone could "pay" a booking.
  */
-function paymentsFrom(env: NodeJS.ProcessEnv, production: boolean) {
+export function paymentsFrom(
+  env: NodeJS.ProcessEnv,
+  production: boolean,
+): PaymentsAdapter | undefined {
   const provider = env.PAYMENTS_PROVIDER || (production ? '' : 'fake');
-  if (provider === 'fake' && !production)
-    return fakePayments(env.PAYMENTS_WEBHOOK_SECRET ? { secret: env.PAYMENTS_WEBHOOK_SECRET } : {});
-  throw new Error(
-    provider
-      ? `PAYMENTS_PROVIDER ${provider} is not available yet (real providers come in P6)`
-      : 'PAYMENTS_PROVIDER is not set',
-  );
+  if (provider === '') return undefined;
+  if (provider !== 'fake')
+    throw new Error(
+      `PAYMENTS_PROVIDER ${provider} is not available yet (real providers come in P6)`,
+    );
+  if (production) throw new Error('The fake payments provider is for a laptop only');
+  const host = env.API_HOST || '127.0.0.1';
+  const local = host === '127.0.0.1' || host === 'localhost' || host === '::1';
+  if (!local && !env.PAYMENTS_WEBHOOK_SECRET)
+    throw new Error('PAYMENTS_WEBHOOK_SECRET must be set when the API is reachable from outside');
+  return fakePayments(env.PAYMENTS_WEBHOOK_SECRET ? { secret: env.PAYMENTS_WEBHOOK_SECRET } : {});
 }

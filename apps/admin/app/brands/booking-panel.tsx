@@ -38,6 +38,18 @@ interface Booking {
 
 const when = (s: number) => `${dayOfIndia(s)} ${clock(s)}`;
 
+/** What "Check payment" found, in words. */
+const CHECKED: Record<string, string> = {
+  paid: 'Paid.',
+  already: 'Paid.',
+  waiting: 'Not paid yet.',
+  expired: 'The link ran out unpaid: the booking is cancelled and its bikes are back on sale.',
+  'paid-late': 'Money arrived that cannot be kept: finance will send it back.',
+  'wrong-amount': 'A wrong amount was paid: finance will send it back. The booking still waits.',
+  unknown: 'No payment link yet.',
+};
+const PAID = ['paid', 'ads-approved'];
+
 export default function BookingPanel({
   bookingId,
   canAct,
@@ -92,7 +104,7 @@ export default function BookingPanel({
   const check = () =>
     call(async () => {
       const r = await api<{ outcome: string }>(`/bookings/${b.bookingId}/check`, {});
-      return r.outcome === 'paid' || r.outcome === 'already' ? 'Paid.' : 'Not paid yet.';
+      return CHECKED[r.outcome] ?? 'Not paid yet.';
     });
   const cancel = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -165,13 +177,11 @@ export default function BookingPanel({
       </details>
       {canAct && open && !b.trial && (
         <div className="cal-bar">
-          <button className="rc-button" type="button" onClick={send} disabled={busy}>
-            {b.state === 'draft'
-              ? 'Send payment link'
-              : linkOpen
-                ? 'Show the link again'
-                : 'Send a new link'}
-          </button>
+          {(b.state === 'draft' || linkOpen || b.link === null) && (
+            <button className="rc-button" type="button" onClick={send} disabled={busy}>
+              {linkOpen ? 'Show the link again' : 'Send payment link'}
+            </button>
+          )}
           {b.state === 'awaiting-payment' && (
             <button
               className="rc-button rc-button--secondary"
@@ -186,6 +196,13 @@ export default function BookingPanel({
       )}
       {canAct && b.state !== 'cancelled' && at < b.firstHourAt && (
         <form className="cal-bar" onSubmit={cancel} aria-label="Cancel booking">
+          {PAID.includes(b.state) && (
+            <p className="error" style={{ flexBasis: '100%' }}>
+              This booking is paid. Cancelling does not refund it by itself: a refund needs a super
+              admin’s approval and is only possible when cancelled early enough before the first
+              hour.
+            </p>
+          )}
           <label className="rc-field">
             <span className="rc-field__label">Why cancel (logged)</span>
             <input className="rc-input" name="reason" minLength={3} maxLength={200} required />

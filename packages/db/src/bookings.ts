@@ -463,6 +463,21 @@ export interface StepBy {
   readonly reason?: string;
   /** For the move to paid: the payment's id at the gateway (P1.7.2). */
   readonly paymentId?: string;
+  /**
+   * The step the caller saw: checked under the booking's lock, so a step decided on an old reading
+   * (an expiry racing a payment) is refused instead of applied to whatever the booking is now.
+   */
+  readonly expectFrom?: BookingState;
+}
+
+/** The booking moved on since the caller looked (see `StepBy.expectFrom`). */
+export class StepRace extends Error {
+  constructor(
+    readonly now: BookingState,
+    readonly expected: BookingState,
+  ) {
+    super(`The booking is ${now} now, not ${expected}`);
+  }
 }
 
 /** Moves a booking to its next step, if the rules allow it now; logs who and why. */
@@ -500,6 +515,8 @@ export async function moveBooking(
     };
     if (who.paymentId !== undefined && !/^[A-Za-z0-9._-]{1,80}$/.test(who.paymentId))
       throw new Error('Payment id must be 1–80 letters, digits, dots, dashes or underscores');
+    if (who.expectFrom !== undefined && last.state !== who.expectFrom)
+      throw new StepRace(last.state, who.expectFrom);
     const problem = stepProblem(last.state, to, now, timing, who.actor, who.reason);
     if (problem) throw new Error(problem);
     if (last.state === 'draft' && to === 'awaiting-payment' && !last.trial) {
