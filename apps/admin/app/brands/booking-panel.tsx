@@ -9,6 +9,7 @@ import { linkText } from '../../lib/bookings';
 import { clock, dayName, dayOfIndia, rupees } from '../../lib/format';
 import { hourLabel } from '../../lib/prices';
 import BookingAds from './booking-ads';
+import BookingDelivery from './booking-delivery';
 
 interface Booking {
   readonly bookingId: string;
@@ -221,6 +222,9 @@ export default function BookingPanel({
           brandId={brandId}
           canAct={canAct && at < b.firstHourAt}
         />
+      )}
+      {['ads-approved', 'running', 'done', 'report-sent', 'ads-missing'].includes(b.state) && (
+        <BookingDelivery bookingId={b.bookingId} />
       )}
       <h4 style={{ margin: 0 }}>Timeline</h4>
       <ul className="plain" aria-label="Timeline">

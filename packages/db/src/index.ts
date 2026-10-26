@@ -33,3 +33,4 @@ export * from './brands.js';
 export * from './booking-desk.js';
 export * from './ads.js';
 export * from './ad-reviews.js';
+export * from './delivery.js';

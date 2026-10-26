@@ -1,6 +1,6 @@
 // Starts the API from the environment.
 import { createServer } from 'node:http';
-import { advanceReadyBookings, expireUnpaid } from '@recall/db';
+import { advanceReadyBookings, expireUnpaid, settleDue } from '@recall/db';
 import pg from 'pg';
 import { readConfig } from './config.js';
 import { apiHandler } from './staff-api.js';
@@ -32,11 +32,18 @@ if (payments) {
 }
 
 // Every minute: paid bookings whose ads are all approved move on to ads approved (P3.9.2), in case
-// the step was missed when it happened (the database failing just after a payment, say).
+// the step was missed when it happened (the database failing just after a payment, say); and the
+// make-up and refund decisions that are due are made (P1.6, shown on the Delivery page, P3.10).
+// Both are safe to run as often as wanted: each decision is recorded once.
 const ready = () => {
-  advanceReadyBookings(pool, Math.floor(Date.now() / 1000))
-    .then((ids) => {
+  const now = Math.floor(Date.now() / 1000);
+  advanceReadyBookings(pool, now)
+    .then(async (ids) => {
       if (ids.length > 0) console.log(`api: bookings ready to run: ${ids.join(', ')}`);
+      const s = await settleDue(pool, now);
+      if (s.opened.length > 0)
+        console.log(`api: make-ups opened: ${s.opened.map((m) => m.makeUpId).join(', ')}`);
+      for (const f of s.failed) console.error(`api: could not settle ${f.lineId}: ${f.error}`);
     })
     .catch((e: unknown) => console.error('api: moving ready bookings on failed', e))
     .finally(() => setTimeout(ready, 60_000).unref());
