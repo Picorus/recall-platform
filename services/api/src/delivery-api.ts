@@ -2,8 +2,9 @@
 // refund (approve or reject, with why; the money moves through the ledger, decideRefund).
 //   GET  /delivery?day=YYYY-MM-DD          a business day's sold lines (default: today, India time)
 //   GET  /delivery/booking/<id>            one booking's lines
+//   GET  /delivery/refunds                 refunds waiting for a super admin (any day)
 //   POST /delivery/refund                  { refundId, decision: 'approved' | 'rejected', reason }
-import { bookingDelivery, dayDelivery, decideRefund } from '@recall/db';
+import { bookingDelivery, dayDelivery, decideRefund, refundsWaiting } from '@recall/db';
 import { businessDayOf, can, type StaffAccess } from '@recall/domain';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Pool } from 'pg';
@@ -14,7 +15,11 @@ const mayLook = (a: StaffAccess) =>
   (['operations', 'sales', 'support', 'finance'] as const).some((area) =>
     can(a, { area, change: false }),
   );
-const DAY = /^\d{4}-\d{2}-\d{2}$/;
+/** A real calendar date "YYYY-MM-DD" (2000–2099): "2027-02-30" is refused, not rolled over. */
+const isDay = (x: string) =>
+  /^20\d{2}-\d{2}-\d{2}$/.test(x) &&
+  !Number.isNaN(Date.parse(`${x}T00:00:00Z`)) &&
+  new Date(`${x}T00:00:00Z`).toISOString().slice(0, 10) === x;
 
 export async function handleDelivery(
   pool: Pool,
@@ -32,20 +37,23 @@ export async function handleDelivery(
     if (!mayLook(me.access)) throw new HttpError(403, 'Your access does not cover this');
     if (path === '/delivery') {
       const asked = new URLSearchParams(query).get('day');
-      if (asked !== null && (!DAY.test(asked) || Number.isNaN(Date.parse(asked))))
-        throw new HttpError(400, 'Which day? (YYYY-MM-DD)');
+      if (asked !== null && !isDay(asked)) throw new HttpError(400, 'Which day? (YYYY-MM-DD)');
       // Default: the business day now, or (02:00–08:00) the one that just ended.
       const day =
         asked ??
         businessDayOf(new Date(nowMs)) ??
         businessDayOf(new Date(nowMs - 6 * 3_600_000)) ??
         '';
-      send(res, 200, { at: now, day, lines: await dayDelivery(pool, day, now) });
+      send(res, 200, { at: now, day, ...(await dayDelivery(pool, day, now)) });
+      return true;
+    }
+    if (path === '/delivery/refunds') {
+      send(res, 200, { at: now, ...(await refundsWaiting(pool, now)) });
       return true;
     }
     const b = /^\/delivery\/booking\/(BK-[A-Za-z0-9-]{1,36})$/.exec(path);
     if (b) {
-      send(res, 200, { at: now, lines: await bookingDelivery(pool, b[1] ?? '', now) });
+      send(res, 200, { at: now, ...(await bookingDelivery(pool, b[1] ?? '', now)) });
       return true;
     }
     throw new HttpError(404, 'Not found');
@@ -59,6 +67,8 @@ export async function handleDelivery(
     throw new HttpError(403, 'Only a super admin decides a refund');
   const b = await jsonBody(req);
   const refundId = str(b, 'refundId', 200);
+  if (!/^BK-[A-Za-z0-9-]+\/[a-z0-9-]+\/\d{4}-\d{2}-\d{2}\/\d{1,2}#refund$/.test(refundId))
+    throw new HttpError(400, 'Which refund?');
   const decision = b.decision;
   if (decision !== 'approved' && decision !== 'rejected')
     throw new HttpError(400, 'decision must be approved or rejected');
@@ -75,9 +85,11 @@ export async function handleDelivery(
     );
     send(res, 200, { decision, ...out });
   } catch (e) {
-    // decideRefund refuses in words (no such refund, already decided).
-    if (e instanceof Error && /^(No refund|Refund .* was already)/.test(e.message))
-      throw new HttpError(400, e.message);
+    // decideRefund refuses in words: no such refund, or already decided (by whom, when).
+    if (e instanceof Error && e.message.startsWith('No refund'))
+      throw new HttpError(404, e.message);
+    if (e instanceof Error && /^Refund .* was already/.test(e.message))
+      throw new HttpError(409, 'This refund was already decided. Refresh to see it.');
     throw e;
   }
   return true;

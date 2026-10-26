@@ -69,6 +69,29 @@ describe('delivery (P3.10)', () => {
     ).toBe('refund-rejected');
   });
 
+  it('what comes next for a short line; the end of the road; late decisions; cancelled with a refund', () => {
+    const base = line({ counted: 300 });
+    expect(lineView(base, START + 3600 + 600 + 301)).toMatchObject({
+      status: 'counting',
+      overdue: true,
+    });
+    expect(lineView(base, START + 3700).overdue).toBe(false);
+    const first = { step: 'first' as const, outcome: 'make-up' };
+    const second = { step: 'second' as const, outcome: 'make-up' };
+    expect(lineView({ ...base, decided: [first] }, START + 5 * 3600).next).toBe('make-up');
+    expect(lineView({ ...base, decided: [first, second] }, START + 2 * 86_400).next).toBe('refund');
+    const done = [first, second, { step: 'refund' as const, outcome: 'nothing paid' }];
+    expect(lineView({ ...base, decided: done }, START + 3 * 86_400).status).toBe('short-final');
+    const refund = { missing: 400, basePaise: 9000, gstPaise: 1620, decision: null };
+    expect(lineView(line({ state: 'cancelled', refund }), START - 86_400).status).toBe(
+      'refund-due',
+    );
+    // A paid booking's later lines wait for ads only until its first hour.
+    expect(
+      lineView(line({ state: 'paid', bookingStartsAt: START - 86_400 }), START - 10).status,
+    ).toBe('ads-missing');
+  });
+
   it('bookings that never ran', () => {
     expect(lineView(line({ state: 'draft' }), START + 10).status).toBe('not-sold');
     expect(lineView(line({ state: 'cancelled' }), START - 10).status).toBe('cancelled');

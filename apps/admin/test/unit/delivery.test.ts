@@ -18,7 +18,15 @@ const line = (
   bikesSeen: 4,
   makeUps: [],
   refund: null,
-  view: { status: 'live', delivered: 900, missing: 100, makeUp: null, ...view },
+  view: {
+    status: 'live',
+    delivered: 900,
+    missing: 100,
+    makeUp: null,
+    next: null,
+    overdue: false,
+    ...view,
+  },
   ...x,
 });
 
@@ -52,6 +60,12 @@ describe('delivery in words (P3.10)', () => {
     };
     expect(statusText(line({ status: 'refund-due', missing: 60 }, { refund }))).toBe(
       'Short 60: refund ₹1,500 + GST ₹270 proposed (a super admin decides)',
+    );
+    expect(statusText(line({ status: 'short', missing: 60, next: 'refund' }))).toBe(
+      'Short 60 plays: a refund is worked out a day after the last make-up',
+    );
+    expect(statusText(line({ status: 'counting', overdue: true }))).toBe(
+      'Hour over: 900 of 1,000 plays; the make-up decision is late (check the server)',
     );
     expect(statusChip('delivered')).toBe('rc-chip--go');
     expect(statusChip('refund-due')).toBe('rc-chip--stop');

@@ -87,6 +87,11 @@ describe('delivery routes (P3.10)', () => {
       [19, 'upcoming'],
     ]);
     expect((await get(ops, '/delivery?day=24-08-2027')).status).toBe(400);
+    expect((await get(ops, '/delivery?day=2027-02-30')).status).toBe(400);
+    expect(await (await get(fin, '/delivery/refunds')).json()).toMatchObject({
+      lines: [],
+      truncated: false,
+    });
     const one = (await (await get(fin, '/delivery/booking/BK-DL-1')).json()) as {
       lines: { bookingId: string; promised: number }[];
     };
@@ -97,15 +102,15 @@ describe('delivery routes (P3.10)', () => {
       fetch(`${url}/delivery/refund`, {
         method: 'POST',
         headers: { cookie, origin: ORIGIN, 'content-type': 'application/json' },
-        body: JSON.stringify({ refundId: 'BK-DL-1/x#refund', ...body }),
+        body: JSON.stringify({ refundId: 'BK-DL-1/hyd-madhapur/2027-08-24/18#refund', ...body }),
       });
     expect((await decide(fin, { decision: 'approved', reason: 'short by 10' })).status).toBe(403);
     const boss = await member('prateek@recall.in', { role: 'super-admin', areas: [] });
     expect((await decide(boss, { decision: 'approved', reason: 'ok' })).status).toBe(400);
     const missing = await decide(boss, { decision: 'approved', reason: 'short by 10 plays' });
     expect([missing.status, ((await missing.json()) as { error: string }).error]).toEqual([
-      400,
-      'No refund BK-DL-1/x#refund',
+      404,
+      'No refund BK-DL-1/hyd-madhapur/2027-08-24/18#refund',
     ]);
   });
 });

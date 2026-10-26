@@ -2,7 +2,7 @@
 // P3.10: one booking's lines and where each stands (refunds are decided on the Delivery page).
 import { useEffect, useState } from 'react';
 import { api, ApiError } from '../../lib/api';
-import type { DeliveryLine } from '../../lib/delivery';
+import type { DeliveryLine, DeliveryList } from '../../lib/delivery';
 import DeliveryLines from '../delivery/delivery-lines';
 
 export default function BookingDelivery({ bookingId }: { readonly bookingId: string }) {
@@ -10,7 +10,7 @@ export default function BookingDelivery({ bookingId }: { readonly bookingId: str
   const [error, setError] = useState('');
   useEffect(() => {
     let live = true;
-    api<{ lines: DeliveryLine[] }>(`/delivery/booking/${bookingId}`)
+    api<DeliveryList>(`/delivery/booking/${bookingId}`)
       .then((x) => {
         if (live) setLines(x.lines);
       })

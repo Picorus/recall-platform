@@ -12,6 +12,7 @@ export type LineStatus =
   | 'delivered'
   | 'make-up'
   | 'short'
+  | 'short-final'
   | 'refund-due'
   | 'refunded'
   | 'refund-rejected';
@@ -52,7 +53,15 @@ export interface DeliveryLine {
     readonly delivered: number;
     readonly missing: number;
     readonly makeUp: MakeUpView | null;
+    readonly next: 'make-up' | 'refund' | null;
+    readonly overdue: boolean;
   };
+}
+
+export interface DeliveryList {
+  readonly lines: readonly DeliveryLine[];
+  /** More lines than one answer carries: the rest are not shown. */
+  readonly truncated: boolean;
 }
 
 /** A status in a word or two (the chip). */
@@ -67,6 +76,7 @@ export const STATUS_NAMES: Record<LineStatus, string> = {
   delivered: 'Delivered',
   'make-up': 'Make-up',
   short: 'Short',
+  'short-final': 'Short',
   'refund-due': 'Refund due',
   refunded: 'Refunded',
   'refund-rejected': 'Refund rejected',
@@ -77,7 +87,8 @@ export function statusChip(s: LineStatus): string {
   if (s === 'delivered' || s === 'refunded') return 'rc-chip--go';
   if (s === 'make-up' || s === 'counting' || s === 'live' || s === 'waiting-ads')
     return 'rc-chip--paused';
-  if (s === 'short' || s === 'refund-due' || s === 'ads-missing') return 'rc-chip--stop';
+  if (s === 'short' || s === 'short-final' || s === 'refund-due' || s === 'ads-missing')
+    return 'rc-chip--stop';
   return 'rc-chip--offline';
 }
 
@@ -102,7 +113,9 @@ export function statusText(l: DeliveryLine): string {
     case 'live':
       return `Live: ${plays(v.delivered, l.promised)}`;
     case 'counting':
-      return `Hour over, counting late uploads: ${plays(v.delivered, l.promised)}`;
+      return v.overdue
+        ? `Hour over: ${plays(v.delivered, l.promised)}; the make-up decision is late (check the server)`
+        : `Hour over, counting late uploads: ${plays(v.delivered, l.promised)}`;
     case 'delivered': {
       const extra = v.delivered - l.promised;
       return `Delivered: ${plays(v.delivered, l.promised)}${extra > 0 ? ` (${count(extra)} extra, free)` : ''}`;
@@ -112,7 +125,11 @@ export function statusText(l: DeliveryLine): string {
         ? `Short ${count(v.missing)}: make-up ${m.stage === 1 ? 'in the next hours' : 'the next day'} ${clock(m.from)}–${clock(m.until)}, ${count(m.counted)} of ${count(m.owed)} made up`
         : `Short ${count(v.missing)}: make-up booked`;
     case 'short':
-      return `Short ${count(v.missing)} plays: waiting for the next make-up decision`;
+      return v.next === 'refund'
+        ? `Short ${count(v.missing)} plays: a refund is worked out a day after the last make-up`
+        : `Short ${count(v.missing)} plays: waiting for the next make-up decision`;
+    case 'short-final':
+      return `Short ${count(v.missing)} plays: nothing to refund (a free trial, or under a paisa)`;
     case 'refund-due':
       return `Short ${count(r?.missing ?? v.missing)}: refund ${rupees(r?.basePaise ?? 0)} + GST ${rupees(r?.gstPaise ?? 0)} proposed (a super admin decides)`;
     case 'refunded':

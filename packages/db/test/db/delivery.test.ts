@@ -14,7 +14,7 @@ import type pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { saveAreaVersion } from '../../src/areas.js';
 import { createBooking, moveBooking, savePriceBook } from '../../src/bookings.js';
-import { bookingDelivery, dayDelivery } from '../../src/delivery.js';
+import { bookingDelivery, dayDelivery, refundsWaiting } from '../../src/delivery.js';
 import { settleDue } from '../../src/makeups.js';
 import { addScreenKey } from '../../src/plays.js';
 import { storeUpload } from '../../src/screen-reports.js';
@@ -105,7 +105,7 @@ afterAll(async () => db.drop());
 
 describe('delivery (P3.10)', () => {
   it('a line live, counting late uploads, then short with a make-up that delivers the rest', async () => {
-    const at = async (now: number) => (await bookingDelivery(pool, 'BK-D1', now))[0];
+    const at = async (now: number) => (await bookingDelivery(pool, 'BK-D1', now)).lines[0];
     expect(await at(AT(17, 59))).toMatchObject({
       lineId: L17,
       brandName: 'chai-co',
@@ -131,11 +131,43 @@ describe('delivery (P3.10)', () => {
   });
 
   it('a business day: its sold lines in time order', async () => {
-    const day = await dayDelivery(pool, DATE, AT(18));
+    const day = (await dayDelivery(pool, DATE, AT(18))).lines;
     expect(day.map((l) => [l.startHour, l.view.status])).toEqual([
       [17, 'delivered'], // decided and made up (the test above)
       [21, 'upcoming'],
     ]);
-    expect(await dayDelivery(pool, '2027-08-25', AT(18))).toEqual([]);
+    expect(await dayDelivery(pool, '2027-08-25', AT(18))).toEqual({ lines: [], truncated: false });
+  });
+
+  it('a paid booking cancelled early: its refunds show (waiting for a super admin) on its day', async () => {
+    await createBooking(
+      pool,
+      {
+        bookingId: 'BK-D2',
+        brandId: 'dosa-co',
+        request: {
+          lines: [{ areaId: 'hyd-madhapur', date: DATE, startHour: 20, bikes: 5 }],
+          repeatMonths: 1,
+          channel: 'admin',
+        },
+        by: 'priya',
+      },
+      BOOKED,
+    );
+    await moveBooking(pool, 'BK-D2', 'awaiting-payment', { by: 'priya', actor: 'admin' }, BOOKED);
+    await moveBooking(pool, 'BK-D2', 'paid', { by: 'gateway', actor: 'system' }, BOOKED + 60);
+    await moveBooking(
+      pool,
+      'BK-D2',
+      'cancelled',
+      { by: 'priya', actor: 'admin', reason: 'brand asked' },
+      BOOKED + 120,
+    );
+    await settleDue(pool, BOOKED + 180);
+    const waiting = (await refundsWaiting(pool, BOOKED + 200)).lines;
+    expect(waiting.map((l) => [l.bookingId, l.view.status])).toEqual([['BK-D2', 'refund-due']]);
+    expect(waiting[0]?.refund).toMatchObject({ missing: 1_000, decision: null });
+    const day = (await dayDelivery(pool, DATE, BOOKED + 200)).lines;
+    expect(day.find((l) => l.bookingId === 'BK-D2')?.view.status).toBe('refund-due');
   });
 });

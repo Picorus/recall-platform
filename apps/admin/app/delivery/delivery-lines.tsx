@@ -89,7 +89,7 @@ export default function DeliveryLines({
             <th>Hour</th>
             {showBooking && <th>Brand · booking</th>}
             <th>Area</th>
-            <th>Bikes</th>
+            <th>Bikes seen (its hour)</th>
             <th>Plays</th>
             <th>Status</th>
           </tr>
