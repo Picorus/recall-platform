@@ -7,6 +7,7 @@ import { api, ApiError } from '../../lib/api';
 import { clock, dayOfIndia, rupees } from '../../lib/format';
 import { E_INVOICE, PAYMENT_NAMES, type MoneyMonth } from '../../lib/money';
 import { Shell, useMember } from '../../lib/session';
+import OwedBack from './owed-back';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 /** "Oct 2026" from "2026-10". */
@@ -103,14 +104,9 @@ export default function MoneyPage() {
             <Stat label="TDS to deposit" value={rupees(p.tdsPaise)} />
             <Stat label="GST not yet paid" value={rupees(p.gstPaise)} note="less input credit" />
           </div>
-          {p.owedBack.length > 0 && (
-            <p className="muted">
-              Owed back: {p.owedBack.map((b) => `${b.brandName} ${rupees(b.paise)}`).join(' · ')}.
-              Paying it back comes in the next step.
-            </p>
-          )}
         </section>
       )}
+      {m && <OwedBack onChanged={() => load(month)} />}
       <div className="cal-bar">
         <label className="rc-field">
           <span className="rc-field__label">Month</span>

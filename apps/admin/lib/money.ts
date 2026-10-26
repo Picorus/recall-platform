@@ -73,3 +73,45 @@ export interface MoneyMonth {
     receivedAt: number;
   }[];
 }
+
+/** P3.13.2: an amount owed back to a brand, and where it stands. */
+export type MoneyBackState = 'owed' | 'pending' | 'failed' | 'given up' | 'refunded' | 'by-hand';
+
+export const BACK_NAMES: Record<MoneyBackState, string> = {
+  owed: 'Owed',
+  pending: 'Sent, waiting for the provider',
+  failed: 'Failed, can be sent again',
+  'given up': 'Provider cannot: pay by bank transfer',
+  refunded: 'Sent back',
+  'by-hand': 'Paid by bank transfer',
+};
+
+export const BACK_CHIP: Record<MoneyBackState, string> = {
+  owed: 'rc-chip--paused',
+  pending: 'rc-chip--paused',
+  failed: 'rc-chip--stop',
+  'given up': 'rc-chip--stop',
+  refunded: 'rc-chip--go',
+  'by-hand': 'rc-chip--go',
+};
+
+export interface OwedBackItem {
+  readonly owedEntry: string;
+  readonly kind: 'refund' | 'payment back';
+  readonly bookingId: string | null;
+  readonly brandName: string;
+  readonly amountPaise: number;
+  readonly owedAt: number;
+  readonly why: string;
+  readonly paymentId: string | null;
+  readonly state: MoneyBackState;
+  readonly reason: string | null;
+  readonly tries: number;
+  readonly history: readonly { at: number; by: string; text: string }[];
+}
+
+export interface OwedBackList {
+  readonly items: readonly OwedBackItem[];
+  readonly canPay: boolean;
+  readonly canSend: boolean;
+}

@@ -10,7 +10,7 @@ import {
   fakePayouts,
 } from '@recall/adapters';
 import { apiHandler, newToken, newTotpSecret, seal, tokenHash, totpCode } from '@recall/api';
-import { launchAreas, newScreenId } from '@recall/domain';
+import { launchAreas, moneyToReturn, newScreenId, refundApproved } from '@recall/domain';
 import {
   addStaff,
   createAccount,
@@ -799,6 +799,36 @@ it('the Payouts page: the Monday run approved, a line held and released, then pa
 }, 120_000);
 
 it('the Money page: where money stands, the payment and its tax invoice, the accountant files', async () => {
+  // Owed back: a ₹590 refund on the booking paid earlier, and a payment for a link we never knew.
+  const paid = await db.pool.query<{ booking_id: string; brand_id: string }>(
+    `SELECT l.booking_id, b.brand_id FROM payment_link_events e JOIN payment_links l USING (link_id)
+       JOIN bookings b ON b.booking_id = l.booking_id WHERE e.state = 'paid' LIMIT 1`,
+  );
+  const bk = paid.rows[0]?.booking_id ?? '';
+  const nowS = Math.floor(clock() / 1000);
+  await post(
+    db.pool,
+    refundApproved({
+      refundId: `${bk}/e2e#refund`,
+      lineId: `${bk}/e2e`,
+      brandId: paid.rows[0]?.brand_id ?? '',
+      base: 50_000,
+      gst: 9_000,
+      at: nowS,
+    }),
+    'e2e',
+  );
+  await post(
+    db.pool,
+    moneyToReturn({
+      paymentId: 'pay_e2e_stray',
+      ref: 'lnk_stray',
+      amount: 25_000,
+      why: 'unknown link',
+      at: nowS + 1,
+    }),
+    'e2e',
+  );
   const page = await browser.newPage();
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
@@ -817,6 +847,22 @@ it('the Money page: where money stands, the payment and its tax invoice, the acc
   await expect.poll(() => pays.getByRole('row').count()).toBe(2);
   const docs = page.getByRole('table', { name: 'Tax documents' });
   await expect.poll(() => docs.getByRole('row').count()).toBe(2);
+  const back = page.getByRole('table', { name: 'Money owed back' });
+  await back
+    .getByRole('row')
+    .filter({ hasText: 'Refund (credit note)' })
+    .getByRole('button', { name: 'Send back' })
+    .click();
+  await page.getByText(/^₹590 sent back to /).waitFor();
+  // The stray payment is unknown to the provider: paid by bank transfer instead.
+  const transfer = back.getByRole('group', { name: 'Bank transfer, to-return:pay_e2e_stray' });
+  await transfer.getByLabel('Bank reference (UTR)').fill('HDFCR52026102700001');
+  await transfer.getByRole('button', { name: 'Record bank transfer' }).click();
+  await page.getByText(/: bank transfer recorded\.$/).waitFor();
+  await page
+    .getByRole('region', { name: 'Owed back to brands' })
+    .getByText('Nothing owed back.')
+    .waitFor();
   const download = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Download files for the accountant' }).click();
   expect((await download).suggestedFilename()).toMatch(/^invoices-\d{4}-\d{2}\.csv$/);

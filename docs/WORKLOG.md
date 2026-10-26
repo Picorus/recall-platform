@@ -2,13 +2,22 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 27 Oct 2026 · P3.13.2 · Money owed back to brands
+- **Payments adapter** gets a refund call (money sent back against the payment it came from; the same key every try, so never twice) with a working fake.
+- **Owed back** (migration 0042, `packages/db/src/money-back.ts`): each amount owed back is the ledger entry that put it on the books (an approved refund with its credit note, or a payment after a cancellation or of a wrong amount). Finance sends it back through the payment provider against the brand's payment: a passing failure is tried again (3 tries, then given up), a pending or lost answer is asked again with the same key. When the provider cannot (no payment on record, given up), finance records the bank transfer they made, with its bank reference. Never by hand while the provider may still send it. Each try is kept; the books move once (`paid-back:<entry>`: out of the gateway account, or out of the bank).
+- **API**: `GET /money/owed-back`; `POST /money/owed-back/send` and `/by-hand` (finance admins and super admins; read-only members look).
+- **Money page**: an "Owed back to brands" card: each amount, why, where it stands, its history; Send back / Send again; Record bank transfer.
+- Tests: adapters 1 (refund once per key, never more than is left of the payment); database 4 (the list with the payment each goes back against; sent once; a passing failure and a pending answer; given up and paid by bank transfer; ledger balances; append-only); API 1 (who sends, refusals, both ways); browser (a refund sent back, a stray payment paid by transfer).
+- Open: the real payment provider (P6).
+- Next: P3.13.3, agency and aggregator statements and paying them.
+
 ## 27 Oct 2026 · P3.13.1 · Money page (read-only)
 - P3.12 merged (PR #61).
 - P3.13 is done in three parts: **.1** see the money (this), **.2** pay refunds back to brands, **.3** agency and aggregator statements and their payments.
 - **Money page** (`packages/db/src/money.ts`, `services/api/src/money-api.ts`, `apps/admin/app/money`): where money stands now from the ledger (held for campaigns, owed back to each brand, owed to riders and to partners, TDS to deposit, GST not yet paid); a month's payments received (paid, or paid after a cancellation or of a wrong amount: owed back); its tax invoices and credit notes; the GST summary (invoices, credit notes, input credit, GST to pay, TDS, the year's turnover and the e-invoice check, invoices missing a brand's tax details); provider messages about links we have no record of; and the accountant's five files (invoices, credit notes, partner invoices, journal, summary) downloaded as CSV. Finance looks (read-only members too); nothing here moves money.
 - Tests: database 4 (India months, payments with late money, the invoice, the money position and unknown messages; ledger balances); API 1 (who looks, a month, the files); browser (the page and a download).
 - Open: none.
-- Next: P3.13.2, paying refunds and money owed back to brands.
+- Next: P3.13.2, money owed back to brands.
 
 ## 27 Oct 2026 · P3.12 · Payouts
 - P3.11.3 merged (PR #60).
