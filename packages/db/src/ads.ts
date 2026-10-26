@@ -140,7 +140,7 @@ export async function adById(pool: Q, adId: string): Promise<Ad | undefined> {
 /** A brand's ads, newest first. */
 export async function brandAds(pool: Q, brandId: string): Promise<Ad[]> {
   const r = await pool.query<AdRow>(
-    'SELECT * FROM ads WHERE brand_id = $1 ORDER BY uploaded_at DESC, ad_id LIMIT 200',
+    'SELECT * FROM ads WHERE brand_id = $1 ORDER BY uploaded_at DESC, seq DESC LIMIT 200',
     [brandId],
   );
   return r.rows.map(toAd);

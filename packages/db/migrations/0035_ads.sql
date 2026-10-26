@@ -17,9 +17,11 @@ CREATE TABLE ads (
   -- The worst automatic check: 'fail' can never be approved.
   outcome     text        NOT NULL CHECK (outcome IN ('pass', 'warn', 'fail')),
   uploaded_by text        NOT NULL CHECK (length(uploaded_by) BETWEEN 1 AND 120),
-  uploaded_at timestamptz NOT NULL
+  uploaded_at timestamptz NOT NULL,
+  -- Upload order: two ads can share a second (newest first must not depend on the random id).
+  seq         bigint      GENERATED ALWAYS AS IDENTITY UNIQUE
 );
-CREATE INDEX ads_brand ON ads (brand_id, uploaded_at DESC);
+CREATE INDEX ads_brand ON ads (brand_id, uploaded_at DESC, seq DESC);
 
 CREATE TABLE booking_ad_sets (
   booking_id text        NOT NULL REFERENCES bookings (booking_id),
