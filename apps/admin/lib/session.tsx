@@ -71,6 +71,9 @@ export function Shell({
           {(member.role === 'super-admin' || member.areas.includes('finance')) && (
             <Link href="/payouts">Payouts</Link>
           )}
+          {(member.role === 'super-admin' || member.areas.includes('finance')) && (
+            <Link href="/money">Money</Link>
+          )}
           {member.role === 'super-admin' && <Link href="/staff">Staff</Link>}
           <span className="muted">
             {member.name} · {accessText(member.role, member.areas)}

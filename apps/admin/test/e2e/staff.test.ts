@@ -10,7 +10,7 @@ import {
   fakePayouts,
 } from '@recall/adapters';
 import { apiHandler, newToken, newTotpSecret, seal, tokenHash, totpCode } from '@recall/api';
-import { launchAreas, newScreenId } from '@recall/domain';
+import { launchAreas, moneyToReturn, newScreenId, refundApproved } from '@recall/domain';
 import {
   addStaff,
   createAccount,
@@ -794,6 +794,110 @@ it('the Payouts page: the Monday run approved, a line held and released, then pa
   if (process.env.SCREENSHOT_DIR) {
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.screenshot({ path: `${process.env.SCREENSHOT_DIR}/payouts.png`, fullPage: true });
+  }
+  expect(errors).toEqual([]);
+}, 120_000);
+
+it('the Money page: where money stands, the payment and its tax invoice, the accountant files', async () => {
+  // Owed back: a ₹590 refund on the booking paid earlier, and a payment for a link we never knew.
+  const paid = await db.pool.query<{ booking_id: string; brand_id: string }>(
+    `SELECT l.booking_id, b.brand_id FROM payment_link_events e JOIN payment_links l USING (link_id)
+       JOIN bookings b ON b.booking_id = l.booking_id WHERE e.state = 'paid' LIMIT 1`,
+  );
+  const bk = paid.rows[0]?.booking_id ?? '';
+  const nowS = Math.floor(clock() / 1000);
+  await post(
+    db.pool,
+    refundApproved({
+      refundId: `${bk}/e2e#refund`,
+      lineId: `${bk}/e2e`,
+      brandId: paid.rows[0]?.brand_id ?? '',
+      base: 50_000,
+      gst: 9_000,
+      at: nowS,
+    }),
+    'e2e',
+  );
+  await post(
+    db.pool,
+    moneyToReturn({
+      paymentId: 'pay_e2e_stray',
+      ref: 'lnk_stray',
+      amount: 25_000,
+      why: 'unknown link',
+      at: nowS + 1,
+    }),
+    'e2e',
+  );
+  const page = await browser.newPage();
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  shift += 30_000;
+  await page.goto(`${SITE}/sign-in`);
+  await page.getByLabel('Email').fill('prateek@recall.in');
+  await page.getByLabel('Password').fill(PW);
+  await page.getByLabel('Code from your authenticator app').fill(totpCode(SECRET.value, step()));
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.getByText('Prateek · Super admin').waitFor();
+  await page.getByRole('link', { name: 'Money' }).click();
+  // The booking paid in the earlier test: held for its campaign, one payment, one invoice.
+  await page.getByRole('region', { name: 'Where money stands now' }).waitFor();
+  const pays = page.getByRole('table', { name: 'Payments' });
+  await pays.getByText('Paid', { exact: true }).waitFor();
+  await expect.poll(() => pays.getByRole('row').count()).toBe(2);
+  const docs = page.getByRole('table', { name: 'Tax documents' });
+  await expect.poll(() => docs.getByRole('row').count()).toBe(2);
+  const back = page.getByRole('table', { name: 'Money owed back' });
+  await back
+    .getByRole('row')
+    .filter({ hasText: 'Refund (credit note)' })
+    .getByRole('button', { name: 'Send back' })
+    .click();
+  await page.getByText(/^₹590 sent back to /).waitFor();
+  // The stray payment is unknown to the provider: paid by bank transfer instead.
+  const transfer = back.getByRole('group', { name: 'Bank transfer, to-return:pay_e2e_stray' });
+  await transfer.getByLabel('Bank reference (UTR)').fill('HDFCR52026102700001');
+  await transfer.getByRole('button', { name: 'Record bank transfer' }).click();
+  await page.getByText(/: bank transfer recorded\.$/).waitFor();
+  await page
+    .getByRole('region', { name: 'Owed back to brands' })
+    .getByText('Nothing owed back.')
+    .waitFor();
+  // P3.13.3: a cut for an agency on the paid booking; its statement; their invoice recorded.
+  const partnersCard = page.getByRole('region', { name: 'Agencies and aggregators' });
+  const give = partnersCard.getByRole('form', { name: 'Give a cut on a booking' });
+  await give.getByLabel('Booking').fill(bk);
+  await give.getByLabel('Partner id').fill('adwise');
+  await give.getByLabel('Why (logged)').fill('agency brought this brand');
+  await give.getByRole('button', { name: 'Give cut' }).click();
+  await give.getByText(`Cut given on ${bk}.`).waitFor();
+  const partnerRow = partnersCard
+    .getByRole('table', { name: 'Partners' })
+    .getByRole('row', { name: /adwise/ });
+  await partnerRow.getByRole('button', { name: 'Statement' }).click();
+  const statement = partnersCard.getByRole('region', { name: 'Statement of adwise' });
+  await statement.getByText('Owed at the end').waitFor();
+  const inv = statement.getByRole('form', { name: 'Record their invoice' });
+  await inv.getByLabel('Invoice number').fill('AW/26/001');
+  await inv.getByLabel('Date').fill(new Date(clock() + 330 * 60_000).toISOString().slice(0, 10));
+  await inv.getByLabel('Before GST (₹)').fill('100');
+  await inv.getByRole('button', { name: 'Record invoice' }).click();
+  await statement.getByText('Invoice AW/26/001 of adwise recorded.').waitFor();
+  // Nothing delivered yet, so nothing owed: a payment is refused.
+  const pay = statement.getByRole('form', { name: 'Record a payment' });
+  await pay.getByLabel('Paid (₹)').fill('100');
+  await pay.getByLabel('Bank reference (UTR)').fill('UTR12345678');
+  await pay.getByRole('button', { name: 'Record payment' }).click();
+  await statement
+    .getByRole('alert')
+    .getByText(/adwise is owed nothing/)
+    .waitFor();
+  const download = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Download files for the accountant' }).click();
+  expect((await download).suggestedFilename()).toMatch(/^invoices-\d{4}-\d{2}\.csv$/);
+  if (process.env.SCREENSHOT_DIR) {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.screenshot({ path: `${process.env.SCREENSHOT_DIR}/money.png`, fullPage: true });
   }
   expect(errors).toEqual([]);
 }, 120_000);

@@ -53,3 +53,33 @@ describe('fake payments (P3.8.2)', () => {
     );
   });
 });
+
+describe('refunds (P3.13.2)', () => {
+  it('once per key, never more than is left of the payment; failures and pending as told', async () => {
+    const p = fakePayments({
+      clock: () => T,
+      refundFails: new Map([['pay_fake_down', { reason: 'bank down', retryable: true, times: 1 }]]),
+    });
+    const { linkId } = await p.createLink(req);
+    p.pay(linkId);
+    const paymentId = `pay_fake_${linkId.slice(6)}`;
+    const a = await p.refund({ refundKey: 'r1', paymentId, amountPaise: 1_000_000, note: 'x' });
+    expect(a.status).toBe('refunded');
+    expect(
+      await p.refund({ refundKey: 'r1', paymentId, amountPaise: 1_000_000, note: 'x' }),
+    ).toEqual(a);
+    // ₹21,240 paid, ₹10,000 back: ₹11,240 left.
+    expect(
+      await p.refund({ refundKey: 'r2', paymentId, amountPaise: 1_124_001, note: 'x' }),
+    ).toEqual({ status: 'failed', reason: 'more than is left of the payment', retryable: false });
+    expect(
+      (await p.refund({ refundKey: 'r3', paymentId, amountPaise: 1_124_000, note: 'x' })).status,
+    ).toBe('refunded');
+    expect(
+      await p.refund({ refundKey: 'r4', paymentId: 'pay_nobody', amountPaise: 1, note: 'x' }),
+    ).toMatchObject({ status: 'failed', reason: 'no such payment' });
+    expect(
+      await p.refund({ refundKey: 'r5', paymentId: 'pay_fake_down', amountPaise: 1, note: 'x' }),
+    ).toMatchObject({ status: 'failed', retryable: true });
+  });
+});

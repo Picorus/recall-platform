@@ -15,6 +15,7 @@ import {
 import type { Pool, PoolClient } from 'pg';
 import { priceBooks } from './bookings.js';
 import { inTransaction } from './makeups.js';
+import { Refusal } from './refusal.js';
 
 type Q = Pick<PoolClient, 'query'>;
 
@@ -91,9 +92,15 @@ export async function recordPartnerInvoice(
     );
     const room = Number(r.rows[0]?.booked ?? 0) - Number(r.rows[0]?.backed ?? 0) + 100;
     if (inv.gstPaise > room)
-      throw new Error(
+      throw new Refusal(
         `This invoice claims ₹${inv.gstPaise / 100} GST; RECALL booked only ₹${(room - 100) / 100} more for ${inv.partnerId}`,
       );
+    const dup = await c.query(
+      'SELECT 1 FROM partner_invoices WHERE partner_id = $1 AND invoice_no = $2',
+      [inv.partnerId, inv.invoiceNo],
+    );
+    if (dup.rows.length > 0)
+      throw new Refusal(`Invoice ${inv.invoiceNo} of ${inv.partnerId} is already recorded`);
     await c.query(
       `INSERT INTO partner_invoices (partner_id, invoice_no, invoice_date, gstin, taxable_paise,
          gst_paise, recorded_by) VALUES ($1, $2, $3::date, $4, $5, $6, $7)`,

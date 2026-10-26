@@ -54,6 +54,7 @@ import { handleReviews } from './reviews-api.js';
 import { handleDelivery } from './delivery-api.js';
 import { handleRiders } from './riders-api.js';
 import { handlePayouts } from './payouts-api.js';
+import { handleMoney } from './money-api.js';
 import {
   decoyHash,
   hashPassword,
@@ -471,6 +472,7 @@ export function apiHandler(
       if (await handleDelivery(pool, cfg, req, res, nowMs)) return;
       if (await handleRiders(pool, cfg, req, res, nowMs)) return;
       if (await handlePayouts(pool, cfg, req, res, nowMs)) return;
+      if (await handleMoney(pool, cfg, req, res, nowMs)) return;
       throw new HttpError(404, 'Not found');
     })().catch((e: unknown) => {
       if (e instanceof HttpError) return send(res, e.status, { error: e.message });

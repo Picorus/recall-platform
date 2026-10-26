@@ -2,6 +2,35 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 27 Oct 2026 · P3.13.3 · Agencies and aggregators: statements and payments
+- Prateek confirmed (27 Oct): the automatic Monday pay run needs one approver; only a super admin records a refund the provider never answered about (DECISIONS).
+- **Cuts** (existing P1.7.4 logic, now in admin): a super admin gives a cut on a paid booking to an agency or an aggregator (rate from the price book unless set, the partner's GST, why); once per kind per booking. Cuts are earned as plays are delivered.
+- **Statements** (`packages/db/src/partners.ts`): each partner with a cut and what it is owed now; its monthly statement (owed at the start, cuts by booking with GST and TDS held back, payments, its invoices dated in the month, owed at the end), downloaded as CSV to send.
+- **Payments** (migration 0043): finance records a bank transfer to a partner with its bank reference, never more than it is owed; the ledger moves it out of what is owed and out of the bank. Its invoices are recorded too (GST claimed only against them; one per number).
+- **API**: `GET /money/partners`, `GET /money/partners/statement`, `POST /money/partners/pay`, `/invoice`, `/cut`. **Money page**: an "Agencies and aggregators" card.
+- Tests: database 3 (a cut once, by a super admin; the statement with GST and TDS; paid never more than owed, the next month opens with what is left; invoices once; append-only; ledger balances); API 1; browser (a cut given, the statement, an invoice recorded, a payment over what is owed refused).
+- **Second review, all fixed with tests:** the same bank transfer could be recorded twice (a lost reply, a second press): now one reference per partner, refused again; an invoice for a mistyped partner or an impossible date (30 Feb) is refused; the statement file now lists the partner's invoices; an open statement reloads after a cut. Checked and sound: never paid more than owed (one lock with the cut accruals), TDS stays with the government, balances add up month to month, negative cuts after refunds.
+- Open: partners are paid by bank transfer recorded by hand until a payout provider is contracted (P6). A partner's invoices are kept per partner, not per kind (an agency that is also an aggregator shares them; DECISIONS).
+- Next: P3.14, reports.
+
+## 27 Oct 2026 · P3.13.2 · Money owed back to brands
+- **Payments adapter** gets a refund call (money sent back against the payment it came from; the same key every try, so never twice) with a working fake.
+- **Owed back** (migration 0042, `packages/db/src/money-back.ts`): each amount owed back is the ledger entry that put it on the books (an approved refund with its credit note, or a payment after a cancellation or of a wrong amount). Finance sends it back through the payment provider against the brand's payment: a passing failure is tried again (3 tries, then given up), a pending or lost answer is asked again with the same key. When the provider cannot (no payment on record, given up), finance records the bank transfer they made, with its bank reference. Never by hand while the provider may still send it. Each try is kept; the books move once (`paid-back:<entry>`: out of the gateway account, or out of the bank).
+- **API**: `GET /money/owed-back`; `POST /money/owed-back/send` and `/by-hand` (finance admins and super admins; read-only members look).
+- **Money page**: an "Owed back to brands" card: each amount, why, where it stands, its history; Send back / Send again; Record bank transfer.
+- Tests: adapters 1 (refund once per key, never more than is left of the payment); database 4 (the list with the payment each goes back against; sent once; a passing failure and a pending answer; given up and paid by bank transfer; ledger balances; append-only); API 1 (who sends, refusals, both ways); browser (a refund sent back, a stray payment paid by transfer).
+- **Second review, all fixed with tests:** if the provider sent the money back but its answer was lost (a crash, a dropped connection), the item still looked unsent and could also be paid by hand: now "asked the provider" is saved before asking, so it shows as waiting and is only asked again with the same key. A provider that never answers could leave an amount stuck: a super admin may then record the bank transfer, saying in the note that the provider confirmed nothing was sent. The provider gets 30 seconds to answer; one slow item no longer blocks the others (one lock per amount); a short key for the provider, a new one only after a failure (providers replay failures under their key). Money owed back with no known brand now counts in the total ("brand not known"); the list says when it is cut at 500; the card shows even if a month fails to load and refreshes after a refusal.
+- Open: the real payment provider (P6).
+- Next: P3.13.3, agencies and aggregators.
+
+## 27 Oct 2026 · P3.13.1 · Money page (read-only)
+- P3.12 merged (PR #61).
+- P3.13 is done in three parts: **.1** see the money (this), **.2** pay refunds back to brands, **.3** agency and aggregator statements and their payments.
+- **Money page** (`packages/db/src/money.ts`, `services/api/src/money-api.ts`, `apps/admin/app/money`): where money stands now from the ledger (held for campaigns, owed back to each brand, owed to riders and to partners, TDS to deposit, GST not yet paid); a month's payments received (paid, or paid after a cancellation or of a wrong amount: owed back); its tax invoices and credit notes; the GST summary (invoices, credit notes, input credit, GST to pay, TDS, the year's turnover and the e-invoice check, invoices missing a brand's tax details); provider messages about links we have no record of; and the accountant's five files (invoices, credit notes, partner invoices, journal, summary) downloaded as CSV. Finance looks (read-only members too); nothing here moves money.
+- Tests: database 4 (India months, payments with late money, the invoice, the money position and unknown messages; ledger balances); API 1 (who looks, a month, the files); browser (the page and a download).
+- Open: none.
+- Next: P3.13.2, money owed back to brands.
+
 ## 27 Oct 2026 · P3.12 · Payouts
 - P3.11.3 merged (PR #60).
 - **The Monday run in admin** (migration 0041, `packages/db/src/payouts.ts`): prepared by itself on Monday from 10:00 India time (or by hand), approved by someone other than who prepared it, then sent through the payout provider. What preparing found (riders with no checked account, pay not brought up to date, changes in closed months) is kept with the run.

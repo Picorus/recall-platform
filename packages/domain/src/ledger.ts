@@ -193,6 +193,34 @@ export function moneyToReturn(m: {
 }
 
 /**
+ * P3.13.2: money owed back has gone back: through the payment provider to where it was paid from
+ * (out of the gateway account), or by a bank transfer finance made by hand (out of the bank). One
+ * entry per amount owed back, ever.
+ */
+export function moneyPaidBack(m: {
+  /** The entry that put it on the books as owed back. */
+  readonly owedEntry: string;
+  readonly ref: string;
+  readonly brandId?: string;
+  readonly amount: number;
+  readonly via: 'provider' | 'bank';
+  readonly note: string;
+  readonly at: number;
+}): Entry {
+  return {
+    entryId: `paid-back:${m.owedEntry}`,
+    at: m.at,
+    kind: 'money-paid-back',
+    ref: m.ref,
+    memo: m.note.slice(0, 300),
+    postings: [
+      ...post('refunds-payable', 'debit', m.amount, m.brandId),
+      ...post(m.via === 'provider' ? 'payment-clearing' : 'bank', 'credit', m.amount, m.brandId),
+    ],
+  };
+}
+
+/**
  * P1.7.3: what a line has earned once `delivered` of its `promised` plays are counted: the delivered
  * share of what was paid for it, rounded down (never more than paid; extra plays are a bonus).
  */
@@ -331,6 +359,39 @@ export function cutAccrued(
       ...move('gst-input', 'debit', moreGst),
       ...move(payable, 'credit', more + moreGst - moreTds),
       ...move('tds-payable', 'credit', moreTds),
+    ],
+  };
+}
+
+/**
+ * P3.13.3: a partner paid what it is owed for its cuts, by a bank transfer finance made (with its
+ * statement): out of what is owed to the partner, out of the bank.
+ */
+export function partnerPaid(p: {
+  readonly partnerId: string;
+  readonly kind: 'agency' | 'aggregator';
+  readonly seq: number;
+  readonly amount: number;
+  readonly reference: string;
+  readonly at: number;
+}): Entry {
+  return {
+    entryId: `partner-paid:${p.kind}:${p.partnerId}:${p.seq}`,
+    at: p.at,
+    kind: 'partner-paid',
+    ref: p.partnerId,
+    memo: `${p.kind === 'agency' ? 'Agency' : 'Aggregator'} ${p.partnerId} paid by bank transfer ${p.reference}`.slice(
+      0,
+      300,
+    ),
+    postings: [
+      ...post(
+        p.kind === 'agency' ? 'agency-payable' : 'aggregator-payable',
+        'debit',
+        p.amount,
+        p.partnerId,
+      ),
+      ...post('bank', 'credit', p.amount, p.partnerId),
     ],
   };
 }
