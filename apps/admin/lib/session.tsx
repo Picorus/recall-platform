@@ -38,6 +38,9 @@ export function Shell({
         <span className="brand">RECALL admin</span>
         <nav>
           <Link href="/">Today</Link>
+          {(member.role === 'super-admin' || member.areas.includes('operations')) && (
+            <Link href="/fleet">Fleet map</Link>
+          )}
           {member.role === 'super-admin' && <Link href="/staff">Staff</Link>}
           <span className="muted">
             {member.name} · {accessText(member.role, member.areas)}

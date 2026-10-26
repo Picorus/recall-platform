@@ -11,6 +11,8 @@ export default tseslint.config(
       '**/.turbo/',
       '**/.next/',
       '**/coverage/',
+      // Copied from MapLibre at build (apps/admin/scripts/copy-map-worker.mjs).
+      'apps/admin/public/maplibre-gl-worker.mjs',
     ],
   },
   js.configs.recommended,

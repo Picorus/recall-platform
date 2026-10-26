@@ -8,11 +8,15 @@ import mqtt from 'mqtt';
 import type { Pool } from 'pg';
 import { hookHandler, type HookConfig } from './hooks.js';
 import { handleUp, LineMemory } from './line.js';
+import { freshCommands } from '@recall/db';
+import { downTopic } from '@recall/domain';
 
 /** Messages handled at once; more wait their turn (each holds a database connection). */
 const AT_ONCE = 16;
 /** Messages waiting beyond this are dropped unanswered: their boxes send them again. */
 const MOST_WAITING = 10_000;
+/** How often commands just issued in admin are sent out. */
+const FRESH_EVERY_MS = 5_000;
 /** Login refusals (MQTT 3 and 5 codes): not authorized, bad user name or password. */
 const REFUSED = new Set([4, 5, 134, 135]);
 
@@ -43,6 +47,7 @@ export async function startGateway(
   const hookPort = typeof address === 'object' && address ? address.port : cfg.hookPort;
   let client: mqtt.MqttClient | undefined;
   let stopping = false;
+  let sendFresh: ReturnType<typeof setInterval> | undefined;
   return {
     hookPort,
     async connect() {
@@ -89,6 +94,19 @@ export async function startGateway(
           }, 2_000);
       });
       await new Promise<void>((ok) => c.once('connect', () => ok()));
+      // Commands just issued in admin go out at once (P3.3), not only at the screen's next hello.
+      let since = Date.now() - FRESH_EVERY_MS;
+      sendFresh = setInterval(() => {
+        const nowMs = Date.now();
+        // A little overlap, so a command made at the edge of two runs is never missed (twice is
+        // harmless: the box carries out each id once).
+        freshCommands(pool, since - 1_000, nowMs)
+          .then((cmds) => {
+            for (const x of cmds) c.publish(downTopic(x.screenId, 'command'), x.text, { qos: 1 });
+            since = nowMs;
+          })
+          .catch((e: unknown) => log(`fresh commands: ${(e as Error).message}`));
+      }, FRESH_EVERY_MS);
       // A broker still starting can refuse the first subscription (its checks not yet ready): try
       // again until it is granted. Later reconnects subscribe again by themselves.
       for (;;) {
@@ -106,6 +124,7 @@ export async function startGateway(
     },
     async stop() {
       stopping = true;
+      if (sendFresh) clearInterval(sendFresh);
       await client?.endAsync();
       const closed = new Promise<void>((ok) => server.close(() => ok()));
       server.closeAllConnections(); // the broker keeps its hook connections open

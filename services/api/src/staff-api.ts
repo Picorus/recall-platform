@@ -34,6 +34,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Pool } from 'pg';
 import { cookies, HttpError, jsonBody, send, str } from './http.js';
 import { handleToday } from './today-api.js';
+import { handleFleet } from './fleet-api.js';
 import {
   decoyHash,
   hashPassword,
@@ -427,6 +428,7 @@ export function apiHandler(
       if (req.method === 'GET' && req.url === '/health') return send(res, 200, { ok: true });
       if (await handleStaff(pool, cfg, req, res, nowMs, log)) return;
       if (await handleToday(pool, cfg, req, res, nowMs)) return;
+      if (await handleFleet(pool, cfg, req, res, nowMs)) return;
       throw new HttpError(404, 'Not found');
     })().catch((e: unknown) => {
       if (e instanceof HttpError) return send(res, e.status, { error: e.message });
