@@ -586,3 +586,80 @@ it('booking for a brand: a draft from its page, the payment link, paid, the time
     await page.screenshot({ path: `${process.env.SCREENSHOT_DIR}/delivery.png`, fullPage: true });
   expect(errors).toEqual([]);
 }, 120_000);
+
+it('the Riders page: a walk-in rider added, his documents checked, approved, a note', async () => {
+  const page = await browser.newPage();
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  shift += 30_000;
+  await page.goto(`${SITE}/sign-in`);
+  await page.getByLabel('Email').fill('prateek@recall.in');
+  await page.getByLabel('Password').fill(PW);
+  await page.getByLabel('Code from your authenticator app').fill(totpCode(SECRET.value, step()));
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.getByText('Prateek · Super admin').waitFor();
+  await page.getByRole('link', { name: 'Riders' }).click();
+  await page.getByRole('button', { name: 'New rider' }).click();
+  const add = page.getByRole('form', { name: 'New rider' });
+  await add.getByLabel('Name').fill('Ravi Kumar');
+  await add.getByLabel('Phone (mobile)').fill('98480 12345');
+  await add.getByLabel('Number plate').fill('ts 09 ea 1234');
+  await add.getByLabel('Rides in').fill('Madhapur');
+  await add.getByLabel('swiggy').check();
+  await add.getByLabel('How he applied (logged)').fill('walk-in at the warehouse');
+  await add.getByRole('button', { name: 'Add rider' }).click();
+  await page.getByText(/^Rider RD-\d{6} added\.$/).waitFor();
+  const panel = page.getByRole('region', { name: /^Rider RD-/ });
+  await panel.getByText('+91 98480 12345').waitFor();
+  await panel.getByText('TS09EA1234', { exact: true }).waitFor();
+
+  // His documents, sent by Operations for him, then looked at.
+  for (const [kind, file] of [
+    ['Photo', 'ad-1280x640.jpg'],
+    ['Registration (RC)', 'ad-1280x640.png'],
+    ['Insurance', 'ad-1280x640.webp'],
+  ] as const) {
+    const send = panel.getByRole('form', { name: 'Send a document' });
+    await send.getByLabel('Document').selectOption({ label: kind });
+    await send.getByLabel('File (photo or PDF, up to 10 MB)').setInputFiles(fixture(file));
+    await send.getByRole('button', { name: 'Send' }).click();
+    await panel.getByText(`${kind} sent: waiting for a look.`).waitFor();
+  }
+  const approve = panel.getByRole('form', { name: 'Rider step' });
+  await approve.getByLabel('Why (logged)').fill('documents not checked yet');
+  await approve.getByRole('button', { name: 'Approve' }).click();
+  await panel
+    .getByRole('alert')
+    .getByText(/^not ready: Photo waiting for a look/)
+    .waitFor();
+  for (const kind of ['Photo', 'Registration (RC)', 'Insurance']) {
+    const look = panel.getByLabel(`Look at ${kind}`);
+    await look.getByLabel(`Why, ${kind}`).fill('matches the original');
+    if (kind === 'Insurance') await look.getByLabel('Insurance covers until').fill('2099-03-31');
+    await look.getByRole('button', { name: 'Accept' }).click();
+    await panel.getByText(`${kind} accepted.`).waitFor();
+  }
+  await approve.getByLabel('Why (logged)').fill('all documents checked');
+  await approve.getByRole('button', { name: 'Approve' }).click();
+  await panel.getByRole('status').getByText('Approved.').waitFor();
+  await panel.getByRole('heading').getByText('Approved').waitFor();
+  const note = panel.getByRole('form', { name: 'Rider note' });
+  await note.getByLabel('Add a note').fill('Fitting booked for Monday');
+  await note.getByRole('button', { name: 'Add note' }).click();
+  await panel
+    .getByRole('list', { name: 'Timeline' })
+    .getByText('Note: Fitting booked for Monday')
+    .waitFor();
+
+  // Found again by name with a space in it.
+  await page.getByLabel('Name, phone, id or plate').fill('Ravi Kum');
+  await page.getByRole('button', { name: 'Find' }).click();
+  await expect
+    .poll(() => page.getByRole('table', { name: 'Riders' }).getByRole('row').count())
+    .toBe(2);
+  if (process.env.SCREENSHOT_DIR) {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.screenshot({ path: `${process.env.SCREENSHOT_DIR}/riders.png`, fullPage: true });
+  }
+  expect(errors).toEqual([]);
+}, 120_000);

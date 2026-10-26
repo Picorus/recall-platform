@@ -15,7 +15,8 @@ const PASS_DOWN = [
 ];
 const MAX_BODY = 16 * 1024;
 
-/** Uploading an ad (P3.9.1) may carry a file up to 64 MB; every other request at most 16 KB.
+/** An upload (an ad, P3.9.1; a rider's document) may carry a file up to 64 MB (the API sets each
+ * kind's own limit); every other request at most 16 KB.
  * An upload is passed on as it arrives (this site never holds it), a few at a time. */
 const MAX_UPLOAD = 64 * 1024 * 1024;
 const MAX_UPLOADS = 2;
@@ -79,10 +80,14 @@ async function pass(req: NextRequest, path: string[]): Promise<Response> {
   // A plain query (?area=hyd-madhapur&from=2027-08-23) goes through; anything else is refused. An
   // upload's may also carry an encoded ad name (name=Evening%20offer). It is only ever added after
   // the fixed API address and path, so an encoded character in it cannot change where it goes.
+  // File uploads: an ad (P3.9.1) or a rider's document (P3.11.1).
   const upload =
-    req.method === 'POST' && path.length === 2 && path[0] === 'ads' && path[1] === 'upload';
+    req.method === 'POST' &&
+    ((path.length === 2 && path[0] === 'ads' && path[1] === 'upload') ||
+      (path.length === 3 && path[0] === 'riders' && path[2] === 'documents'));
   const query = req.nextUrl.search;
-  const plain = upload ? /^(\?[A-Za-z0-9_.:=&%+-]*)?$/ : /^(\?[A-Za-z0-9_.:=&-]*)?$/;
+  // A "+" is a space (a name searched for); "%" (any encoded character) only with an upload.
+  const plain = upload ? /^(\?[A-Za-z0-9_.:=&%+-]*)?$/ : /^(\?[A-Za-z0-9_.:=&+-]*)?$/;
   if (query.length > 300 || !plain.test(query))
     return Response.json({ error: 'Not found' }, { status: 404 });
   if (upload) {

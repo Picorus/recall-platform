@@ -2,6 +2,16 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 27 Oct 2026 · P3.11.1 · Rider records
+- P3.10 merged (PR #58). P3.11 is built in two parts: P3.11.1 rider records (this), P3.11.2 identity (KYC), agreement, bank check, fitting slots, earnings and leaving.
+- **Rules** (`packages/domain/src/riders.ts`): rider ids "RD-000123" in order; phones put in one form (+91 and 10 digits) and number plates too (as screens' fittings store them); steps applied → approved or rejected → riding → paused → left (a rejected or departed rider may apply again), each with why. Approval needs the plate and the photo, registration and insurance accepted, the insurance still in date; riding needs a screen fitted to him; leaving needs it taken off first.
+- **Records** (migration 0038, `packages/db/src/riders.ts`): riders, details as versions (one phone and one plate per rider), steps, documents (read from their own bytes: a picture or a PDF, up to 10 MB; stored by fingerprint, read through short-lived links), one final look at each (insurance with the last day it covers), notes, and a rider's page with his timeline.
+- **API** (`services/api/src/riders-api.ts`): Operations and Support look; an Operations admin adds and changes riders, looks at documents and moves steps; Operations and Support admins add notes. Uploads (ads and documents) share one limit of 2 at a time.
+- **Admin site**: a Riders page (find by name, phone, id or plate, or by step; add a walk-in rider) and a rider panel (details, what approval needs, steps, documents with previews and accept/reject, notes, timeline). The pass-through lets a search with a space through.
+- Tests: domain 4 (phones and plates in one form, property tests; the checklist; the steps); database 3 (one phone and plate per rider, documents and their looks, approve/riding/leaving with a real screen fitted and taken off); API 1 (who does what); browser (a walk-in rider added, documents sent and accepted, approved, a note, found again).
+- Open: KYC, the agreement and the bank check join the approval checklist in P3.11.2; fitting a screen does not yet check that the rider is approved (P3.11.2, with fitting slots).
+- Next: P3.11.2.
+
 ## 26 Oct 2026 · P3.10 · Delivery and make-ups
 - P3.9.2 merged (PR #57).
 - **Where a line stands** (`packages/domain/src/delivery.ts`): from its booking's step, its hour, plays counted, the make-up and refund decisions: not paid, waiting for ads, ads missing, upcoming, live, counting late uploads, delivered (extra plays free), short with a make-up booked or running, short waiting for the next decision, refund due / approved / rejected.
