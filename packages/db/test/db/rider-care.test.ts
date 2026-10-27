@@ -62,10 +62,12 @@ describe('screen problems from the rider app (P4.8)', () => {
     expect(p?.photoKey).toMatch(/^[0-9a-f]{64}$/);
     expect(await store.get(p?.photoKey ?? '')).not.toBeNull();
     // Shown in the audit log as started from the rider app.
-    const audit = await pool.query(`SELECT who, action FROM audit_log WHERE ref = $1 ORDER BY at`, [
-      r.threadId,
-    ]);
-    expect(audit.rows[0]).toMatchObject({ who: 'rider app', action: 'conversation started' });
+    // (Its first step has the same moment: looked up by what it says, not by order.)
+    const audit = await pool.query(
+      `SELECT who FROM audit_log WHERE ref = $1 AND action = 'conversation started'`,
+      [r.threadId],
+    );
+    expect(audit.rows).toEqual([{ who: 'rider app' }]);
   });
 
   it('his reports and where each stands; something else needs words; a few a day', async () => {
