@@ -2,6 +2,12 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 27 Oct 2026 · P0.2 (CI) · Cheaper checks; repository to be public
+- GitHub Actions minutes ran out on 26 Oct (every job refused at once). Prateek chose to make the repository public (free minutes) and may make it private later.
+- Checked before: the whole history has no secrets or key files.
+- `.github/workflows/ci.yml`: the long jobs (format/lint/types/tests, laptop services, database and browser tests) run on pull requests only; a push to main runs the secret scan and the commit-message check. `.github/workflows/player.yml`: the screen player's Android job, only when `apps/player/`, the shared test vectors or this file change.
+- Next: merge PR #63 once its checks run.
+
 ## 27 Oct 2026 · P3.15 · Support inbox
 - **Messages coming in** (`packages/adapters/src/inbound.ts`, with a working fake): the WhatsApp and email provider posts each message to `POST /support/inbound`, signed; a forged post is refused; a message posted twice is kept once. `SUPPORT_INBOUND_PROVIDER`: the fake on a laptop only; none in production until P6.
 - **Conversations** (migration 0044, `packages/db/src/support.ts`): a message joins the person's conversation on that channel, or starts one, matched to the rider (by phone) or brand (by its contact) it came from; a conversation marked done opens again when they write. Staff start one for a call or a visit (or to write first). Support admins reply on WhatsApp or by email (each reply its own message, sent once), add notes only staff see, take a conversation, and mark it waiting or done, with why. Every message, note and step kept in the order it happened.

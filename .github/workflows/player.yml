@@ -1,0 +1,63 @@
+name: Screen player
+
+# The Android screen player (Kotlin), on its own so it runs only when the player, the shared
+# play-record test vectors it checks against, or this file change: its emulator job is the longest.
+on:
+  pull_request:
+    paths:
+      - 'apps/player/**'
+      - 'packages/domain/test-vectors/**'
+      - '.github/workflows/player.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: player-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  player:
+    name: Screen player (Kotlin, Android, kiosk on an emulator)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: apps/player
+    steps:
+      - uses: actions/checkout@v7
+      # The runner has a JDK and the Android SDK; the player is built for Java 17 bytecode.
+      - name: Tests, build, Android lint
+        run: ./gradlew --no-daemon :core:test :app:assembleDebug :app:lintDebug
+        env:
+          # Also the box's line against a real broker over TLS (Docker), P2.3.3.
+          RECALL_BROKER_TEST: '1'
+      - name: Let the emulator use hardware acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Playback and kiosk checks on Android 11 (swaps without gaps; device owner, locked, back within 5 s after a crash)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          arch: x86_64
+          target: default
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
+          working-directory: apps/player
+          # Playback first: the kiosk check makes the player device owner, which cannot be uninstalled.
+          # The emulator's display stays on and unlocked: a screen that is off draws no frames.
+          script: |
+            adb shell svc power stayon true
+            adb shell wm dismiss-keyguard
+            ./gradlew --no-daemon :app:connectedDebugAndroidTest
+            sh ci/kiosk-check.sh
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: player-reports
+          path: |
+            apps/player/app/build/reports/
+            apps/player/app/build/outputs/androidTest-results/
+          if-no-files-found: ignore
