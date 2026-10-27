@@ -118,3 +118,18 @@ export function boxRequest(serial: string, madeAt: number): SignedEnrolment {
     playSignature: sign('sha256', bytes, play.privateKey).toString('base64'),
   };
 }
+
+/** A booking's ads chosen straight in the database (tests that move a booking by hand): plays
+ * count only for an ad its booking ran (P7.1). */
+export async function chooseAds(
+  pool: pg.Pool,
+  bookingId: string,
+  adIds: readonly string[] = ['ad-1'],
+): Promise<void> {
+  await pool.query(
+    `INSERT INTO booking_ad_sets (booking_id, version, ad_ids, set_by, set_at)
+     SELECT $1, coalesce(max(version), 0) + 1, $2, 'test', now()
+       FROM booking_ad_sets WHERE booking_id = $1`,
+    [bookingId, adIds],
+  );
+}

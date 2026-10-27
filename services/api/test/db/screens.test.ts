@@ -1,7 +1,8 @@
 // The Screens page's routes: who may look and who may change; the rules' refusals as plain answers.
+import { addScreenKey } from '@recall/db';
 import { freshDatabase } from '@recall/db/test-db';
 import { newScreenId } from '@recall/domain';
-import { randomBytes } from 'node:crypto';
+import { generateKeyPairSync, randomBytes } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type pg from 'pg';
@@ -118,6 +119,34 @@ describe('Screens page routes (P3.4)', () => {
     expect((await post('/rollout/roll-back', ops, { reason: 'flicker' })).status).toBe(409);
     expect((await post('/rollout/pause', ops, { pause: 'yes', reason: 'flicker' })).status).toBe(
       400,
+    );
+  });
+  it('a screen reported lost or stolen: an Operations admin, with why and when (P7.1)', async () => {
+    const ops = await member('meena@recall.in', { role: 'admin', areas: ['operations'] });
+    const viewer = await member('watch@recall.in', { role: 'read-only', areas: ['operations'] });
+    const play = generateKeyPairSync('ec', { namedCurve: 'prime256v1' }).publicKey;
+    await addScreenKey(
+      pool,
+      SPARE,
+      'k1',
+      play.export({ format: 'der', type: 'spki' }).toString('base64'),
+      'warehouse-1',
+    );
+    const why = { reason: 'stolen with the bike' };
+    expect((await post(`/screens/${SPARE}/lost`, viewer, why)).status).toBe(403);
+    expect((await post(`/screens/${SPARE}/lost`, ops, { ...why, lostAt: 'today' })).status).toBe(
+      400,
+    );
+    expect((await post(`/screens/${SPARE}/lost`, ops, { ...why, lostAt: NOW + 9999 })).status).toBe(
+      400,
+    );
+    const done = await post(`/screens/${SPARE}/lost`, ops, why);
+    expect(done).toEqual({
+      status: 200,
+      body: { ok: true, keys: 1, certificates: 0, unfitted: false },
+    });
+    expect((await post(`/screens/${SPARE}/lost`, ops, why)).body.error).toBe(
+      `${SPARE} was already reported lost`,
     );
   });
 });

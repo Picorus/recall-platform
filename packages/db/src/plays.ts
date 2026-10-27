@@ -108,6 +108,15 @@ interface LineInfo {
   readonly priceBookVersion: number;
 }
 
+/** Every ad a booking has run: each set it chose (P7.1: a play of another ad never counts). */
+async function bookingAds(c: Q, bookingId: string): Promise<string[]> {
+  const r = await c.query<{ ad_id: string }>(
+    `SELECT DISTINCT unnest(ad_ids) AS ad_id FROM booking_ad_sets WHERE booking_id = $1`,
+    [bookingId],
+  );
+  return r.rows.map((x) => x.ad_id);
+}
+
 /** A booking line named by `lineId` exactly as `lineIdOf` writes it ("booking/area/day/hour"). */
 async function lineInfo(c: Q, lineId: string): Promise<LineInfo | undefined> {
   const parts = lineId.split('/');
@@ -129,7 +138,14 @@ async function lineInfo(c: Q, lineId: string): Promise<LineInfo | undefined> {
   if (!row) return undefined;
   const startsAt = lineStartsAt({ date: day, startHour });
   return {
-    line: { lineId, areaId, startsAt, endsAt: startsAt + 3600, plays: row.plays },
+    line: {
+      lineId,
+      areaId,
+      startsAt,
+      endsAt: startsAt + 3600,
+      plays: row.plays,
+      ads: await bookingAds(c, bookingId),
+    },
     state: row.state,
     priceBookVersion: row.version,
   };
@@ -144,8 +160,9 @@ async function makeUpInfo(c: Q, makeUpId: string): Promise<LineInfo | undefined>
     plays: number;
     state: string;
     version: number;
+    booking_id: string;
   }>(
-    `SELECT m.area_id, extract(epoch FROM m.window_from)::bigint AS from,
+    `SELECT m.area_id, m.booking_id, extract(epoch FROM m.window_from)::bigint AS from,
             extract(epoch FROM m.window_until)::bigint AS until, m.plays,
             b.price_book_version AS version,
             (SELECT state FROM booking_events e WHERE e.booking_id = m.booking_id
@@ -162,6 +179,7 @@ async function makeUpInfo(c: Q, makeUpId: string): Promise<LineInfo | undefined>
       startsAt: Number(row.from),
       endsAt: Number(row.until),
       plays: row.plays,
+      ads: await bookingAds(c, row.booking_id),
     },
     state: row.state,
     priceBookVersion: row.version,
@@ -221,7 +239,8 @@ export async function judgePlays(
   const lines = new Map<string, LineInfo | undefined>();
   for (const { seq, play } of [...plays].sort((a, b) => a.seq - b.seq)) {
     const rules = rulesOf(books, { time: play.startAt });
-    // A revoked key still covers plays from before the moment it was given up.
+    // A revoked key still covers plays from before the moment it was given up (counted only if
+    // they arrived before it was revoked: playsOf).
     const key = keys.rows.find(
       (k) => k.key_id === play.keyId && (k.until === null || play.startAt < Number(k.until)),
     );
@@ -278,7 +297,10 @@ async function playsOf(
             p.lat_e6, p.lng_e6
        FROM plays p
        LEFT JOIN screen_key_revocations r ON r.screen_id = p.screen_id AND r.key_id = p.key_id
-      WHERE p.line_id = $1 AND p.counts <> 'no' AND (r.key_id IS NULL OR p.start_at < r.plays_until)`,
+      -- A revoked key's plays: from before it was given up, and in before it was revoked (after
+      -- that, whoever holds the key could sign any start time, P7.1). Both times are the database's.
+      WHERE p.line_id = $1 AND p.counts <> 'no'
+        AND (r.key_id IS NULL OR (p.start_at < r.plays_until AND p.received_at < r.revoked_at))`,
     [lineId],
   );
   return {

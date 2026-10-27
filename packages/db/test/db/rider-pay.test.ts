@@ -25,7 +25,7 @@ import {
   pocFinishList,
 } from '../../src/rider-pay.js';
 import { storeUpload } from '../../src/screen-reports.js';
-import { freshDatabase } from './fresh-db.js';
+import { freshDatabase, chooseAds } from './fresh-db.js';
 
 let db: Awaited<ReturnType<typeof freshDatabase>>;
 let pool: pg.Pool;
@@ -303,6 +303,7 @@ describe('rider pay after the POC (P1.7.5)', () => {
     );
     await moveBooking(pool, 'BK-R1', 'awaiting-payment', { by: 'priya', actor: 'admin' }, BOOKED);
     await moveBooking(pool, 'BK-R1', 'paid', { by: 'gateway', actor: 'system' }, BOOKED + 60);
+    await chooseAds(pool, 'BK-R1');
     await moveBooking(pool, 'BK-R1', 'ads-approved', { by: 'priya', actor: 'admin' }, BOOKED + 120);
     // R-FFF rides scr-f; scr-g has no rider. Each delivers 200 of the line's 1,000 plays.
     await assignScreen(pool, 'scr-f', 'R-FFF', start, 'fitter');

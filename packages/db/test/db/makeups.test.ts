@@ -17,7 +17,7 @@ import { decideRefund } from '../../src/earnings.js';
 import { makeUpsDue, settleDue } from '../../src/makeups.js';
 import { addScreenKey, lineTotalsFor, revokeScreenKey } from '../../src/plays.js';
 import { storeUpload } from '../../src/screen-reports.js';
-import { freshDatabase } from './fresh-db.js';
+import { freshDatabase, chooseAds } from './fresh-db.js';
 
 let db: Awaited<ReturnType<typeof freshDatabase>>;
 let pool: pg.Pool;
@@ -98,6 +98,7 @@ async function book(id: string, areaId: string, startHour: number, bikes: number
   // A free trial goes through the same steps (paid at ₹0).
   await moveBooking(pool, id, 'awaiting-payment', { by: 'priya', actor: 'admin' }, BOOKED);
   await moveBooking(pool, id, 'paid', { by: 'gateway', actor: 'system' }, BOOKED + 60);
+  await chooseAds(pool, id);
   await moveBooking(pool, id, 'ads-approved', { by: 'priya', actor: 'admin' }, BOOKED + 120);
 }
 

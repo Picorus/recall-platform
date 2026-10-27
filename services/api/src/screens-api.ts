@@ -4,12 +4,15 @@
 //   POST /screens/<id>/service            { kind: to-repair | repaired | retired, reason }
 //   POST /screens/<id>/unfit              { reason }
 //   POST /screens/<id>/swap               { newScreenId, reason }
+//   POST /screens/<id>/lost               { reason, lostAt? }  lost or stolen: nothing it signs from
+//                                         lostAt (default now) counts, its line closes (P7.1)
 //   POST /rollout/pause                   { pause: true | false, reason }
 //   POST /rollout/roll-back               { reason }
 import { isScreenId } from '@recall/domain';
 import {
   pauseRollout,
   Refusal,
+  reportScreenLost,
   rollBack,
   rolloutStatus,
   screenList,
@@ -97,7 +100,7 @@ export async function handleScreens(
     return true;
   }
 
-  const m = /^\/screens\/([^/]+)\/(service|unfit|swap)$/.exec(path);
+  const m = /^\/screens\/([^/]+)\/(service|unfit|swap|lost)$/.exec(path);
   const screenId = m?.[1] ?? '';
   if (!m || !isScreenId(screenId)) throw new HttpError(404, 'Not found');
   const reason = reasonOf(b);
@@ -106,6 +109,15 @@ export async function handleScreens(
     if (!KINDS.includes(kind))
       throw new HttpError(400, 'kind must be to-repair, repaired or retired');
     await refusedAs400(() => serviceScreen(pool, { screenId, kind, reason, by: who, now }));
+  } else if (m[2] === 'lost') {
+    const lostAt = b.lostAt === undefined ? now : b.lostAt;
+    if (typeof lostAt !== 'number' || !Number.isInteger(lostAt))
+      throw new HttpError(400, 'lostAt must be a time in seconds');
+    const done = await refusedAs400(() =>
+      reportScreenLost(pool, { screenId, lostAt, reason, by: who, now }),
+    );
+    send(res, 200, { ok: true, ...done });
+    return true;
   } else if (m[2] === 'unfit') {
     await refusedAs400(() => unfitScreen(pool, screenId, reason, who, now));
   } else {

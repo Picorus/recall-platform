@@ -379,6 +379,58 @@ export async function serviceScreen(
   });
 }
 
+/** How far back a screen can be reported lost: as long as a screen keeps its plays (7 days). */
+export const LOST_AT_MOST_DAYS = 7;
+
+/**
+ * A screen reported lost or stolen (P7.1): from `lostAt` on, nothing it signs counts. Every play key
+ * it has is given up from that moment, every certificate is revoked (its line closes at once), and
+ * it comes off its bike and rider, all in one step, logged with who and why. Plays it made before
+ * `lostAt` that arrived before now still count; anything later never does.
+ */
+export async function reportScreenLost(
+  pool: Pool,
+  o: {
+    readonly screenId: string;
+    /** When it went missing (UTC seconds): at most now, at most 7 days back. */
+    readonly lostAt: number;
+    readonly reason: string;
+    readonly by: string;
+    readonly now: number;
+  },
+): Promise<{ keys: number; certificates: number; unfitted: boolean }> {
+  const reason = o.reason.trim();
+  if (reason.length < 5) throw new Refusal('say what happened (at least 5 characters)');
+  if (!Number.isInteger(o.lostAt) || o.lostAt > o.now)
+    throw new Refusal('when it went missing must be now or earlier');
+  if (o.lostAt < o.now - LOST_AT_MOST_DAYS * 86_400)
+    throw new Refusal(`when it went missing must be within the last ${LOST_AT_MOST_DAYS} days`);
+  return inTransaction(pool, async (c) => {
+    await c.query("SELECT pg_advisory_xact_lock(hashtext('screen-fittings'))");
+    const known = await c.query('SELECT 1 FROM screens WHERE screen_id = $1', [o.screenId]);
+    if (known.rowCount === 0) throw new Refusal(`${o.screenId} is not enrolled`);
+    const keys = await c.query(
+      `INSERT INTO screen_key_revocations (screen_id, key_id, revoked_by, reason, plays_until)
+       SELECT k.screen_id, k.key_id, $2, $3, to_timestamp($4)
+         FROM screen_keys k LEFT JOIN screen_key_revocations v USING (screen_id, key_id)
+        WHERE k.screen_id = $1 AND v.key_id IS NULL`,
+      [o.screenId, o.by.slice(0, 80), `lost or stolen: ${reason}`.slice(0, 200), o.lostAt],
+    );
+    const certs = await c.query(
+      `INSERT INTO screen_certificate_revocations (serial, reason, revoked_by, revoked_at)
+       SELECT c.serial, $2, $3, to_timestamp($4)
+         FROM screen_certificates c LEFT JOIN screen_certificate_revocations r USING (serial)
+        WHERE c.screen_id = $1 AND r.serial IS NULL`,
+      [o.screenId, `lost or stolen: ${reason}`.slice(0, 200), o.by.slice(0, 80), o.now],
+    );
+    if ((keys.rowCount ?? 0) === 0 && (certs.rowCount ?? 0) === 0)
+      throw new Refusal(`${o.screenId} was already reported lost`);
+    const fitted = (await fittingAt(c, o.screenId, o.now)) !== undefined;
+    if (fitted) await unfitIn(c, o.screenId, `reported lost or stolen: ${reason}`, o.by, o.now);
+    return { keys: keys.rowCount ?? 0, certificates: certs.rowCount ?? 0, unfitted: fitted };
+  });
+}
+
 /** Takes a screen off its bike and rider (returned, swapped, or bike sold), with why. */
 export async function unfitScreen(
   pool: Pool,

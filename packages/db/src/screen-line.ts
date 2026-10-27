@@ -2,7 +2,7 @@
 // uploads refused whole). The broker (EMQX) checks the TLS handshake: the box holds the key of a
 // certificate our certificate authority signed. These checks add what only we know: the certificate
 // is one we issued and recorded for this screen, it is in date, not revoked, and the screen was not
-// reported lost or stolen.
+// reported lost or stolen, nor retired.
 import { createHash, X509Certificate } from 'node:crypto';
 import { isScreenId } from '@recall/domain';
 import { heardFrom } from './health.js';
@@ -60,6 +60,13 @@ export async function screenMayConnect(
     [r.clientId],
   );
   if (!keys.rows[0]?.live) return { ok: false, reason: 'the screen was reported lost or stolen' };
+  // Retired for good (P3.4): nothing it sends is wanted any more (P7.1).
+  const service = await pool.query<{ kind: string }>(
+    `SELECT kind FROM screen_service_events WHERE screen_id = $1 AND at <= to_timestamp($2)
+      ORDER BY id DESC LIMIT 1`,
+    [r.clientId, now],
+  );
+  if (service.rows[0]?.kind === 'retired') return { ok: false, reason: 'the screen is retired' };
   return { ok: true, serial: cert.serial };
 }
 

@@ -98,6 +98,11 @@ function Manage({
           reason,
         });
       else if (action === 'unfit') await api(`/screens/${row.screenId}/unfit`, { reason });
+      else if (action === 'lost')
+        await api(`/screens/${row.screenId}/lost`, {
+          reason,
+          lostAt: Math.floor(Date.now() / 1000) - Number(f.get('hoursAgo') ?? 0) * 3600,
+        });
       else await api(`/screens/${row.screenId}/service`, { kind: action, reason });
       onDone(
         `${row.screenId}: ${ACTION_NAMES[action as keyof typeof ACTION_NAMES].toLowerCase()} done.`,
@@ -139,6 +144,26 @@ function Manage({
             </select>
           </label>
         ))}
+      {action === 'lost' && (
+        <>
+          <p className="error">
+            Nothing it shows from that moment counts, its line to us closes and it comes off its bike.
+            This cannot be undone.
+          </p>
+          <label className="rc-field">
+            <span className="rc-field__label">Went missing how many hours ago (0 = now)</span>
+            <input
+              className="rc-input"
+              name="hoursAgo"
+              type="number"
+              min={0}
+              max={168}
+              defaultValue={0}
+              required
+            />
+          </label>
+        </>
+      )}
       <label className="rc-field">
         <span className="rc-field__label">Reason (logged)</span>
         <input className="rc-input" name="reason" minLength={3} maxLength={200} required />
