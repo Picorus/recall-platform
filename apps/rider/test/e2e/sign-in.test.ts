@@ -2,6 +2,7 @@
 // language, a wrong number, a code on WhatsApp, a wrong code, signed in as a known rider, still
 // signed in after a reload, signed out; a new number by SMS in Hindi is welcomed to the sign-up.
 // P4.3: an approved rider books his fitting, the screen is fitted at his slot and checked.
+// P4.4: a rider on the road sees his screen, hours and earnings. P4.5: his month and statement. P4.6: his payouts.
 // Needs `pnpm test:e2e` (it builds the app for the web first) and DATABASE_URL (pnpm services:up).
 import {
   fakeBankCheck,
@@ -15,11 +16,13 @@ import { apiHandler } from '@recall/api';
 import {
   createRider,
   enrolScreen,
+  fitScreen,
   openFittingSlot,
   reviewRiderDocument,
   storeUpload,
 } from '@recall/db';
 import { boxRequest, freshDatabase } from '@recall/db/test-db';
+import { todayOf } from '@recall/domain';
 import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
@@ -405,5 +408,104 @@ it('an approved rider books his fitting; at his slot the screen is fitted and ch
     timeout: 20_000,
   });
   await shot(page, 'rider-fitting-ready');
+  expect(errors).toEqual([]);
+}, 120_000);
+
+it("a rider on the road sees his screen, today's and this week's hours and earnings", async () => {
+  const now = Math.floor(Date.now() / 1000);
+  const riderId = await createRider(
+    db.pool,
+    {
+      details: {
+        name: 'Suresh Babu',
+        phone: '+919100066666',
+        bikePlate: 'TS07GH6666',
+        rides: 'Ameerpet',
+        apps: [],
+      },
+      channel: 'admin',
+      by: 'Omar',
+      reason: 'walk-in',
+    },
+    now - 3 * 86_400,
+  );
+  await db.pool.query(
+    `INSERT INTO rider_steps (rider_id, seq, status, reason, by_who, at)
+     VALUES ($1, 2, 'approved', 'all checked', 'Omar', to_timestamp($2))`,
+    [riderId, now - 2 * 86_400],
+  );
+  const box = await enrolScreen(
+    db.pool,
+    fakeDeviceCa(),
+    boxRequest('RK-E2E-TODAY', now - 3 * 86_400),
+    'w',
+    now - 3 * 86_400,
+  );
+  await fitScreen(db.pool, { qr: box.qr, plate: 'TS07GH6666', riderId }, 'Omar', now - 2 * 86_400);
+  await db.pool.query(
+    `INSERT INTO rider_steps (rider_id, seq, status, reason, by_who, at)
+     VALUES ($1, 3, 'active', 'screen fitted and checked', 'Omar', to_timestamp($2))`,
+    [riderId, now - 2 * 86_400 + 60],
+  );
+  // 90 minutes ridden from today's 08:00 (fewer if the day has only just begun).
+  const today = todayOf(now);
+  const opens = Date.parse(`${today}T02:30:00Z`) / 1000;
+  const minutes = Math.min(90, Math.floor((Math.min(now, opens + 18 * 3600) - opens) / 60));
+  await db.pool.query('INSERT INTO screen_inboxes (screen_id) VALUES ($1) ON CONFLICT DO NOTHING', [
+    box.screenId,
+  ]);
+  await db.pool.query(
+    `INSERT INTO screen_reports (screen_id, seq, kind, made_at, body)
+     SELECT $1, g, 'minute', to_timestamp($2 + (g - 1) * 60), '{}'::jsonb
+       FROM generate_series(1, $3) g`,
+    [box.screenId, opens, minutes],
+  );
+  await db.pool.query(
+    `INSERT INTO minute_summaries (screen_id, minute, seq, clock_s, pay_clock_s, moving_s,
+       distance_m, plays, people, seconds_at, clock_at)
+     SELECT $1, to_timestamp($2 + (g - 1) * 60), g, 60, 60, 60, 400, 0, 0, '{}', '{}'
+       FROM generate_series(1, $3) g`,
+    [box.screenId, opens, minutes],
+  );
+  // Heard from a minute ago, moving.
+  await db.pool.query(
+    `INSERT INTO screen_reports (screen_id, seq, kind, made_at, received_at, body)
+     VALUES ($1, $2, 'live', to_timestamp($3), to_timestamp($3), '{"lat":17.43,"lng":78.44,"moving":true}')`,
+    [box.screenId, minutes + 1, now - 60],
+  );
+  const { page, errors } = await phonePage();
+  await page.getByLabel('Mobile number').fill('91000 66666');
+  await page.getByRole('button', { name: 'Send code on WhatsApp' }).click();
+  await page.getByText('Type the code').waitFor();
+  await page.getByLabel('Code').fill(codeFor('+919100066666'));
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.getByText('On and playing').waitFor();
+  const h = `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
+  await expect(page.getByText(h).count()).resolves.toBeGreaterThanOrEqual(2);
+  // ₹25 an hour: 90 minutes is ₹37.50 (when the day has had 90 minutes yet).
+  if (minutes === 90) await page.getByText('₹37.50').first().waitFor();
+  await page.getByText('Keep moving').waitFor();
+  await shot(page, 'rider-today');
+  // P4.5: Earnings, this month, and the statement opens in the browser.
+  await page.getByRole('tab', { name: 'Earnings' }).click();
+  await page.getByText('This month so far').waitFor();
+  await page.getByText('Your share of sales (added at the next pay update)').waitFor();
+  if (minutes === 90) await page.getByText('₹37.50').first().waitFor();
+  await shot(page, 'rider-earnings');
+  const [statement] = await Promise.all([
+    page.context().waitForEvent('page'),
+    page.getByRole('button', { name: 'Download my statement' }).click(),
+  ]);
+  await statement.getByText('RECALL rider statement').waitFor();
+  await statement.getByText(`Suresh Babu · ${riderId}`, { exact: false }).waitFor();
+  await shot(statement, 'rider-statement');
+  // P4.6: Payouts: the next Monday, no checked account yet.
+  await page.getByRole('tab', { name: 'Payouts' }).click();
+  await page.getByText(/Next payout: Monday \d\d\/\d\d\/\d{4}/).waitFor();
+  await page.getByText('No bank or UPI checked yet: we cannot pay you. Call support.').waitFor();
+  await page.getByText('No payouts yet.').waitFor();
+  await shot(page, 'rider-payouts');
+  await page.getByRole('tab', { name: 'Today' }).click();
+  await page.getByText('On and playing').waitFor();
   expect(errors).toEqual([]);
 }, 120_000);

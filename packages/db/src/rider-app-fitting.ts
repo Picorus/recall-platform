@@ -83,10 +83,11 @@ export async function fittedScreen(
   now: number,
 ): Promise<{ readonly screenId: string; readonly from: number } | null> {
   const r = await pool.query<{ screen_id: string; from_s: string }>(
-    `SELECT screen_id, extract(epoch FROM from_at)::bigint AS from_s FROM (
-       SELECT DISTINCT ON (screen_id) screen_id, rider_id, from_at FROM screen_fittings
-        WHERE from_at <= to_timestamp($2) ORDER BY screen_id, from_at DESC) x
-      WHERE rider_id = $1 ORDER BY from_at DESC LIMIT 1`,
+    `SELECT f.screen_id, extract(epoch FROM f.from_at)::bigint AS from_s FROM screen_fittings f
+      WHERE f.rider_id = $1 AND f.from_at <= to_timestamp($2)
+        AND NOT EXISTS (SELECT 1 FROM screen_fittings g WHERE g.screen_id = f.screen_id
+                         AND g.from_at > f.from_at AND g.from_at <= to_timestamp($2))
+      ORDER BY f.from_at DESC LIMIT 1`,
     [riderId, now],
   );
   const x = r.rows[0];

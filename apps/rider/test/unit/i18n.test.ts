@@ -7,7 +7,7 @@ import { LANGUAGE_NAMES, say, sayError, WORDS, type Key } from '../../src/i18n';
 const TELUGU = /[ఀ-౿]/;
 const DEVANAGARI = /[ऀ-ॿ]/;
 /** Keys whose words are names or symbols, the same in every language. */
-const SAME: readonly Key[] = ['whatsapp', 'sms', 'upi', 'ifsc'];
+const SAME: readonly Key[] = ['whatsapp', 'sms', 'upi', 'ifsc', 'hoursTimesRate'];
 
 describe('rider app words (P4.1)', () => {
   it('every key in Telugu and Hindi, in their own script, with the same {blanks}', () => {
