@@ -64,6 +64,7 @@ import { handleDashboard } from './dashboard-api.js';
 import { handleSupport } from './support-api.js';
 import { handleAudit } from './audit-api.js';
 import { handleSettings } from './settings-api.js';
+import { handleBrandPortal } from './brand-portal-api.js';
 import { handleRiderApp } from './rider-app-api.js';
 import {
   decoyHash,
@@ -123,6 +124,8 @@ export interface StaffApiConfig {
   readonly push?: PushAdapter;
   /** Origins of the rider app's web build (tests, screenshots); the phone app sends none. */
   readonly riderOrigins?: readonly string[];
+  /** P5.1: the brand portal's origins (its changes are taken only from these). */
+  readonly brandOrigins?: readonly string[];
 }
 
 export interface Connection {
@@ -495,6 +498,8 @@ export function apiHandler(
       if (req.method === 'GET' && req.url === '/health') return send(res, 200, { ok: true });
       // The rider app first: its own sign-in (a bearer token), never a staff cookie.
       if (await handleRiderApp(pool, cfg, req, res, nowMs)) return;
+      // The brand portal: its own sign-in (its own cookie), never a staff route.
+      if (await handleBrandPortal(pool, cfg, req, res, nowMs)) return;
       if (await handleStaff(pool, cfg, req, res, nowMs, log)) return;
       if (await handleToday(pool, cfg, req, res, nowMs)) return;
       if (await handleFleet(pool, cfg, req, res, nowMs)) return;

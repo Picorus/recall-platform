@@ -127,6 +127,16 @@ describe('settings (P3.17)', () => {
     );
   });
 
+  it('brand sign-in limits: whole numbers in their ranges (P5.1)', () => {
+    expect(checkSetting('brandSignIn', D.brandSignIn)).toEqual(D.brandSignIn);
+    expect(() => checkSetting('brandSignIn', { ...D.brandSignIn, idleDays: 365 })).toThrow(
+      'Brand sign-in, idleDays: a whole number 1 to 90',
+    );
+    expect(() =>
+      checkSetting('brandSignIn', { ...D.brandSignIn, triesPerCode: undefined }),
+    ).toThrow('triesPerCode');
+  });
+
   it('screen-loan bank: a name', () => {
     expect(checkSetting('loanBank', { name: 'Dhanlaxmi Bank' })).toEqual({
       name: 'Dhanlaxmi Bank',

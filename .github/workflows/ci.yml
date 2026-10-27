@@ -77,6 +77,10 @@ jobs:
           pnpm --filter @recall/admin exec playwright install --with-deps chromium
           pnpm --filter @recall/admin build
           pnpm --filter @recall/admin test:e2e
+      - name: Brand portal in a browser (Next.js, API, database)
+        run: |
+          pnpm --filter @recall/brand build
+          pnpm --filter @recall/brand test:e2e
       - name: Rider app in a browser (web build, API, database)
         run: pnpm --filter @recall/rider test:e2e
       - name: Screen line end to end (EMQX over TLS, gateway, database)

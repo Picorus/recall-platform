@@ -94,9 +94,17 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);
+  // The brand portal (P5.1): its own origins; a laptop's by default.
+  const brandOrigins = (
+    env.BRAND_ORIGINS || (production ? need('BRAND_ORIGINS') : 'http://localhost:3000')
+  )
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
   return {
     connections,
     riderOrigins,
+    brandOrigins,
     ...(reports ? { messages: reports.messages } : {}),
     databaseUrl: need('DATABASE_URL'),
     host: env.API_HOST || '127.0.0.1',

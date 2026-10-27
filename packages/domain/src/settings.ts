@@ -8,6 +8,11 @@ import {
   RIDER_SIGN_IN_RANGES,
   type RiderSignInRules,
 } from './rider-sign-in.js';
+import {
+  BRAND_SIGN_IN_RANGES,
+  DEFAULT_BRAND_SIGN_IN,
+  type BrandSignInRules,
+} from './brand-sign-in.js';
 
 /** A city RECALL works in (an area belongs to one). */
 export interface City {
@@ -70,6 +75,8 @@ export interface Settings {
   readonly loanBank: LoanBank;
   /** P4.1: how rider sign-in codes are limited. */
   readonly riderSignIn: RiderSignInRules;
+  /** P5.1: how brand portal sign-in codes are limited. */
+  readonly brandSignIn: BrandSignInRules;
 }
 
 export type SettingKey = keyof Settings;
@@ -82,6 +89,7 @@ export const SETTING_KEYS = [
   'payZone',
   'loanBank',
   'riderSignIn',
+  'brandSignIn',
 ] as const satisfies readonly SettingKey[];
 
 /** Placeholders each wording may use, and the ones its email text must have. */
@@ -115,6 +123,7 @@ export const DEFAULT_SETTINGS: Settings = {
   payZone: POC_PAY_ZONE,
   loanBank: { name: 'Dhanlaxmi Bank' },
   riderSignIn: DEFAULT_RIDER_SIGN_IN,
+  brandSignIn: DEFAULT_BRAND_SIGN_IN,
 };
 
 /** Fills {placeholders} (unknown ones are left as written; checkSetting refuses them on save). */
@@ -299,6 +308,17 @@ export function checkSetting<K extends SettingKey>(key: K, value: unknown): Sett
           out[k] = n as number;
         }
         return out as unknown as RiderSignInRules;
+      }
+      case 'brandSignIn': {
+        const o = obj(value, 'Brand sign-in');
+        const out: Record<string, number> = {};
+        for (const [k, [lo, hi]] of Object.entries(BRAND_SIGN_IN_RANGES)) {
+          const n = o[k];
+          if (typeof n !== 'number' || !Number.isInteger(n) || n < lo || n > hi)
+            fail(`Brand sign-in, ${k}: a whole number ${lo} to ${hi}`);
+          out[k] = n as number;
+        }
+        return out as unknown as BrandSignInRules;
       }
       default:
         return fail('Which setting?');

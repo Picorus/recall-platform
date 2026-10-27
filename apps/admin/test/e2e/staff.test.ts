@@ -459,7 +459,7 @@ it('the Calendar page: a week of area-hours, a hold for a client from a cell, th
   expect(errors).toEqual([]);
 }, 120_000);
 
-it('the Brands page: add an agency and a brand it handles, a contact and a note', async () => {
+it('the Brands page: add an agency and a brand it handles, a contact, a note, portal access', async () => {
   const page = await browser.newPage();
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
@@ -494,6 +494,16 @@ it('the Brands page: add an agency and a brand it handles, a contact and a note'
   await page.getByText('Note added.').waitFor();
   await page.getByText('Wants evenings in Madhapur').waitFor();
   await page.getByRole('row', { name: /Dosa Co.*Adwise Media.*\+91 98765 43210/ }).waitFor();
+  // P5.1: their marketing lead may sign in to the brand portal.
+  const portal = page.getByRole('form', { name: 'Give or remove portal access' });
+  await portal.getByLabel('Mobile number or email').fill('Lead@DosaCo.in');
+  await portal.getByLabel('Why (logged)').fill('their marketing lead');
+  await portal.getByRole('button', { name: 'Give access' }).click();
+  await page.getByText('Portal access given.').waitFor();
+  await page
+    .getByRole('region', { name: 'Brand portal access' })
+    .getByText('lead@dosaco.in')
+    .waitFor();
   if (process.env.SCREENSHOT_DIR) {
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.screenshot({ path: `${process.env.SCREENSHOT_DIR}/brands.png`, fullPage: true });

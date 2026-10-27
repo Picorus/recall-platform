@@ -44,3 +44,4 @@ export * from './delivery.js';
 export * from './riders.js';
 export * from './settings.js';
 export * from './rider-sign-in.js';
+export * from './brand-sign-in.js';

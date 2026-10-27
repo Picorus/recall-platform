@@ -95,4 +95,25 @@ describe('outside services for the Settings page (P3.17)', () => {
     );
     expect(JSON.stringify(cfg.connections)).not.toContain('s'.repeat(40));
   });
+
+  it('the brand portal: a laptop by default; production names its origins (P5.1)', () => {
+    expect(readConfig({ DATABASE_URL: 'postgres://x' }).brandOrigins).toEqual([
+      'http://localhost:3000',
+    ]);
+    expect(
+      readConfig({
+        DATABASE_URL: 'postgres://x',
+        BRAND_ORIGINS: 'https://book.recall.in, https://www.recall.in',
+      }).brandOrigins,
+    ).toEqual(['https://book.recall.in', 'https://www.recall.in']);
+    expect(() =>
+      readConfig({
+        NODE_ENV: 'production',
+        DATABASE_URL: 'postgres://x',
+        STAFF_SECRET_KEY: 'ab'.repeat(32),
+        ADMIN_ORIGINS: 'https://admin.recall.in',
+        API_PROXY_HOPS: '1',
+      }),
+    ).toThrow('BRAND_ORIGINS is not set');
+  });
 });

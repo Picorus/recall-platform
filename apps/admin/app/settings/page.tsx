@@ -10,6 +10,7 @@ import { clock, dayOfIndia } from '../../lib/format';
 import { Shell, useMember } from '../../lib/session';
 import {
   DAY_NAMES,
+  BRAND_SIGN_IN_LABELS,
   RIDER_SIGN_IN_LABELS,
   type FittingCentre,
   type MessageWordings,
@@ -508,6 +509,31 @@ export default function SettingsPageView() {
                 </p>
                 <div className="cal-bar">
                   {RIDER_SIGN_IN_LABELS.map(([k, label]) => (
+                    <Field key={k} label={label}>
+                      <input
+                        className="rc-input mono"
+                        type="number"
+                        min={1}
+                        step={1}
+                        value={v[k]}
+                        onChange={(e) => set({ ...v, [k]: Number(e.target.value) })}
+                      />
+                    </Field>
+                  ))}
+                </div>
+              </>
+            )}
+          </Section>
+
+          <Section {...common('brandSignIn')} title="Brand portal sign-in limits">
+            {(v, set) => (
+              <>
+                <p className="muted">
+                  Brands and agencies sign in to the brand portal with a code sent on WhatsApp, by
+                  SMS or by email. These limits stop guessing and keep message costs down.
+                </p>
+                <div className="cal-bar">
+                  {BRAND_SIGN_IN_LABELS.map(([k, label]) => (
                     <Field key={k} label={label}>
                       <input
                         className="rc-input mono"
