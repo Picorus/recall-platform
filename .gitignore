@@ -11,3 +11,6 @@ build/
 .next/
 *.log
 .DS_Store
+
+# Coverage reports (P7.3)
+coverage/

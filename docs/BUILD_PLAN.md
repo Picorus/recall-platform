@@ -398,7 +398,7 @@ Phases overlap on purpose: each starts once the part it depends on is stable, no
 | P3 | Admin portal | Done | Feb – May 2027 |
 | P4 | Rider app | Done (phone notifications and real sign-in messages wait for the outside accounts, P6) | Mar – Jun 2027 |
 | P6 | Real integrations (needs company accounts) | Blocked | Mar – Jul 2027 |
-| P7 | Hardening, load test, security audit, POC readiness | To do | Jun – Jul 2027 |
+| P7 | Hardening, load test, security audit, POC readiness | Doing (P7.1–P7.3 done; P7.4–P7.5 next; road test needs bikes) | Jun – Jul 2027 |
 | P5 | Brand portal for self-serve | Done (real payments, GST lookups and messages wait for the outside accounts, P6) | Jul – Oct 2027 |
 
 ## Records for a human takeover

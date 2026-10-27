@@ -2,6 +2,17 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 28 Oct 2026 · P7.3 · Coverage of the money and play code
+- **Measured** with Vitest's coverage tool (`@vitest/coverage-v8`). The rules (`packages/domain`): 95% of lines and 89% of branches in the money and play files. Where money is posted and plays counted (`packages/db`, with the database tests): 96% of lines, 80% of branches. What was not run was almost all refusals and safety nets that never fire in a normal day.
+- **New tests for the safety nets that matter** (`packages/db/test/db/money-failures.test.ts`), failures made on purpose with a database trigger:
+  - the hour close: a line that fails is rolled back alone (nothing of it posted, the books still balance), the other lines close, and the next run finishes it;
+  - make-ups and refunds: the same, and no make-up is opened for the failed line;
+  - an upload that meets another in the database (a deadlock) is tried again and stored once; one still failing after 3 tries stores nothing (its box sends it again).
+- **A floor that keeps them tested:** each money and play file must keep at least 85% of lines and 80% of branches tested (rules, checked by `pnpm test`), and 88% of lines and 65% of branches (database code, checked by `pnpm --filter @recall/db coverage` in CI's database job). A change that leaves new money code untested now fails CI.
+- Already in place and still passing: property tests (thousands of random cases) that the ledger always balances and no play is counted twice; the database refuses an unbalanced entry at commit.
+- Also: `docs/ACCOUNTS_TO_OPEN.md`, the accounts Prateek opens for P6, slowest first.
+- Next: P7.4 backups, restore and one-step rollback.
+
 ## 28 Oct 2026 · P7.1 · Security review
 - **Four reviews**, each by its own agent, reading the code: staff sign-in and roles (every route and the role it needs); brand and rider data (every portal and rider route, changing ids); screens and signed plays (one upload traced from the broker to the plays table); the websites, secrets, dependencies and outside services. None found a way to forge a play, read another account's data or take over an account. Runbook: `docs/RUNBOOKS/security.md`.
 - **Fixed:**

@@ -69,7 +69,8 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: docker compose -f infra/docker-compose.yml up -d --wait db
-      - run: pnpm --filter @recall/db test:db
+      # All of the database package's tests, with the coverage floor on money and plays (P7.3).
+      - run: pnpm --filter @recall/db coverage
       - run: pnpm --filter @recall/gateway test:db
       - run: pnpm --filter @recall/api test:db
       - name: Admin site in a browser (Next.js, API, database)

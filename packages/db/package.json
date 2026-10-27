@@ -12,7 +12,8 @@
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run --passWithNoTests test/unit",
     "test:db": "vitest run test/db",
-    "migrate": "tsx src/cli-migrate.ts"
+    "migrate": "tsx src/cli-migrate.ts",
+    "coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@recall/adapters": "workspace:*",
