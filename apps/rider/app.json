@@ -1,0 +1,15 @@
+{
+  "expo": {
+    "name": "RECALL",
+    "slug": "recall-rider",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0A0E17",
+    "android": {
+      "package": "in.recall.rider",
+      "adaptiveIcon": { "backgroundColor": "#0A0E17" }
+    },
+    "web": { "bundler": "metro", "output": "single" }
+  }
+}

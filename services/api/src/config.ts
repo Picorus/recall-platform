@@ -85,8 +85,15 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     connection('Messages coming in', inbound !== undefined, providerOf('SUPPORT_INBOUND_PROVIDER')),
     connection('Ad file store', files !== undefined, 'fake'),
   ];
+  // The rider app's web build on a laptop (Expo's web server); production: none unless set.
+  const riderOrigins = (env.RIDER_APP_ORIGINS || (production ? '' : 'http://localhost:8081'))
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
   return {
     connections,
+    riderOrigins,
+    ...(reports ? { messages: reports.messages } : {}),
     databaseUrl: need('DATABASE_URL'),
     host: env.API_HOST || '127.0.0.1',
     port: Number(env.API_PORT || 8080),
@@ -217,7 +224,21 @@ export function reportsFrom(
     throw new Error('The fake maps and messages are for a laptop only (nobody else can reach it)');
   const portal = (env.BRAND_PORTAL_URL || 'http://localhost:3000').replace(/\/+$/, '');
   const maps: MapsAdapter = fakeMaps();
-  const messages: MessagesAdapter = fakeMessages();
+  const fake = fakeMessages();
+  // Laptop only: each message is also printed on the API's console (nothing leaves the laptop), so
+  // a person trying the rider app can read their sign-in code (P4.1).
+  const messages: MessagesAdapter = {
+    send: (m) => {
+      const what =
+        m.channel === 'whatsapp'
+          ? `${m.template}: ${m.params.join(' | ')}`
+          : m.channel === 'sms'
+            ? m.text
+            : m.subject;
+      console.error(`laptop message, not sent: ${m.channel} to ${m.to}: ${what}`);
+      return fake.send(m);
+    },
+  };
   return { maps, messages, portalUrl: portal };
 }
 

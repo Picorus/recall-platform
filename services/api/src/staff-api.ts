@@ -63,6 +63,7 @@ import { handleDashboard } from './dashboard-api.js';
 import { handleSupport } from './support-api.js';
 import { handleAudit } from './audit-api.js';
 import { handleSettings } from './settings-api.js';
+import { handleRiderApp } from './rider-app-api.js';
 import {
   decoyHash,
   hashPassword,
@@ -115,6 +116,10 @@ export interface StaffApiConfig {
    * laptop. Keys stay in the secret store; only the provider's name is shown.
    */
   readonly connections?: readonly Connection[];
+  /** WhatsApp and SMS out (P4.1: riders' sign-in codes). Absent: riders cannot sign in. */
+  readonly messages?: MessagesAdapter;
+  /** Origins of the rider app's web build (tests, screenshots); the phone app sends none. */
+  readonly riderOrigins?: readonly string[];
 }
 
 export interface Connection {
@@ -485,6 +490,8 @@ export function apiHandler(
     const nowMs = clock();
     (async () => {
       if (req.method === 'GET' && req.url === '/health') return send(res, 200, { ok: true });
+      // The rider app first: its own sign-in (a bearer token), never a staff cookie.
+      if (await handleRiderApp(pool, cfg, req, res, nowMs)) return;
       if (await handleStaff(pool, cfg, req, res, nowMs, log)) return;
       if (await handleToday(pool, cfg, req, res, nowMs)) return;
       if (await handleFleet(pool, cfg, req, res, nowMs)) return;
@@ -507,7 +514,11 @@ export function apiHandler(
       if (await handleSettings(pool, cfg, req, res, nowMs)) return;
       throw new HttpError(404, 'Not found');
     })().catch((e: unknown) => {
-      if (e instanceof HttpError) return send(res, e.status, { error: e.message });
+      if (e instanceof HttpError)
+        return send(res, e.status, {
+          error: e.message,
+          ...(e.why ? { why: e.why.code, ...(e.why.n !== undefined ? { n: e.why.n } : {}) } : {}),
+        });
       // Only the path: a query could carry something secret. Nothing here may throw again.
       const path = String(req.url ?? '/')
         .split('?')[0]

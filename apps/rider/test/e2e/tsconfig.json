@@ -1,0 +1,11 @@
+{
+  "extends": "../../../../tsconfig.base.json",
+  "compilerOptions": {
+    // The API it starts imports the shared packages from source (.ts import paths).
+    "allowImportingTsExtensions": true,
+    // The app's package is not an ES module package (Expo's bundler set-up is CommonJS).
+    "module": "esnext",
+    "moduleResolution": "bundler"
+  },
+  "include": ["."]
+}
