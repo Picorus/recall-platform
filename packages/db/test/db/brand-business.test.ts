@@ -81,7 +81,7 @@ describe('your business (P5.2)', () => {
     await freeWeek(true, 0);
     expect(id).toBe('chai-co');
     expect(await portalAccounts(pool, ASHA)).toEqual([
-      { brandId: 'chai-co', name: 'Chai Co', kind: 'brand', role: 'owner' },
+      { brandId: 'chai-co', name: 'Chai Co', kind: 'brand', role: 'owner', via: null },
     ]);
     expect(await businessPage(pool, 'chai-co', NOW + 60, ASHA)).toEqual({
       brandId: 'chai-co',

@@ -44,6 +44,8 @@ export interface Account {
   readonly name: string;
   readonly kind: 'brand' | 'agency';
   readonly role: 'owner' | 'booker';
+  /** P5.10: a brand reached through the person's agency. */
+  readonly via: { readonly agencyId: string; readonly name: string } | null;
 }
 
 export interface Me {
@@ -129,6 +131,30 @@ export interface Team {
     since: number;
   }[];
   readonly max: number;
+  readonly agency: string | null;
+}
+
+/** P5.10: an agency's monthly statement. */
+export interface Statement {
+  readonly account: Account;
+  readonly name: string;
+  readonly month: string;
+  readonly openingPaise: number;
+  readonly cuts: readonly {
+    bookingId: string;
+    cutPaise: number;
+    gstPaise: number;
+    tdsPaise: number;
+    netPaise: number;
+  }[];
+  readonly payments: readonly { at: number; amountPaise: number; reference: string }[];
+  readonly invoices: readonly {
+    invoiceNo: string;
+    invoiceDate: string;
+    taxablePaise: number;
+    gstPaise: number;
+  }[];
+  readonly closingPaise: number;
 }
 
 /** P5.8: a tax invoice or credit note. */

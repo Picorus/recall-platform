@@ -5,7 +5,13 @@
 import { freshDatabase } from '@recall/db/test-db';
 import { fakeFileStore, fakeGst, fakeMessages, fakePayments } from '@recall/adapters';
 import { readFileSync } from 'node:fs';
-import { applyLinkStatus, createAccount, saveAreaVersion, savePriceBook } from '@recall/db';
+import {
+  applyLinkStatus,
+  createAccount,
+  saveAreaVersion,
+  savePriceBook,
+  setPortalMember,
+} from '@recall/db';
 import { launchAreas, PRICE_BOOK_V1, type CampaignReport } from '@recall/domain';
 import { randomBytes } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
@@ -210,7 +216,7 @@ describe('brand portal sign-in routes (P5.1)', () => {
     ]);
     const s = await signIn('+919848055555', 'whatsapp');
     expect(s.body.accounts).toEqual([
-      { brandId: 'chai-co', name: 'Chai Co', kind: 'brand', role: 'owner' },
+      { brandId: 'chai-co', name: 'Chai Co', kind: 'brand', role: 'owner', via: null },
     ]);
     await call(
       '/brands/chai-co/portal',
@@ -249,7 +255,7 @@ describe('brand portal sign-in routes (P5.1)', () => {
     );
     expect(made).toMatchObject({ status: 200, body: { brandId: 'irani-chai' } });
     expect((await call('/portal/me', undefined, { cookie: s.session })).body.accounts).toEqual([
-      { brandId: 'irani-chai', name: 'Irani Chai', kind: 'brand', role: 'owner' },
+      { brandId: 'irani-chai', name: 'Irani Chai', kind: 'brand', role: 'owner', via: null },
     ]);
     expect(
       await call('/portal/business?brand=irani-chai', undefined, { cookie: s.session }),
@@ -694,5 +700,136 @@ describe('brand portal sign-in routes (P5.1)', () => {
     expect((await call('/portal/me', undefined, { cookie: b.session })).body.accounts).toEqual([]);
     const after = await call('/portal/team?brand=irani-chai', undefined, { cookie: s.session });
     expect((after.body.team as unknown[]).length).toBe(n);
+  });
+
+  it("an agency's people see and book for its linked brands; its statement; never the brand's team (P5.10)", async () => {
+    const at = NOW / 1000 - 3600;
+    await createAccount(
+      pool,
+      {
+        brandId: 'adwise-x',
+        kind: 'agency',
+        details: { name: 'Adwise X', agencyId: null, referredBy: null, active: true },
+        by: 'Sana',
+        reason: 'agency',
+      },
+      at,
+    );
+    await createAccount(
+      pool,
+      {
+        brandId: 'dosa-co',
+        kind: 'brand',
+        details: { name: 'Dosa Co', agencyId: 'adwise-x', referredBy: null, active: true },
+        by: 'Sana',
+        reason: 'books through Adwise X',
+      },
+      at,
+    );
+    await setPortalMember(
+      pool,
+      {
+        brandId: 'adwise-x',
+        address: 'ops@adwise.in',
+        role: 'owner',
+        active: true,
+        reason: 'agency lead',
+        by: 'Sana',
+      },
+      at,
+    );
+    const ag = await signIn('ops@adwise.in', 'email');
+    const me = await call('/portal/me', undefined, { cookie: ag.session });
+    expect(me.body.accounts).toEqual([
+      { brandId: 'adwise-x', name: 'Adwise X', kind: 'agency', role: 'owner', via: null },
+      {
+        brandId: 'dosa-co',
+        name: 'Dosa Co',
+        kind: 'brand',
+        role: 'booker',
+        via: { agencyId: 'adwise-x', name: 'Adwise X' },
+      },
+    ]);
+    // Books and sees the brand's campaigns; cannot change the brand's own team.
+    expect(
+      (await call('/portal/campaigns?brand=dosa-co', undefined, { cookie: ag.session })).status,
+    ).toBe(200);
+    expect(
+      await call(
+        '/portal/team?brand=dosa-co',
+        { address: 'x@adwise.in', role: 'booker', active: true },
+        { origin: PORTAL, cookie: ag.session },
+      ),
+    ).toMatchObject({ status: 403 });
+    const team = await call('/portal/team?brand=dosa-co', undefined, { cookie: ag.session });
+    expect(team.body.agency).toBe('Adwise X');
+    // Its statement (the agency's only); staff names are never shown.
+    const st = await call('/portal/statement?brand=adwise-x&month=2027-08', undefined, {
+      cookie: ag.session,
+    });
+    expect(st).toMatchObject({
+      status: 200,
+      body: { month: '2027-08', openingPaise: 0, closingPaise: 0, cuts: [] },
+    });
+    expect(
+      (await call('/portal/statement?brand=dosa-co', undefined, { cookie: ag.session })).status,
+    ).toBe(400);
+    expect(
+      (await call('/portal/statement?brand=adwise-x', undefined, { cookie: owner.session })).status,
+    ).toBe(404);
+    // The brand's say wins: removed from the brand (by its owner or our staff), not let back in.
+    for (const active of [true, false])
+      await setPortalMember(
+        pool,
+        {
+          brandId: 'dosa-co',
+          address: 'ops@adwise.in',
+          role: 'booker',
+          active,
+          reason: active ? 'added' : 'the brand does not want them',
+          by: 'Sana',
+        },
+        at + (active ? 10 : 20),
+      );
+    expect(
+      (
+        (await call('/portal/me', undefined, { cookie: ag.session })).body.accounts as {
+          brandId: string;
+        }[]
+      ).map((x) => x.brandId),
+    ).toEqual(['adwise-x']);
+    // An agency booker does not see the agency's money.
+    await setPortalMember(
+      pool,
+      {
+        brandId: 'adwise-x',
+        address: 'ops@adwise.in',
+        role: 'booker',
+        active: true,
+        reason: 'now books only',
+        by: 'Sana',
+      },
+      at + 30,
+    );
+    expect(
+      (await call('/portal/statement?brand=adwise-x', undefined, { cookie: ag.session })).status,
+    ).toBe(403);
+    // Removed from the agency: the brand goes with it.
+    await setPortalMember(
+      pool,
+      {
+        brandId: 'adwise-x',
+        address: 'ops@adwise.in',
+        role: 'booker',
+        active: false,
+        reason: 'left',
+        by: 'Sana',
+      },
+      at + 60,
+    );
+    expect((await call('/portal/me', undefined, { cookie: ag.session })).body.accounts).toEqual([]);
+    expect(
+      (await call('/portal/campaigns?brand=dosa-co', undefined, { cookie: ag.session })).status,
+    ).toBe(404);
   });
 });

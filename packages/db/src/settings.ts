@@ -84,6 +84,8 @@ export async function setting<K extends SettingKey>(c: Q, key: K): Promise<Setti
 function withNewRules<K extends SettingKey>(key: K, v: Settings[K]): Settings[K] {
   if (key === 'riderSignIn') return { ...DEFAULT_SETTINGS.riderSignIn, ...v } as Settings[K];
   if (key === 'brandSignIn') return { ...DEFAULT_SETTINGS.brandSignIn, ...v } as Settings[K];
+  // P5.11 added two message wordings: a version saved before has them at their default.
+  if (key === 'messages') return { ...DEFAULT_SETTINGS.messages, ...v } as Settings[K];
   return v;
 }
 

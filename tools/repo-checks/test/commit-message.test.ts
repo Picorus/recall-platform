@@ -16,6 +16,7 @@ describe('commit subjects', () => {
   it.each([
     "Merge branch 'main' into claude/festive-meitner-kb0teg",
     'Merge pull request #4 from picorus/claude/x',
+    'Merge main',
   ])('accepts git merge wording only on a real merge: %s', (subject) => {
     expect(isValidCommitSubject(subject, 2)).toBe(true);
     expect(isValidCommitSubject(subject, 1)).toBe(false);
@@ -32,6 +33,7 @@ describe('commit subjects', () => {
     'P5.3–: half a range',
     'P5.3–5.4: second id without P',
     'P5.3 – P5.4: spaces',
+    'Merge mainly fixes',
   ])('rejects %s', (subject) => {
     expect(isValidCommitSubject(subject)).toBe(false);
   });

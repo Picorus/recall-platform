@@ -142,6 +142,41 @@ beforeAll(async () => {
     { by: 'Sana', actor: 'admin' },
     now - 40,
   );
+  // P5.10: an agency with one linked brand.
+  await createAccount(
+    db.pool,
+    {
+      brandId: 'adwise',
+      kind: 'agency',
+      details: { name: 'Adwise Media', agencyId: null, referredBy: null, active: true },
+      by: 'Sana',
+      reason: 'agency',
+    },
+    now - 60,
+  );
+  await createAccount(
+    db.pool,
+    {
+      brandId: 'dosa-co',
+      kind: 'brand',
+      details: { name: 'Dosa Co', agencyId: 'adwise', referredBy: null, active: true },
+      by: 'Sana',
+      reason: 'books through Adwise',
+    },
+    now - 60,
+  );
+  await setPortalMember(
+    db.pool,
+    {
+      brandId: 'adwise',
+      address: 'ops@adwise.in',
+      role: 'owner',
+      active: true,
+      reason: 'agency lead',
+      by: 'Sana',
+    },
+    now - 30,
+  );
   // P5.7: a campaign that ran last week, with its final report built.
   const ranOn = new Date((now - 5 * 86_400) * 1000).toISOString().slice(0, 10);
   await createBooking(
@@ -319,6 +354,37 @@ it('the report link from the "Done" message: sign in, then the report; PDF and b
   await card.getByRole('link', { name: 'See the report' }).click();
   await page.getByRole('link', { name: 'Book again' }).click();
   await page.getByRole('heading', { name: 'Book for Chai Co' }).waitFor();
+  expect(errors).toEqual([]);
+  await page.close();
+}, 60_000);
+
+it('an agency sees its brands, books for them and reads its statement (P5.10)', async () => {
+  const page = await browser.newPage();
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto(`${SITE}/sign-in`);
+  await page.getByRole('button', { name: 'Email' }).click();
+  await page.getByLabel('Work email').fill('ops@adwise.in');
+  await page.getByRole('button', { name: 'Send code by email' }).click();
+  await page.getByText('by email to ops@adwise.in').waitFor();
+  await page.getByLabel('Code').fill(lastCode('ops@adwise.in'));
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  const accounts = page.getByRole('region', { name: 'Your accounts' });
+  await accounts.getByText('through Adwise Media').waitFor();
+  await accounts.getByRole('link', { name: 'Adwise Media' }).click();
+  const brands = page.getByRole('region', { name: 'Your brands' });
+  await brands.getByRole('link', { name: 'Dosa Co' }).waitFor();
+  await page.getByRole('link', { name: 'Statement' }).click();
+  await page.getByRole('heading', { name: 'Statement' }).waitFor();
+  await page.getByText('Owed to you at the end').waitFor();
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/brand-statement.png`, fullPage: true });
+  await page.getByRole('link', { name: 'Back' }).click();
+  await page
+    .getByRole('region', { name: 'Your brands' })
+    .getByRole('link', { name: 'Dosa Co' })
+    .click();
+  await page.getByText('You book for Dosa Co through Adwise Media.').waitFor();
+  await page.getByRole('link', { name: 'Book', exact: true }).waitFor();
   expect(errors).toEqual([]);
   await page.close();
 }, 60_000);

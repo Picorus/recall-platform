@@ -78,8 +78,39 @@ export default function CampaignsPage() {
               <Link href={`/team?${q}`}>Team</Link>
               <Link href={`/help?${q}`}>Help</Link>
               <Link href={`/business?${q}`}>Business details</Link>
+              {page.account.kind === 'agency' && <Link href={`/statement?${q}`}>Statement</Link>}
             </div>
           </div>
+          {page.account.via && (
+            <p className="muted">
+              You book for {page.account.name} through {page.account.via.name}.
+            </p>
+          )}
+          {page.account.kind === 'agency' && (
+            <section className="rc-card stack" aria-label="Your brands">
+              <h2>Your brands</h2>
+              {me.accounts.some((x) => x.via?.agencyId === page.account.brandId) ? (
+                <ul className="plain">
+                  {me.accounts
+                    .filter((x) => x.via?.agencyId === page.account.brandId)
+                    .map((x) => (
+                      <li key={x.brandId}>
+                        {/* A full load: this page reads its business once, when it opens. */}
+                        <a href={`/campaigns?brand=${encodeURIComponent(x.brandId)}`}>
+                          <b>{x.name}</b>
+                        </a>
+                      </li>
+                    ))}
+                </ul>
+              ) : (
+                <p className="muted">
+                  No brands linked yet. Ask us on Help to link the brands you book for: you then
+                  book and add ads on each brand&apos;s own account, and your share shows on your
+                  statement, never on the brand&apos;s invoice.
+                </p>
+              )}
+            </section>
+          )}
           <div className="row" role="tablist" aria-label="Campaigns">
             {TABS.map(([t, label]) => (
               <button

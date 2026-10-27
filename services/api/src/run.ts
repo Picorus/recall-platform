@@ -9,6 +9,7 @@ import {
   setting,
   prepareDueRun,
   sendDueReports,
+  sendDueNotices,
   settleDue,
 } from '@recall/db';
 import pg from 'pg';
@@ -100,6 +101,9 @@ if (reports) {
         for (const f of b.failed) console.error(`api: report for ${f.bookingId}: ${f.error}`);
         const s = await sendDueReports(pool, reports.messages, render, now);
         if (s.sent.length > 0) console.log(`api: reports sent: ${s.sent.join(', ')}`);
+        // P5.11: "booked and paid", and "your ads are due" 9 and 7 days before the start.
+        const n = await sendDueNotices(pool, reports.messages, reports.portalUrl, now);
+        if (n.sent.length > 0) console.log(`api: brand messages sent: ${n.sent.join(', ')}`);
       })
       .catch((e: unknown) => console.error('api: reports failed', e))
       .finally(() => setTimeout(tick, 300_000).unref());

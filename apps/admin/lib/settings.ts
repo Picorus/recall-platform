@@ -27,6 +27,8 @@ export interface Wording {
 export interface MessageWordings {
   readonly supportReply: Wording;
   readonly reportReady: Wording;
+  readonly bookedPaid: Wording;
+  readonly adsMissing: Wording;
 }
 export type PayZone =
   | {

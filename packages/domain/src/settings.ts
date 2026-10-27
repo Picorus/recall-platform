@@ -60,6 +60,11 @@ export interface MessageWordings {
   readonly supportReply: Wording;
   /** A campaign report is ready. Placeholders: {booking}, {period}, {summary}, {link} (needed). */
   readonly reportReady: Wording;
+  /** P5.11: booked and paid. Placeholders: {booking}, {period}, {total}, {adsDue}, {link} (needed). */
+  readonly bookedPaid: Wording;
+  /** P5.11: no ads chosen yet, 9 and 7 days before the start. Placeholders: {booking}, {start},
+   * {adsDue}, {link} (needed). */
+  readonly adsMissing: Wording;
 }
 
 /**
@@ -121,6 +126,8 @@ export const SETTING_KEYS = [
 export const WORDING_PLACEHOLDERS = {
   supportReply: { may: ['reply', 'subject'], must: ['reply'] },
   reportReady: { may: ['booking', 'period', 'summary', 'link'], must: ['link'] },
+  bookedPaid: { may: ['booking', 'period', 'total', 'adsDue', 'link'], must: ['link'] },
+  adsMissing: { may: ['booking', 'start', 'adsDue', 'link'], must: ['link'] },
 } as const satisfies Record<
   keyof MessageWordings,
   { may: readonly string[]; must: readonly string[] }
@@ -143,6 +150,18 @@ export const DEFAULT_SETTINGS: Settings = {
       whatsappTemplate: 'campaign_report_ready',
       emailSubject: 'Your RECALL campaign report: {booking} ({period})',
       emailText: '{summary}\n\nSee the full report: {link}',
+    },
+    bookedPaid: {
+      whatsappTemplate: 'campaign_booked_paid',
+      emailSubject: 'Booked and paid: your RECALL campaign {booking} ({period})',
+      emailText:
+        'Thank you: your campaign {booking} ({period}) is booked and paid, {total} with GST.\n\nYour ads are due by {adsDue}: {link}',
+    },
+    adsMissing: {
+      whatsappTemplate: 'campaign_ads_missing',
+      emailSubject: 'Your ads for RECALL campaign {booking} are due by {adsDue}',
+      emailText:
+        'Your campaign {booking} starts on {start}, and no ads are chosen yet. Please add them by {adsDue} so our team can check them: {link}',
     },
   },
   payZone: POC_PAY_ZONE,
@@ -320,6 +339,8 @@ export function checkSetting<K extends SettingKey>(key: K, value: unknown): Sett
         return {
           supportReply: wording(m.supportReply, 'supportReply', 'Support reply'),
           reportReady: wording(m.reportReady, 'reportReady', 'Report ready'),
+          bookedPaid: wording(m.bookedPaid, 'bookedPaid', 'Booked and paid'),
+          adsMissing: wording(m.adsMissing, 'adsMissing', 'Ads missing'),
         };
       }
       case 'payZone':

@@ -3,7 +3,8 @@
 // One step id, or a range of them for a commit that covers several ("P5.3–P5.4: …", en dash or "-").
 const STEP = 'P\\d+(?:\\.\\d+)*';
 const STEP_SUBJECT = new RegExp(`^${STEP}(?:[–-]${STEP})?: \\S`);
-const MERGE_SUBJECT = /^Merge (branch|pull request|remote-tracking branch) /;
+// Git's own wording, or "Merge main" (the base brought into a step branch).
+const MERGE_SUBJECT = /^Merge ((branch|pull request|remote-tracking branch) |main$)/;
 const REVERT_SUBJECT = /^Revert "P\d/;
 
 /** `parents` is the commit's parent count: git's own "Merge …" wording is only allowed on real merges. */
