@@ -505,6 +505,34 @@ it("a rider on the road sees his screen, today's and this week's hours and earni
   await page.getByText('No bank or UPI checked yet: we cannot pay you. Call support.').waitFor();
   await page.getByText('No payouts yet.').waitFor();
   await shot(page, 'rider-payouts');
+  // P4.8: the Screen tab: care, report a problem (it reaches support), then the loan (P4.7).
+  await page.getByRole('tab', { name: 'Screen' }).click();
+  await page.getByText('Looking after it').waitFor();
+  await page.getByRole('radio', { name: 'Damaged' }).click();
+  await page.getByLabel('What happened (optional)').fill('Cracked corner after a fall');
+  await page.getByRole('button', { name: 'Send to support' }).click();
+  await page.getByText(/^Sent\. Support will call/).waitFor();
+  await page.getByText('We are on it').waitFor();
+  await shot(page, 'rider-care');
+  const thread = await db.pool.query<{ subject: string }>(
+    `SELECT subject FROM support_threads WHERE party_id = $1`,
+    [riderId],
+  );
+  expect(thread.rows[0]?.subject).toBe(`Screen damaged (${box.screenId})`);
+  await page.getByRole('button', { name: 'My screen loan' }).click();
+  await page.getByText(/No screen loan yet/).waitFor();
+  await page
+    .getByText('The bank takes your EMI from your account. RECALL never collects it.')
+    .waitFor();
+  // P4.9: Help: a question to support, his requests, the common questions.
+  await page.getByRole('tab', { name: 'Help' }).click();
+  await page.getByLabel('Your question').fill('When does the bonus come?');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await page.getByText('Sent. We will reply on WhatsApp.').waitFor();
+  await page.getByText(/Rider app: When does the bonus come\?/).waitFor();
+  await page.getByRole('button', { name: 'When am I paid?' }).click();
+  await page.getByText(/Every Monday, to your checked bank account or UPI/).waitFor();
+  await shot(page, 'rider-help');
   await page.getByRole('tab', { name: 'Today' }).click();
   await page.getByText('On and playing').waitFor();
   expect(errors).toEqual([]);

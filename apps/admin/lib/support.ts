@@ -45,6 +45,13 @@ export interface Inbox {
 }
 
 export interface ThreadPage extends ThreadRow {
+  /** P4.8: screen problems reported on the rider app, with a link to the photo (10 minutes). */
+  readonly problems?: readonly {
+    readonly problemId: string;
+    readonly kind: string;
+    readonly screenId: string | null;
+    readonly photo: string | null;
+  }[];
   /** The member looking. */
   readonly me: string;
   readonly timeline: readonly {

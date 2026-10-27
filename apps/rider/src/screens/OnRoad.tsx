@@ -1,5 +1,5 @@
-// P4.4–P4.6: a rider on the road moves between his pages with tabs at the bottom (Today, Earnings,
-// Payouts; the screen loan, care and help join them as they come).
+// P4.4–P4.8: a rider on the road moves between his pages with tabs at the bottom: Today, Earnings,
+// Payouts, Screen (care, problems and the screen loan), Help.
 import type { RiderLanguage } from '@recall/domain';
 import { useState } from 'react';
 import { Pressable, View } from 'react-native';
@@ -9,6 +9,8 @@ import { say, type Key } from '../i18n';
 import { color, touch } from '../theme';
 import { Words } from '../ui';
 import { Earnings } from './Earnings';
+import { Help } from './Help';
+import { Care } from './Care';
 import { Payouts } from './Payouts';
 import { Today } from './Today';
 
@@ -16,6 +18,8 @@ const TABS = [
   ['today', 'tab.today'],
   ['earnings', 'tab.earnings'],
   ['payouts', 'tab.payouts'],
+  ['screen', 'tab.screen'],
+  ['help', 'tab.help'],
 ] as const satisfies readonly (readonly [string, Key])[];
 type Tab = (typeof TABS)[number][0];
 
@@ -38,6 +42,8 @@ export function OnRoad({
         {tab === 'today' && <Today lang={lang} token={token} me={me} onSignOut={onSignOut} />}
         {tab === 'earnings' && <Earnings lang={lang} token={token} onSignOut={onSignOut} />}
         {tab === 'payouts' && <Payouts lang={lang} token={token} onSignOut={onSignOut} />}
+        {tab === 'screen' && <Care lang={lang} token={token} onSignOut={onSignOut} />}
+        {tab === 'help' && <Help lang={lang} token={token} onSignOut={onSignOut} />}
       </View>
       <View
         accessibilityRole="tablist"
@@ -64,7 +70,7 @@ export function OnRoad({
           >
             <Words
               weight="semibold"
-              style={{ color: tab === id ? color.volt : color.muted, fontSize: 15 }}
+              style={{ color: tab === id ? color.volt : color.muted, fontSize: 13 }}
             >
               {say(lang, key)}
             </Words>

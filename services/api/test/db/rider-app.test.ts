@@ -349,6 +349,42 @@ describe('rider app fitting routes (P4.3)', () => {
       history: [],
       tds: [],
     });
+    // P4.7: no screen loan yet; the bank from Settings.
+    expect((await get('/rider/loan')).body).toEqual({
+      loan: null,
+      bank: 'Dhanlaxmi Bank',
+      day90: null,
+    });
+    // P4.8: a screen problem with a photo reaches support; his reports.
+    const pic = await fetch(`${url}/rider/problems?kind=damage`, {
+      method: 'POST',
+      headers: {
+        ...auth,
+        'content-type': 'application/octet-stream',
+        'x-note': encodeURIComponent('Cracked corner'),
+      },
+      body: new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 1, 2]),
+    });
+    expect(pic.status).toBe(200);
+    expect((await post('/rider/problems?kind=not-on', {}, auth)).status).toBe(200);
+    expect((await post('/rider/problems?kind=other', {}, auth)).body).toMatchObject({
+      why: 'say-what',
+    });
+    // (Both at the same moment on this test's clock: in either order.)
+    const care = (await get('/rider/care')).body as { problems: { kind: string; state: string }[] };
+    expect(care.problems.map((p) => [p.kind, p.state]).sort()).toEqual([
+      ['damage', 'open'],
+      ['not-on', 'open'],
+    ]);
+    // P4.9: help: no numbers in Settings yet; a question; his requests (questions and problems).
+    expect((await post('/rider/help', { text: 'Where is my payout?' }, auth)).status).toBe(200);
+    const help = (await get('/rider/help')).body as {
+      phones: unknown[];
+      requests: { subject: string }[];
+    };
+    expect(help).toMatchObject({ phones: [], opens: '10:00', closes: '19:00' });
+    expect(help.requests.map((r) => r.subject)).toContain('Rider app: Where is my payout?');
+    expect(help.requests).toHaveLength(3);
     // A changed link is refused.
     expect((await fetch(`${url}${link.slice(0, -2)}xx`)).status).toBe(404);
   });

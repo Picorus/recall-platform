@@ -30,6 +30,15 @@
 //   GET  /rider/statement/<token> the statement page itself (printable; no sign-in needed)
 // P4.6:
 //   GET  /rider/payouts           next Monday's payout, his account (masked), history, TDS by quarter
+// P4.7:
+//   GET  /rider/loan              his screen loan as the bank reports it, the EMI holiday, the day-90 bonus
+// P4.8:
+//   GET  /rider/care              his screen problem reports and where each stands
+//   POST /rider/problems?kind=    a problem: { note } as JSON, or the photo as the body with the note
+//                                 in an X-Note header (URL-encoded)
+// P4.9:
+//   GET  /rider/help              support's numbers (WhatsApp, call), whether open now, his requests
+//   POST /rider/help              { text }  a question to support (a conversation, replies on WhatsApp)
 import type { PayoutDestination } from '@recall/adapters';
 import {
   answerPanel,
@@ -58,6 +67,13 @@ import {
   riderToday,
   riderEarnings,
   riderPayouts,
+  riderLoanPage,
+  reportScreenProblem,
+  riderProblems,
+  problemsToday,
+  PROBLEMS_PER_DAY,
+  riderRequests,
+  askSupport,
   riderMonths,
   setting,
   type RiderSession,
@@ -67,6 +83,7 @@ import {
   indiaMobile,
   RIDER_LANGUAGES,
   showMobile,
+  supportOpenAt,
   typedCode,
   type CodeChannel,
   type RiderLanguage,
@@ -140,7 +157,7 @@ export async function handleRiderApp(
   if (method === 'OPTIONS') {
     res.writeHead(204, {
       'access-control-allow-methods': 'GET, POST',
-      'access-control-allow-headers': 'authorization, content-type',
+      'access-control-allow-headers': 'authorization, content-type, x-note',
       'access-control-max-age': '600',
     });
     res.end();
@@ -286,6 +303,78 @@ export async function handleRiderApp(
     if (!months.includes(month))
       throw new HttpError(400, 'Pick one of your months', { code: 'bad-month' });
     send(res, 200, await riderEarnings(pool, riderId, month, now, months));
+    return true;
+  }
+  if (path === '/rider/help' && method === 'GET') {
+    const support = await setting(pool, 'support');
+    // The riders' line(s) when labelled so; otherwise every number.
+    const riders = support.phones.filter((p) => /rider/i.test(p.label));
+    send(res, 200, {
+      phones: (riders.length ? riders : support.phones).map((p) => ({
+        label: p.label,
+        phone: p.phone,
+        whatsapp: p.whatsapp,
+      })),
+      open: supportOpenAt(support, now),
+      days: support.days,
+      opens: support.opens,
+      closes: support.closes,
+      requests: await riderRequests(pool, riderId),
+    });
+    return true;
+  }
+  if (path === '/rider/help' && method === 'POST') {
+    const text = str(await jsonBody(req), 'text', 4000);
+    send(res, 200, await refused(() => askSupport(pool, { riderId, phone: s.phone, text }, now)));
+    return true;
+  }
+  if (path === '/rider/care' && method === 'GET') {
+    send(res, 200, { problems: await riderProblems(pool, riderId) });
+    return true;
+  }
+  if (path === '/rider/problems' && method === 'POST') {
+    const q = new URLSearchParams((req.url ?? '').split('?')[1] ?? '');
+    const report = (note: string, photo: Uint8Array | null) =>
+      refused(() =>
+        reportScreenProblem(
+          pool,
+          cfg.files,
+          { riderId, phone: s.phone, kind: q.get('kind') ?? '', note, photo },
+          now,
+        ),
+      );
+    if (String(req.headers['content-type'] ?? '').startsWith('application/octet-stream')) {
+      // Refused before a photo is read: storage not set up, or his reports for today used up.
+      if (!cfg.files) throw new HttpError(503, 'Photos are not set up yet', { code: 'not-set-up' });
+      if ((await problemsToday(pool, riderId, now)) >= PROBLEMS_PER_DAY)
+        throw new HttpError(429, 'Too many reports today: call support', {
+          code: 'too-many-reports',
+        });
+      let note = '';
+      try {
+        note = decodeURIComponent(String(req.headers['x-note'] ?? '')).slice(0, 2000);
+      } catch {
+        throw new HttpError(400, 'The note could not be read');
+      }
+      if (uploadingRiders.has(riderId))
+        throw new HttpError(429, 'One picture at a time', { code: 'one-at-a-time' });
+      uploadingRiders.add(riderId);
+      try {
+        await withUpload(req, 'rider-problems', MAX_DOCUMENT_BYTES, async (data) => {
+          send(res, 200, await report(note, data));
+        });
+      } finally {
+        uploadingRiders.delete(riderId);
+      }
+    } else {
+      const b = await jsonBody(req);
+      send(res, 200, await report(typeof b.note === 'string' ? b.note.slice(0, 2000) : '', null));
+    }
+    return true;
+  }
+  if (path === '/rider/loan' && method === 'GET') {
+    const bank = (await setting(pool, 'loanBank')).name;
+    send(res, 200, await riderLoanPage(pool, riderId, now, bank));
     return true;
   }
   if (path === '/rider/payouts' && method === 'GET') {
