@@ -1,4 +1,13 @@
 {
   "extends": "../../tsconfig.base.json",
-  "include": ["src"]
+  "compilerOptions": {
+    "lib": ["es2023", "dom", "dom.iterable"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "allowJs": false,
+    "allowImportingTsExtensions": true,
+    "plugins": [{ "name": "next" }]
+  },
+  "include": ["next-env.d.ts", "app", "lib", "test/unit", "next.config.ts", ".next/types/**/*.ts"]
 }

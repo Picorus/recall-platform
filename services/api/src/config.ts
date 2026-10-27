@@ -8,6 +8,8 @@ import {
   fakeMaps,
   fakeMessages,
   fakePush,
+  fakeGst,
+  type GstAdapter,
   type PushAdapter,
   fakePayments,
   fakePayouts,
@@ -66,6 +68,7 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
   const reports = reportsFrom(env, production);
   const inbound = inboundFrom(env, production);
   const push = pushFrom(env, production);
+  const gst = gstFrom(env, production);
   const connection = (service: string, on: boolean, provider: string): Connection => ({
     service,
     state: !on ? 'off' : provider === 'fake' ? 'stand-in' : 'on',
@@ -87,6 +90,7 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     ),
     connection('Messages coming in', inbound !== undefined, providerOf('SUPPORT_INBOUND_PROVIDER')),
     connection('Rider phone notifications', push !== undefined, providerOf('PUSH_PROVIDER')),
+    connection('GST number lookup', gst !== undefined, providerOf('GST_PROVIDER')),
     connection('Ad file store', files !== undefined, 'fake'),
   ];
   // The rider app's web build on a laptop (Expo's web server); production: none unless set.
@@ -94,9 +98,18 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);
+  // The brand portal (P5.1): its own origins; a laptop's by default.
+  const brandOrigins = (
+    env.BRAND_ORIGINS || (production ? need('BRAND_ORIGINS') : 'http://localhost:3000')
+  )
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
   return {
     connections,
     riderOrigins,
+    brandOrigins,
+    ...(gst ? { gst } : {}),
     ...(reports ? { messages: reports.messages } : {}),
     databaseUrl: need('DATABASE_URL'),
     host: env.API_HOST || '127.0.0.1',
@@ -300,4 +313,18 @@ export function filesFrom(env: NodeJS.ProcessEnv, production: boolean): FileStor
     // A fresh key on each start: the fake's files do not outlive the process either.
     secret: randomBytes(32).toString('hex'),
   });
+}
+
+/**
+ * GST number lookups (P5.2): the real one comes with a GST Suvidha Provider (P6); until then
+ * production has none (businesses type their legal name and address). On a laptop the fake.
+ */
+export function gstFrom(env: NodeJS.ProcessEnv, production: boolean): GstAdapter | undefined {
+  const provider = env.GST_PROVIDER || (production ? '' : 'fake');
+  if (provider === '') return undefined;
+  if (provider !== 'fake')
+    throw new Error(`GST_PROVIDER ${provider} is not available yet (the real one comes in P6)`);
+  if (production || !onlyLocal(env))
+    throw new Error('The fake GST lookup is for a laptop only (nobody else can reach it)');
+  return fakeGst();
 }

@@ -46,6 +46,8 @@ export * from './support.js';
 export * from './audit.js';
 export * from './settings.js';
 export * from './rider-sign-in.js';
+export * from './brand-sign-in.js';
+export * from './brand-business.js';
 export * from './rider-app.js';
 export * from './rider-app-fitting.js';
 export * from './rider-today.js';

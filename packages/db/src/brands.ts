@@ -4,6 +4,7 @@ import { accountProblems, type AccountDetails, type AccountKind } from '@recall/
 import type { Pool } from 'pg';
 import { inTransaction } from './makeups.js';
 import { Refusal } from './refusal.js';
+import { sameGstinAccounts } from './brand-business.js';
 
 export interface Account extends AccountDetails {
   readonly brandId: string;
@@ -222,9 +223,13 @@ export interface AccountPage {
     gstin: string | null;
     stateCode: string;
     address: string;
+    /** P5.2: where they came from; "typed" by the business on the portal: not checked yet. */
+    source: 'staff' | 'gst-record' | 'typed';
     by: string;
     at: number;
   } | null;
+  /** P5.2: other active accounts with the same GST number (staff settle it before invoicing). */
+  readonly sameGstin: readonly { brandId: string; name: string }[];
   readonly notes: readonly { note: string; by: string; at: number }[];
   /** For an agency: the brands it handles now. */
   readonly brands: readonly { brandId: string; name: string; active: boolean }[];
@@ -262,10 +267,11 @@ export async function accountPage(pool: Q, brandId: string): Promise<AccountPage
       gstin: string | null;
       state_code: string;
       address: string;
+      source: 'staff' | 'gst-record' | 'typed';
       set_by: string;
       set_at: Date;
     }>(
-      `SELECT legal_name, gstin, state_code, address, set_by, set_at FROM brand_tax_profiles
+      `SELECT legal_name, gstin, state_code, address, source, set_by, set_at FROM brand_tax_profiles
         WHERE brand_id = $1 ORDER BY set_at DESC LIMIT 1`,
       [brandId],
     ),
@@ -313,10 +319,12 @@ export async function accountPage(pool: Q, brandId: string): Promise<AccountPage
           gstin: t.gstin,
           stateCode: t.state_code,
           address: t.address,
+          source: t.source,
           by: t.set_by,
           at: secs(t.set_at),
         }
       : null,
+    sameGstin: await sameGstinAccounts(pool, brandId),
     notes: notes.rows.map((n) => ({ note: n.note, by: n.by, at: secs(n.at) })),
     brands: brands.rows.map((b) => ({ brandId: b.brand_id, name: b.name, active: b.active })),
     bookings: bookings.rows.map((b) => ({

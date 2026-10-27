@@ -14,7 +14,7 @@ export interface RiderSignInRules {
   readonly codesPer15Min: number;
   /** Codes one number may get in a day (India day), from anywhere. */
   readonly codesPerDay: number;
-  /** Wrong codes typed for one number in a day, from anywhere (slow guessing across connections). */
+  /** Wrong codes typed for one number in a day, from anywhere, against a live code (slow guessing across connections). */
   readonly wrongPerNumberDay: number;
   /** Codes one connection may ask for in an hour, for any numbers. */
   readonly codesPerAddressHour: number;

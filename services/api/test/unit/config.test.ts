@@ -9,6 +9,7 @@ import {
   payoutsFrom,
   reportsFrom,
   riderChecksFrom,
+  gstFrom,
 } from '../../src/config.js';
 
 describe('payments settings (P3.8.2)', () => {
@@ -75,6 +76,15 @@ describe('payments settings (P3.8.2)', () => {
   });
 });
 
+describe('GST number lookup (P5.2)', () => {
+  it('the fake on a laptop only; none in production until P6', () => {
+    expect(gstFrom({}, false)).toBeDefined();
+    expect(gstFrom({}, true)).toBeUndefined();
+    expect(() => gstFrom({ API_HOST: '0.0.0.0' }, false)).toThrow('laptop only');
+    expect(() => gstFrom({ GST_PROVIDER: 'cleartax' }, false)).toThrow('P6');
+  });
+});
+
 describe('outside services for the Settings page (P3.17)', () => {
   it('a laptop lists every service as a stand-in, with no key shown', () => {
     const cfg = readConfig({
@@ -88,11 +98,33 @@ describe('outside services for the Settings page (P3.17)', () => {
       'Maps, WhatsApp and email out',
       'Messages coming in',
       'Rider phone notifications',
+      'GST number lookup',
       'Ad file store',
     ]);
     expect(cfg.connections?.every((c) => c.state === 'stand-in' && c.provider === 'fake')).toBe(
       true,
     );
     expect(JSON.stringify(cfg.connections)).not.toContain('s'.repeat(40));
+  });
+
+  it('the brand portal: a laptop by default; production names its origins (P5.1)', () => {
+    expect(readConfig({ DATABASE_URL: 'postgres://x' }).brandOrigins).toEqual([
+      'http://localhost:3000',
+    ]);
+    expect(
+      readConfig({
+        DATABASE_URL: 'postgres://x',
+        BRAND_ORIGINS: 'https://book.recall.in, https://www.recall.in',
+      }).brandOrigins,
+    ).toEqual(['https://book.recall.in', 'https://www.recall.in']);
+    expect(() =>
+      readConfig({
+        NODE_ENV: 'production',
+        DATABASE_URL: 'postgres://x',
+        STAFF_SECRET_KEY: 'ab'.repeat(32),
+        ADMIN_ORIGINS: 'https://admin.recall.in',
+        API_PROXY_HOPS: '1',
+      }),
+    ).toThrow('BRAND_ORIGINS is not set');
   });
 });

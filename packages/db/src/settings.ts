@@ -82,7 +82,9 @@ export async function setting<K extends SettingKey>(c: Q, key: K): Promise<Setti
  * at its default, so no limit is ever missing.
  */
 function withNewRules<K extends SettingKey>(key: K, v: Settings[K]): Settings[K] {
-  return key === 'riderSignIn' ? ({ ...DEFAULT_SETTINGS.riderSignIn, ...v } as Settings[K]) : v;
+  if (key === 'riderSignIn') return { ...DEFAULT_SETTINGS.riderSignIn, ...v } as Settings[K];
+  if (key === 'brandSignIn') return { ...DEFAULT_SETTINGS.brandSignIn, ...v } as Settings[K];
+  return v;
 }
 
 /**

@@ -8,13 +8,26 @@
 //   POST /brands/<id>/contact       { phone?, email? }
 //   POST /brands/<id>/tax           { legalName, gstin?, stateCode, address? }
 //   POST /brands/<id>/notes         { note }
-import { ACCOUNT_ID, can, type AccountKind, type StaffAccess } from '@recall/domain';
+//   POST /brands/<id>/portal        { address, role: owner|booker, active, reason }  P5.1: who may
+//                                   sign in to the brand portal for this account (a number or email)
+import {
+  ACCOUNT_ID,
+  BRAND_MEMBER_ROLES,
+  can,
+  emailAddress,
+  indiaMobile,
+  type AccountKind,
+  type BrandMemberRole,
+  type StaffAccess,
+} from '@recall/domain';
 import {
   accountList,
   accountPage,
   addAccountNote,
   createAccount,
   findAccount,
+  portalMembers,
+  setPortalMember,
   Refusal,
   reviseAccount,
   setBrandContact,
@@ -78,7 +91,9 @@ export async function handleBrands(
       throw new HttpError(403, 'Not from the admin site');
   } else if (method !== 'GET') throw new HttpError(405, 'Not allowed');
   const now = Math.floor(nowMs / 1000);
-  const m = /^\/brands(?:\/([a-z0-9][a-z0-9-]{0,63}))?(?:\/(contact|tax|notes))?$/.exec(path);
+  const m = /^\/brands(?:\/([a-z0-9][a-z0-9-]{0,63}))?(?:\/(contact|tax|notes|portal))?$/.exec(
+    path,
+  );
   if (!m) throw new HttpError(404, 'Not found');
   const id = m[1];
   const part = m[2];
@@ -93,7 +108,7 @@ export async function handleBrands(
     }
     const page = await accountPage(pool, id);
     if (!page) throw new HttpError(404, 'No such account');
-    send(res, 200, { at: now, ...page });
+    send(res, 200, { at: now, ...page, portal: await portalMembers(pool, id) });
     return true;
   }
 
@@ -165,6 +180,32 @@ export async function handleBrands(
       setBrandContact(pool, id, { ...(phone ? { phone } : {}), ...(email ? { email } : {}) }, who),
     );
     send(res, 200, { ok: true });
+    return true;
+  }
+  if (part === 'portal') {
+    const typed = str(b, 'address', 254);
+    const address = typed.includes('@') ? emailAddress(typed) : indiaMobile(typed);
+    if (!address) throw new HttpError(400, 'A 10-digit mobile number or an email address');
+    const role = b.role;
+    if (!(BRAND_MEMBER_ROLES as readonly unknown[]).includes(role))
+      throw new HttpError(400, 'role must be owner or booker');
+    if (typeof b.active !== 'boolean') throw new HttpError(400, 'active must be true or false');
+    const active = b.active;
+    const version = await refusedAs400(() =>
+      setPortalMember(
+        pool,
+        {
+          brandId: id,
+          address,
+          role: role as BrandMemberRole,
+          active,
+          reason: reasonOf(b),
+          by: who,
+        },
+        now,
+      ),
+    );
+    send(res, 200, { address, version });
     return true;
   }
   if (part === 'notes') {

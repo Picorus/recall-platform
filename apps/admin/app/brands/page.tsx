@@ -2,7 +2,8 @@
 // P3.8.1 Brands: every brand and agency account (search by name, id, phone, email or GSTIN); one
 // account's page with its details and their history, contact, tax details, notes, bookings and, for
 // an agency, the brands it handles. A Sales admin opens and changes accounts, contacts and notes; a
-// Sales or Finance admin sets tax details. Sales, Finance and Support look.
+// Sales or Finance admin sets tax details. Sales, Finance and Support look. P5.1: Sales gives or
+// removes a person's access to the brand portal for the account (a number or an email).
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { api, ApiError, type Member } from '../../lib/api';
 import { idFromName, matches, phoneText, STEP_NAMES, type AccountRow } from '../../lib/brands';
@@ -29,10 +30,21 @@ interface Page {
     gstin: string | null;
     stateCode: string;
     address: string;
+    source: 'staff' | 'gst-record' | 'typed';
     by: string;
     at: number;
   } | null;
+  readonly sameGstin: readonly { brandId: string; name: string }[];
   readonly notes: readonly { note: string; by: string; at: number }[];
+  /** P5.1: who may sign in to the brand portal for this account. */
+  readonly portal: readonly {
+    address: string;
+    role: 'owner' | 'booker';
+    active: boolean;
+    setBy: string;
+    setAt: number;
+    reason: string;
+  }[];
   readonly brands: readonly { brandId: string; name: string; active: boolean }[];
   readonly bookings: readonly {
     bookingId: string;
@@ -161,6 +173,22 @@ export default function BrandsPage() {
           email: field(f, 'email'),
         }),
       'Contact saved.',
+    );
+  };
+  const portal = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!page) return;
+    const f = new FormData(e.currentTarget);
+    const give = (e.nativeEvent as SubmitEvent).submitter?.getAttribute('value') !== 'remove';
+    void call(
+      () =>
+        api(`/brands/${page.account.brandId}/portal`, {
+          address: field(f, 'address'),
+          role: field(f, 'role'),
+          active: give,
+          reason: field(f, 'reason'),
+        }),
+      give ? 'Portal access given.' : 'Portal access removed.',
     );
   };
   const tax = (e: FormEvent<HTMLFormElement>) => {
@@ -479,7 +507,21 @@ export default function BrandsPage() {
               {page.tax && (
                 <span className="muted">
                   Set by {page.tax.by}, {when(page.tax.at)}
+                  {page.tax.source === 'gst-record' && ' · from the GST records'}
                 </span>
+              )}
+              {page.sameGstin.length > 0 && (
+                <p className="error">
+                  The same GST number is on {page.sameGstin.map((x) => x.name).join(', ')}. Find out
+                  which is the real business (ask for its GST certificate), then close the other
+                  account or correct its tax details. No invoice carries the number until then.
+                </p>
+              )}
+              {page.tax?.source === 'typed' && page.tax.gstin && (
+                <p className="error">
+                  Typed by the business, not checked against the GST records: check the GST number
+                  and legal name, then save them here before the first invoice.
+                </p>
               )}
               {mayTax(me) && (
                 <button className="rc-button rc-button--secondary" type="submit" disabled={busy}>
@@ -586,6 +628,80 @@ export default function BrandsPage() {
                   loadOne(openRef.current);
                 }}
               />
+            )}
+          </section>
+
+          <section className="rc-card stack" aria-label="Brand portal access">
+            <h3 style={{ margin: 0 }}>Brand portal access</h3>
+            <p className="muted">
+              Who may sign in to the brand portal for this account, with a code to their mobile
+              number or email. An owner does everything; a booker books and pays.
+            </p>
+            {page.portal.length > 0 && (
+              <ul className="plain">
+                {page.portal.map((p) => (
+                  <li key={p.address}>
+                    <span className="mono">
+                      {p.address.includes('@') ? p.address : phoneText(p.address)}
+                    </span>{' '}
+                    · {p.role === 'owner' ? 'Owner' : 'Booker'}
+                    {p.active ? '' : ' · removed'}
+                    <div className="muted">
+                      {p.setBy}, {when(p.setAt)} · {p.reason}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {isSales(me) && (
+              <form
+                className="stack"
+                onSubmit={portal}
+                aria-label="Give or remove portal access"
+                key={`p|${a.brandId}|${page.portal.length}|${page.portal.map((p) => p.setAt).join()}`}
+              >
+                <div className="tiles">
+                  <label className="rc-field">
+                    <span className="rc-field__label">Mobile number or email</span>
+                    <input className="rc-input" name="address" maxLength={254} required />
+                  </label>
+                  <label className="rc-field">
+                    <span className="rc-field__label">As</span>
+                    <select className="rc-input" name="role" defaultValue="owner">
+                      <option value="owner">Owner</option>
+                      <option value="booker">Booker</option>
+                    </select>
+                  </label>
+                  <label className="rc-field">
+                    <span className="rc-field__label">Why (logged)</span>
+                    <input
+                      className="rc-input"
+                      name="reason"
+                      minLength={3}
+                      maxLength={200}
+                      required
+                    />
+                  </label>
+                </div>
+                <div className="areas">
+                  <button
+                    className="rc-button rc-button--secondary"
+                    type="submit"
+                    value="give"
+                    disabled={busy}
+                  >
+                    Give access
+                  </button>
+                  <button
+                    className="rc-button rc-button--quiet"
+                    type="submit"
+                    value="remove"
+                    disabled={busy}
+                  >
+                    Remove access
+                  </button>
+                </div>
+              </form>
             )}
           </section>
 

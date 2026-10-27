@@ -59,6 +59,35 @@ export interface RiderSignInRules {
   readonly alertBatteryPct: number;
 }
 
+export interface BrandSignInRules {
+  readonly codeSeconds: number;
+  readonly triesPerCode: number;
+  readonly codesPer15Min: number;
+  readonly codesPerDay: number;
+  readonly wrongPerNumberDay: number;
+  readonly codesPerAddressHour: number;
+  readonly wrongPerAddressHour: number;
+  readonly codesPerHourAll: number;
+  readonly idleDays: number;
+  readonly gstLookupsPerDay: number;
+  readonly businessesPerDay: number;
+}
+
+/** What each brand sign-in rule means, in the order shown (P5.1). */
+export const BRAND_SIGN_IN_LABELS: readonly (readonly [keyof BrandSignInRules, string])[] = [
+  ['codeSeconds', 'A code works for (seconds)'],
+  ['triesPerCode', 'Wrong tries for one code'],
+  ['codesPer15Min', 'Codes for one number or email from one connection in 15 minutes'],
+  ['codesPerDay', 'Codes for one number or email in a day'],
+  ['wrongPerNumberDay', 'Wrong codes for one number or email in a day'],
+  ['codesPerAddressHour', 'Codes from one connection in an hour'],
+  ['wrongPerAddressHour', 'Wrong codes from one connection in an hour'],
+  ['codesPerHourAll', 'Codes for everyone together in an hour'],
+  ['idleDays', 'Signed out after this many days unused (at most 90)'],
+  ['gstLookupsPerDay', 'GST numbers one person may look up in a day'],
+  ['businessesPerDay', 'Businesses one person may set up in a day'],
+];
+
 /** What each rider sign-in rule means, in the order shown. */
 export const RIDER_SIGN_IN_LABELS: readonly (readonly [keyof RiderSignInRules, string])[] = [
   ['codeSeconds', 'A code works for (seconds)'],
@@ -88,6 +117,8 @@ export interface Settings {
   readonly payZone: PayZone;
   readonly loanBank: LoanBank;
   readonly riderSignIn: RiderSignInRules;
+  readonly brandSignIn: BrandSignInRules;
+  readonly freeWeek: { readonly on: boolean };
 }
 export type SettingKey = keyof Settings;
 
