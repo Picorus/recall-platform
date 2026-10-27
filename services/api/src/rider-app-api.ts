@@ -15,10 +15,23 @@
 //   POST /rider/agreement   the agreement to sign: a link to open
 //   POST /rider/bank        { kind: bank, accountNumber, ifsc, name } or { kind: upi, vpa, name }
 //   POST /rider/checks      ask the providers about his ID and agreement
+// P4.3, fitting (once approved):
+//   GET  /rider/fitting           his booking, slots he can book, his screen and its latest check
+//   POST /rider/fitting/book      { slotId }  book (or move his booking)
+//   POST /rider/fitting/cancel    cancel his booking
+//   POST /rider/fitting/fit       { code }  the screen's QR (or the id printed under it), at his slot
+//   POST /rider/fitting/check     start the fitting check on his screen
+//   POST /rider/fitting/panel     { commandId, seen }  every part of the panel lit up, or not
 import type { PayoutDestination } from '@recall/adapters';
 import {
+  answerPanel,
   appDetails,
+  appFittingPage,
   appUploadsToday,
+  bookFromApp,
+  cancelFromApp,
+  fitFromApp,
+  startFittingFromApp,
   beforeAppCheck,
   changeOwnDetails,
   checkRiderBank,
@@ -56,6 +69,24 @@ import { callerIp, type StaffApiConfig } from './staff-api.js';
 const uploadingRiders = new Set<string>();
 /** How often each rider asked the providers about his checks this hour (at most 30). */
 const asked = new Map<string, { readonly hour: number; n: number }>();
+
+/** Screen codes each rider tried this hour (a QR is only an id: at most 20 tries). */
+const fitTries = new Map<string, { readonly hour: number; n: number }>();
+
+/** One more try for this rider this hour, or false when he is out of them. */
+function tryOnce(
+  m: Map<string, { readonly hour: number; n: number }>,
+  key: string,
+  now: number,
+  max: number,
+) {
+  const hour = Math.floor(now / 3600);
+  const mine = m.get(key);
+  if (mine?.hour === hour && mine.n >= max) return false;
+  if (m.size > 10_000) m.clear();
+  m.set(key, mine?.hour === hour ? { hour, n: mine.n + 1 } : { hour, n: 1 });
+  return true;
+}
 
 /** The key sign-in codes are fingerprinted with: its own, made from the API's secret key. */
 const codeKey = (cfg: StaffApiConfig) =>
@@ -213,7 +244,35 @@ export async function handleRiderApp(
     send(res, 200, { ...page, loanBank: (await setting(pool, 'loanBank')).name });
     return true;
   }
+  if (path === '/rider/fitting' && method === 'GET') {
+    send(res, 200, await refused(() => appFittingPage(pool, riderId, now, rules)));
+    return true;
+  }
   if (method !== 'POST') throw new HttpError(405, 'Not allowed');
+  if (path.startsWith('/rider/fitting/')) {
+    const what = path.slice('/rider/fitting/'.length);
+    const b = await jsonBody(req);
+    if (what === 'book') await refused(() => bookFromApp(pool, riderId, str(b, 'slotId', 20), now));
+    else if (what === 'cancel') await refused(() => cancelFromApp(pool, riderId, now));
+    else if (what === 'fit') {
+      if (!tryOnce(fitTries, riderId, now, 20))
+        throw new HttpError(429, 'Too many tries: wait a while', { code: 'too-many-tries' });
+      const screenId = await refused(() =>
+        fitFromApp(pool, riderId, str(b, 'code', 100), now, rules),
+      );
+      send(res, 200, { screenId });
+      return true;
+    } else if (what === 'check') {
+      send(res, 200, await refused(() => startFittingFromApp(pool, riderId, now, rules)));
+      return true;
+    } else if (what === 'panel') {
+      if (typeof b.seen !== 'boolean') throw new HttpError(400, 'seen must be true or false');
+      const seen = b.seen;
+      await refused(() => answerPanel(pool, riderId, str(b, 'commandId', 64), seen, now));
+    } else throw new HttpError(404, 'Not found');
+    send(res, 200, { ok: true });
+    return true;
+  }
   // Changes only while his application is open (after that, staff help on a call).
   const open = async () => {
     const page = await refused(() => joinPage(pool, riderId, now));
@@ -282,12 +341,8 @@ export async function handleRiderApp(
   }
   if (path === '/rider/checks') {
     // The providers are asked at most 30 times an hour for one rider.
-    const hour = Math.floor(now / 3600);
-    const mine = asked.get(riderId);
-    if (mine?.hour === hour && mine.n >= 30)
+    if (!tryOnce(asked, riderId, now, 30))
       throw new HttpError(429, 'Too many tries: wait a while', { code: 'too-many-checks' });
-    if (asked.size > 10_000) asked.clear();
-    asked.set(riderId, mine?.hour === hour ? { hour, n: mine.n + 1 } : { hour, n: 1 });
     send(res, 200, { answered: await refreshRiderChecks(pool, checks, riderId, now) });
     return true;
   }

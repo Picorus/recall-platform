@@ -1,8 +1,15 @@
 // P4.1: the rider app's sign-in routes: a code on WhatsApp or SMS, a bearer session, who is signed
 // in, sign-out; the web build only from its own origins; limits answer 429.
-import { freshDatabase } from '@recall/db/test-db';
-import { fakeBankCheck, fakeEsign, fakeFileStore, fakeKyc, fakeMessages } from '@recall/adapters';
-import { createRider, stepRider } from '@recall/db';
+import { boxRequest, freshDatabase } from '@recall/db/test-db';
+import {
+  fakeBankCheck,
+  fakeDeviceCa,
+  fakeEsign,
+  fakeFileStore,
+  fakeKyc,
+  fakeMessages,
+} from '@recall/adapters';
+import { createRider, enrolScreen, openFittingSlot, stepRider } from '@recall/db';
 import { randomBytes } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -233,5 +240,80 @@ describe('rider app joining routes (P4.2)', () => {
     expect(
       (await post('/rider/profile', { name: 'Ramesh Naidu', rides: 'x', apps: [] }, auth)).status,
     ).toBe(400);
+  });
+});
+
+describe('rider app fitting routes (P4.3)', () => {
+  it('books, fits at his slot, starts the check, answers the panel; staff see the check', async () => {
+    const now = NOW / 1000;
+    const riderId = await createRider(
+      pool,
+      {
+        details: {
+          name: 'Kiran Rao',
+          phone: '+919600054321',
+          bikePlate: 'TS08CD4321',
+          rides: 'Kondapur',
+          apps: [],
+        },
+        channel: 'admin',
+        by: 'Omar',
+        reason: 'walk-in',
+      },
+      now - 7200,
+    );
+    await pool.query(
+      `INSERT INTO rider_steps (rider_id, seq, status, reason, by_who, at)
+       VALUES ($1, 2, 'approved', 'all checked', 'Omar', to_timestamp($2))`,
+      [riderId, now - 3600],
+    );
+    await pool.query(
+      `INSERT INTO settings (key, version, value, saved_by, reason)
+       VALUES ('fittingCentres', 1, $1, 'Prateek', 'the first centre')`,
+      [JSON.stringify([{ name: 'Madhapur hub', address: 'Plot 5', on: true }])],
+    );
+    const slotId = await openFittingSlot(
+      pool,
+      { centre: 'Madhapur hub', startsAt: now + 600, minutes: 60, bikes: 4, by: 'Omar' },
+      now - 3600,
+    );
+    const box = await enrolScreen(
+      pool,
+      fakeDeviceCa(),
+      boxRequest('RK-API-FIT', now - 3600),
+      'w',
+      now - 3600,
+    );
+    await post('/rider/code', { phone: '9600054321', channel: 'whatsapp' });
+    const ok = await post('/rider/sign-in', { phone: '9600054321', code: lastCode() });
+    const auth = { authorization: `Bearer ${String(ok.body.token)}` };
+    const get = async (path: string) => {
+      const r = await fetch(`${url}${path}`, { headers: auth });
+      return { status: r.status, body: (await r.json()) as Record<string, unknown> };
+    };
+    expect((await get('/rider/fitting')).body).toMatchObject({
+      status: 'approved',
+      booking: null,
+      slots: [{ slotId, centre: 'Madhapur hub', address: 'Plot 5', left: 4 }],
+    });
+    expect((await post('/rider/fitting/book', { slotId }, auth)).status).toBe(200);
+    expect(await post('/rider/fitting/fit', { code: 'RECALL1:nope' }, auth)).toMatchObject({
+      status: 400,
+      body: { why: 'not-a-screen' },
+    });
+    expect(await post('/rider/fitting/fit', { code: box.qr }, auth)).toMatchObject({
+      status: 200,
+      body: { screenId: box.screenId },
+    });
+    const check = await post('/rider/fitting/check', {}, auth);
+    expect(check.status).toBe(200);
+    const commandId = String(check.body.commandId);
+    expect((await post('/rider/fitting/panel', { commandId, seen: 'yes' }, auth)).status).toBe(400);
+    expect((await post('/rider/fitting/panel', { commandId, seen: true }, auth)).status).toBe(200);
+    expect((await get('/rider/fitting')).body).toMatchObject({
+      screenId: box.screenId,
+      check: { commandId, panel: 'ok', gps: 'waiting', ready: false },
+    });
+    expect((await post('/rider/fitting/nope', {}, auth)).status).toBe(404);
   });
 });

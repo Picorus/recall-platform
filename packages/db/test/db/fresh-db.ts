@@ -1,10 +1,12 @@
 // Each test file gets its own new, empty database, migrated from scratch, and drops it afterwards.
 // Needs DATABASE_URL pointing at the laptop database (pnpm services:up).
-import { randomBytes } from 'node:crypto';
+import { enrolmentBytes } from '@recall/domain';
+import { generateKeyPairSync, randomBytes, sign } from 'node:crypto';
 import pg from 'pg';
 import type { PayoutDestination } from '@recall/adapters';
 import { migrate } from '../../src/migrate.js';
 import { accountPrint } from '../../src/rider-checks.js';
+import type { SignedEnrolment } from '../../src/screens.js';
 
 export async function freshDatabase(): Promise<{ pool: pg.Pool; drop: () => Promise<void> }> {
   const url = process.env.DATABASE_URL;
@@ -76,4 +78,25 @@ export async function checkedPayoutAccount(
     `INSERT INTO rider_payout_accounts (rider_id, destination, set_by) VALUES ($1, $2, 'test')`,
     [riderId, JSON.stringify(to)],
   );
+}
+
+/** A new box's signed enrolment request (its keys made here), as a warehouse phone sends it. */
+export function boxRequest(serial: string, madeAt: number): SignedEnrolment {
+  const tls = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+  const play = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+  const spki = (k: typeof tls.publicKey) =>
+    k.export({ format: 'der', type: 'spki' }).toString('base64');
+  const req = {
+    hardwareSerial: serial,
+    model: 'VendorX LED28 v1',
+    tlsPublicKey: spki(tls.publicKey),
+    playPublicKey: spki(play.publicKey),
+    madeAt,
+  };
+  const bytes = Buffer.from(enrolmentBytes(req));
+  return {
+    ...req,
+    tlsSignature: sign('sha256', bytes, tls.privateKey).toString('base64'),
+    playSignature: sign('sha256', bytes, play.privateKey).toString('base64'),
+  };
 }

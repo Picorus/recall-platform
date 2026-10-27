@@ -2,6 +2,17 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 27 Oct 2026 · P4.3 · Rider app: fitting
+- PR #67 (joining) merged with all checks green.
+- **Booking** (`packages/db/src/rider-app-fitting.ts`, routes `/rider/fitting*` in `services/api/src/rider-app-api.ts`): once approved, the app shows the fitting times open at centres that are on (Settings), with the address and places left (never who else is booked). He books one, changes it or cancels it; the same booking rules as staff (P3.11.3).
+- **Fitting at his slot**: the technician uses the rider's phone, scans the QR code on the screen box (or types the id printed under it), and the screen goes on his bike and on him by the same rules staff use (enrolled, certificate good, not lost, not in repair, his own number plate, one screen per bike). The app fits only from 30 minutes before his slot to 2 hours after it ends (settings), so a QR seen elsewhere is no use, and at most 20 tries an hour.
+- **The fitting check** (P2.14): the technician taps "Start the fitting check"; the screen lights up every part and checks its location, 4G, camera and battery; the app shows each part as it comes in and asks "Did every part of the screen light up?" (migration 0049 keeps that answer, once per check, with who, in the audit log). Ready only when every part passed and the lights were seen; a box that never answers counts as "no answer", never as passed. At most 10 checks a day per rider (setting). Staff see the latest check on the admin rider page and then switch him on (riding), as before.
+- Settings saved before a new limit existed now get it at its default (no limit is ever missing).
+- **App**: the Fitting screen (times, your fitting, at the centre: scan or type, the check with each part, Yes/No for the lights, ready), the camera QR scanner (expo-camera), every word in Telugu, Hindi and English.
+- Tests: database 3 (book at a centre that is on, full and switched-off refused, fit only at his slot, the typed id, one screen per bike, the check and the lights making it ready, answered once, his own screen only, a box that never answers, a failed part, a few checks a day, cancel and book again, old settings get new limits); API 1 (the routes over HTTP); browser 1 (an approved rider books, a wrong code refused, the screen fitted by its typed id, the check started, the lights answered, the box's report arrives and the app shows "Ready" by itself).
+- Open: staff ending a rider's sessions and giving a fresh allowance of codes (admin rider page) is still to do; the real QR scan needs a phone (the browser test types the id).
+- Next: P4.4, Today (screen status, moving hours and earnings today and this week, the 10-minute stop rule).
+
 ## 27 Oct 2026 · P4.2 · Rider app: joining RECALL
 - PR #66 (rider sign-in) merged with all checks green, its browser test running in CI.
 - **Sign-up** (migration 0048, `packages/db/src/rider-app.ts`): a new number gives his name, where he rides and the apps he rides for; his record is made ("rider app", applied) and his signed-in session now opens it. If staff had already added him at the warehouse, his session finds that record instead (no second one). Once only; the phone is always the one he signed in with.

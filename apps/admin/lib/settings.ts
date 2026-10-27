@@ -52,6 +52,9 @@ export interface RiderSignInRules {
   readonly checksPerRiderDay: number;
   readonly checksPerDayAll: number;
   readonly uploadsPerRiderDay: number;
+  readonly fitEarlyMinutes: number;
+  readonly fitLateMinutes: number;
+  readonly fittingChecksPerDay: number;
 }
 
 /** What each rider sign-in rule means, in the order shown. */
@@ -68,6 +71,9 @@ export const RIDER_SIGN_IN_LABELS: readonly (readonly [keyof RiderSignInRules, s
   ['checksPerRiderDay', 'ID, agreement or bank checks one rider may start in a day'],
   ['checksPerDayAll', 'Checks started from the app in a day, everyone together'],
   ['uploadsPerRiderDay', 'Pictures one rider may send in a day'],
+  ['fitEarlyMinutes', 'Minutes before his fitting slot the app can fit his screen'],
+  ['fitLateMinutes', 'Minutes after his fitting slot ends the app can still fit it'],
+  ['fittingChecksPerDay', 'Fitting checks one rider may start in a day'],
 ];
 
 export interface Settings {

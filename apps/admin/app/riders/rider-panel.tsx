@@ -16,6 +16,7 @@ import {
   checkText,
   CHECKS,
   slotText,
+  fittingCheckText,
   type FittingSlot,
   type DocumentKind,
   type RiderDocument,
@@ -518,6 +519,13 @@ export default function RiderPanel({
             ? `Booked: ${slotText(p.fitting, when)}`
             : 'No fitting booked.'}
       </p>
+      {p.screenId && (
+        <p className={p.fittingCheck?.ready ? '' : 'muted'}>
+          {p.fittingCheck
+            ? fittingCheckText(p.fittingCheck, when)
+            : 'No fitting check yet: the technician starts it on the rider app.'}
+        </p>
+      )}
       {canAct && r.status === 'approved' && !p.screenId && (
         <div className="cal-bar" role="group" aria-label="Book a fitting">
           <label className="rc-field">

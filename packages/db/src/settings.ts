@@ -58,7 +58,7 @@ export async function settingRecords(c: Q): Promise<SettingRecords> {
     out[k] = { value: DEFAULT_SETTINGS[k], version: 0, savedBy: null, savedAt: null, reason: null };
   for (const x of r.rows)
     out[x.key] = {
-      value: x.value as Settings[SettingKey],
+      value: withNewRules(x.key as SettingKey, x.value as Settings[SettingKey]),
       version: x.version,
       savedBy: x.saved_by,
       savedAt: x.saved_at.getTime() / 1000,
@@ -73,7 +73,16 @@ export async function setting<K extends SettingKey>(c: Q, key: K): Promise<Setti
     'SELECT value FROM settings WHERE key = $1 ORDER BY version DESC LIMIT 1',
     [key],
   );
-  return r.rows[0]?.value ?? DEFAULT_SETTINGS[key];
+  const v = r.rows[0]?.value;
+  return v === undefined ? DEFAULT_SETTINGS[key] : withNewRules(key, v);
+}
+
+/**
+ * A saved version from before a rule was added (P4.2, P4.3 added rider-app limits) gets that rule
+ * at its default, so no limit is ever missing.
+ */
+function withNewRules<K extends SettingKey>(key: K, v: Settings[K]): Settings[K] {
+  return key === 'riderSignIn' ? ({ ...DEFAULT_SETTINGS.riderSignIn, ...v } as Settings[K]) : v;
 }
 
 /**

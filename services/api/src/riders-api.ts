@@ -25,6 +25,7 @@ import {
   bookFitting,
   cancelFitting,
   fittingSlots,
+  latestAppCheck,
   leavingChecklist,
   openFittingSlot,
   riderFitting,
@@ -159,10 +160,13 @@ export async function handleRiders(
       riderMoney(pool, riderId),
       leavingChecklist(pool, riderId, page.screenId),
     ]);
+    // P4.3: the fitting check of his screen (the box's parts and the technician's answer).
+    const fittingCheck = page.screenId ? await latestAppCheck(pool, page.screenId, now) : null;
     send(res, 200, {
       at: now,
       ...page,
       fitting: fitting.booking,
+      fittingCheck,
       money,
       leaving,
       // A check's link works for whoever holds it: only for those who send it to him.
