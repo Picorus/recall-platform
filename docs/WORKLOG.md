@@ -2,6 +2,26 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 28 Oct 2026 · P7.4 · Backups, restore and one-step rollback
+- **Backup tool** (`packages/db/src/backup.ts`, `pnpm --filter @recall/db backup`): the whole database to one file (pg_dump's own format) with its SHA-256 beside it.
+- **Restore** into a new database only: refused when the file does not match its SHA-256, or when the database exists already (a restore never writes over one). TimescaleDB's steps for the time-split tables (plays, minute summaries, screen health).
+- **Check and drill:** a restore is compared with its source (every table's rows, the ledger's totals per account, the migrations applied). `--drill` backs up, restores into a copy, compares and drops the copy. Run on the laptop database: 95 tables, no difference.
+- **One-step rollback:** a new check refuses any migration that is not purely additive (no column dropped, renamed or retyped, no column made required; a new required column has a default), so the release before always runs on the newer database. All 61 migrations pass. Undoing a release = redeploying the previous images; the database stays.
+- Tests: db 3 (a restore holds exactly the source, plays and money included, and stays append-only; a changed file, an existing database and a bad name are refused; a difference is reported); the migration rule. Runbook: `docs/RUNBOOKS/backup-restore.md`.
+- Open (needs AWS, P6): Amazon's managed database (RDS) has no TimescaleDB: choose Timescale's own cloud on AWS (recommended: daily backups, restore to any minute) or PostgreSQL on our own server with pgBackRest to S3; plus a daily backup with this tool to a separate account, and a weekly automatic restore drill.
+- Next: P7.5 POC readiness list.
+
+## 28 Oct 2026 · P7.3 · Coverage of the money and play code
+- **Measured** with Vitest's coverage tool (`@vitest/coverage-v8`). The rules (`packages/domain`): 95% of lines and 89% of branches in the money and play files. Where money is posted and plays counted (`packages/db`, with the database tests): 96% of lines, 80% of branches. What was not run was almost all refusals and safety nets that never fire in a normal day.
+- **New tests for the safety nets that matter** (`packages/db/test/db/money-failures.test.ts`), failures made on purpose with a database trigger:
+  - the hour close: a line that fails is rolled back alone (nothing of it posted, the books still balance), the other lines close, and the next run finishes it;
+  - make-ups and refunds: the same, and no make-up is opened for the failed line;
+  - an upload that meets another in the database (a deadlock) is tried again and stored once; one still failing after 3 tries stores nothing (its box sends it again).
+- **A floor that keeps them tested:** each money and play file must keep at least 85% of lines and 80% of branches tested (rules, checked by `pnpm test`), and 88% of lines and 65% of branches (database code, checked by `pnpm --filter @recall/db coverage` in CI's database job). A change that leaves new money code untested now fails CI.
+- Already in place and still passing: property tests (thousands of random cases) that the ledger always balances and no play is counted twice; the database refuses an unbalanced entry at commit.
+- Also: `docs/ACCOUNTS_TO_OPEN.md`, the accounts Prateek opens for P6, slowest first.
+- Next: P7.4 backups, restore and one-step rollback.
+
 ## 28 Oct 2026 · P7.1 · Security review
 - **Four reviews**, each by its own agent, reading the code: staff sign-in and roles (every route and the role it needs); brand and rider data (every portal and rider route, changing ids); screens and signed plays (one upload traced from the broker to the plays table); the websites, secrets, dependencies and outside services. None found a way to forge a play, read another account's data or take over an account. Runbook: `docs/RUNBOOKS/security.md`.
 - **Fixed:**
