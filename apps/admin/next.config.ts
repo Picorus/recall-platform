@@ -8,6 +8,8 @@ const production = process.env.NODE_ENV === 'production';
 const config: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  // No page uses next/image: its image service stays off (P7.1).
+  images: { unoptimized: true },
   transpilePackages: ['@recall/design'],
   // The site's own code only; the tests (which reach into the API) are checked by `pnpm typecheck`.
   typescript: { tsconfigPath: 'tsconfig.build.json' },

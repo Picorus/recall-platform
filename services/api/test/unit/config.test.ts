@@ -127,4 +127,20 @@ describe('outside services for the Settings page (P3.17)', () => {
       }),
     ).toThrow('BRAND_ORIGINS is not set');
   });
+  it('the laptop key only on a laptop nobody else can reach (P7.1)', () => {
+    const base = { DATABASE_URL: 'postgres://x' };
+    expect(() => readConfig(base)).not.toThrow();
+    for (const outside of [
+      { API_HOST: '0.0.0.0' },
+      { API_PROXY_HOPS: '1' },
+      { ADMIN_ORIGINS: 'https://staging.recall.in' },
+    ])
+      expect(() => readConfig({ ...base, ...outside })).toThrow('STAFF_SECRET_KEY must be set');
+    expect(() =>
+      readConfig({ ...base, API_HOST: '0.0.0.0', STAFF_SECRET_KEY: '00'.repeat(32) }),
+    ).toThrow('STAFF_SECRET_KEY must be set');
+    expect(() =>
+      readConfig({ ...base, API_HOST: '0.0.0.0', STAFF_SECRET_KEY: 'ab'.repeat(32) }),
+    ).not.toThrow('STAFF_SECRET_KEY');
+  });
 });
