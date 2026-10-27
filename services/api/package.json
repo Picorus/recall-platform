@@ -16,14 +16,19 @@
     "reset-staff": "tsx src/reset-staff.ts"
   },
   "dependencies": {
+    "@expo-google-fonts/anek-latin": "0.4.2",
+    "@expo-google-fonts/anek-telugu": "0.4.1",
     "@recall/adapters": "workspace:*",
     "@recall/db": "workspace:*",
     "@recall/domain": "workspace:*",
     "@recall/workers": "workspace:*",
-    "pg": "8.23.1"
+    "@resvg/resvg-js": "2.6.2",
+    "pg": "8.23.1",
+    "qrcode": "1.5.4"
   },
   "devDependencies": {
     "@types/pg": "8.23.1",
+    "@types/qrcode": "1.5.5",
     "fast-check": "4.10.2",
     "tsx": "4.23.15"
   }

@@ -3,7 +3,8 @@
 // portal's origins; a staff cookie opens nothing here and a portal cookie opens no staff route;
 // Sales gives and removes portal access on a brand's page.
 import { freshDatabase } from '@recall/db/test-db';
-import { fakeGst, fakeMessages } from '@recall/adapters';
+import { fakeFileStore, fakeGst, fakeMessages, fakePayments } from '@recall/adapters';
+import { readFileSync } from 'node:fs';
 import { createAccount, saveAreaVersion, savePriceBook } from '@recall/db';
 import { launchAreas, PRICE_BOOK_V1 } from '@recall/domain';
 import { randomBytes } from 'node:crypto';
@@ -30,8 +31,12 @@ const CFG: StaffApiConfig = {
   proxyHops: 0,
   messages,
   gst: fakeGst(),
+  files: fakeFileStore({ baseUrl: 'http://files', secret: 's' }),
+  payments: fakePayments(),
 };
 const member = members(() => pool, NOW);
+/** The owner of Irani Chai, signed in once (a number may ask for only a few codes). */
+let owner = { session: '' };
 
 beforeAll(async () => {
   db = await freshDatabase();
@@ -216,6 +221,7 @@ describe('brand portal sign-in routes (P5.1)', () => {
 
   it('a new person sets up their business from its GST number and owns it (P5.2)', async () => {
     const s = await signIn('+919848077777', 'whatsapp');
+    owner = s;
     const c = { origin: PORTAL, cookie: s.session };
     const form = await call('/portal/business-form', undefined, { cookie: s.session });
     expect(form.body.types).toContainEqual({ key: 'food', label: 'Food and drink' });
@@ -274,7 +280,7 @@ describe('brand portal sign-in routes (P5.1)', () => {
 
   it('book: the form, a live price, the booking saved, then in its campaigns; book again (P5.3–P5.4)', async () => {
     // The owner of Irani Chai from the test above.
-    const s = await signIn('+919848077777', 'whatsapp');
+    const s = owner;
     const c = { origin: PORTAL, cookie: s.session };
     const form = await call('/portal/book-form?brand=irani-chai', undefined, { cookie: s.session });
     expect(form.status).toBe(200);
@@ -313,5 +319,194 @@ describe('brand portal sign-in routes (P5.1)', () => {
     for (const path of ['/portal/campaigns?brand=chai-co', '/portal/book-form?brand=chai-co'])
       expect((await call(path, undefined, { cookie: s.session })).status).toBe(404);
     expect((await call('/portal/bookings?brand=chai-co', { plan }, c)).status).toBe(404);
+  });
+
+  it('your ads: upload (checked), see the file, choose 2 to 5 for a campaign; only its own (P5.5)', async () => {
+    const s = owner;
+    const fixture = (n: string) =>
+      readFileSync(new URL(`../../../../packages/domain/test/fixtures/ads/${n}`, import.meta.url));
+    const up = async (file: string, name: string, cookie = s.session, brand = 'irani-chai') => {
+      const body = fixture(file);
+      const r = await fetch(
+        `${url}/portal/ads/upload?brand=${brand}&name=${encodeURIComponent(name)}`,
+        {
+          method: 'POST',
+          headers: { origin: PORTAL, cookie, 'content-type': 'application/octet-stream' },
+          body,
+        },
+      );
+      return { status: r.status, body: (await r.json()) as Record<string, unknown> };
+    };
+    const a = await up('ad-1280x640.png', 'Chai pic');
+    const b = await up('ad-15s-1280x640.mp4', 'Chai video');
+    const bad = await up('ad-1280x720.png', 'Wrong shape');
+    expect(a).toMatchObject({
+      status: 200,
+      body: { ad: { name: 'Chai pic', outcome: 'pass', review: null } },
+    });
+    expect(b.status).toBe(200);
+    expect(bad.body.ad).toMatchObject({ outcome: 'fail' });
+    const ids = [a, b].map((x) => String((x.body.ad as { adId: string }).adId));
+    // The file itself, for its own brand only.
+    const f = await fetch(`${url}/portal/ads/file?brand=irani-chai&ad=${ids[0]}`, {
+      headers: { cookie: s.session },
+    });
+    expect(f.status).toBe(200);
+    expect(f.headers.get('content-type')).toBe('image/png');
+    expect(
+      (await call('/portal/ads?brand=irani-chai', undefined, { cookie: s.session })).body.ads,
+    ).toHaveLength(3);
+    // Its campaign from the test above.
+    const list = await call('/portal/campaigns?brand=irani-chai', undefined, { cookie: s.session });
+    const booking = String((list.body.campaigns as { bookingId: string }[])[0]?.bookingId);
+    const c = { origin: PORTAL, cookie: s.session };
+    const badId = String((bad.body.ad as { adId: string }).adId);
+    expect(
+      await call(
+        `/portal/booking-ads?brand=irani-chai&booking=${booking}`,
+        { adIds: [ids[0], badId] },
+        c,
+      ),
+    ).toMatchObject({ status: 400, body: { error: 'Wrong shape failed the automatic checks' } });
+    expect(
+      (await call(`/portal/booking-ads?brand=irani-chai&booking=${booking}`, { adIds: ids }, c))
+        .status,
+    ).toBe(200);
+    const chosen = await call(
+      `/portal/booking-ads?brand=irani-chai&booking=${booking}`,
+      undefined,
+      { cookie: s.session },
+    );
+    expect((chosen.body.ads as { adId: string }[]).map((x) => x.adId)).toEqual(ids);
+    // Someone else: not their ads, files or campaigns.
+    const t = await signIn('+919848088888', 'sms');
+    expect(
+      (
+        await fetch(`${url}/portal/ads/file?brand=irani-chai&ad=${ids[0]}`, {
+          headers: { cookie: t.session },
+        })
+      ).status,
+    ).toBe(404);
+    expect((await up('ad-1280x640.png', 'x', t.session)).status).toBe(404);
+    expect(
+      (
+        await call(`/portal/booking-ads?brand=irani-chai&booking=${booking}`, undefined, {
+          cookie: t.session,
+        })
+      ).status,
+    ).toBe(404);
+  });
+
+  it('a ready-made ad: logo, a preview, then kept as an ad that passes the checks (P5.5)', async () => {
+    const s = owner;
+    const logo = readFileSync(
+      new URL('../../../../packages/domain/test/fixtures/ads/ad-1280x640.png', import.meta.url),
+    );
+    const l = await fetch(`${url}/portal/logo?brand=irani-chai`, {
+      method: 'POST',
+      headers: { origin: PORTAL, cookie: s.session, 'content-type': 'application/octet-stream' },
+      body: logo,
+    });
+    expect(await l.json()).toEqual({ logo: { width: 1280, height: 640 } });
+    // Too many pixels (it would hold up the server to draw) or WebP (it cannot be drawn): refused.
+    const { Resvg } = await import('@resvg/resvg-js');
+    const huge = new Resvg(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="2400" height="20"><rect width="2400" height="20" fill="#000"/></svg>',
+    )
+      .render()
+      .asPng();
+    for (const [body, error] of [
+      [huge, 'A logo is at most 2000 × 2000 pixels: make it smaller'],
+      [
+        readFileSync(
+          new URL(
+            '../../../../packages/domain/test/fixtures/ads/ad-1280x640.webp',
+            import.meta.url,
+          ),
+        ),
+        'A logo is a PNG or JPEG picture',
+      ],
+    ] as const) {
+      const r = await fetch(`${url}/portal/logo?brand=irani-chai`, {
+        method: 'POST',
+        headers: { origin: PORTAL, cookie: s.session, 'content-type': 'application/octet-stream' },
+        body,
+      });
+      expect({ status: r.status, error: ((await r.json()) as { error: string }).error }).toEqual({
+        status: 400,
+        error,
+      });
+    }
+    const template = {
+      headline: 'Irani Chai',
+      offer: 'Two chai for ₹30',
+      code: 'chai30',
+      qr: 'https://iranichai.in',
+      colour: '#C9F24B',
+      theme: 'band',
+      layout: 1,
+    };
+    const p = await fetch(`${url}/portal/ads/template-preview?brand=irani-chai`, {
+      method: 'POST',
+      headers: { origin: PORTAL, cookie: s.session, 'content-type': 'application/json' },
+      body: JSON.stringify({ template }),
+    });
+    expect(p.status).toBe(200);
+    expect(p.headers.get('content-type')).toBe('image/png');
+    expect(new Uint8Array(await p.arrayBuffer()).subarray(1, 4)).toEqual(
+      new Uint8Array([80, 78, 71]),
+    );
+    const c = { origin: PORTAL, cookie: s.session };
+    expect(
+      await call(
+        '/portal/ads/template-preview?brand=irani-chai',
+        { template: { ...template, headline: 'x'.repeat(31) } },
+        c,
+      ),
+    ).toMatchObject({ status: 400, body: { why: 'bad-template' } });
+    const made = await call('/portal/ads/template?brand=irani-chai', { template }, c);
+    expect(made).toMatchObject({
+      status: 200,
+      body: { ad: { name: 'Irani Chai', kind: 'png', width: 1280, height: 640, outcome: 'pass' } },
+    });
+  });
+
+  it('review and pay: line by line, the rules agreed, a payment link; only its own (P5.6)', async () => {
+    const s = owner;
+    const c = { origin: PORTAL, cookie: s.session };
+    const list = await call('/portal/campaigns?brand=irani-chai', undefined, { cookie: s.session });
+    const booking = String((list.body.campaigns as { bookingId: string }[])[0]?.bookingId);
+    const r = await call(`/portal/review?brand=irani-chai&booking=${booking}`, undefined, {
+      cookie: s.session,
+    });
+    expect(r.status).toBe(200);
+    expect(r.body).toMatchObject({
+      state: 'draft',
+      totalPaise: 5_664_000,
+      gst: { cgst: 432_000, sgst: 432_000, igst: 0 },
+    });
+    expect((r.body.terms as unknown[]).length).toBe(5);
+    expect(
+      await call(
+        `/portal/pay?brand=irani-chai&booking=${booking}`,
+        { agree: false, termsVersion: r.body.termsVersion },
+        c,
+      ),
+    ).toMatchObject({ status: 400, body: { why: 'not-agreed' } });
+    const pay = await call(
+      `/portal/pay?brand=irani-chai&booking=${booking}`,
+      { agree: true, termsVersion: r.body.termsVersion },
+      c,
+    );
+    expect(pay).toMatchObject({ status: 200, body: { amountPaise: 5_664_000 } });
+    expect(String(pay.body.url)).toMatch(/^https:\/\//);
+    const t = await signIn('+919848088888', 'sms');
+    expect(
+      (
+        await call(`/portal/review?brand=irani-chai&booking=${booking}`, undefined, {
+          cookie: t.session,
+        })
+      ).status,
+    ).toBe(404);
   });
 });

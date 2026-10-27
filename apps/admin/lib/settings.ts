@@ -74,6 +74,7 @@ export interface BrandSignInRules {
   readonly maxBikesPerHour: number;
   readonly maxWeeks: number;
   readonly bookingsPerDay: number;
+  readonly adUploadsPerDay: number;
 }
 
 /** What each brand sign-in rule means, in the order shown (P5.1). */
@@ -92,6 +93,7 @@ export const BRAND_SIGN_IN_LABELS: readonly (readonly [keyof BrandSignInRules, s
   ['maxBikesPerHour', 'Most bikes a brand may book each hour on the portal'],
   ['maxWeeks', 'Most weeks one portal booking may run'],
   ['bookingsPerDay', 'Bookings one person may make on the portal in a day'],
+  ['adUploadsPerDay', 'Ad files one person may upload on the portal in a day'],
 ];
 
 /** What each rider sign-in rule means, in the order shown. */

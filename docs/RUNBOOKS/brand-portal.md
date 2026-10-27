@@ -48,6 +48,22 @@ API's `/portal/...` routes and nothing else: a page on the portal can never reac
 - Limits (most bikes each hour, most weeks, bookings a person may make a day) are in Settings →
   Brand portal limits; the minimum, lead days, bands and offers are in the price book.
 
+## Your ads (P5.5)
+
+- From a campaign, "Your ads": upload a 15-second MP4 or pictures (1280 × 640), each checked at once
+  (size, shape, length); or make one from the template (logo, headline, offer, code, QR, colour,
+  theme; "Make another version" changes the layout). Choose 2 to 5 for the campaign and save.
+- Every ad is still reviewed by the Ad review team in the admin portal before it runs.
+- Uploads per person per day: Settings → Brand portal limits.
+
+## Review and pay (P5.6)
+
+- From a campaign "To pay" (or after Book → Your ads): the booking line by line, GST, total and the
+  five rules; tick the box and Pay. The brand goes to the payment provider's page; on a laptop the
+  fake payment page does not exist (tests mark links paid themselves).
+- The rules' words are `packages/domain/src/booking-terms.ts`; changing them means a new
+  `TERMS_VERSION` (brands with a page open are asked to read them again).
+
 ## Tests
 
 - `pnpm --filter @recall/brand test`: the sign-in page's checks.

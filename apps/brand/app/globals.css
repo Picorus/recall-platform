@@ -161,3 +161,70 @@ a.rc-button {
   gap: var(--space-3);
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
 }
+.ok {
+  color: var(--go);
+}
+.warn {
+  color: var(--brand-ink);
+}
+.ads {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+}
+.ads img,
+.ads video {
+  width: 100%;
+  aspect-ratio: 2 / 1;
+  object-fit: contain;
+  background: #000;
+  border-radius: var(--radius-sm, 6px);
+}
+.checks {
+  font-size: 14px;
+  gap: var(--space-1);
+}
+.tips {
+  margin: 0;
+  padding-left: 1.2em;
+  display: grid;
+  gap: var(--space-1);
+}
+.swatch {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid var(--line-strong);
+  cursor: pointer;
+}
+.swatch[aria-pressed='true'] {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+.ad-preview {
+  width: 100%;
+  aspect-ratio: 2 / 1;
+  border-radius: 6px;
+  border: var(--line-width) solid var(--line);
+}
+.terms {
+  margin: 0;
+  padding-left: 1.2em;
+  display: grid;
+  gap: var(--space-2);
+}
+.line {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  align-items: baseline;
+  border-bottom: var(--line-width) solid var(--line);
+  padding-bottom: var(--space-2);
+}
+.line .mono {
+  white-space: nowrap;
+  word-break: normal;
+}

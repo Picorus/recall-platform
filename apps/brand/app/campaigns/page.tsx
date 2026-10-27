@@ -133,6 +133,20 @@ export default function CampaignsPage() {
                 {c.note && <p className="muted">{c.note}</p>}
                 <div className="row">
                   <span className="mono muted">{c.bookingId}</span>
+                  {c.stage === 'to-pay' && (
+                    <Link
+                      className="rc-button rc-button--primary"
+                      href={`/pay?${q}&booking=${encodeURIComponent(c.bookingId)}`}
+                    >
+                      Review and pay
+                    </Link>
+                  )}
+                  {page.account.kind === 'brand' &&
+                    (c.stage === 'to-pay' || c.stage === 'scheduled') && (
+                      <Link href={`/ads?${q}&booking=${encodeURIComponent(c.bookingId)}`}>
+                        Your ads
+                      </Link>
+                    )}
                   <Link href={`/book?${q}&again=${encodeURIComponent(c.bookingId)}`}>
                     Book again
                   </Link>

@@ -2,10 +2,11 @@
 // business signs in with a WhatsApp code and is welcomed; a person RECALL's team gave access signs
 // in by email and sees their brand; wrong codes are told; sign-out ends it.
 // Needs `next build` first and DATABASE_URL (pnpm services:up).
-import { fakeGst, fakeMessages } from '@recall/adapters';
+import { fakeFileStore, fakeGst, fakeMessages, fakePayments } from '@recall/adapters';
 import { launchAreas, PRICE_BOOK_V1 } from '@recall/domain';
 import { apiHandler } from '@recall/api';
 import {
+  applyLinkStatus,
   createAccount,
   createBooking,
   moveBooking,
@@ -25,6 +26,7 @@ import { afterAll, beforeAll, expect, it } from 'vitest';
 const PORT = 3102;
 const SITE = `http://localhost:${PORT}`;
 const messages = fakeMessages();
+const payments = fakePayments();
 const SHOTS = process.env.SCREENSHOT_DIR;
 
 let db: Awaited<ReturnType<typeof freshDatabase>>;
@@ -55,6 +57,8 @@ beforeAll(async () => {
         proxyHops: 1,
         messages,
         gst: fakeGst(),
+        payments,
+        files: fakeFileStore({ baseUrl: `${SITE}/api/files`, secret: 'e2e' }),
       },
       (l) => console.error(l),
     ),
@@ -262,10 +266,67 @@ it('a new business sets itself up from its GST number, sees its free week, books
   await summary.getByText('₹1,48,680').waitFor();
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/brand-book.png`, fullPage: true });
   await summary.getByRole('button', { name: 'Continue' }).click();
-  // In its campaigns, to pay; "Book again" opens with the same plan.
-  await page.getByRole('heading', { name: 'Irani Chai' }).waitFor();
+  // P5.5: next, its ads: two pictures uploaded, checked, chosen and saved.
+  await page.getByRole('heading', { name: 'Your ads' }).waitFor();
+  const fixture = (n: string) =>
+    new URL(`../../../../packages/domain/test/fixtures/ads/${n}`, import.meta.url).pathname;
+  const up = page.getByRole('form', { name: 'Upload an ad' });
+  for (const [file, name] of [
+    ['ad-1280x640.png', 'Chai pic'],
+    ['ad-1280x640.jpg', 'Chai pic two'],
+  ] as const) {
+    await up.getByLabel('File').setInputFiles(fixture(file));
+    await up.getByLabel('Name (for you)').fill(name);
+    await up.getByRole('button', { name: 'Upload' }).click();
+    await page.getByText(`${name} is uploaded.`).waitFor();
+  }
+  await page
+    .getByRole('listitem', { name: 'Ad Chai pic two' })
+    .getByText('Being checked by our team')
+    .waitFor();
+  await page.getByText('2 of 2 to 5 ads chosen').waitFor();
+  // A ready-made one too: drawn as they type, then kept.
+  const make = page.getByRole('region', { name: 'Make an ad' });
+  await make.getByLabel('Headline').fill('Irani Chai');
+  await make.getByLabel('Offer line').fill('Two chai for ₹30 till Sunday');
+  await make.getByRole('radio', { name: 'Your colour as the background' }).click();
+  await make.getByRole('img', { name: 'Your ad as it will look' }).waitFor();
+  await make.getByRole('button', { name: 'Make another version' }).click();
+  await make.getByRole('button', { name: 'Use this ad' }).click();
+  await page.getByText('Irani Chai is made.').waitFor();
+  await page.getByText('3 of 2 to 5 ads chosen').waitFor();
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/brand-ads.png`, fullPage: true });
+  await page.getByRole('button', { name: 'Save my choice' }).click();
+  await page.getByText('Your choice is saved.').waitFor();
+  // P5.6: review and pay: line by line, the rules ticked, to the payment page; paid there.
+  await page.getByRole('link', { name: 'Next: review and pay' }).click();
+  await page.getByRole('heading', { name: 'Review and pay' }).waitFor();
+  const toPay = page.getByRole('complementary', { name: 'To pay' });
+  await toPay.getByText('₹1,48,680', { exact: true }).waitFor();
+  await toPay.getByText('CGST 9%').waitFor();
+  expect(await toPay.getByRole('button', { name: 'Pay ₹1,48,680' }).isEnabled()).toBe(false);
+  await page.getByLabel('I have read these five rules and agree to them').check();
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/brand-pay.png`, fullPage: true });
+  await page.route('https://pay.fake.recall.example/**', (route) =>
+    route.fulfill({ contentType: 'text/html', body: '<h1>Fake payment page</h1>' }),
+  );
+  await toPay.getByRole('button', { name: 'Pay ₹1,48,680' }).click();
+  await page.getByRole('heading', { name: 'Fake payment page' }).waitFor();
+  const linkId = page.url().split('/').at(-1) ?? '';
+  payments.pay(linkId);
+  expect(
+    await applyLinkStatus(
+      db.pool,
+      linkId,
+      await payments.status(linkId),
+      Math.floor(Date.now() / 1000),
+    ),
+  ).toBe('paid');
+  // In its campaigns: paid and scheduled, its ads being checked; "Book again" opens the same plan.
+  await page.goto(`${SITE}/campaigns?brand=irani-chai`);
   const card = page.getByRole('listitem', { name: /^Campaign BK-/ });
-  await card.getByText('To pay').waitFor();
+  await card.getByText('Scheduled').waitFor();
+  await card.getByText('Your ads are being checked').waitFor();
   await card.getByText('420', { exact: true }).waitFor();
   await card.getByRole('link', { name: 'Book again' }).click();
   await page.getByRole('heading', { name: 'Book for Irani Chai' }).waitFor();

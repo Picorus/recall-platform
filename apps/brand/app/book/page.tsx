@@ -97,8 +97,17 @@ export default function BookPage() {
     setBusy(true);
     setError('');
     try {
-      await api<{ bookingId: string }>(`/bookings?brand=${encodeURIComponent(brand)}`, { plan });
-      router.replace(`/campaigns?brand=${encodeURIComponent(brand)}`);
+      const r = await api<{ bookingId: string }>(`/bookings?brand=${encodeURIComponent(brand)}`, {
+        plan,
+      });
+      // Next: its ads (a brand's), then review and pay.
+      const b = encodeURIComponent(brand);
+      const id = encodeURIComponent(r.bookingId);
+      router.replace(
+        account?.kind === 'agency'
+          ? `/pay?brand=${b}&booking=${id}`
+          : `/ads?brand=${b}&booking=${id}`,
+      );
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Could not reach the server. Try again.');
       setBusy(false);

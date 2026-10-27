@@ -156,3 +156,42 @@ export interface PlanPrice {
   } | null;
   readonly problems: readonly string[];
 }
+
+/** P5.5: one of a brand's ads, as the portal shows it. */
+export interface Ad {
+  readonly adId: string;
+  readonly name: string;
+  readonly kind: 'png' | 'jpeg' | 'webp' | 'mp4' | null;
+  readonly width: number | null;
+  readonly height: number | null;
+  readonly durationMs: number | null;
+  readonly checks: readonly { check: string; outcome: 'pass' | 'warn' | 'fail'; detail: string }[];
+  readonly outcome: 'pass' | 'warn' | 'fail';
+  readonly review: { decision: 'approved' | 'rejected'; reason: string | null } | null;
+  readonly uploadedAt: number;
+}
+
+/** Sends a file as the request body (an ad upload); the same errors as `api`. */
+export async function upload<T>(path: string, file: File): Promise<T> {
+  const r = await fetch(`/api${path}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/octet-stream' },
+    body: file,
+    credentials: 'same-origin',
+    cache: 'no-store',
+  });
+  let x: unknown = undefined;
+  try {
+    x = await r.json();
+  } catch {
+    // not JSON: handled below
+  }
+  if (!r.ok) {
+    const e = (x ?? {}) as { error?: unknown };
+    throw new ApiError(
+      r.status,
+      typeof e.error === 'string' ? e.error : 'The upload did not go through. Try again.',
+    );
+  }
+  return x as T;
+}

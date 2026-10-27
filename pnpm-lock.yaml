@@ -244,6 +244,12 @@ importers:
 
   services/api:
     dependencies:
+      '@expo-google-fonts/anek-latin':
+        specifier: 0.4.2
+        version: 0.4.2
+      '@expo-google-fonts/anek-telugu':
+        specifier: 0.4.1
+        version: 0.4.1
       '@recall/adapters':
         specifier: workspace:*
         version: link:../../packages/adapters
@@ -256,13 +262,22 @@ importers:
       '@recall/workers':
         specifier: workspace:*
         version: link:../workers
+      '@resvg/resvg-js':
+        specifier: 2.6.2
+        version: 2.6.2
       pg:
         specifier: 8.23.1
         version: 8.23.1
+      qrcode:
+        specifier: 1.5.4
+        version: 1.5.4
     devDependencies:
       '@types/pg':
         specifier: 8.23.1
         version: 8.23.1
+      '@types/qrcode':
+        specifier: 1.5.5
+        version: 1.5.5
       fast-check:
         specifier: 4.10.2
         version: 4.10.2

@@ -48,3 +48,5 @@ export * from './brand-sign-in.js';
 export * from './business.js';
 export * from './campaigns.js';
 export * from './portal-booking.js';
+export * from './ad-template.js';
+export * from './booking-terms.js';
