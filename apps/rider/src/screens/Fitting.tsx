@@ -150,24 +150,32 @@ export function Fitting({
   const load = useCallback(async () => {
     try {
       setPage(await call<FittingPage>('/rider/fitting', { token }));
+      return true;
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) signOut.current();
       else setError(failed(lang, e));
+      return false;
     }
   }, [token, lang]);
   useEffect(() => {
     void load();
+  }, [load]);
+  /** Looks again; a problem from an earlier look goes once this one works. */
+  const refresh = useCallback(async () => {
+    if (await load()) setError('');
   }, [load]);
 
   // While the screen checks itself, look again every 5 seconds.
   const waiting =
     page?.check &&
     [page.check.gps, page.check.line, page.check.camera, page.check.battery].includes('waiting');
+  // Booked but not yet his time: look again every 30 seconds, so the fitting opens by itself.
+  const early = !page?.screenId && page?.booking?.canFitNow === false;
   useEffect(() => {
-    if (!waiting) return;
-    const t = setInterval(() => void load(), 5_000);
+    if (!waiting && !early) return;
+    const t = setInterval(() => void refresh(), waiting ? 5_000 : 30_000);
     return () => clearInterval(t);
-  }, [waiting, load]);
+  }, [waiting, early, refresh]);
 
   const act = async (what: string, path: string, body: object) => {
     setBusy(what);
@@ -181,6 +189,8 @@ export function Fitting({
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) signOut.current();
       else setError(failed(lang, e));
+      // The camera closes: scanning again starts afresh (a refused screen never jams it).
+      setScanning(false);
       await load();
     } finally {
       setBusy('');
@@ -192,7 +202,7 @@ export function Fitting({
       <Screen>
         <Title>{say(lang, 'fitTitle')}</Title>
         {error ? <Alert>{error}</Alert> : <Muted>{say(lang, 'loading')}</Muted>}
-        {error !== '' && <LinkButton label={say(lang, 'retry')} onPress={() => void load()} />}
+        {error !== '' && <LinkButton label={say(lang, 'retry')} onPress={() => void refresh()} />}
       </Screen>
     );
 

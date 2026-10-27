@@ -25,6 +25,7 @@ import {
   bookFitting,
   cancelFitting,
   fittingSlots,
+  fittedScreen,
   latestAppCheck,
   leavingChecklist,
   openFittingSlot,
@@ -161,7 +162,10 @@ export async function handleRiders(
       leavingChecklist(pool, riderId, page.screenId),
     ]);
     // P4.3: the fitting check of his screen (the box's parts and the technician's answer).
-    const fittingCheck = page.screenId ? await latestAppCheck(pool, page.screenId, now) : null;
+    const fitted = await fittedScreen(pool, riderId, now);
+    const fittingCheck = fitted
+      ? await latestAppCheck(pool, fitted.screenId, fitted.from, now)
+      : null;
     send(res, 200, {
       at: now,
       ...page,

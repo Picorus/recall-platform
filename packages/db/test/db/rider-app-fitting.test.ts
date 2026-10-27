@@ -16,7 +16,7 @@ import {
 import { openFittingSlot } from '../../src/rider-fitting.js';
 import { createRider } from '../../src/riders.js';
 import { storeUpload } from '../../src/screen-reports.js';
-import { enrolScreen } from '../../src/screens.js';
+import { enrolScreen, fitScreen, unfitScreen } from '../../src/screens.js';
 import { setting } from '../../src/settings.js';
 import { boxRequest as signedBox, freshDatabase } from './fresh-db.js';
 
@@ -182,7 +182,19 @@ describe('fitting on the rider app (P4.3)', () => {
     // A few a day.
     await expect(
       startFittingFromApp(pool, ravi, at + 1_000, { ...R, fittingChecksPerDay: 2 }),
-    ).rejects.toMatchObject({ why: { code: 'too-many-checks' } });
+    ).rejects.toMatchObject({ why: { code: 'too-many-fitting-checks' } });
+
+    // Staff move the screen to Sita's bike: Ravi's checks never count for her fitting.
+    await unfitScreen(pool, box.screenId, 'moved to another rider', 'Omar', at + 2_000);
+    await fitScreen(pool, { qr: box.qr, plate: 'TS09EB5678', riderId: sita }, 'Omar', at + 2_100);
+    const hers = await appFittingPage(pool, sita, at + 2_200, R);
+    expect(hers).toMatchObject({ screenId: box.screenId, check: null });
+    await expect(answerPanel(pool, sita, commandId, true, at + 2_200)).rejects.toThrow(
+      'No such check',
+    );
+    // Her own allowance, not what Ravi used today.
+    const own = await startFittingFromApp(pool, sita, at + 2_300, { ...R, fittingChecksPerDay: 1 });
+    expect(own.commandId).not.toBe(again.commandId);
   });
 
   it('cancel and book again; no booking, no fitting; a failed part is never ready', async () => {
@@ -200,6 +212,14 @@ describe('fitting on the rider app (P4.3)', () => {
     await bookFromApp(pool, amit, slot, NOW);
     await cancelFromApp(pool, amit, NOW + 10);
     expect((await appFittingPage(pool, amit, NOW + 20, R)).booking).toBeNull();
+    // Many slots opened before his (more than any list shows): his booking is still found.
+    await pool.query(
+      `INSERT INTO fitting_slots (slot_id, centre, starts_at, minutes, bikes, created_by, created_at)
+       SELECT 'SLOT-' || upper(lpad(to_hex(n), 8, '0')), 'Madhapur hub',
+              to_timestamp($1) + make_interval(mins => n), 15, 1, 'Omar', to_timestamp($2)
+         FROM generate_series(1, 250) n`,
+      [NOW + HOUR, NOW],
+    );
     await bookFromApp(pool, amit, slot, NOW + 30);
     // Late, but inside the time after his slot.
     const at = start + 30 * 60 + (R.fitLateMinutes - 1) * 60;

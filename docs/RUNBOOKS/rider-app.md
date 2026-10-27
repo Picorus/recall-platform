@@ -46,6 +46,8 @@ audit log under riders).
    bike, in repair, not his number plate…).
 4. "Start the fitting check": the screen lights every part for 2 minutes and checks GPS, 4G, camera
    and battery. The technician answers "Did every part of the screen light up?".
-5. When the app shows "Ready", staff see the same on the admin rider page and switch him to riding.
+5. When the app shows "Ready", staff see the same on the admin rider page, confirm with the
+   technician that this screen is on this bike (the QR code alone does not prove it), and switch him
+   to riding.
 
 A wrong fitting is taken off on the Screens page ("Take off", with why).

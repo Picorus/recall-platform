@@ -186,6 +186,7 @@ const en = {
   'err.no-check': 'Start the fitting check first.',
   'err.answered': 'Answered already. Check again to answer again.',
   'err.too-many-tries': 'Too many tries. Wait a while.',
+  'err.too-many-fitting-checks': 'Too many fitting checks today. Call RECALL.',
 } as const;
 
 export type Key = keyof typeof en;
@@ -373,6 +374,7 @@ const te: Record<Key, string> = {
   'err.no-check': 'ముందు ఫిట్టింగ్ చెక్ మొదలుపెట్టండి.',
   'err.answered': 'ఇప్పటికే జవాబిచ్చారు. మళ్లీ జవాబివ్వడానికి మళ్లీ చెక్ చేయండి.',
   'err.too-many-tries': 'చాలా ప్రయత్నాలు. కొంతసేపు ఆగండి.',
+  'err.too-many-fitting-checks': 'ఈ రోజు చాలా ఫిట్టింగ్ చెక్‌లు అయ్యాయి. RECALLకు కాల్ చేయండి.',
 };
 
 const hi: Record<Key, string> = {
@@ -557,6 +559,7 @@ const hi: Record<Key, string> = {
   'err.no-check': 'पहले फ़िटिंग जाँच शुरू करें।',
   'err.answered': 'जवाब दिया जा चुका है। फिर से जवाब देने के लिए दोबारा जाँचें।',
   'err.too-many-tries': 'बहुत ज़्यादा कोशिशें। थोड़ी देर रुकें।',
+  'err.too-many-fitting-checks': 'आज बहुत ज़्यादा फ़िटिंग जाँच हो गईं। RECALL को कॉल करें।',
 };
 
 export const WORDS: Readonly<Record<RiderLanguage, Readonly<Record<Key, string>>>> = { en, te, hi };
