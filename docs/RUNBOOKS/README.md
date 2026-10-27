@@ -7,3 +7,4 @@ Step-by-step "how to" for operations. One file per operation, added when the ope
 | [laptop-setup.md](laptop-setup.md) | Running everything on a laptop |
 | [design-system.md](design-system.md) | Changing a colour, size or component style |
 | [simulator.md](simulator.md) | Running fake bikes through the real screen logic |
+| [rider-app.md](rider-app.md) | Running and testing the rider app |

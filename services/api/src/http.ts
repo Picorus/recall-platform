@@ -5,6 +5,8 @@ export class HttpError extends Error {
   constructor(
     readonly status: number,
     message: string,
+    /** Sent with the error for apps that word it themselves (P4.1): `why` and maybe `n`. */
+    readonly why?: { readonly code: string; readonly n?: number },
   ) {
     super(message);
   }

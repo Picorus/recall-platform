@@ -77,6 +77,8 @@ jobs:
           pnpm --filter @recall/admin exec playwright install --with-deps chromium
           pnpm --filter @recall/admin build
           pnpm --filter @recall/admin test:e2e
+      - name: Rider app in a browser (web build, API, database)
+        run: pnpm --filter @recall/rider test:e2e
       - name: Screen line end to end (EMQX over TLS, gateway, database)
         run: pnpm --filter @recall/gateway test:emqx
       - name: Migrations apply to the laptop database

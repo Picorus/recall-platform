@@ -39,6 +39,31 @@ export interface LoanBank {
   readonly name: string;
 }
 
+export interface RiderSignInRules {
+  readonly codeSeconds: number;
+  readonly triesPerCode: number;
+  readonly codesPer15Min: number;
+  readonly codesPerDay: number;
+  readonly wrongPerNumberDay: number;
+  readonly codesPerAddressHour: number;
+  readonly wrongPerAddressHour: number;
+  readonly codesPerHourAll: number;
+  readonly idleDays: number;
+}
+
+/** What each rider sign-in rule means, in the order shown. */
+export const RIDER_SIGN_IN_LABELS: readonly (readonly [keyof RiderSignInRules, string])[] = [
+  ['codeSeconds', 'A code works for (seconds)'],
+  ['triesPerCode', 'Wrong tries for one code'],
+  ['codesPer15Min', 'Codes for one number from one connection in 15 minutes'],
+  ['codesPerDay', 'Codes for one number in a day'],
+  ['wrongPerNumberDay', 'Wrong codes for one number in a day'],
+  ['codesPerAddressHour', 'Codes from one connection in an hour'],
+  ['wrongPerAddressHour', 'Wrong codes from one connection in an hour'],
+  ['codesPerHourAll', 'Codes for everyone together in an hour'],
+  ['idleDays', 'Signed out after this many days unused'],
+];
+
 export interface Settings {
   readonly cities: readonly City[];
   readonly fittingCentres: readonly FittingCentre[];
@@ -46,6 +71,7 @@ export interface Settings {
   readonly messages: MessageWordings;
   readonly payZone: PayZone;
   readonly loanBank: LoanBank;
+  readonly riderSignIn: RiderSignInRules;
 }
 export type SettingKey = keyof Settings;
 

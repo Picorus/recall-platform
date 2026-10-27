@@ -7,6 +7,8 @@ export default tseslint.config(
     ignores: [
       '**/node_modules/',
       '**/dist/',
+      '**/dist-e2e/',
+      '**/.expo/',
       '**/build/',
       '**/.turbo/',
       '**/.next/',
@@ -17,6 +19,12 @@ export default tseslint.config(
   },
   js.configs.recommended,
   tseslint.configs.strict,
+  {
+    // Expo's bundler reads this CommonJS file itself (P4.1).
+    files: ['apps/rider/metro.config.js'],
+    languageOptions: { sourceType: 'commonjs' },
+    rules: { '@typescript-eslint/no-require-imports': 'off' },
+  },
   {
     languageOptions: { globals: globals.node },
     rules: {

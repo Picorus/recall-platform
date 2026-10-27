@@ -8,10 +8,18 @@ Answer whenever you like; each answer moves to `docs/DECISIONS.md` and the row i
 | # | Question | Where it shows | Needed by |
 |---|---|---|---|
 | 2b | After the POC: the exceptions to "only the areas that are on count for pay" | Admin Areas; rider pay | P4.5 |
-| 5 | Fitting centre address(es) (any number can be added) | Rider Fitting | P4.3 |
-| 6 | Support phone and WhatsApp numbers (hours: 10 am – 7 pm for now) | Rider Help; brand Help; admin Support | P3.15, P4.9 |
+| 5 | Fitting centre address(es) (any number can be added). Enter them in admin Settings → Fitting centres | Rider Fitting | P4.3 |
+| 6 | Support phone and WhatsApp numbers (hours: 10 am – 7 pm for now). Enter them in admin Settings → Support | Rider Help; brand Help; admin Support | P3.15, P4.9 |
 | 7 | Charging steps for the screen, once the equipment is final (from the screen maker) | Rider Your screen | P4.8 |
 | 10b | TDS rate on rider pay and any gig-worker levy (ask your CA) | Admin Payouts; rider Payouts | P1.7.7 |
+| 16 | Which providers for WhatsApp messages and sign-in codes, SMS backup codes (needs DLT registration), email, and maps / street names | Rider sign-in; support; reports | P6 (fakes until then) |
+| 17 | Which providers for rider KYC (DigiLocker, PAN), bank check (₹1), e-sign, brand payments and rider payouts | Rider joining; payouts; brand pay | P6 (fakes until then) |
+| 18 | How long rider records are kept after a rider leaves (DPDP; ask the lawyer) | Rider leaving; admin Riders | P4.11, P7 |
+| 19 | The final rider agreement text from the lawyer (incl. the camera line) | Rider Agreement (e-sign) | P4.2.5 |
+| 20 | The partner bank's (Dhanlaxmi) loan hand-off: their form link or API, and what they send back | Rider Screen loan | P4.2.6, P4.7 |
+| 21 | Google Play developer account (company), or direct install of the rider app for the POC | Rider app install | P7 |
+| 22 | Someone who reads Telugu and Hindi to check the rider app's words (written by Claude; `apps/rider/src/i18n.ts`, shown in screenshots) | Every rider screen | Before riders use the app |
+| 23 | The WhatsApp "sign_in_code" template (in Telugu, Hindi and English) approved with the WhatsApp provider; SMS sender id and template registered (DLT) | Rider sign-in | P6 |
 
 ## To ask screen vendors before buying a sample (added 25 Oct 2026)
 For a ready-made screen with its own Android box and receiving card. If all five answers are yes, our player app runs on it as it is (only the brightness link to the vendor's toolkit is extra work, about a week). If the box is locked to the vendor's own app or cloud, it can still play our ads and we read its play log, but we lose plays signed inside the box (our protection against fake counts) and people counting needs a separate small AI camera (about ₹2,500); about 2–3 weeks of work.

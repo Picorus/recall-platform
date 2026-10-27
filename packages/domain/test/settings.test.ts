@@ -117,6 +117,16 @@ describe('settings (P3.17)', () => {
     expect(() => checkSetting('payZone', { kind: 'square' })).toThrow('circle or');
   });
 
+  it('rider sign-in limits: whole numbers in their ranges (P4.1)', () => {
+    expect(checkSetting('riderSignIn', D.riderSignIn)).toEqual(D.riderSignIn);
+    expect(() => checkSetting('riderSignIn', { ...D.riderSignIn, triesPerCode: 0 })).toThrow(
+      'triesPerCode: a whole number 1 to 10',
+    );
+    expect(() => checkSetting('riderSignIn', { ...D.riderSignIn, codeSeconds: 60.5 })).toThrow(
+      'codeSeconds',
+    );
+  });
+
   it('screen-loan bank: a name', () => {
     expect(checkSetting('loanBank', { name: 'Dhanlaxmi Bank' })).toEqual({
       name: 'Dhanlaxmi Bank',

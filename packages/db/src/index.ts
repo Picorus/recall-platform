@@ -45,3 +45,4 @@ export * from './dashboard.js';
 export * from './support.js';
 export * from './audit.js';
 export * from './settings.js';
+export * from './rider-sign-in.js';

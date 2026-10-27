@@ -2,13 +2,39 @@
   "name": "@recall/rider",
   "version": "0.0.0",
   "private": true,
-  "type": "module",
-  "description": "Rider app (React Native, Expo). Built in P4.",
-  "exports": {
-    ".": "./src/index.ts"
-  },
+  "description": "Rider app (React Native, Expo): sign-in, joining, today, earnings, payouts, screen care, help.",
+  "main": "index.ts",
   "scripts": {
-    "typecheck": "tsc -p tsconfig.json",
-    "test": "vitest run --passWithNoTests"
+    "start": "expo start",
+    "web": "expo start --web",
+    "build:web": "expo export --platform web --output-dir dist",
+    "typecheck": "tsc -p tsconfig.json && tsc -p test/e2e/tsconfig.json",
+    "test": "vitest run test/unit",
+    "test:e2e": "EXPO_PUBLIC_API_URL=http://127.0.0.1:18381 expo export --platform web --output-dir dist-e2e && vitest run test/e2e"
+  },
+  "dependencies": {
+    "@expo-google-fonts/anek-devanagari": "0.4.1",
+    "@expo-google-fonts/anek-latin": "0.4.2",
+    "@expo-google-fonts/anek-telugu": "0.4.1",
+    "@expo-google-fonts/ibm-plex-mono": "0.4.1",
+    "@expo/metro-runtime": "~58.0.15",
+    "@recall/design": "workspace:*",
+    "@recall/domain": "workspace:*",
+    "expo": "~58.0.19",
+    "expo-font": "~58.0.10",
+    "expo-secure-store": "~58.0.2",
+    "expo-status-bar": "~58.0.4",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "react-native": "0.88.0",
+    "react-native-safe-area-context": "~5.10.1",
+    "react-native-web": "~0.21.4"
+  },
+  "devDependencies": {
+    "@recall/adapters": "workspace:*",
+    "@recall/api": "workspace:*",
+    "@recall/db": "workspace:*",
+    "@types/react": "19.3.0",
+    "playwright": "1.56.1"
   }
 }

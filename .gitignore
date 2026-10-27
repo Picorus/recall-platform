@@ -3,6 +3,9 @@ node_modules/
 .env.*
 !.env.example
 dist/
+dist-e2e/
+# Expo's own working folder (rider app).
+.expo/
 build/
 .turbo/
 .next/

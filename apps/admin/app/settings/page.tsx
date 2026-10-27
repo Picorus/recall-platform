@@ -10,6 +10,7 @@ import { clock, dayOfIndia } from '../../lib/format';
 import { Shell, useMember } from '../../lib/session';
 import {
   DAY_NAMES,
+  RIDER_SIGN_IN_LABELS,
   type FittingCentre,
   type MessageWordings,
   type SettingKey,
@@ -493,6 +494,31 @@ export default function SettingsPageView() {
                     onChange={(e) => set({ name: e.target.value })}
                   />
                 </Field>
+              </>
+            )}
+          </Section>
+
+          <Section {...common('riderSignIn')} title="Rider sign-in limits">
+            {(v, set) => (
+              <>
+                <p className="muted">
+                  Riders sign in with a code sent on WhatsApp or by SMS. These limits stop guessing
+                  and keep message costs down; each message costs money.
+                </p>
+                <div className="cal-bar">
+                  {RIDER_SIGN_IN_LABELS.map(([k, label]) => (
+                    <Field key={k} label={label}>
+                      <input
+                        className="rc-input mono"
+                        type="number"
+                        min={1}
+                        step={1}
+                        value={v[k]}
+                        onChange={(e) => set({ ...v, [k]: Number(e.target.value) })}
+                      />
+                    </Field>
+                  ))}
+                </div>
               </>
             )}
           </Section>
