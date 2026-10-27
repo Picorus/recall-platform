@@ -7,6 +7,7 @@ Newest first. Each entry: date · step id · what changed · tests · open issue
 - **The agency's statement** (`GET /portal/statement`, page `/statement`, linked from the agency's page): the month's share on each booking our team gave one (P3.13.3: given by a super admin, never automatic), the GST it charges, the TDS held back, what we paid (date, amount, bank reference; never our staff's names), its invoices, owed at the start and end. Its share is never on a brand's invoice.
 - The agency's page lists its brands; the start page says "through <agency>" for them.
 - Tests: database (accounts carry where they came from); API 1 (the agency's person sees the linked brand, books for it, cannot change its team, sees the agency in the brand's team; the statement, only for the agency; removed from the agency, the brand is gone); brand portal in a browser 1 (agency → its brands → statement → a brand). Found by the browser test and fixed: going from the agency's page to a brand's page kept showing the agency (the page reads its business once): brand links load the page afresh.
+- **Second review, fixed with tests:** a person a brand's owner (or our staff) had removed from the brand still got in through the agency: the brand's own say now wins. Only the agency's owners see its statement. Agency people have exactly a "can book" person's access on each brand (invoices, business details and reports too), now written in DECISIONS. The brand list is read only for the person's agencies.
 - Next: P5.11 messages.
 
 ## 28 Oct 2026 · P5.9 · Brand portal: help and team

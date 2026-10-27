@@ -777,13 +777,50 @@ describe('brand portal sign-in routes (P5.1)', () => {
     expect(
       (await call('/portal/statement?brand=adwise-x', undefined, { cookie: owner.session })).status,
     ).toBe(404);
+    // The brand's say wins: removed from the brand (by its owner or our staff), not let back in.
+    for (const active of [true, false])
+      await setPortalMember(
+        pool,
+        {
+          brandId: 'dosa-co',
+          address: 'ops@adwise.in',
+          role: 'booker',
+          active,
+          reason: active ? 'added' : 'the brand does not want them',
+          by: 'Sana',
+        },
+        at + (active ? 10 : 20),
+      );
+    expect(
+      (
+        (await call('/portal/me', undefined, { cookie: ag.session })).body.accounts as {
+          brandId: string;
+        }[]
+      ).map((x) => x.brandId),
+    ).toEqual(['adwise-x']);
+    // An agency booker does not see the agency's money.
+    await setPortalMember(
+      pool,
+      {
+        brandId: 'adwise-x',
+        address: 'ops@adwise.in',
+        role: 'booker',
+        active: true,
+        reason: 'now books only',
+        by: 'Sana',
+      },
+      at + 30,
+    );
+    expect(
+      (await call('/portal/statement?brand=adwise-x', undefined, { cookie: ag.session })).status,
+    ).toBe(403);
     // Removed from the agency: the brand goes with it.
     await setPortalMember(
       pool,
       {
         brandId: 'adwise-x',
         address: 'ops@adwise.in',
-        role: 'owner',
+        role: 'booker',
         active: false,
         reason: 'left',
         by: 'Sana',

@@ -336,10 +336,12 @@ export async function portalAccounts(c: Q, address: string): Promise<PortalAccou
     via_id: string | null;
     via_name: string | null;
   }>(
-    `WITH mine AS (
+    `WITH latest AS (
+       SELECT DISTINCT ON (brand_id) brand_id, role, active FROM brand_members
+        WHERE address = $1 ORDER BY brand_id, version DESC),
+     mine AS (
        SELECT m.brand_id, v.name, b.kind, m.role
-         FROM (SELECT DISTINCT ON (brand_id) brand_id, role, active FROM brand_members
-                WHERE address = $1 ORDER BY brand_id, version DESC) m
+         FROM latest m
          JOIN brands b USING (brand_id)
          JOIN LATERAL (SELECT name, active FROM brand_versions x WHERE x.brand_id = m.brand_id
                         ORDER BY version DESC LIMIT 1) v ON true
@@ -350,14 +352,20 @@ export async function portalAccounts(c: Q, address: string): Promise<PortalAccou
        SELECT c.brand_id, c.name, 'brand' AS kind, 'booker' AS role, a.brand_id AS via_id,
               a.name AS via_name
          FROM mine a
-         JOIN LATERAL (SELECT DISTINCT ON (brand_id) brand_id, name, agency_id, active
-                         FROM brand_versions ORDER BY brand_id, version DESC) c
+         JOIN (SELECT DISTINCT ON (brand_id) brand_id, name, agency_id, active
+                 FROM brand_versions
+                WHERE brand_id IN (SELECT brand_id FROM brand_versions
+                                    WHERE agency_id IN (SELECT brand_id FROM mine
+                                                         WHERE kind = 'agency'))
+                ORDER BY brand_id, version DESC) c
            ON c.agency_id = a.brand_id AND c.active
         WHERE a.kind = 'agency'
-          AND NOT EXISTS (SELECT 1 FROM mine d WHERE d.brand_id = c.brand_id))
+          -- The brand's own say wins: a person it gave access to (direct) or took it from
+          -- (removed by its owner or our staff) is never let back in through the agency.
+          AND NOT EXISTS (SELECT 1 FROM latest d WHERE d.brand_id = c.brand_id))
      SELECT brand_id, name, kind, role, NULL AS via_id, NULL AS via_name FROM mine
      UNION ALL
-     SELECT DISTINCT ON (brand_id) brand_id, name, kind, role, via_id, via_name FROM clients
+     SELECT brand_id, name, kind, role, via_id, via_name FROM clients
      ORDER BY name, brand_id`,
     [address],
   );

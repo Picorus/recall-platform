@@ -844,6 +844,9 @@ export async function handleBrandPortal(
     const a = await account();
     if (a.kind !== 'agency')
       throw new HttpError(400, 'Statements are for agencies', { code: 'not-an-agency' });
+    // Money owed to the agency: its owners only.
+    if (a.role !== 'owner')
+      throw new HttpError(403, "Only the agency's owners see its statement", { code: 'not-owner' });
     const asked = new URL(req.url ?? '/', 'http://x').searchParams.get('month');
     const month =
       asked && /^\d{4}-(0[1-9]|1[0-2])$/.test(asked)
