@@ -227,8 +227,8 @@ export async function checkBrandCode(
       );
     if (!code || wrong >= rules.triesPerCode) {
       // Kept, but not counted against the number or the code: no code was live, so it was no
-        // guess (a stranger typing codes cannot lock anyone out).
-        await tryRow(null, false);
+      // guess (a stranger typing codes cannot lock anyone out).
+      await tryRow(null, false);
       return {
         refused: 'This code no longer works: ask for a new one',
         why: { code: 'code-dead' },
