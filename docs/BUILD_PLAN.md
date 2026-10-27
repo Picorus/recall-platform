@@ -399,7 +399,7 @@ Phases overlap on purpose: each starts once the part it depends on is stable, no
 | P4 | Rider app | Done (phone notifications and real sign-in messages wait for the outside accounts, P6) | Mar – Jun 2027 |
 | P6 | Real integrations (needs company accounts) | Blocked | Mar – Jul 2027 |
 | P7 | Hardening, load test, security audit, POC readiness | To do | Jun – Jul 2027 |
-| P5 | Brand portal for self-serve | To do | Jul – Oct 2027 |
+| P5 | Brand portal for self-serve | Done (real payments, GST lookups and messages wait for the outside accounts, P6) | Jul – Oct 2027 |
 
 ## Records for a human takeover
 

@@ -2,6 +2,14 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 28 Oct 2026 · P5.11 · Brand messages
+- **The brand's messages about a campaign** (`packages/db/src/brand-notices.ts`, migration 0059, the API's 5-minute loop next to the reports): besides "Done, here is your report" (P1.9.2), "Booked and paid" once it is paid (booking, days, total with GST, when ads are due, a link to its campaigns), and "Your ads are due" 9 and then 7 days before the start while no ads are chosen (a link straight to its ads). On WhatsApp (approved templates) and email, to the brand's contact on its account. Nothing else is sent (v5.4: few messages).
+- Each is sent once per channel and address with the same key every try (never twice); a passing failure is tried again 30 minutes later, up to 3 tries; a wrong address is not. Only payments from the last 2 days get "booked and paid" (no flood of old ones when it is switched on). A reminder goes only when the payment came before its day (paid later, "booked and paid" already says when ads are due); one reminder at a time.
+- Wording: Settings → Message wording (two new ones; saved wordings from before get them at their default).
+- Tests: database 3 (paid once per channel with the total and link, not again; reminders at 9 and 7 days, none too early, none with ads chosen, no old "paid"; a passing failure retried after 30 minutes, a wrong address not, no reminder for a late payment).
+- Open: the WhatsApp templates `campaign_booked_paid` and `campaign_ads_missing` must be approved with the WhatsApp provider (P6).
+- **The brand portal (P5) is built.** Next: P7 hardening (security review, load test at 15,500 bikes, POC readiness), while P6 waits for the company accounts.
+
 ## 28 Oct 2026 · P5.10 · Brand portal: agencies
 - **One agency login, many brands** (`portalAccounts` in `packages/db/src/brand-sign-in.ts`): an agency's people also see every brand our team linked to that agency (the brand's own details name it), as "Can book": they book, add ads and pay on each brand's own account, never manage the brand's team. Removed from the agency, or the brand moved to another agency or none: the brand goes at once. The brand's Team page says which agency also books for it.
 - **The agency's statement** (`GET /portal/statement`, page `/statement`, linked from the agency's page): the month's share on each booking our team gave one (P3.13.3: given by a super admin, never automatic), the GST it charges, the TDS held back, what we paid (date, amount, bank reference; never our staff's names), its invoices, owed at the start and end. Its share is never on a brand's invoice.

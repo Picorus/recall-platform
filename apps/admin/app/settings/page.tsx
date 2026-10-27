@@ -360,6 +360,16 @@ export default function SettingsPageView() {
                       'Campaign report ready',
                       'Fills in: {booking}, {period}, {summary}, {link} (needed). WhatsApp: 4 values: booking, period, first line of the summary, link. The email carries the report itself as designed; this wording is its subject and plain-text part.',
                     ],
+                    [
+                      'bookedPaid',
+                      'Campaign booked and paid',
+                      'Fills in: {booking}, {period}, {total}, {adsDue}, {link} (needed). WhatsApp: 4 values: booking, period, total, link.',
+                    ],
+                    [
+                      'adsMissing',
+                      'Ads missing (9 and 7 days before the start)',
+                      'Fills in: {booking}, {start}, {adsDue}, {link} (needed). WhatsApp: 4 values: booking, start day, ads due, link.',
+                    ],
                   ] as const
                 ).map(([k, title, hint]) => (
                   <WordingFields
