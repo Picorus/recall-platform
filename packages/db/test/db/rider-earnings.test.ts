@@ -93,7 +93,24 @@ describe('rider app Earnings (P4.5)', () => {
     await ride('scr-e', ['2027-07-25'], 3);
     const august = eightAm('2027-08-05');
     e = await riderEarnings(pool, 'R-EARN', '2027-07', august);
-    expect(e).toMatchObject({ closed: true, countedSeconds: 22 * H, hourlyPaise: 55_000 });
+    // The days keep the late 3 hours; the total is what was paid, the difference on one line.
+    expect(e).toMatchObject({
+      closed: true,
+      countedSeconds: 25 * H,
+      paidSeconds: 25 * H,
+      hourlyPaise: 62_500,
+      adjustmentPaise: -7_500,
+      totalPaise: 55_000,
+    });
+    expect(e.days.reduce((n, d) => n + d.earnedPaise, 0) + e.adjustmentPaise).toBe(e.totalPaise);
+    // A closed month the pay run never posted for: nothing was paid, nothing shown as earned.
+    await assignScreen(pool, 'scr-x', 'R-UNPAID', eightAm('2027-07-01'), 'fitter');
+    await ride('scr-x', ['2027-07-05'], 4);
+    expect(await riderEarnings(pool, 'R-UNPAID', '2027-07', august)).toMatchObject({
+      countedSeconds: 4 * H,
+      adjustmentPaise: -10_000,
+      totalPaise: 0,
+    });
     expect(await riderMonths(pool, 'R-EARN', august)).toEqual(['2027-08', '2027-07']);
     expect(await riderMonths(pool, 'R-NOBODY', august)).toEqual(['2027-08']);
   });

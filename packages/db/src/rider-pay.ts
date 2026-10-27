@@ -296,11 +296,12 @@ export async function accrueRiderPay(
         // reported for finance to settle by hand.
         if (e && !final) {
           await postEntry(c, e, 'rider-pay');
-          // Its parts, for the rider app's Earnings page (P4.5).
+          // Its parts, for the rider app's Earnings page (P4.5); once per entry.
           await c.query(
             `INSERT INTO rider_pay_lines (entry_id, rider_id, month, at, counted_s, paid_s,
                poc_paise, hourly_paise, sold_paise, gross_paise, tds_paise)
-             VALUES ($1, $2, $3, to_timestamp($4), $5, $6, $7, $8, $9, $10, $11)`,
+             VALUES ($1, $2, $3, to_timestamp($4), $5, $6, $7, $8, $9, $10, $11)
+             ON CONFLICT (entry_id) DO NOTHING`,
             [
               e.entryId,
               riderId,

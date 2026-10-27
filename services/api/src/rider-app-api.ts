@@ -166,8 +166,10 @@ export async function handleRiderApp(
       'content-type': 'text/html; charset=utf-8',
       'cache-control': 'no-store',
       'referrer-policy': 'no-referrer',
+      'x-content-type-options': 'nosniff',
+      // No scripts at all: the page is words and a table.
       'content-security-policy':
-        "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; frame-ancestors 'none'",
+        "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
     });
     res.end(html);
     return true;
@@ -280,7 +282,7 @@ export async function handleRiderApp(
     const month = asked ?? months[0] ?? '';
     if (!months.includes(month))
       throw new HttpError(400, 'Pick one of your months', { code: 'bad-month' });
-    send(res, 200, await riderEarnings(pool, riderId, month, now));
+    send(res, 200, await riderEarnings(pool, riderId, month, now, months));
     return true;
   }
   if (path === '/rider/statement' && method === 'POST') {

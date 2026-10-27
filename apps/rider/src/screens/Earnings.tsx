@@ -22,7 +22,9 @@ export interface EarningsPage {
   readonly days: readonly (Period & { readonly day: string })[];
   readonly weeks: readonly (Period & { readonly from: string; readonly to: string })[];
   readonly countedSeconds: number;
+  readonly paidSeconds: number;
   readonly hourlyPaise: number;
+  readonly adjustmentPaise: number;
   readonly pocPaise: number;
   readonly soldPaise: number;
   readonly soldAsOf: number | null;
@@ -133,7 +135,11 @@ export function Earnings({
                 key={m}
                 accessibilityRole="radio"
                 accessibilityState={{ checked: m === p.month }}
-                onPress={() => setMonth(m)}
+                onPress={() => {
+                  if (m === p.month) return;
+                  setPage(undefined);
+                  setMonth(m);
+                }}
                 style={{
                   minHeight: touch.min,
                   paddingHorizontal: 14,
@@ -162,7 +168,7 @@ export function Earnings({
             <Muted small>{say(lang, 'beforeTax')}</Muted>
             <Line
               label={say(lang, 'hoursTimesRate', {
-                h: hoursText(lang, p.countedSeconds),
+                h: hoursText(lang, p.paidSeconds),
                 rate: rupees(p.perMovingHourPaise),
               })}
               value={rupees(p.hourlyPaise)}
@@ -176,6 +182,9 @@ export function Earnings({
               }
               value={rupees(p.soldPaise)}
             />
+            {p.adjustmentPaise !== 0 && (
+              <Line label={say(lang, 'adjusted')} value={rupees(p.adjustmentPaise)} />
+            )}
             {p.bonusPaise > 0 && (
               <Line label={say(lang, 'bonusGiven')} value={rupees(p.bonusPaise)} />
             )}

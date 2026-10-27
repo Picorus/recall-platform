@@ -23,13 +23,14 @@ export function readStatementToken(
   token: string,
   now: number,
 ): { riderId: string; month: string } | null {
-  const [body, sig] = token.split('.');
-  if (!body || !sig || token.length > 300) return null;
+  const parts = token.split('.');
+  const [body, sig] = parts;
+  if (parts.length !== 2 || !body || !sig || token.length > 300) return null;
   const want = createHmac('sha256', key(secret)).update(body).digest();
   const got = Buffer.from(sig, 'base64url');
   if (got.length !== want.length || !timingSafeEqual(got, want)) return null;
   const [riderId, month, until] = Buffer.from(body, 'base64url').toString().split('|');
-  if (!riderId || !month || !until || Number(until) < now) return null;
+  if (!riderId || !month || !until || !(Number(until) >= now)) return null;
   return { riderId, month };
 }
 
@@ -63,15 +64,16 @@ body{font-family:system-ui,sans-serif;color:#111;margin:24px;max-width:720px}
 h1{font-size:22px;margin:0 0 4px}table{border-collapse:collapse;width:100%;margin:12px 0}
 td,th{border-bottom:1px solid #ddd;padding:6px 4px;text-align:left;font-size:14px}
 .n{text-align:right;font-variant-numeric:tabular-nums}.muted{color:#555;font-size:13px}
-.total td{font-weight:700;border-top:2px solid #111}@media print{button{display:none}}
+.total td{font-weight:700;border-top:2px solid #111}
 </style></head><body>
 <h1>RECALL rider statement</h1>
 <p>${esc(who.name)} · ${esc(who.riderId)} · ${esc(e.month)}${e.closed ? '' : ' (month not yet closed: figures so far)'}</p>
-<button onclick="window.print()">Save as PDF or print</button>
+<p class="muted">To keep it: your browser's menu, then Share or Print, then Save as PDF.</p>
 <table><tbody>
-${line(`Moving hours: ${hours(e.countedSeconds)} × ${rupees(e.perMovingHourPaise)} (up to ${e.monthlyCapHours} h)`, e.hourlyPaise)}
+${line(`Moving hours paid: ${hours(e.paidSeconds)} × ${rupees(e.perMovingHourPaise)} (up to ${e.monthlyCapHours} h a month; ${hours(e.countedSeconds)} counted)`, e.hourlyPaise)}
 ${e.pocPaise > 0 ? line('Test-period (POC) daily pay', e.pocPaise) : ''}
 ${line('Share of sales', e.soldPaise)}
+${e.adjustmentPaise !== 0 ? line('Adjusted as paid (hours that arrived after the month closed are not paid)', e.adjustmentPaise) : ''}
 ${e.bonusPaise > 0 ? line('Founding bonus', e.bonusPaise) : ''}
 <tr class="total"><td>Total before tax</td><td class="n">${rupees(e.totalPaise)}</td></tr>
 </tbody></table>
