@@ -36,6 +36,10 @@ export interface RiderSignInRules {
   readonly fitLateMinutes: number;
   /** P4.3: fitting checks one rider may start in a day (each lights the screen and waits on it). */
   readonly fittingChecksPerDay: number;
+  /** P4.10: a fitted screen not heard from this long in business hours: the rider is told. */
+  readonly alertOfflineMinutes: number;
+  /** P4.10: a screen battery at or below this (and not charging): the rider is told, once a day. */
+  readonly alertBatteryPct: number;
 }
 
 export const DEFAULT_RIDER_SIGN_IN: RiderSignInRules = {
@@ -54,6 +58,8 @@ export const DEFAULT_RIDER_SIGN_IN: RiderSignInRules = {
   fitEarlyMinutes: 30,
   fitLateMinutes: 120,
   fittingChecksPerDay: 10,
+  alertOfflineMinutes: 30,
+  alertBatteryPct: 20,
 };
 
 /** Each rule's sensible range (checked when a super admin changes them in Settings). */
@@ -75,6 +81,8 @@ export const RIDER_SIGN_IN_RANGES: Readonly<
   fitEarlyMinutes: [0, 240],
   fitLateMinutes: [0, 720],
   fittingChecksPerDay: [1, 50],
+  alertOfflineMinutes: [10, 240],
+  alertBatteryPct: [5, 50],
 };
 
 export const RIDER_LANGUAGES = ['te', 'hi', 'en'] as const;

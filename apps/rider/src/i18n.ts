@@ -279,6 +279,7 @@ const en = {
   stopRule:
     'If the bike stops for more than 10 minutes, the screen rests and your hours pause. They start again as soon as you ride.',
   refresh: 'Refresh',
+  alertsTitle: 'Alerts',
   asOf: 'Last updated {t}',
   // P4.3 fitting.
   loading: 'Loading…',
@@ -617,6 +618,7 @@ const te: Record<Key, string> = {
   stopRule:
     'బైక్ 10 నిమిషాల కంటే ఎక్కువ ఆగితే, స్క్రీన్ విశ్రాంతి తీసుకుంటుంది, మీ గంటలు ఆగుతాయి. మీరు నడపగానే మళ్లీ మొదలవుతాయి.',
   refresh: 'రిఫ్రెష్ చేయండి',
+  alertsTitle: 'హెచ్చరికలు',
   asOf: 'చివరిగా నవీకరించినది {t}',
   // P4.3 fitting.
   loading: 'లోడ్ అవుతోంది…',
@@ -947,6 +949,7 @@ const hi: Record<Key, string> = {
   stopRule:
     'बाइक 10 मिनट से ज़्यादा रुके तो स्क्रीन आराम करती है और आपके घंटे रुक जाते हैं। चलाते ही फिर शुरू हो जाते हैं।',
   refresh: 'रीफ़्रेश करें',
+  alertsTitle: 'सूचनाएँ',
   asOf: 'आख़िरी अपडेट {t}',
   // P4.3 fitting.
   loading: 'लोड हो रहा है…',

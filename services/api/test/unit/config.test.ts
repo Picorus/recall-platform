@@ -3,6 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   inboundFrom,
+  pushFrom,
   paymentsFrom,
   readConfig,
   payoutsFrom,
@@ -64,6 +65,14 @@ describe('payments settings (P3.8.2)', () => {
     expect(() => inboundFrom({ SUPPORT_INBOUND_PROVIDER: 'fake' }, true)).toThrow('laptop only');
     expect(() => inboundFrom({ SUPPORT_INBOUND_PROVIDER: 'gupshup' }, false)).toThrow('P6');
   });
+
+  it('rider phone notifications: the fake only on a laptop; none in production (P4.10)', () => {
+    expect(pushFrom({}, false)).toBeDefined();
+    expect(pushFrom({}, true)).toBeUndefined();
+    expect(() => pushFrom({ API_HOST: '0.0.0.0' }, false)).toThrow('laptop only');
+    expect(() => pushFrom({ PUSH_PROVIDER: 'fake' }, true)).toThrow('laptop only');
+    expect(() => pushFrom({ PUSH_PROVIDER: 'expo' }, false)).toThrow('P6');
+  });
 });
 
 describe('outside services for the Settings page (P3.17)', () => {
@@ -78,6 +87,7 @@ describe('outside services for the Settings page (P3.17)', () => {
       'Rider payouts',
       'Maps, WhatsApp and email out',
       'Messages coming in',
+      'Rider phone notifications',
       'Ad file store',
     ]);
     expect(cfg.connections?.every((c) => c.state === 'stand-in' && c.provider === 'fake')).toBe(

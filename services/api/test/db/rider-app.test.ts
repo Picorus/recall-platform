@@ -385,6 +385,15 @@ describe('rider app fitting routes (P4.3)', () => {
     expect(help).toMatchObject({ phones: [], opens: '10:00', closes: '19:00' });
     expect(help.requests.map((r) => r.subject)).toContain('Rider app: Where is my payout?');
     expect(help.requests).toHaveLength(3);
+    // P4.10: no alerts yet; this phone's notification token.
+    expect((await get('/rider/alerts')).body).toEqual({ alerts: [] });
+    expect(
+      (await post('/rider/push', { token: 'ExponentPushToken[e2e-1]', language: 'te' }, auth))
+        .status,
+    ).toBe(200);
+    expect((await post('/rider/push', { token: 'x', language: 'te' }, auth)).body).toMatchObject({
+      why: 'bad-token',
+    });
     // A changed link is refused.
     expect((await fetch(`${url}${link.slice(0, -2)}xx`)).status).toBe(404);
   });

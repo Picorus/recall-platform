@@ -52,3 +52,4 @@ export * from './rider-today.js';
 export * from './rider-earnings.js';
 export * from './rider-payouts.js';
 export * from './rider-care.js';
+export * from './rider-alerts.js';

@@ -39,6 +39,9 @@
 // P4.9:
 //   GET  /rider/help              support's numbers (WhatsApp, call), whether open now, his requests
 //   POST /rider/help              { text }  a question to support (a conversation, replies on WhatsApp)
+// P4.10:
+//   POST /rider/push              { token, language }  this phone's notification token
+//   GET  /rider/alerts            his alerts, newest first
 import type { PayoutDestination } from '@recall/adapters';
 import {
   answerPanel,
@@ -74,6 +77,8 @@ import {
   PROBLEMS_PER_DAY,
   riderRequests,
   askSupport,
+  registerPush,
+  riderAlerts,
   riderMonths,
   setting,
   type RiderSession,
@@ -303,6 +308,18 @@ export async function handleRiderApp(
     if (!months.includes(month))
       throw new HttpError(400, 'Pick one of your months', { code: 'bad-month' });
     send(res, 200, await riderEarnings(pool, riderId, month, now, months));
+    return true;
+  }
+  if (path === '/rider/alerts' && method === 'GET') {
+    send(res, 200, { alerts: await riderAlerts(pool, riderId) });
+    return true;
+  }
+  if (path === '/rider/push' && method === 'POST') {
+    const b = await jsonBody(req);
+    await refused(() =>
+      registerPush(pool, s.tokenHash, str(b, 'token', 300), str(b, 'language', 5), now),
+    );
+    send(res, 200, { ok: true });
     return true;
   }
   if (path === '/rider/help' && method === 'GET') {

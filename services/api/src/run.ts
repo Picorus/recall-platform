@@ -4,6 +4,9 @@ import {
   advanceReadyBookings,
   buildDueReports,
   expireUnpaid,
+  makeRiderAlerts,
+  sendRiderAlerts,
+  setting,
   prepareDueRun,
   sendDueReports,
   settleDue,
@@ -103,3 +106,19 @@ if (reports) {
   };
   setTimeout(tick, 60_000).unref();
 }
+
+// Every 2 minutes: riders' alerts that are due are made (each once), then sent to their phones,
+// never while the bike is moving (P4.10). Without a push service they are only listed in the app.
+const alerts = () => {
+  const now = Math.floor(Date.now() / 1000);
+  setting(pool, 'riderSignIn')
+    .then((rules) => makeRiderAlerts(pool, now, rules))
+    .then(async () => {
+      if (!cfg.push) return;
+      const s = await sendRiderAlerts(pool, cfg.push, now);
+      if (s.failed > 0) console.error(`api: ${s.failed} rider notifications failed`);
+    })
+    .catch((e: unknown) => console.error('api: rider alerts failed', e))
+    .finally(() => setTimeout(alerts, 120_000).unref());
+};
+setTimeout(alerts, 60_000).unref();

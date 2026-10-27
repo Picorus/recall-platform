@@ -2,6 +2,14 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 27 Oct 2026 · P4.10 · Rider app: alerts
+- PR #70 (screen loan, screen care, help) merged with all checks green.
+- **Alerts** (`packages/db/src/rider-alerts.ts`, rules and words in `packages/domain/src/rider-alerts.ts`, migration 0052): every 2 minutes the API makes the alerts that are due, each once: his payout paid (with the amount), his fitted screen silent for 30 minutes in business hours (once per silent spell), its battery at 20% or less and not charging (once a day), a repair or swap booked for his screen. Then each new one goes to the phones he is signed in on, in the language his app is set to; **never while his bike is moving** (it waits until he stops), never one older than a day, never again to a phone that left. The 30 minutes and 20% are settings (Settings → Rider app limits).
+- **Phone notifications** sit behind a new adapter (`packages/adapters/src/push.ts`) with a working fake that prints each one on a laptop's API console. The real one (Expo's push service) comes with the app's store account (P6, open question 21); until then production only lists alerts in the app. The app registers its notification token with `POST /rider/push` once that is set up.
+- **App**: the latest alerts on the Today page, in his language (the same words as the notifications).
+- Tests: database 3 (a silent screen and a low battery, once each, in Telugu; a payout and a repair held while riding, sent when he stops; a phone that left not tried again, alerts older than a day not sent, a bad token refused); API 2 (the routes; the adapter only fake on a laptop); browser 1 (the alert on Today).
+- Next: P4.11, profile and settings (language, documents, change bank, leave RECALL, delete my account).
+
 ## 27 Oct 2026 · P4.9 · Rider app: Help
 - **Help tab** (`askSupport`, `riderRequests` in `packages/db/src/rider-care.ts`, routes `GET/POST /rider/help`): whether support is open now and its hours (Settings), "Chat on WhatsApp" and "Call" with the riders' support number from Settings (or a note that numbers come soon), "Write to us" (a conversation with support, answered on WhatsApp; problems and questions together at most 10 a day from the app), his requests from any channel with where each stands, and six common questions (pay day, how hours count, a screen that is off, the stop rule, the camera, leaving).
 - **App**: five tabs at the bottom (Today, Earnings, Payouts, Screen, Help); every word in Telugu, Hindi and English.

@@ -7,6 +7,8 @@ import {
   fakeKyc,
   fakeMaps,
   fakeMessages,
+  fakePush,
+  type PushAdapter,
   fakePayments,
   fakePayouts,
   type FileStore,
@@ -63,6 +65,7 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
   const payouts = payoutsFrom(env, production);
   const reports = reportsFrom(env, production);
   const inbound = inboundFrom(env, production);
+  const push = pushFrom(env, production);
   const connection = (service: string, on: boolean, provider: string): Connection => ({
     service,
     state: !on ? 'off' : provider === 'fake' ? 'stand-in' : 'on',
@@ -83,6 +86,7 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
       providerOf('REPORTS_PROVIDER'),
     ),
     connection('Messages coming in', inbound !== undefined, providerOf('SUPPORT_INBOUND_PROVIDER')),
+    connection('Rider phone notifications', push !== undefined, providerOf('PUSH_PROVIDER')),
     connection('Ad file store', files !== undefined, 'fake'),
   ];
   // The rider app's web build on a laptop (Expo's web server); production: none unless set.
@@ -107,6 +111,7 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     ...(payouts ? { payouts } : {}),
     ...(reports ? { reports } : {}),
     ...(inbound ? { inbound } : {}),
+    ...(push ? { push } : {}),
   };
 }
 
@@ -260,6 +265,27 @@ export function inboundFrom(
   if (production || !onlyLocal(env))
     throw new Error('The fake inbound messages are for a laptop only (nobody else can reach it)');
   return fakeInbound();
+}
+
+/**
+ * Phone notifications to riders (P4.10). The real one (Expo's push service) comes with the app's
+ * store account (P6); until then production sends none. On a laptop the fake stands in and prints
+ * each notification on the API's console (nothing leaves the laptop).
+ */
+export function pushFrom(env: NodeJS.ProcessEnv, production: boolean): PushAdapter | undefined {
+  const provider = env.PUSH_PROVIDER || (production ? '' : 'fake');
+  if (provider === '') return undefined;
+  if (provider !== 'fake')
+    throw new Error(`PUSH_PROVIDER ${provider} is not available yet (the real one comes in P6)`);
+  if (production || !onlyLocal(env))
+    throw new Error('The fake push is for a laptop only (nobody else can reach it)');
+  const fake = fakePush();
+  return {
+    send: (m) => {
+      console.error(`laptop notification, not sent: ${m.title}: ${m.body}`);
+      return fake.send(m);
+    },
+  };
 }
 
 /**

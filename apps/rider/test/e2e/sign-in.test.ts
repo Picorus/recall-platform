@@ -473,6 +473,12 @@ it("a rider on the road sees his screen, today's and this week's hours and earni
      VALUES ($1, $2, 'live', to_timestamp($3), to_timestamp($3), '{"lat":17.43,"lng":78.44,"moving":true}')`,
     [box.screenId, minutes + 1, now - 60],
   );
+  // P4.10: an alert he was sent (his payout).
+  await db.pool.query(
+    `INSERT INTO rider_alerts (alert_id, rider_id, kind, ref, vals, at)
+     VALUES ('ALR-0000000000E2', $1, 'payout-paid', 'run:e2e', '{"amount":"₹1,234.50"}', to_timestamp($2))`,
+    [riderId, now - 600],
+  );
   const { page, errors } = await phonePage();
   await page.getByLabel('Mobile number').fill('91000 66666');
   await page.getByRole('button', { name: 'Send code on WhatsApp' }).click();
@@ -484,6 +490,7 @@ it("a rider on the road sees his screen, today's and this week's hours and earni
   await expect(page.getByText(h).count()).resolves.toBeGreaterThanOrEqual(2);
   // ₹25 an hour: 90 minutes is ₹37.50 (when the day has had 90 minutes yet).
   if (minutes === 90) await page.getByText('₹37.50').first().waitFor();
+  await page.getByText('₹1,234.50 is on its way to your account.').waitFor();
   await page.getByText('Keep moving').waitFor();
   await shot(page, 'rider-today');
   // P4.5: Earnings, this month, and the statement opens in the browser.
