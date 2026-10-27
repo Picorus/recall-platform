@@ -1094,3 +1094,37 @@ it('the Support page: a WhatsApp message from a rider, answered, noted and done'
   }
   expect(errors).toEqual([]);
 }, 120_000);
+
+it('the Audit log: every change, searched and paged', async () => {
+  const page = await browser.newPage();
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  shift += 30_000;
+  await page.goto(`${SITE}/sign-in`);
+  await page.getByLabel('Email').fill('prateek@recall.in');
+  await page.getByLabel('Password').fill(PW);
+  await page.getByLabel('Code from your authenticator app').fill(totpCode(SECRET.value, step()));
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.getByText('Prateek · Super admin').waitFor();
+  await page.getByRole('link', { name: 'Audit log' }).click();
+  const log = page.getByRole('table', { name: 'Audit log' });
+  await log.getByText('signed in').first().waitFor();
+  // The rider added on the Riders page, found by name.
+  const search = page.getByRole('form', { name: 'Search the log' });
+  await search.getByLabel('Find (who, what, booking, rider…)').fill('walk-in');
+  await search.getByRole('button', { name: 'Search' }).click();
+  await log.getByText('rider details set').first().waitFor();
+  await search.getByLabel('Find (who, what, booking, rider…)').fill('');
+  await search.getByLabel('Part').selectOption('riders');
+  await search.getByRole('button', { name: 'Search' }).click();
+  await expect
+    .poll(async () =>
+      (await log.getByRole('row').allTextContents()).slice(1).every((t) => t.includes('riders')),
+    )
+    .toBe(true);
+  if (process.env.SCREENSHOT_DIR) {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.screenshot({ path: `${process.env.SCREENSHOT_DIR}/audit.png`, fullPage: true });
+  }
+  expect(errors).toEqual([]);
+}, 120_000);

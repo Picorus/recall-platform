@@ -61,6 +61,7 @@ import { handleMoney } from './money-api.js';
 import { handleReportsDesk } from './reports-desk-api.js';
 import { handleDashboard } from './dashboard-api.js';
 import { handleSupport } from './support-api.js';
+import { handleAudit } from './audit-api.js';
 import {
   decoyHash,
   hashPassword,
@@ -490,6 +491,7 @@ export function apiHandler(
       if (await handleReportsDesk(pool, cfg, req, res, nowMs)) return;
       if (await handleDashboard(pool, cfg, req, res, nowMs)) return;
       if (await handleSupport(pool, cfg, req, res, nowMs)) return;
+      if (await handleAudit(pool, cfg, req, res, nowMs)) return;
       throw new HttpError(404, 'Not found');
     })().catch((e: unknown) => {
       if (e instanceof HttpError) return send(res, e.status, { error: e.message });

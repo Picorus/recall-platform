@@ -2,6 +2,16 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 27 Oct 2026 · P3.16 · Audit log
+- PR #63 (reports, dashboard, support, cheaper checks) merged with all checks green, after the repository went public.
+- **One log of everything** (migration 0045, view `audit_log`): every record of who did what (staff and access, areas, prices, business modes, calendar holds, brands, bookings and their notes, ads and reviews, refunds, money paid back, partners, payout runs and holds, riders and their documents and checks, fittings, screen loans, screens, keys and certificates, player releases, support steps and replies) in one timeline with when, who, part of the business, what, about what and why. It is a view over records that are never edited or deleted, so the log cannot be edited either. No message bodies, phones, emails, bank or document numbers in it.
+- **Nothing left out:** a test lists every table with a "who did it" column and fails if one is missing from the log. A new table added later must join the log.
+- **Audit log page** (super admin only): find by words (who, what, booking, rider…), pick a part, between two India dates; newest first; "Show older" pages on without skipping or repeating; download as a file (India times, up to 10,000 rows).
+- Tests: database 4 (nothing left out; search, part, "%" as a letter, dates; pages and the file; entries alike in the same second, no empty values, nothing personal); API 1 (super admin only, dates checked, the file); browser 1 (search by a rider's reason, filter by part).
+- **Second review, all fixed with tests:** some entries had an empty "why" (an approved ad, a hold without a reason, a limit lifted), which broke "Show older" and the download: never empty now. Two entries alike in the same second (two support notes) could be skipped between pages: each entry now pages by its own record's key. A refused sign-in for an unknown address showed whatever was typed (could be a password): now "not a member". Staff emails and the text of notes and support subjects are left out (only that a note was added). Rupee amounts and partner rates shown properly (₹1234.50, 2.50%). A download over 10,000 entries says so.
+- Open: one API sign-in test (30 wrong tries) failed once while another agent was using the same laptop database; it passed 4 times after. Watch it.
+- Next: P3.17, Settings (the last admin step).
+
 ## 27 Oct 2026 · P0.2 (CI) · Cheaper checks; repository to be public
 - GitHub Actions minutes ran out on 26 Oct (every job refused at once). Prateek chose to make the repository public (free minutes) and may make it private later.
 - Checked before: the whole history has no secrets or key files.
