@@ -1,6 +1,8 @@
 // CLAUDE.md: commit messages start with the step id, e.g. "P1.1.2: version areas".
 
-const STEP_SUBJECT = /^P\d+(\.\d+)*: \S/;
+// One step id, or a range of them for a commit that covers several ("P5.3–P5.4: …", en dash or "-").
+const STEP = 'P\\d+(?:\\.\\d+)*';
+const STEP_SUBJECT = new RegExp(`^${STEP}(?:[–-]${STEP})?: \\S`);
 const MERGE_SUBJECT = /^Merge (branch|pull request|remote-tracking branch) /;
 const REVERT_SUBJECT = /^Revert "P\d/;
 
