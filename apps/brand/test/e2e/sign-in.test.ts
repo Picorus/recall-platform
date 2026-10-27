@@ -409,6 +409,17 @@ it('a new business sets itself up from its GST number, sees its free week, books
       Math.floor(Date.now() / 1000),
     ),
   ).toBe('paid');
+  // P5.8: its tax invoice at once, to download.
+  await page.goto(`${SITE}/invoices?brand=irani-chai`);
+  const invoices = page.getByRole('table', { name: /^Invoices / });
+  await invoices.getByText('Tax invoice').waitFor();
+  await invoices.getByText('₹1,48,680').waitFor();
+  const [pdf] = await Promise.all([
+    page.waitForEvent('download'),
+    invoices.getByRole('link', { name: /^Download RC\// }).click(),
+  ]);
+  expect(pdf.suggestedFilename()).toMatch(/^RECALL-RC-\d{2}-\d{2}-\d{6}\.pdf$/);
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/brand-invoices.png`, fullPage: true });
   // In its campaigns: paid and scheduled, its ads being checked; "Book again" opens the same plan.
   await page.goto(`${SITE}/campaigns?brand=irani-chai`);
   const card = page.getByRole('listitem', { name: /^Campaign BK-/ });

@@ -70,3 +70,35 @@ export function rupees(paise: number): string {
   const a = Math.abs(paise);
   return `${sign}${Math.floor(a / 100)}.${String(a % 100).padStart(2, '0')}`;
 }
+
+/** P5.8: a tax invoice or credit note as printed (and listed on the brand portal). */
+export interface TaxDocument {
+  readonly docNo: string;
+  readonly kind: 'invoice' | 'credit-note';
+  /** UTC seconds. */
+  readonly issuedAt: number;
+  /** For a credit note: the invoice it reduces. */
+  readonly againstDoc: string | null;
+  readonly bookingId: string;
+  readonly brandId: string;
+  /** Billed to. */
+  readonly legalName: string;
+  /** The brand's GST number, when it is safe to print (P5.8); else null. */
+  readonly gstin: string | null;
+  /** The brand's GST number was held back (typed and not checked, or on two accounts). */
+  readonly gstinHeld: boolean;
+  /** State code of the place of supply ("36"). */
+  readonly placeOfSupply: string;
+  readonly sac: string;
+  readonly taxablePaise: number;
+  readonly cgstPaise: number;
+  readonly sgstPaise: number;
+  readonly igstPaise: number;
+  readonly totalPaise: number;
+  /** The GST rate in force when it was issued (basis points). */
+  readonly gstBp: number;
+  /** What was sold: the booking's bike-hours and India days ("YYYY-MM-DD"). */
+  readonly bikeHours: number;
+  readonly firstDay: string;
+  readonly lastDay: string;
+}

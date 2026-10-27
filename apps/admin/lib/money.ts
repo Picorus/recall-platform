@@ -66,6 +66,7 @@ export interface MoneyMonth {
     readonly yearTurnover: number;
     readonly eInvoice: keyof typeof E_INVOICE;
     readonly missingTaxDetails: readonly string[];
+    readonly gstinHeld: readonly { docNo: string; gstin: string; why: 'typed' | 'shared' }[];
   };
   readonly unknownPayments: readonly {
     linkId: string;

@@ -170,6 +170,18 @@ export default function MoneyPage() {
               {g.missingTaxDetails.join(', ')}
             </p>
           )}
+          {g.gstinHeld.length > 0 && (
+            <p className="error">
+              Invoices issued without the brand&apos;s GST number (typed and not checked, or on two
+              accounts; check the GST certificate):{' '}
+              {g.gstinHeld
+                .map(
+                  (h) =>
+                    `${h.docNo} (${h.gstin}, ${h.why === 'typed' ? 'typed' : 'on two accounts'})`,
+                )
+                .join(', ')}
+            </p>
+          )}
         </section>
       )}
       {m && m.unknownPayments.length > 0 && (

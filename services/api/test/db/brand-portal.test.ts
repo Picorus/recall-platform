@@ -5,7 +5,7 @@
 import { freshDatabase } from '@recall/db/test-db';
 import { fakeFileStore, fakeGst, fakeMessages, fakePayments } from '@recall/adapters';
 import { readFileSync } from 'node:fs';
-import { createAccount, saveAreaVersion, savePriceBook } from '@recall/db';
+import { applyLinkStatus, createAccount, saveAreaVersion, savePriceBook } from '@recall/db';
 import { launchAreas, PRICE_BOOK_V1, type CampaignReport } from '@recall/domain';
 import { randomBytes } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
@@ -21,6 +21,7 @@ let server: Server;
 let url = '';
 const NOW = Date.UTC(2027, 7, 23, 4, 30); // milliseconds
 const messages = fakeMessages();
+const payments = fakePayments();
 const PORTAL = 'https://book.recall.test';
 const ADMIN = 'https://admin.test';
 const CFG: StaffApiConfig = {
@@ -32,7 +33,7 @@ const CFG: StaffApiConfig = {
   messages,
   gst: fakeGst(),
   files: fakeFileStore({ baseUrl: 'http://files', secret: 's' }),
-  payments: fakePayments(),
+  payments,
 };
 const member = members(() => pool, NOW);
 /** The owner of Irani Chai, signed in once (a number may ask for only a few codes). */
@@ -571,5 +572,69 @@ describe('brand portal sign-in routes (P5.1)', () => {
     ] as const)
       expect((await fetch(`${url}${path}`, { headers: { cookie } })).status).toBe(404);
     expect((await fetch(`${url}/portal/report?booking=${booking}`)).status).toBe(401);
+  });
+
+  it('invoices: the tax invoice once paid, one or the whole year as a PDF; only its own (P5.8)', async () => {
+    const s = owner;
+    const get = (path: string, cookie = s.session) =>
+      fetch(`${url}${path}`, { headers: { cookie } });
+    const empty = await call('/portal/invoices?brand=irani-chai', undefined, { cookie: s.session });
+    expect(empty).toMatchObject({ status: 200, body: { documents: [], years: [] } });
+    // The booking paid at the provider (its link from review and pay): a tax invoice at once.
+    const link = await pool.query<{ link_id: string; booking_id: string }>(
+      `SELECT l.link_id, l.booking_id FROM payment_links l JOIN bookings b USING (booking_id)
+        WHERE b.brand_id = 'irani-chai' ORDER BY l.created_at DESC LIMIT 1`,
+    );
+    const linkId = link.rows[0]?.link_id ?? '';
+    payments.pay(linkId);
+    expect(await applyLinkStatus(pool, linkId, await payments.status(linkId), NOW / 1000)).toBe(
+      'paid',
+    );
+    const r = await call('/portal/invoices?brand=irani-chai', undefined, { cookie: s.session });
+    expect(r.status).toBe(200);
+    const docs = r.body.documents as {
+      docNo: string;
+      kind: string;
+      totalPaise: number;
+      bookingId: string;
+    }[];
+    expect(docs).toHaveLength(1);
+    expect(docs[0]).toMatchObject({
+      kind: 'invoice',
+      bookingId: link.rows[0]?.booking_id,
+      totalPaise: 5_664_000,
+    });
+    const fy = String(r.body.fy);
+    expect(r.body.years).toEqual([fy]);
+    const one = await get(
+      `/portal/invoices/pdf?brand=irani-chai&doc=${(docs[0]?.docNo ?? '').replaceAll('/', '-')}`,
+    );
+    expect(one.status).toBe(200);
+    expect(one.headers.get('content-type')).toBe('application/pdf');
+    expect(one.headers.get('content-disposition')).toMatch(/RECALL-RC-\d{2}-\d{2}-\d{6}\.pdf/);
+    expect(
+      Buffer.from(await one.arrayBuffer())
+        .subarray(0, 5)
+        .toString(),
+    ).toBe('%PDF-');
+    const year = await get(`/portal/invoices/year-pdf?brand=irani-chai&fy=${fy}`);
+    expect(year.status).toBe(200);
+    expect(year.headers.get('content-disposition')).toContain(`RECALL-invoices-${fy}.pdf`);
+    expect((await get('/portal/invoices/year-pdf?brand=irani-chai&fy=2019-20')).status).toBe(404);
+    expect((await get('/portal/invoices/pdf?brand=irani-chai&doc=RC-99-00-000001')).status).toBe(
+      404,
+    );
+    expect((await get('/portal/invoices/pdf?brand=irani-chai&doc=../x')).status).toBe(404);
+    // Not theirs: nothing.
+    const t = await signIn('+919848055555', 'sms');
+    expect((await get('/portal/invoices?brand=irani-chai', t.session)).status).toBe(404);
+    expect(
+      (
+        await get(
+          `/portal/invoices/pdf?brand=irani-chai&doc=${(docs[0]?.docNo ?? '').replaceAll('/', '-')}`,
+          t.session,
+        )
+      ).status,
+    ).toBe(404);
   });
 });

@@ -64,6 +64,23 @@ API's `/portal/...` routes and nothing else: a page on the portal can never reac
 - The rules' words are `packages/domain/src/booking-terms.ts`; changing them means a new
   `TERMS_VERSION` (brands with a page open are asked to read them again).
 
+## Final report (P5.7)
+
+- When a campaign's report is built, "See the report" shows on it under Done; the "Done" message
+  links to `/campaigns/<booking>/report` (signed out: sign in, then straight back to it).
+- Download PDF and Share (on a phone the PDF goes to WhatsApp or any app). PDFs per person per
+  hour: 30 (reports and invoices together).
+
+## Invoices (P5.8)
+
+- "Invoices" on the campaigns page: a year's tax invoices and credit notes; one or all as a PDF.
+- RECALL's legal name, GSTIN and address: Settings → Company details on invoices (super admin).
+  Until all three are filled in, every invoice PDF says it is not a valid tax invoice yet.
+- A brand's GST number is held back from its invoice when it was typed (not checked) or is on two
+  accounts. Money → GST summary lists those invoices: check the GST certificate, set the brand's
+  tax details on its Brands page (staff-set numbers are printed), and correct an issued invoice
+  with a credit note and a new invoice.
+
 ## Tests
 
 - `pnpm --filter @recall/brand test`: the sign-in page's checks.

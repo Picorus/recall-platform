@@ -1,6 +1,7 @@
 // P3.17: the settings a super admin changes in the admin portal (each saved as a new version, with
 // who and why; nothing overwritten). Prices, offers and rider pay rates are the price book's; staff
 // and roles are the Staff page's; keys to outside services live in the secret store, never here.
+import { gstinProblems } from './gst.js';
 import { INDIA_OFFSET_MINUTES } from './time.js';
 import { POC_PAY_ZONE, type PayZone } from './pay-zone.js';
 import {
@@ -61,6 +62,21 @@ export interface MessageWordings {
   readonly reportReady: Wording;
 }
 
+/**
+ * P5.8: RECALL's own details printed on every tax invoice and credit note. Empty until the company
+ * is registered: documents then say plainly that they are not valid tax invoices yet.
+ */
+export interface CompanyDetails {
+  readonly legalName: string;
+  /** RECALL's GSTIN, or "" until it has one. */
+  readonly gstin: string;
+  readonly address: string;
+}
+
+/** Whether the company's details are all filled in (a document can be a valid tax invoice). */
+export const companySet = (c: CompanyDetails): boolean =>
+  c.legalName !== '' && c.gstin !== '' && c.address !== '';
+
 /** The bank that lends riders the money for a screen (the loan is between the rider and the bank). */
 export interface LoanBank {
   readonly name: string;
@@ -82,6 +98,8 @@ export interface Settings {
    * 2026: off until a super admin turns it on). Its length and bike-hours are the price book's.
    */
   readonly freeWeek: { readonly on: boolean };
+  /** P5.8: RECALL's legal name, GSTIN and address on invoices. */
+  readonly company: CompanyDetails;
 }
 
 export type SettingKey = keyof Settings;
@@ -96,6 +114,7 @@ export const SETTING_KEYS = [
   'riderSignIn',
   'brandSignIn',
   'freeWeek',
+  'company',
 ] as const satisfies readonly SettingKey[];
 
 /** Placeholders each wording may use, and the ones its email text must have. */
@@ -131,6 +150,8 @@ export const DEFAULT_SETTINGS: Settings = {
   riderSignIn: DEFAULT_RIDER_SIGN_IN,
   brandSignIn: DEFAULT_BRAND_SIGN_IN,
   freeWeek: { on: false },
+  // Not registered yet (Prateek gives them after incorporation).
+  company: { legalName: '', gstin: '', address: '' },
 };
 
 /** Fills {placeholders} (unknown ones are left as written; checkSetting refuses them on save). */
@@ -320,6 +341,22 @@ export function checkSetting<K extends SettingKey>(key: K, value: unknown): Sett
         const on = obj(value, 'Free week').on;
         if (typeof on !== 'boolean') fail('Free week: on or off');
         return { on: on as boolean };
+      }
+      case 'company': {
+        const o = obj(value, 'Company details');
+        // All empty: not registered yet (documents say they are not valid tax invoices).
+        if (
+          [o.legalName, o.gstin, o.address].every((x) => typeof x === 'string' && x.trim() === '')
+        )
+          return { legalName: '', gstin: '', address: '' };
+        const gstin = typeof o.gstin === 'string' ? o.gstin.trim().toUpperCase() : '';
+        const problems = gstinProblems(gstin);
+        if (problems.length > 0) fail(`Company GSTIN: ${problems[0] ?? ''}`);
+        return {
+          legalName: oneLine(o.legalName, 'Company legal name', 2, 120),
+          gstin,
+          address: text(o.address, 'Company address', 10, 300),
+        };
       }
       case 'brandSignIn': {
         const o = obj(value, 'Brand sign-in');

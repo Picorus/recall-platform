@@ -36,7 +36,14 @@
 // P5.7, the final report (the link in the "Done" message has no brand: the report says whose it is):
 //   GET  /portal/report?booking=<id>        the report as a page, its summary, the business
 //   GET  /portal/report/pdf?booking=<id>    its PDF, to keep or share
+// P5.8, invoices and credit notes:
+//   GET  /portal/invoices?brand=<id>[&fy=2027-28]      a year's documents, the years there are
+//   GET  /portal/invoices/pdf?brand=<id>&doc=RC-27-28-000123  one as a PDF (its number, - for /)
+//   GET  /portal/invoices/year-pdf?brand=<id>&fy=<fy>  all of a year's in one PDF
 import {
+  brandDocument,
+  brandDocuments,
+  priceBooks,
   campaignReportFor,
   askSalesForDeal,
   payFromPortal,
@@ -83,8 +90,11 @@ import {
   type BrandCodeChannel,
   reportPeriod,
   reportSummary,
+  priceBookAt,
+  isoAt,
+  type TaxDocument,
 } from '@recall/domain';
-import { renderReportHtml, renderReportPdf } from '@recall/workers';
+import { renderReportHtml, renderReportPdf, renderTaxDocumentsPdf } from '@recall/workers';
 import { createHmac } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Pool } from 'pg';
@@ -718,6 +728,55 @@ export async function handleBrandPortal(
       'x-content-type-options': 'nosniff',
     });
     res.end(pdf);
+    return true;
+  }
+  /** Documents as a PDF download, with RECALL's details as they are now. */
+  const sendDocuments = async (docs: readonly TaxDocument[], name: string) => {
+    if (!tryOnce(previews, `pdf:${me.address}`, now, 30))
+      throw new HttpError(429, 'Too many downloads this hour: try again later');
+    const book = priceBookAt(await priceBooks(pool), isoAt(now));
+    const pdf = Buffer.from(
+      await renderTaxDocumentsPdf(
+        docs,
+        await setting(pool, 'company'),
+        book?.taxes.supplierStateCode ?? '36',
+      ),
+    );
+    res.writeHead(200, {
+      'content-type': 'application/pdf',
+      'content-length': pdf.length,
+      'content-disposition': `attachment; filename="${name}.pdf"`,
+      'cache-control': 'private, no-store',
+      'x-content-type-options': 'nosniff',
+    });
+    res.end(pdf);
+  };
+  if (path === '/portal/invoices' && method === 'GET') {
+    const a = await account();
+    const fy = new URL(req.url ?? '/', 'http://x').searchParams.get('fy');
+    send(res, 200, { account: a, ...(await brandDocuments(pool, a.brandId, fy, now)) });
+    return true;
+  }
+  if (path === '/portal/invoices/pdf' && method === 'GET') {
+    const a = await account();
+    // The number with dashes for slashes ("RC-27-28-000123"): plain in an address.
+    const m = /^(RC|CN)-(\d{2}-\d{2})-(\d{6})$/.exec(
+      new URL(req.url ?? '/', 'http://x').searchParams.get('doc') ?? '',
+    );
+    const d = m ? await brandDocument(pool, a.brandId, `${m[1]}/${m[2]}/${m[3]}`) : undefined;
+    if (!d) throw new HttpError(404, 'No such invoice', { code: 'no-document' });
+    await sendDocuments([d], `RECALL-${d.docNo.replaceAll('/', '-')}`);
+    return true;
+  }
+  if (path === '/portal/invoices/year-pdf' && method === 'GET') {
+    const a = await account();
+    const fy = new URL(req.url ?? '/', 'http://x').searchParams.get('fy') ?? '';
+    if (!/^\d{4}-\d{2}$/.test(fy)) throw new HttpError(400, 'fy: like 2027-28');
+    const y = await brandDocuments(pool, a.brandId, fy, now);
+    if (y.documents.length === 0)
+      throw new HttpError(404, 'No invoices that year', { code: 'no-document' });
+    // Oldest first, as an accountant files them.
+    await sendDocuments([...y.documents].reverse(), `RECALL-invoices-${fy}`);
     return true;
   }
   if (path === '/portal/campaigns' && method === 'GET') {

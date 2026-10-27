@@ -127,6 +127,11 @@ export interface Settings {
   readonly riderSignIn: RiderSignInRules;
   readonly brandSignIn: BrandSignInRules;
   readonly freeWeek: { readonly on: boolean };
+  readonly company: {
+    readonly legalName: string;
+    readonly gstin: string;
+    readonly address: string;
+  };
 }
 export type SettingKey = keyof Settings;
 

@@ -101,6 +101,30 @@ export interface Campaign {
   readonly report: boolean;
 }
 
+/** P5.8: a tax invoice or credit note. */
+export interface TaxDocument {
+  readonly docNo: string;
+  readonly kind: 'invoice' | 'credit-note';
+  readonly issuedAt: number;
+  readonly againstDoc: string | null;
+  readonly bookingId: string;
+  readonly gstin: string | null;
+  readonly gstinHeld: boolean;
+  readonly taxablePaise: number;
+  readonly cgstPaise: number;
+  readonly sgstPaise: number;
+  readonly igstPaise: number;
+  readonly totalPaise: number;
+}
+
+export interface Invoices {
+  readonly account: Account;
+  readonly years: readonly string[];
+  readonly fy: string;
+  readonly documents: readonly TaxDocument[];
+  readonly truncated: boolean;
+}
+
 /** P5.7: a campaign's final report. */
 export interface Report {
   readonly account: Account;

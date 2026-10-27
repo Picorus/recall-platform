@@ -74,6 +74,7 @@ export default function CampaignsPage() {
               <Link className="rc-button rc-button--primary" href={`/book?${q}`}>
                 Book
               </Link>
+              <Link href={`/invoices?${q}`}>Invoices</Link>
               <Link href={`/business?${q}`}>Business details</Link>
             </div>
           </div>

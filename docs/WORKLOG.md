@@ -2,6 +2,15 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 27 Oct 2026 · P5.8 · Brand portal: invoices and credit notes
+- **Invoices on the portal** (`packages/db/src/brand-invoices.ts`, `GET /portal/invoices`, `/portal/invoices/pdf`, `/portal/invoices/year-pdf`, page `/invoices`, linked from campaigns): every tax invoice and credit note of the business by financial year (April–March), newest first, with the amount before GST, the GST and the total; download one, or all of the year's in one PDF (oldest first, as an accountant files them). On a phone the table keeps number, date, total and PDF.
+- **The invoice PDF** (`services/workers/src/tax-document-pdf.ts`): TAX INVOICE or CREDIT NOTE (with the invoice it reduces), number and date, from (RECALL) and billed to, GSTIN, place of supply, SAC, what was sold (bike-hours and days), taxable value, CGST + SGST or IGST with their rates, total. Same documents, same file.
+- **RECALL's own details** (new setting "Company details on invoices": legal name, GSTIN with its check digit, address; migration 0058). Empty until the company is registered: until then every page says plainly it is not a valid tax invoice yet. Filled in, a download gives the same document with them.
+- **A brand's GST number goes on an invoice only when safe** (Prateek, today): set by our staff, or read from the GST records and on no other account. Typed by the brand (not checked), or on two accounts, the invoice is issued without it; the number held back and why are kept with the invoice, shown on Money (and in the accountant's summary file), and the brand is told it is added once our team has checked it. A credit note follows its invoice.
+- Tests: domain (the company setting); database 1 (printed from the record, held when typed, held for both accounts once a second one has it, printed again once staff set it; the month's summary lists them); workers 2 (every kind drawn with and without company details; same bytes); API 1 (paid → its invoice listed, one and the year as a PDF, odd numbers and other people refused); brand portal in a browser (the invoice listed after paying, its PDF downloaded).
+- Open: a corrected invoice (once staff confirm a held GST number) is a credit note and a new invoice; staff do it by hand for now. RECALL's legal name, GSTIN and address from Prateek after incorporation. E-invoices (IRN) when the turnover needs them, with the GST provider (P6).
+- Next: P5.9 help and account.
+
 ## 27 Oct 2026 · P5.7 · Brand portal: final report
 - PR #74 (P5.5–P5.6) merged with all checks green.
 - **The report on the portal** (`GET /portal/report`, `GET /portal/report/pdf`, page `/campaigns/<booking>/report`): the same report our team sees and the "Done" message links to (P1.9, P3.14): plays delivered of promised, different bikes, made-up plays, the heat map, busiest streets, hour by hour, people as an approximate range (never billed). "Download PDF", "Share on WhatsApp" (on a phone the PDF itself goes to WhatsApp or any app; elsewhere the summary in WhatsApp), "Book again".
