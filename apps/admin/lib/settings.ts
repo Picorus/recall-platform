@@ -75,6 +75,8 @@ export interface BrandSignInRules {
   readonly maxWeeks: number;
   readonly bookingsPerDay: number;
   readonly adUploadsPerDay: number;
+  readonly questionsPerDay: number;
+  readonly teamMax: number;
 }
 
 /** What each brand sign-in rule means, in the order shown (P5.1). */
@@ -94,6 +96,8 @@ export const BRAND_SIGN_IN_LABELS: readonly (readonly [keyof BrandSignInRules, s
   ['maxWeeks', 'Most weeks one portal booking may run'],
   ['bookingsPerDay', 'Bookings one person may make on the portal in a day'],
   ['adUploadsPerDay', 'Ad files one person may upload on the portal in a day'],
+  ['questionsPerDay', 'Questions one person may send from the portal Help in a day'],
+  ['teamMax', 'Most team members on one business'],
 ];
 
 /** What each rider sign-in rule means, in the order shown. */

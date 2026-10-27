@@ -2,6 +2,13 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 28 Oct 2026 · P5.9 · Brand portal: help and team
+- **Help** (`packages/domain/src/brand-help.ts`, `packages/db/src/brand-help.ts`, `GET/POST /portal/help`, page `/help`): plain answers to what brands ask most (what they pay for, proof of plays, shortfalls, people estimate, ad deadline, starting sooner, changes, invoices, colleagues); numbers from the price book, never written in. Our brand numbers to call or WhatsApp, the hours and whether we are open now (Settings → Support). The ad rules in words, from the same settings the automatic checks use. "Ask us": a question goes to the support desk as a conversation about the business (replies by WhatsApp or email); "Your questions" shows where each stands. Questions per person per day: Settings → Brand portal limits (10).
+- **Team** (`GET/POST /portal/team`, page `/team`): who can use the business; an owner adds people by mobile number or work email as "Owner" or "Can book", changes or removes them; never themselves; at most 20 people (a setting). Every change is a new version with who and why, as staff changes are.
+- Links from campaigns: Invoices, Team, Help; Help links to business details, team and invoices.
+- Tests: domain 2 (ad rules in words follow the settings; answers carry no number that is a setting); API 1 (answers, ad rules, a question becomes a support conversation and is listed; the owner adds a booker who then sees the business, a booker cannot change the team, nobody removes themselves, a removed person loses it); brand portal in a browser (an answer opened, a question sent and listed, a colleague added).
+- Next: P5.10 agencies.
+
 ## 27 Oct 2026 · P5.8 · Brand portal: invoices and credit notes
 - **Invoices on the portal** (`packages/db/src/brand-invoices.ts`, `GET /portal/invoices`, `/portal/invoices/pdf`, `/portal/invoices/year-pdf`, page `/invoices`, linked from campaigns): every tax invoice and credit note of the business by financial year (April–March), newest first, with the amount before GST, the GST and the total; download one, or all of the year's in one PDF (oldest first, as an accountant files them). On a phone the table keeps number, date, total and PDF.
 - **The invoice PDF** (`services/workers/src/tax-document-pdf.ts`): TAX INVOICE or CREDIT NOTE (with the invoice it reduces), number and date, from (RECALL) and billed to, GSTIN, place of supply, SAC, what was sold (bike-hours and days), taxable value, CGST + SGST or IGST with their rates, total. Same documents, same file.

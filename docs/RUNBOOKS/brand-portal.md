@@ -81,6 +81,13 @@ API's `/portal/...` routes and nothing else: a page on the portal can never reac
   tax details on its Brands page (staff-set numbers are printed), and correct an issued invoice
   with a credit note and a new invoice.
 
+## Help and team (P5.9)
+
+- Help: answers, our numbers (Settings → Support; numbers labelled "Brands" or "Sales" are shown,
+  else all), the ad rules, and "Ask us" (a conversation on the Support page, about that business).
+- Team: owners add people by mobile number or email, as Owner or Can book, and remove them. Staff
+  can still give or remove access on the admin Brands page. Limits: Settings → Brand portal limits.
+
 ## Tests
 
 - `pnpm --filter @recall/brand test`: the sign-in page's checks.

@@ -262,6 +262,27 @@ it('a person given access signs in by email and sees their brand', async () => {
   await card.getByText('Waiting for your payment', { exact: false }).waitFor();
   await card.getByRole('link', { name: 'Book again' }).waitFor();
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/brand-campaigns.png`, fullPage: true });
+  // P5.9: Help (answers, a question to our team) and Team (the owner adds a colleague).
+  await page.getByRole('link', { name: 'Help' }).click();
+  await page.getByRole('heading', { name: 'Questions and answers' }).waitFor();
+  await page.getByText('What do I pay for?').click();
+  await page.getByText(/Each bike-hour plays your ads \d+ times/).waitFor();
+  const ask = page.getByRole('form', { name: 'Ask us' });
+  await ask.getByLabel('What it is about').fill('Start sooner');
+  await ask.getByLabel('Your question').fill('Can our campaign start next week?');
+  await ask.getByRole('button', { name: 'Send to our team' }).click();
+  await page.getByText('Sent. Our team answers on email').waitFor();
+  await page.getByRole('region', { name: 'Your questions' }).getByText('Start sooner').waitFor();
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/brand-help.png`, fullPage: true });
+  await page.getByRole('link', { name: 'Team' }).click();
+  const add = page.getByRole('form', { name: 'Add a person' });
+  await add.getByLabel('Mobile number or work email').fill('ravi@chaico.in');
+  await add.getByRole('button', { name: 'Add' }).click();
+  await page.getByText('ravi@chaico.in can now sign in').waitFor();
+  await page.getByRole('list', { name: 'People' }).getByText('ravi@chaico.in').waitFor();
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/brand-team.png`, fullPage: true });
+  await page.goto(`${SITE}/campaigns?brand=chai-co`);
+  await page.getByRole('heading', { name: 'Chai Co' }).waitFor();
   // The site passes only the portal's routes: a staff route is not reachable through it.
   const staff = await page.evaluate(async () => (await fetch('/api/staff/me')).status);
   expect(staff).toBe(404);

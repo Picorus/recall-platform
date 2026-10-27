@@ -36,13 +36,23 @@
 // P5.7, the final report (the link in the "Done" message has no brand: the report says whose it is):
 //   GET  /portal/report?booking=<id>        the report as a page, its summary, the business
 //   GET  /portal/report/pdf?booking=<id>    its PDF, to keep or share
+// P5.9, help and team:
+//   GET  /portal/help?brand=<id>    answers, our numbers and hours, the ad rules, its questions
+//   POST /portal/help?brand=<id>    { subject, text }  a question to our support desk
+//   GET  /portal/team?brand=<id>    who has access
+//   POST /portal/team?brand=<id>    { address, role: owner|booker, active }  its owner only
 // P5.8, invoices and credit notes:
 //   GET  /portal/invoices?brand=<id>[&fy=2027-28]      a year's documents, the years there are
 //   GET  /portal/invoices/pdf?brand=<id>&doc=RC-27-28-000123  one as a PDF (its number, - for /)
 //   GET  /portal/invoices/year-pdf?brand=<id>&fy=<fy>  all of a year's in one PDF
 import {
+  askFromPortal,
+  brandQuestions,
+  brandTeam,
+  setTeamMember,
   brandDocument,
   brandDocuments,
+  priceBooks,
   campaignReportFor,
   askSalesForDeal,
   payFromPortal,
@@ -90,6 +100,15 @@ import {
   reportPeriod,
   reportSummary,
   type TaxDocument,
+  adRulesText,
+  brandHelp,
+  PRICE_BOOK_V1,
+  BRAND_MEMBER_ROLES,
+  DEFAULT_AD_RULES,
+  priceBookAt,
+  isoAt,
+  supportOpenAt,
+  type BrandMemberRole,
 } from '@recall/domain';
 import { renderReportHtml, renderReportPdf, renderTaxDocumentsPdf } from '@recall/workers';
 import { createHmac } from 'node:crypto';
@@ -773,6 +792,89 @@ export async function handleBrandPortal(
       );
     // Oldest first, as an accountant files them.
     await sendDocuments([...y.documents].reverse(), `RECALL-invoices-${fy}`);
+    return true;
+  }
+  if (path === '/portal/help' && method === 'GET') {
+    const a = await account();
+    const support = await setting(pool, 'support');
+    // The brands' line(s) when labelled so; otherwise every number.
+    const brands = support.phones.filter((p) => /brand|sales/i.test(p.label));
+    const book = priceBookAt(await priceBooks(pool), isoAt(now));
+    send(res, 200, {
+      account: a,
+      phones: (brands.length ? brands : support.phones).map((p) => ({
+        label: p.label,
+        phone: p.phone,
+        whatsapp: p.whatsapp,
+      })),
+      open: supportOpenAt(support, now),
+      days: support.days,
+      opens: support.opens,
+      closes: support.closes,
+      answers: brandHelp(book?.playsPerBikeHour ?? PRICE_BOOK_V1.playsPerBikeHour),
+      adRules: adRulesText(book?.ads ?? DEFAULT_AD_RULES),
+      questions: await brandQuestions(pool, a.brandId),
+    });
+    return true;
+  }
+  if (path === '/portal/help' && method === 'POST') {
+    const a = await account();
+    const b = await jsonBody(req);
+    const threadId = await refused(() =>
+      askFromPortal(
+        pool,
+        {
+          brandId: a.brandId,
+          contact: me.address,
+          subject: str(b, 'subject', 200),
+          text: str(b, 'text', 5000),
+        },
+        now,
+        rules,
+      ),
+    );
+    send(res, 200, { threadId });
+    return true;
+  }
+  if (path === '/portal/team' && method === 'GET') {
+    const a = await account();
+    send(res, 200, {
+      account: a,
+      me: me.address,
+      team: (await brandTeam(pool, a.brandId)).map((m) => ({
+        address: m.address,
+        shown: shown(m.address),
+        role: m.role,
+        since: m.setAt,
+      })),
+      max: rules.teamMax,
+    });
+    return true;
+  }
+  if (path === '/portal/team' && method === 'POST') {
+    const a = await account();
+    if (a.role !== 'owner')
+      throw new HttpError(403, 'Only an owner changes the team', { code: 'not-owner' });
+    const b = await jsonBody(req);
+    const role = b.role;
+    if (!BRAND_MEMBER_ROLES.includes(role as BrandMemberRole))
+      throw new HttpError(400, 'role: owner or booker');
+    if (typeof b.active !== 'boolean') throw new HttpError(400, 'active: true or false');
+    const version = await refused(() =>
+      setTeamMember(
+        pool,
+        {
+          brandId: a.brandId,
+          owner: me.address,
+          address: addressOf(b),
+          role: role as BrandMemberRole,
+          active: b.active as boolean,
+        },
+        now,
+        rules,
+      ),
+    );
+    send(res, 200, { version });
     return true;
   }
   if (path === '/portal/campaigns' && method === 'GET') {

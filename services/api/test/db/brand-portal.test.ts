@@ -637,4 +637,62 @@ describe('brand portal sign-in routes (P5.1)', () => {
       ).status,
     ).toBe(404);
   });
+
+  it('help: answers, numbers, ad rules, a question to support; team: the owner adds and removes (P5.9)', async () => {
+    const s = owner;
+    const c = { origin: PORTAL, cookie: s.session };
+    const h = await call('/portal/help?brand=irani-chai', undefined, { cookie: s.session });
+    expect(h.status).toBe(200);
+    expect((h.body.answers as unknown[]).length).toBeGreaterThan(5);
+    expect((h.body.adRules as string[])[0]).toMatch(/15 seconds/);
+    expect(
+      await call('/portal/help?brand=irani-chai', { subject: 'Hi', text: 'x' }, c),
+    ).toMatchObject({ status: 400 });
+    const q = await call(
+      '/portal/help?brand=irani-chai',
+      { subject: 'Start sooner', text: 'Can our campaign start next week?' },
+      c,
+    );
+    expect(q.status).toBe(200);
+    const thread = await pool.query(
+      'SELECT party_kind, party_id, subject FROM support_threads WHERE thread_id = $1',
+      [q.body.threadId],
+    );
+    expect(thread.rows[0]).toEqual({
+      party_kind: 'brand',
+      party_id: 'irani-chai',
+      subject: 'Start sooner',
+    });
+    const again = await call('/portal/help?brand=irani-chai', undefined, { cookie: s.session });
+    expect((again.body.questions as { subject: string }[]).map((x) => x.subject)).toContain(
+      'Start sooner',
+    );
+    // Team: the owner adds a booker, who then sees the business; a booker cannot change the team.
+    const team = await call('/portal/team?brand=irani-chai', undefined, { cookie: s.session });
+    expect(team.status).toBe(200);
+    const n = (team.body.team as unknown[]).length;
+    const set = (address: string, role: string, active: boolean, cookie = s.session) =>
+      call('/portal/team?brand=irani-chai', { address, role, active }, { origin: PORTAL, cookie });
+    expect((await set('98480 33333', 'booker', true)).status).toBe(200);
+    const b = await signIn('+919848033333', 'sms');
+    const theirs = await call('/portal/me', undefined, { cookie: b.session });
+    expect(theirs.body.accounts).toEqual([
+      expect.objectContaining({ brandId: 'irani-chai', role: 'booker' }),
+    ]);
+    expect(await set('98480 66666', 'owner', true, b.session)).toMatchObject({
+      status: 403,
+      body: { why: 'not-owner' },
+    });
+    // Not themselves; a made-up role refused; removed: gone.
+    const meNow = await call('/portal/me', undefined, { cookie: s.session });
+    expect(await set(String(meNow.body.address), 'booker', false)).toMatchObject({
+      status: 400,
+      body: { why: 'self' },
+    });
+    expect((await set('98480 33333', 'boss', true)).status).toBe(400);
+    expect((await set('98480 33333', 'booker', false)).status).toBe(200);
+    expect((await call('/portal/me', undefined, { cookie: b.session })).body.accounts).toEqual([]);
+    const after = await call('/portal/team?brand=irani-chai', undefined, { cookie: s.session });
+    expect((after.body.team as unknown[]).length).toBe(n);
+  });
 });

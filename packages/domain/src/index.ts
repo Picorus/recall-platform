@@ -42,6 +42,7 @@ export * from './ad-checks.js';
 export * from './ad-review.js';
 export * from './delivery.js';
 export * from './riders.js';
+export * from './brand-help.js';
 export * from './settings.js';
 export * from './rider-sign-in.js';
 export * from './brand-sign-in.js';

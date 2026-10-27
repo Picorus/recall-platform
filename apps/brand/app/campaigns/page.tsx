@@ -75,6 +75,8 @@ export default function CampaignsPage() {
                 Book
               </Link>
               <Link href={`/invoices?${q}`}>Invoices</Link>
+              <Link href={`/team?${q}`}>Team</Link>
+              <Link href={`/help?${q}`}>Help</Link>
               <Link href={`/business?${q}`}>Business details</Link>
             </div>
           </div>

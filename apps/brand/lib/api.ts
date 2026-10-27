@@ -101,6 +101,36 @@ export interface Campaign {
   readonly report: boolean;
 }
 
+/** P5.9: Help. */
+export interface Help {
+  readonly account: Account;
+  readonly phones: readonly { label: string; phone: string; whatsapp: boolean }[];
+  readonly open: boolean;
+  readonly days: readonly number[];
+  readonly opens: string;
+  readonly closes: string;
+  readonly answers: readonly { q: string; a: string }[];
+  readonly adRules: readonly string[];
+  readonly questions: readonly {
+    at: number;
+    subject: string;
+    state: 'open' | 'waiting' | 'done';
+  }[];
+}
+
+/** P5.9: Team. */
+export interface Team {
+  readonly account: Account;
+  readonly me: string;
+  readonly team: readonly {
+    address: string;
+    shown: string;
+    role: 'owner' | 'booker';
+    since: number;
+  }[];
+  readonly max: number;
+}
+
 /** P5.8: a tax invoice or credit note. */
 export interface TaxDocument {
   readonly docNo: string;
