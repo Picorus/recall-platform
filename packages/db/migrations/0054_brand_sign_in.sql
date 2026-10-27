@@ -129,7 +129,7 @@ ALTER TABLE settings ADD CONSTRAINT settings_key_check CHECK (key IN
   ('cities', 'fittingCentres', 'support', 'messages', 'payZone', 'loanBank', 'riderSignIn',
    'brandSignIn'));
 
--- The audit log (0049) with portal access and brand portal sign-outs in it.
+-- The audit log (0049) with portal access and brand portal sign-ins and sign-outs in it.
 CREATE OR REPLACE VIEW audit_log AS
 SELECT at, coalesce(who, '') AS who, area, action, coalesce(ref, '') AS ref,
        coalesce(detail, '') AS detail, uid
@@ -244,6 +244,8 @@ UNION ALL SELECT at, by_who, 'screens', CASE WHEN seen THEN 'fitting: panel seen
 UNION ALL SELECT set_at, set_by, 'brands', CASE WHEN active THEN 'portal access set' ELSE 'portal access removed' END,
                  brand_id, concat_ws(': ', address || ' as ' || role, reason),
                  'brand_members:' || brand_id || ':' || address || ':' || version FROM brand_members
+UNION ALL SELECT started_at, address, 'brands', 'brand portal signed in', address, ip, 'brand_sessions:' || token_hash
+            FROM brand_sessions
 UNION ALL SELECT at, by, 'brands', 'brand portal signed out', address, why, 'brand_session_ends:' || token_hash
             FROM brand_session_ends
 ) x;

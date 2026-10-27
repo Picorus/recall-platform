@@ -12,7 +12,7 @@ export interface BrandSignInRules {
   readonly codesPer15Min: number;
   /** Codes one number or email may get in a day (India day), from anywhere. */
   readonly codesPerDay: number;
-  /** Wrong codes typed for one number or email in a day, from anywhere. */
+  /** Wrong codes typed for one number or email in a day, from anywhere, against a live code. */
   readonly wrongPerNumberDay: number;
   /** Codes one connection may ask for in an hour, for any numbers or emails. */
   readonly codesPerAddressHour: number;

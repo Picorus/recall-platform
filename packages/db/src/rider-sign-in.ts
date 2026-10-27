@@ -211,7 +211,7 @@ export async function checkRiderCode(
         };
       const wrongToday = await c.query<{ n: string }>(
         `SELECT count(*) AS n FROM rider_code_tries
-          WHERE phone = $1 AND NOT ok AND at >= to_timestamp($2)`,
+          WHERE phone = $1 AND NOT ok AND code_id IS NOT NULL AND at >= to_timestamp($2)`,
         [typed.phone, indiaDayStart(now)],
       );
       if (Number(wrongToday.rows[0]?.n ?? 0) >= rules.wrongPerNumberDay)
@@ -242,7 +242,9 @@ export async function checkRiderCode(
           [codeId, typed.phone, ok, typed.ip, now],
         );
       if (!code || wrong >= rules.triesPerCode) {
-        await tryRow(code?.code_id ?? null, false);
+        // Kept, but not counted against the number or the code: no code was live, so it was no
+        // guess (a stranger typing codes cannot lock anyone out).
+        await tryRow(null, false);
         return {
           refused: 'This code no longer works: ask for a new one',
           why: { code: 'code-dead' },

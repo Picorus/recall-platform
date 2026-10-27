@@ -326,6 +326,32 @@ describe('brand portal sign-in (P5.1)', () => {
     expect(out.rowCount).toBeGreaterThan(0);
   });
 
+  it('a stranger typing codes with none live cannot lock the owner out; sign-ins in the audit log (review)', async () => {
+    const m = fakeMessages();
+    const n = '+919848066666';
+    // No code live: wrong tries are kept but never counted against the number.
+    for (let i = 0; i < R.wrongPerNumberDay + 2; i++)
+      await checkBrandCode(
+        pool,
+        { address: n, code: '000000', ip: '10.9.9.9' },
+        SECRET,
+        NOW + i,
+      ).catch(() => undefined);
+    await askBrandCode(pool, m, { address: n, channel: 'sms', ip: '10.8.0.1' }, SECRET, NOW + 5000);
+    const s = await checkBrandCode(
+      pool,
+      { address: n, code: lastCode(m, n), ip: '10.8.0.1' },
+      SECRET,
+      NOW + 5001,
+    );
+    expect(await brandSession(pool, s.token, NOW + 5002)).toMatchObject({ address: n });
+    const audit = await pool.query<{ ref: string; detail: string }>(
+      `SELECT ref, detail FROM audit_log WHERE action = 'brand portal signed in' AND ref = $1`,
+      [n],
+    );
+    expect(audit.rows).toEqual([{ ref: n, detail: '10.8.0.1' }]);
+  });
+
   it('nothing is ever changed or removed', async () => {
     await expect(pool.query('DELETE FROM brand_codes')).rejects.toThrow();
     await expect(pool.query('UPDATE brand_members SET active = true')).rejects.toThrow();
