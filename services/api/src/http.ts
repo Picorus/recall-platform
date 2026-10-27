@@ -125,3 +125,15 @@ export async function withUpload(
     uploading.set(kind, (uploading.get(kind) ?? 1) - 1);
   }
 }
+
+/** The raw body (a signature covers its exact bytes), up to `max` bytes (16 KB by default). */
+export async function rawBody(req: IncomingMessage, max = 16 * 1024): Promise<string> {
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const c of req) {
+    size += (c as Buffer).length;
+    if (size > max) throw new HttpError(413, 'Too large');
+    chunks.push(c as Buffer);
+  }
+  return Buffer.concat(chunks).toString('utf8');
+}

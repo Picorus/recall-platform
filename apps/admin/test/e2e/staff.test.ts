@@ -5,6 +5,7 @@ import {
   fakeBankCheck,
   fakeEsign,
   fakeFileStore,
+  fakeInbound,
   fakeKyc,
   fakeMaps,
   fakeMessages,
@@ -39,6 +40,7 @@ const KEY = randomBytes(32);
 const PW = 'green kettle 42 mango';
 const payments = fakePayments();
 const messages = fakeMessages();
+const inbound = fakeInbound();
 const files = fakeFileStore({ baseUrl: `${SITE}/api/files`, secret: 'e2e' });
 const fixture = (name: string) =>
   new URL(`../../../../packages/domain/test/fixtures/ads/${name}`, import.meta.url).pathname;
@@ -69,6 +71,7 @@ beforeAll(async () => {
         },
         payouts: fakePayouts(),
         reports: { maps: fakeMaps(), messages, portalUrl: 'http://localhost:3000' },
+        inbound,
       },
       (l) => console.error(l),
       clock,
@@ -1031,6 +1034,63 @@ it('the Dashboard: this month so far and month by month', async () => {
   if (process.env.SCREENSHOT_DIR) {
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.screenshot({ path: `${process.env.SCREENSHOT_DIR}/dashboard.png`, fullPage: true });
+  }
+  expect(errors).toEqual([]);
+}, 120_000);
+
+it('the Support page: a WhatsApp message from a rider, answered, noted and done', async () => {
+  // Ravi Kumar (the rider added earlier, +91 98480 12345) writes on WhatsApp.
+  const post = inbound.message({
+    channel: 'whatsapp',
+    providerId: 'wamid.e2e.1',
+    from: '+919848012345',
+    text: 'My screen is not turning on',
+    at: Math.floor(clock() / 1000),
+  });
+  const r = await fetch(`http://127.0.0.1:${(api.address() as AddressInfo).port}/support/inbound`, {
+    method: 'POST',
+    headers: { 'x-message-signature': post.signature },
+    body: post.body,
+  });
+  expect(r.status).toBe(200);
+
+  const page = await browser.newPage();
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  shift += 30_000;
+  await page.goto(`${SITE}/sign-in`);
+  await page.getByLabel('Email').fill('prateek@recall.in');
+  await page.getByLabel('Password').fill(PW);
+  await page.getByLabel('Code from your authenticator app').fill(totpCode(SECRET.value, step()));
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.getByText('Prateek · Super admin').waitFor();
+  await page.getByRole('link', { name: 'Support' }).click();
+  const row = page.getByRole('table', { name: 'Inbox' }).getByRole('row', { name: /Ravi Kumar/ });
+  await row.getByText(/^waiting \d+ min$/).waitFor();
+  await row.getByRole('button', { name: 'Open' }).click();
+  const conv = page.getByRole('region', { name: /^Conversation SUP-/ });
+  await conv
+    .getByRole('list', { name: 'History' })
+    .getByText('My screen is not turning on')
+    .waitFor();
+  await conv
+    .getByLabel('Reply on WhatsApp (they see this)')
+    .fill('We will call you in 10 minutes.');
+  await conv.getByRole('button', { name: 'Send reply' }).click();
+  await conv.getByText('Reply sent.').waitFor();
+  expect(messages.sent.at(-1)).toMatchObject({ to: '+919848012345', template: 'support_reply' });
+  await conv.getByLabel('Note (staff only)').fill('Loose cable; fixed at the warehouse.');
+  await conv.getByRole('button', { name: 'Add note' }).click();
+  await conv.getByText('Note added.').waitFor();
+  await conv.getByLabel('Why (logged)').fill('screen fixed');
+  await conv.getByRole('button', { name: 'Done', exact: true }).click();
+  await conv.getByText('Done.', { exact: true }).waitFor();
+  await page.getByText('Nothing here.').waitFor();
+  if (process.env.SCREENSHOT_DIR) {
+    await page.getByLabel('Show').selectOption('done');
+    await page.getByRole('table', { name: 'Inbox' }).waitFor();
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.screenshot({ path: `${process.env.SCREENSHOT_DIR}/support.png`, fullPage: true });
   }
   expect(errors).toEqual([]);
 }, 120_000);

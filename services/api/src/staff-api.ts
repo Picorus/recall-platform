@@ -10,6 +10,7 @@ import type {
   BankCheckAdapter,
   EsignAdapter,
   FileStore,
+  InboundAdapter,
   KycAdapter,
   MapsAdapter,
   MessagesAdapter,
@@ -59,6 +60,7 @@ import { handlePayouts } from './payouts-api.js';
 import { handleMoney } from './money-api.js';
 import { handleReportsDesk } from './reports-desk-api.js';
 import { handleDashboard } from './dashboard-api.js';
+import { handleSupport } from './support-api.js';
 import {
   decoyHash,
   hashPassword,
@@ -98,6 +100,8 @@ export interface StaffApiConfig {
   };
   /** Paying riders (P3.12): the provider, or its fake on a laptop. Absent: runs cannot be sent. */
   readonly payouts?: PayoutsAdapter;
+  /** Messages people send us (P3.15), posted by the provider, signed. Absent: none received. */
+  readonly inbound?: InboundAdapter;
   /** Final reports (P3.14.1): maps, messages and the brand portal. Absent: none built or sent. */
   readonly reports?: {
     readonly maps: MapsAdapter;
@@ -485,6 +489,7 @@ export function apiHandler(
       if (await handleMoney(pool, cfg, req, res, nowMs)) return;
       if (await handleReportsDesk(pool, cfg, req, res, nowMs)) return;
       if (await handleDashboard(pool, cfg, req, res, nowMs)) return;
+      if (await handleSupport(pool, cfg, req, res, nowMs)) return;
       throw new HttpError(404, 'Not found');
     })().catch((e: unknown) => {
       if (e instanceof HttpError) return send(res, e.status, { error: e.message });

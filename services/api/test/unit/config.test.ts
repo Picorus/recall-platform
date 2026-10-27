@@ -1,7 +1,13 @@
 // Brand payments in the API's settings (review P3.8.2): the fake only on a laptop, never with the
 // public key on a server others can reach; production without a real provider runs without payments.
 import { describe, expect, it } from 'vitest';
-import { paymentsFrom, payoutsFrom, reportsFrom, riderChecksFrom } from '../../src/config.js';
+import {
+  inboundFrom,
+  paymentsFrom,
+  payoutsFrom,
+  reportsFrom,
+  riderChecksFrom,
+} from '../../src/config.js';
 
 describe('payments settings (P3.8.2)', () => {
   it('a laptop gets the fake; a reachable server needs its own key; production never the fake', () => {
@@ -48,5 +54,13 @@ describe('payments settings (P3.8.2)', () => {
     expect(() => reportsFrom({ API_HOST: '0.0.0.0' }, false)).toThrow('laptop only');
     expect(() => reportsFrom({ REPORTS_PROVIDER: 'fake' }, true)).toThrow('laptop only');
     expect(() => reportsFrom({ REPORTS_PROVIDER: 'gupshup' }, false)).toThrow('P6');
+  });
+
+  it('messages coming in: the fake only on a laptop; none in production (P3.15)', () => {
+    expect(inboundFrom({}, false)).toBeDefined();
+    expect(inboundFrom({}, true)).toBeUndefined();
+    expect(() => inboundFrom({ API_HOST: '0.0.0.0' }, false)).toThrow('laptop only');
+    expect(() => inboundFrom({ SUPPORT_INBOUND_PROVIDER: 'fake' }, true)).toThrow('laptop only');
+    expect(() => inboundFrom({ SUPPORT_INBOUND_PROVIDER: 'gupshup' }, false)).toThrow('P6');
   });
 });

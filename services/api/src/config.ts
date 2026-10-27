@@ -3,12 +3,14 @@ import {
   fakeBankCheck,
   fakeEsign,
   fakeFileStore,
+  fakeInbound,
   fakeKyc,
   fakeMaps,
   fakeMessages,
   fakePayments,
   fakePayouts,
   type FileStore,
+  type InboundAdapter,
   type MapsAdapter,
   type MessagesAdapter,
   type PaymentsAdapter,
@@ -60,6 +62,7 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
   const riderChecks = riderChecksFrom(env, production);
   const payouts = payoutsFrom(env, production);
   const reports = reportsFrom(env, production);
+  const inbound = inboundFrom(env, production);
   return {
     databaseUrl: need('DATABASE_URL'),
     host: env.API_HOST || '127.0.0.1',
@@ -73,6 +76,7 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     ...(riderChecks ? { riderChecks } : {}),
     ...(payouts ? { payouts } : {}),
     ...(reports ? { reports } : {}),
+    ...(inbound ? { inbound } : {}),
   };
 }
 
@@ -192,6 +196,26 @@ export function reportsFrom(
   const maps: MapsAdapter = fakeMaps();
   const messages: MessagesAdapter = fakeMessages();
   return { maps, messages, portalUrl: portal };
+}
+
+/**
+ * Messages people send us (P3.15): the provider posts each one, signed. The real one comes with the
+ * WhatsApp and email accounts (P6); until then production receives none. On a laptop (only one
+ * nobody else can reach) the fake stands in, with its key public in the code.
+ */
+export function inboundFrom(
+  env: NodeJS.ProcessEnv,
+  production: boolean,
+): InboundAdapter | undefined {
+  const provider = env.SUPPORT_INBOUND_PROVIDER || (production ? '' : 'fake');
+  if (provider === '') return undefined;
+  if (provider !== 'fake')
+    throw new Error(
+      `SUPPORT_INBOUND_PROVIDER ${provider} is not available yet (real providers come in P6)`,
+    );
+  if (production || !onlyLocal(env))
+    throw new Error('The fake inbound messages are for a laptop only (nobody else can reach it)');
+  return fakeInbound();
 }
 
 /**

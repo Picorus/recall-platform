@@ -71,6 +71,9 @@ export function Shell({
           {(member.role === 'super-admin' ||
             member.areas.includes('operations') ||
             member.areas.includes('support')) && <Link href="/riders">Riders</Link>}
+          {(member.role === 'super-admin' || member.areas.includes('support')) && (
+            <Link href="/support">Support</Link>
+          )}
           {(member.role === 'super-admin' || member.areas.includes('finance')) && (
             <Link href="/payouts">Payouts</Link>
           )}
