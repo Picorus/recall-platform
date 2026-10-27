@@ -318,6 +318,11 @@ async function factsOf(c: Q, riderId: string, now: number): Promise<RiderFacts |
   };
 }
 
+/** What the rules read about a rider now (P4.2: the rider app's join page reads it too). */
+export async function riderFacts(c: Q, riderId: string, now: number) {
+  return factsOf(c, riderId, now);
+}
+
 /** Moves a rider to his next step if the rules allow it now; logs who and why. */
 export async function stepRider(
   pool: Pool,

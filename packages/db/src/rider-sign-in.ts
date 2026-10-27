@@ -304,13 +304,13 @@ export async function riderSession(
     started: string;
     last: string;
   }>(
-    `SELECT s.phone, s.rider_id,
-            (SELECT phone FROM rider_versions v WHERE v.rider_id = s.rider_id
+    `SELECT s.phone, coalesce(s.rider_id, j.rider_id) AS rider_id,
+            (SELECT phone FROM rider_versions v WHERE v.rider_id = coalesce(s.rider_id, j.rider_id)
               ORDER BY version DESC LIMIT 1) AS rider_phone,
             extract(epoch FROM s.started_at)::bigint AS started,
             extract(epoch FROM greatest(s.started_at,
               (SELECT max(at) FROM rider_session_seen w WHERE w.token_hash = s.token_hash)))::bigint AS last
-       FROM rider_sessions s
+       FROM rider_sessions s LEFT JOIN rider_session_joins j USING (token_hash)
       WHERE s.token_hash = $1
         AND NOT EXISTS (SELECT 1 FROM rider_session_ends e WHERE e.token_hash = s.token_hash)`,
     [hash],

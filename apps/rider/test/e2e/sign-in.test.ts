@@ -2,9 +2,9 @@
 // language, a wrong number, a code on WhatsApp, a wrong code, signed in as a known rider, still
 // signed in after a reload, signed out; a new number by SMS in Hindi is welcomed to the sign-up.
 // Needs `pnpm test:e2e` (it builds the app for the web first) and DATABASE_URL (pnpm services:up).
-import { fakeMessages } from '@recall/adapters';
+import { fakeBankCheck, fakeEsign, fakeFileStore, fakeKyc, fakeMessages } from '@recall/adapters';
 import { apiHandler } from '@recall/api';
-import { createRider } from '@recall/db';
+import { createRider, reviewRiderDocument } from '@recall/db';
 import { freshDatabase } from '@recall/db/test-db';
 import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
@@ -45,6 +45,12 @@ beforeAll(async () => {
         proxyHops: 0,
         messages,
         riderOrigins: [SITE],
+        files: fakeFileStore({ baseUrl: 'http://127.0.0.1/files', secret: 'e2e' }),
+        riderChecks: {
+          kyc: fakeKyc({ auto: true }),
+          esign: fakeEsign({ auto: true }),
+          bank: fakeBankCheck(),
+        },
       },
       (l) => console.error(l),
     ),
@@ -138,12 +144,12 @@ it('a known rider signs in with a WhatsApp code, stays signed in, and signs out'
   await shot(page, 'rider-code');
   await page.getByLabel('Code').fill(code);
   await page.getByRole('button', { name: 'Sign in' }).click();
-  await page.getByText('Ravi Kumar').waitFor();
-  await page.getByText('Your application is with us. We will call you.').waitFor();
-  await shot(page, 'rider-home');
+  // His application is open: the joining steps.
+  await page.getByText('Join RECALL').waitFor();
+  await page.getByText('0 of 6 done. You can stop and come back any time.').waitFor();
   // Still signed in after the app is opened again.
   await page.reload();
-  await page.getByText('Ravi Kumar').waitFor();
+  await page.getByText('Join RECALL').waitFor();
   // No signal when the app opens: still signed in, "Try again" (never a new code).
   await page.route('**/rider/me', (r) => r.abort());
   await page.reload();
@@ -153,7 +159,7 @@ it('a known rider signs in with a WhatsApp code, stays signed in, and signs out'
     .waitFor();
   await page.unroute('**/rider/me');
   await page.getByRole('button', { name: 'Try again' }).click();
-  await page.getByText('Ravi Kumar').waitFor();
+  await page.getByText('Join RECALL').waitFor();
   await page.getByRole('button', { name: 'Sign out' }).click();
   await page.getByText('Earn while you ride.').waitFor();
   await page.reload();
@@ -161,7 +167,7 @@ it('a known rider signs in with a WhatsApp code, stays signed in, and signs out'
   expect(errors).toEqual([]);
 }, 120_000);
 
-it('a new number by SMS, in Hindi: welcomed to the sign-up', async () => {
+it('a new number by SMS, in Hindi: the sign-up opens', async () => {
   const { page, errors } = await phonePage();
   await page.getByRole('radio', { name: 'हिन्दी' }).click();
   await page.getByLabel('मोबाइल नंबर').fill('9000011111');
@@ -172,10 +178,112 @@ it('a new number by SMS, in Hindi: welcomed to the sign-up', async () => {
   expect(sms?.channel === 'sms' ? sms.text : '').toContain('मिनट');
   await page.getByLabel('कोड').fill(codeFor('+919000011111'));
   await page.getByRole('button', { name: 'साइन इन' }).click();
-  await page.getByText('RECALL में आपका स्वागत है').waitFor();
-  await shot(page, 'rider-welcome-hi');
+  await page.getByText('मेरा साइन-अप शुरू करें').waitFor();
+  await shot(page, 'rider-sign-up-hi');
   // The language is kept on the phone.
   await page.reload();
-  await page.getByText('RECALL में आपका स्वागत है').waitFor();
+  await page.getByText('मेरा साइन-अप शुरू करें').waitFor();
   expect(errors).toEqual([]);
 }, 120_000);
+
+const PNG = new URL(
+  '../../../../packages/domain/test/fixtures/ads/ad-1280x640.png',
+  import.meta.url,
+).pathname;
+
+it('a new rider signs up and goes through every step to the screen loan', async () => {
+  const { page, errors } = await phonePage();
+  const phone = '+919700012345';
+  await page.getByLabel('Mobile number').fill('97000 12345');
+  await page.getByRole('button', { name: 'Send code on WhatsApp' }).click();
+  await page.getByText('Type the code').waitFor();
+  await page.getByLabel('Code').fill(codeFor(phone));
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  // Sign up: name, where he rides, his apps.
+  await page.getByRole('button', { name: 'Start my sign-up' }).click();
+  await page.getByRole('alert').getByText('Type your name (2 to 80 letters).').waitFor();
+  await page.getByLabel('Your name (as on your Aadhaar)').fill('Kiran Goud');
+  await page.getByLabel('Where you ride most').fill('Gachibowli');
+  await page.getByRole('checkbox', { name: 'Swiggy' }).click();
+  await page.getByRole('checkbox', { name: 'Zepto' }).click();
+  await page.getByRole('button', { name: 'Start my sign-up' }).click();
+  await page.getByText('Join RECALL').waitFor();
+  await shot(page, 'rider-join');
+  const riderId = String(
+    (
+      await db.pool.query<{ rider_id: string }>(
+        'SELECT rider_id FROM rider_versions WHERE phone = $1',
+        [phone],
+      )
+    ).rows[0]?.rider_id,
+  );
+  const sendPicture = async (doc: string) => {
+    const chooser = page.waitForEvent('filechooser');
+    await page.getByLabel(doc).getByRole('button', { name: 'Choose a photo' }).click();
+    await (await chooser).setFiles(PNG);
+    await page.getByLabel(doc).getByText('We are checking it').waitFor();
+  };
+  // 1. Profile: his photo.
+  await page.getByRole('button', { name: /^Profile: To do/ }).click();
+  await sendPicture('Your photo');
+  await page.getByRole('button', { name: '‹ Back' }).click();
+  // 2. Vehicle: plate, RC and insurance.
+  await page.getByRole('button', { name: /^Vehicle papers: To do/ }).click();
+  await page.getByLabel('Number plate').fill('ts 09 ab 4321');
+  await page.getByRole('button', { name: 'Save' }).click();
+  await page.getByText('Saved.').waitFor();
+  await sendPicture('Registration (RC)');
+  await sendPicture('Insurance');
+  await shot(page, 'rider-vehicle');
+  await page.getByRole('button', { name: '‹ Back' }).click();
+  await page.getByRole('button', { name: /^Vehicle papers: Checking/ }).waitFor();
+  // Operations look at them (the admin portal; here straight in the database).
+  const docs = await db.pool.query<{ doc_id: string; kind: string }>(
+    'SELECT doc_id, kind FROM rider_documents WHERE rider_id = $1',
+    [riderId],
+  );
+  for (const d of docs.rows)
+    await reviewRiderDocument(
+      db.pool,
+      {
+        riderId,
+        docId: d.doc_id,
+        decision: 'accepted',
+        reason: 'clear photo',
+        expiresOn: d.kind === 'insurance' ? '2030-01-01' : null,
+        by: 'Omar',
+      },
+      Math.floor(Date.now() / 1000),
+    );
+  // 3. ID check: the provider's page opens; back here, he says he has finished.
+  await page.reload();
+  await page.getByRole('button', { name: /^ID check: To do/ }).click();
+  const popup = page.waitForEvent('popup').catch(() => undefined);
+  await page.getByRole('button', { name: 'Check my ID' }).click();
+  await (await popup)?.close();
+  await page.getByRole('button', { name: 'I have finished' }).click();
+  await page.getByText('Your ID is checked.').waitFor();
+  await page.getByRole('button', { name: '‹ Back' }).click();
+  // 4. Bank or UPI: a ₹1 check in his name.
+  await page.getByRole('button', { name: /^Bank or UPI: To do/ }).click();
+  await page.getByLabel('UPI id').fill('kiran@okaxis');
+  await page.getByRole('button', { name: 'Check with ₹1' }).click();
+  await page.getByText('Checked. Your pay goes to this account.').waitFor();
+  await page.getByRole('button', { name: '‹ Back' }).click();
+  // 5. The agreement, with the camera line.
+  await page.getByRole('button', { name: /^Rider agreement: To do/ }).click();
+  await page.getByText('"This screen counts people. It records nothing."').first().waitFor();
+  const sign = page.waitForEvent('popup').catch(() => undefined);
+  await page.getByRole('button', { name: 'Read and sign' }).click();
+  await (await sign)?.close();
+  await page.getByRole('button', { name: 'I have signed' }).click();
+  await page.getByText('Signed.').waitFor();
+  await page.getByRole('button', { name: '‹ Back' }).click();
+  // Five of six done; the screen loan comes next (the bank's form, when the bank is set up).
+  await page.getByText('5 of 6 done. You can stop and come back any time.').waitFor();
+  await page.getByRole('button', { name: /^Screen loan: To do/ }).click();
+  await page.getByText(/bought with a loan from Dhanlaxmi Bank/).waitFor();
+  await page.getByRole('button', { name: '‹ Back' }).click();
+  await shot(page, 'rider-join-done');
+  expect(errors).toEqual([]);
+}, 180_000);

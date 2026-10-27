@@ -1,8 +1,8 @@
 // P4.1: the rider app's sign-in routes: a code on WhatsApp or SMS, a bearer session, who is signed
 // in, sign-out; the web build only from its own origins; limits answer 429.
 import { freshDatabase } from '@recall/db/test-db';
-import { fakeMessages } from '@recall/adapters';
-import { createRider } from '@recall/db';
+import { fakeBankCheck, fakeEsign, fakeFileStore, fakeKyc, fakeMessages } from '@recall/adapters';
+import { createRider, stepRider } from '@recall/db';
 import { randomBytes } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -23,6 +23,12 @@ const CFG: StaffApiConfig = {
   proxyHops: 0,
   messages,
   riderOrigins: ['http://localhost:8081'],
+  files: fakeFileStore({ baseUrl: 'http://files', secret: 's' }),
+  riderChecks: {
+    kyc: fakeKyc({ auto: true }),
+    esign: fakeEsign({ auto: true }),
+    bank: fakeBankCheck(),
+  },
 };
 
 beforeAll(async () => {
@@ -149,5 +155,75 @@ describe('rider app sign-in routes (P4.1)', () => {
     // Errors carry the origin header too, so the web build can show them.
     expect(last.headers.get('access-control-allow-origin')).toBe('http://localhost:8081');
     expect(String(last.body.error)).toMatch(/^Too many codes/);
+  });
+});
+
+describe('rider app joining routes (P4.2)', () => {
+  it('a new number signs up, sends its papers and checks; only its own record; closed once decided', async () => {
+    await post('/rider/code', { phone: '9600012345', channel: 'whatsapp' });
+    const ok = await post('/rider/sign-in', { phone: '9600012345', code: lastCode() });
+    const auth = { authorization: `Bearer ${String(ok.body.token)}` };
+    const get = async (path: string) => {
+      const r = await fetch(`${url}${path}`, { headers: auth });
+      return { status: r.status, body: (await r.json()) as Record<string, unknown> };
+    };
+    expect(await get('/rider/join')).toMatchObject({ status: 404, body: { why: 'not-joined' } });
+    expect(
+      (await post('/rider/join', { name: 'Ramesh', rides: 'x', apps: ['nope'] }, auth)).status,
+    ).toBe(400);
+    const joined = await post(
+      '/rider/join',
+      { name: 'Ramesh Naidu', rides: 'Ameerpet', apps: ['zomato'], bikePlate: null },
+      auth,
+    );
+    expect(joined.status).toBe(200);
+    const riderId = String(joined.body.riderId);
+    expect(
+      (await post('/rider/join', { name: 'Ramesh Naidu', rides: '', apps: [] }, auth)).status,
+    ).toBe(400);
+    const page = await get('/rider/join');
+    expect(page.body).toMatchObject({ riderId, canChange: true, loanBank: 'Dhanlaxmi Bank' });
+    // A picture as the body.
+    const png = new Uint8Array([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 1, 2, 3,
+    ]);
+    const up = await fetch(`${url}/rider/documents?kind=photo`, {
+      method: 'POST',
+      headers: { ...auth, 'content-type': 'application/octet-stream' },
+      body: png,
+    });
+    expect(up.status).toBe(200);
+    const pdfPhoto = await fetch(`${url}/rider/documents?kind=photo`, {
+      method: 'POST',
+      headers: { ...auth, 'content-type': 'application/octet-stream' },
+      body: new TextEncoder().encode('%PDF-1.4 hello'),
+    });
+    expect(pdfPhoto.status).toBe(400);
+    expect((await post('/rider/identity', {}, auth)).body.link).toMatch(/^https:/);
+    expect((await post('/rider/checks', {}, auth)).body).toEqual({ answered: 1 });
+    expect(
+      (await post('/rider/bank', { kind: 'upi', vpa: 'ramesh@okaxis', name: 'Ramesh Naidu' }, auth))
+        .body,
+    ).toMatchObject({ outcome: 'passed' });
+    const after = await get('/rider/join');
+    expect((after.body.steps as { state: string }[]).map((x) => x.state)).toEqual([
+      'waiting',
+      'todo',
+      'done',
+      'done',
+      'todo',
+      'later',
+    ]);
+    // Without a session, nothing.
+    expect((await fetch(`${url}/rider/join`)).status).toBe(401);
+    // Decided: no more changes from the app.
+    await stepRider(pool, riderId, 'rejected', 'Omar', 'not in our area', NOW / 1000);
+    expect(await post('/rider/agreement', {}, auth)).toMatchObject({
+      status: 409,
+      body: { why: 'decided' },
+    });
+    expect(
+      (await post('/rider/profile', { name: 'Ramesh Naidu', rides: 'x', apps: [] }, auth)).status,
+    ).toBe(400);
   });
 });
