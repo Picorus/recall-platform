@@ -49,6 +49,9 @@ export interface RiderSignInRules {
   readonly wrongPerAddressHour: number;
   readonly codesPerHourAll: number;
   readonly idleDays: number;
+  readonly checksPerRiderDay: number;
+  readonly checksPerDayAll: number;
+  readonly uploadsPerRiderDay: number;
 }
 
 /** What each rider sign-in rule means, in the order shown. */
@@ -62,6 +65,9 @@ export const RIDER_SIGN_IN_LABELS: readonly (readonly [keyof RiderSignInRules, s
   ['wrongPerAddressHour', 'Wrong codes from one connection in an hour'],
   ['codesPerHourAll', 'Codes for everyone together in an hour'],
   ['idleDays', 'Signed out after this many days unused'],
+  ['checksPerRiderDay', 'ID, agreement or bank checks one rider may start in a day'],
+  ['checksPerDayAll', 'Checks started from the app in a day, everyone together'],
+  ['uploadsPerRiderDay', 'Pictures one rider may send in a day'],
 ];
 
 export interface Settings {

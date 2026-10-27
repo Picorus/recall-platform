@@ -1,4 +1,5 @@
-// The rider app (P4). P4.1: language, sign-in with a code, and who is signed in. The screens are a
+// The rider app (P4). P4.1: language, sign-in with a code, and who is signed in. P4.2: a new
+// number signs up, then the six joining steps while his application is open. The screens are a
 // small set of steps, so the app moves between them itself (no navigation library); Android's back
 // button goes back a step.
 import { RIDER_LANGUAGES, type RiderLanguage } from '@recall/domain';
@@ -10,6 +11,8 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ApiError, call, type Me } from './src/api';
 import { Code } from './src/screens/Code';
 import { Home } from './src/screens/Home';
+import { Join } from './src/screens/Join';
+import { JoinStart } from './src/screens/JoinStart';
 import { Offline } from './src/screens/Offline';
 import { SignIn, type CodeSent } from './src/screens/SignIn';
 import { stored } from './src/storage';
@@ -118,9 +121,23 @@ export default function App() {
         {(fontsReady || fontsFailed) && step.at === 'offline' && (
           <Offline lang={lang} why={step.why} onRetry={() => void enter(step.token)} />
         )}
-        {(fontsReady || fontsFailed) && step.at === 'home' && (
-          <Home lang={lang} me={step.me} onSignOut={() => void signOut()} />
+        {(fontsReady || fontsFailed) && step.at === 'home' && step.me.riderId === null && (
+          <JoinStart
+            lang={lang}
+            token={step.token}
+            onJoined={() => enter(step.token)}
+            onSignOut={() => void signOut()}
+          />
         )}
+        {(fontsReady || fontsFailed) && step.at === 'home' && step.me.status === 'applied' && (
+          <Join lang={lang} token={step.token} onSignOut={() => void signOut()} />
+        )}
+        {(fontsReady || fontsFailed) &&
+          step.at === 'home' &&
+          step.me.riderId !== null &&
+          step.me.status !== 'applied' && (
+            <Home lang={lang} me={step.me} onSignOut={() => void signOut()} />
+          )}
       </LangContext.Provider>
     </SafeAreaProvider>
   );

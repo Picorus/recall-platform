@@ -6,7 +6,29 @@
 //   POST /rider/sign-in     { phone, code }        a session token; riderId null: a new rider
 //   GET  /rider/me          who is signed in (phone, rider, name, step)
 //   POST /rider/sign-out    ends this phone's session
+// P4.2, joining (his own record only; changes while his application is open):
+//   GET  /rider/join        the six steps and where each stands
+//   POST /rider/join        { name, rides, apps, bikePlate }  a new number signs up
+//   POST /rider/profile     { name, rides, apps, bikePlate }  his details again
+//   POST /rider/documents?kind=photo|rc|insurance   the picture as the body (at most 10 MB)
+//   POST /rider/identity    start his ID check: a link to open (DigiLocker through the provider)
+//   POST /rider/agreement   the agreement to sign: a link to open
+//   POST /rider/bank        { kind: bank, accountNumber, ifsc, name } or { kind: upi, vpa, name }
+//   POST /rider/checks      ask the providers about his ID and agreement
+import type { PayoutDestination } from '@recall/adapters';
 import {
+  appDetails,
+  appUploadsToday,
+  beforeAppCheck,
+  changeOwnDetails,
+  checkRiderBank,
+  joinAsRider,
+  joinPage,
+  refreshRiderChecks,
+  RIDER_APP,
+  sendAgreement,
+  startIdentityCheck,
+  uploadRiderDocument,
   askRiderCode,
   checkRiderCode,
   endRiderSession,
@@ -16,6 +38,7 @@ import {
   type RiderSession,
 } from '@recall/db';
 import {
+  MAX_DOCUMENT_BYTES,
   indiaMobile,
   RIDER_LANGUAGES,
   showMobile,
@@ -26,8 +49,13 @@ import {
 import { createHmac } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Pool } from 'pg';
-import { HttpError, jsonBody, send, str } from './http.js';
+import { HttpError, jsonBody, send, str, withUpload } from './http.js';
 import { callerIp, type StaffApiConfig } from './staff-api.js';
+
+/** Riders with an upload going now: one at a time each (a slow phone never holds two slots). */
+const uploadingRiders = new Set<string>();
+/** How often each rider asked the providers about his checks this hour (at most 30). */
+const asked = new Map<string, { readonly hour: number; n: number }>();
 
 /** The key sign-in codes are fingerprinted with: its own, made from the API's secret key. */
 const codeKey = (cfg: StaffApiConfig) =>
@@ -168,5 +196,131 @@ export async function handleRiderApp(
     return true;
   }
 
+  // P4.2: joining. Every route below is his own record, from his signed-in session.
+  const s = await riderFor(pool, req, now);
+  if (path === '/rider/join' && method === 'POST') {
+    const d = appDetails(await jsonBody(req), s.phone);
+    if (!d) throw new HttpError(400, 'Fill in your name, where you ride and your apps');
+    const riderId = await refused(() => joinAsRider(pool, s, d, now));
+    send(res, 200, { riderId });
+    return true;
+  }
+  const riderId = s.riderId;
+  if (!riderId) throw new HttpError(404, 'Sign up first', { code: 'not-joined' });
+  if (path === '/rider/join') {
+    if (method !== 'GET') throw new HttpError(405, 'Not allowed');
+    const page = await refused(() => joinPage(pool, riderId, now));
+    send(res, 200, { ...page, loanBank: (await setting(pool, 'loanBank')).name });
+    return true;
+  }
+  if (method !== 'POST') throw new HttpError(405, 'Not allowed');
+  // Changes only while his application is open (after that, staff help on a call).
+  const open = async () => {
+    const page = await refused(() => joinPage(pool, riderId, now));
+    if (!page.canChange)
+      throw new HttpError(409, 'Your application is decided: call support', { code: 'decided' });
+  };
+  if (path === '/rider/profile') {
+    const d = appDetails(await jsonBody(req), s.phone);
+    if (!d) throw new HttpError(400, 'Fill in your name, where you ride and your apps');
+    await refused(() => changeOwnDetails(pool, riderId, d, now));
+    send(res, 200, { ok: true });
+    return true;
+  }
+  if (path === '/rider/documents') {
+    const store = cfg.files;
+    if (!store) throw new HttpError(503, 'Uploads are not set up yet', { code: 'not-set-up' });
+    const kind = new URLSearchParams((req.url ?? '').split('?')[1] ?? '').get('kind') ?? '';
+    await open();
+    if ((await appUploadsToday(pool, riderId, now)) >= rules.uploadsPerRiderDay)
+      throw new HttpError(429, 'Too many pictures today: try again tomorrow', {
+        code: 'too-many-uploads',
+      });
+    if (uploadingRiders.has(riderId))
+      throw new HttpError(429, 'One picture at a time', { code: 'one-at-a-time' });
+    uploadingRiders.add(riderId);
+    try {
+      await withUpload(req, 'rider-documents', MAX_DOCUMENT_BYTES, async (data) => {
+        // Still open once the picture has arrived (it may have been decided meanwhile).
+        await open();
+        const doc = await refused(() =>
+          uploadRiderDocument(pool, store, { riderId, kind, data, by: RIDER_APP }, now),
+        );
+        send(res, 200, { docId: doc.docId, kind: doc.kind });
+      });
+    } finally {
+      uploadingRiders.delete(riderId);
+    }
+    return true;
+  }
+  const checks = cfg.riderChecks;
+  if (!checks) throw new HttpError(503, 'Checks are not set up yet', { code: 'not-set-up' });
+  if (path === '/rider/identity') {
+    await open();
+    // A check still waiting is opened again (never paid for twice); a few a day.
+    const waiting = await refused(() => beforeAppCheck(pool, riderId, 'identity', now, rules));
+    send(
+      res,
+      200,
+      waiting
+        ? { link: waiting }
+        : await refused(() => startIdentityCheck(pool, checks.kyc, riderId, RIDER_APP, now)),
+    );
+    return true;
+  }
+  if (path === '/rider/agreement') {
+    await open();
+    const waiting = await refused(() => beforeAppCheck(pool, riderId, 'agreement', now, rules));
+    send(
+      res,
+      200,
+      waiting
+        ? { link: waiting }
+        : await refused(() => sendAgreement(pool, checks.esign, riderId, RIDER_APP, now)),
+    );
+    return true;
+  }
+  if (path === '/rider/checks') {
+    // The providers are asked at most 30 times an hour for one rider.
+    const hour = Math.floor(now / 3600);
+    const mine = asked.get(riderId);
+    if (mine?.hour === hour && mine.n >= 30)
+      throw new HttpError(429, 'Too many tries: wait a while', { code: 'too-many-checks' });
+    if (asked.size > 10_000) asked.clear();
+    asked.set(riderId, mine?.hour === hour ? { hour, n: mine.n + 1 } : { hour, n: 1 });
+    send(res, 200, { answered: await refreshRiderChecks(pool, checks, riderId, now) });
+    return true;
+  }
+  if (path === '/rider/bank') {
+    await open();
+    const b = await jsonBody(req);
+    const name = str(b, 'name', 120).trim();
+    const to: PayoutDestination =
+      b.kind === 'upi'
+        ? { kind: 'upi', vpa: str(b, 'vpa', 256).trim(), name }
+        : b.kind === 'bank'
+          ? {
+              kind: 'bank',
+              accountNumber: str(b, 'accountNumber', 30).replace(/[\s-]/g, ''),
+              ifsc: str(b, 'ifsc', 20).trim().toUpperCase(),
+              name,
+            }
+          : (() => {
+              throw new HttpError(400, 'Bank account or UPI?');
+            })();
+    await refused(() => beforeAppCheck(pool, riderId, 'bank', now, rules));
+    const out = await refused(() =>
+      checkRiderBank(pool, checks.bank, riderId, to, { who: RIDER_APP, superAdmin: false }, now),
+    );
+    // Never the name the bank holds (anyone could look up whose an account is): staff see it.
+    send(res, 200, {
+      outcome: out.outcome,
+      reason:
+        out.outcome === 'failed' && /^the bank holds it as/.test(out.reason ?? '')
+          ? 'the name on the account is not yours'
+          : out.reason,
+    });
+    return true;
+  }
   throw new HttpError(404, 'Not found');
 }

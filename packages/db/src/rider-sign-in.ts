@@ -163,8 +163,10 @@ export async function askRiderCode(
 }
 
 /**
- * The rider whose details now carry this number: one still with RECALL first (not left or turned
- * down), then the newest.
+ * The rider whose details now carry this number and who is still with RECALL (not left or turned
+ * down). A number given out again by the phone company (common) never opens the old rider's
+ * record: its new owner signs up afresh, and a rider who left or was turned down applies again
+ * through support or a new sign-up.
  */
 export async function riderForPhone(c: Q, phone: string): Promise<string | null> {
   const r = await c.query<{ rider_id: string }>(
@@ -173,8 +175,8 @@ export async function riderForPhone(c: Q, phone: string): Promise<string | null>
                       ORDER BY version DESC LIMIT 1) v ON true
        LEFT JOIN LATERAL (SELECT status FROM rider_steps t WHERE t.rider_id = r.rider_id
                            ORDER BY seq DESC LIMIT 1) st ON true
-      WHERE v.phone = $1
-      ORDER BY (coalesce(st.status, '') IN ('left', 'rejected')), r.created_at DESC, r.rider_id DESC
+      WHERE v.phone = $1 AND coalesce(st.status, '') NOT IN ('left', 'rejected')
+      ORDER BY r.created_at DESC, r.rider_id DESC
       LIMIT 1`,
     [phone],
   );
@@ -304,13 +306,13 @@ export async function riderSession(
     started: string;
     last: string;
   }>(
-    `SELECT s.phone, s.rider_id,
-            (SELECT phone FROM rider_versions v WHERE v.rider_id = s.rider_id
+    `SELECT s.phone, coalesce(s.rider_id, j.rider_id) AS rider_id,
+            (SELECT phone FROM rider_versions v WHERE v.rider_id = coalesce(s.rider_id, j.rider_id)
               ORDER BY version DESC LIMIT 1) AS rider_phone,
             extract(epoch FROM s.started_at)::bigint AS started,
             extract(epoch FROM greatest(s.started_at,
               (SELECT max(at) FROM rider_session_seen w WHERE w.token_hash = s.token_hash)))::bigint AS last
-       FROM rider_sessions s
+       FROM rider_sessions s LEFT JOIN rider_session_joins j USING (token_hash)
       WHERE s.token_hash = $1
         AND NOT EXISTS (SELECT 1 FROM rider_session_ends e WHERE e.token_hash = s.token_hash)`,
     [hash],

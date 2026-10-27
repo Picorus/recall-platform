@@ -112,8 +112,9 @@ async function bodyBytes(req: IncomingMessage, max: number, seconds: number): Pr
  */
 export async function withUpload(
   req: IncomingMessage,
-  /** Each kind has its own slots (slow phone uploads never hold up ads). */
-  kind: 'ads' | 'documents',
+  /** Each kind has its own slots (slow phone uploads never hold up ads; riders' own uploads from
+   * the app never hold up staff's). */
+  kind: 'ads' | 'documents' | 'rider-documents',
   max: number,
   use: (data: Buffer) => Promise<void>,
 ): Promise<void> {

@@ -67,3 +67,65 @@ export interface Me {
   readonly name: string | null;
   readonly status: string | null;
 }
+
+/** Sends a picture the rider took or chose (P4.2) as the request body. */
+export async function upload<T>(path: string, uri: string, token: string): Promise<T> {
+  let body: Blob;
+  try {
+    body = await (await fetch(uri)).blob();
+  } catch {
+    throw new ApiError(0, 'Could not read the picture', 'other', undefined);
+  }
+  const abort = new AbortController();
+  // A photo on a weak signal takes longer: two minutes.
+  const timer = setTimeout(() => abort.abort(), 120_000);
+  let r: Response;
+  try {
+    r = await fetch(`${API_URL}${path}`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/octet-stream' },
+      body,
+      signal: abort.signal,
+    });
+  } catch {
+    throw new ApiError(0, 'Could not reach RECALL', 'offline', undefined);
+  } finally {
+    clearTimeout(timer);
+  }
+  const x = (await r.json().catch(() => ({}))) as { error?: unknown; why?: unknown };
+  if (!r.ok)
+    throw new ApiError(
+      r.status,
+      typeof x.error === 'string' ? x.error : 'Something went wrong',
+      typeof x.why === 'string' ? x.why : undefined,
+      undefined,
+    );
+  return x as T;
+}
+
+export type StepState = 'todo' | 'waiting' | 'done' | 'again';
+export type JoinStep = 'profile' | 'vehicle' | 'identity' | 'bank' | 'agreement' | 'loan';
+
+export interface JoinPage {
+  readonly riderId: string;
+  readonly status: string;
+  readonly details: {
+    readonly name: string;
+    readonly phone: string;
+    readonly bikePlate: string | null;
+    readonly rides: string;
+    readonly apps: readonly string[];
+  };
+  readonly canChange: boolean;
+  readonly documents: Readonly<
+    Record<
+      'photo' | 'rc' | 'insurance',
+      { readonly state: StepState; readonly expiresOn: string | null }
+    >
+  >;
+  readonly identity: { readonly state: StepState; readonly reason: string | null };
+  readonly bank: { readonly state: StepState; readonly reason: string | null };
+  readonly agreement: { readonly state: StepState; readonly reason: string | null };
+  readonly steps: readonly { readonly step: JoinStep; readonly state: StepState | 'later' }[];
+  readonly loanBank: string;
+}
