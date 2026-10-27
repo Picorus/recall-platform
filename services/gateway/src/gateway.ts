@@ -8,13 +8,12 @@ import mqtt from 'mqtt';
 import type { Pool } from 'pg';
 import { hookHandler, type HookConfig } from './hooks.js';
 import { handleUp, LineMemory } from './line.js';
+import { Waiting } from './waiting.js';
 import { freshCommands } from '@recall/db';
 import { downTopic, MAX_COMMAND_LIFE_MS } from '@recall/domain';
 
 /** Messages handled at once; more wait their turn (each holds a database connection). */
 export const AT_ONCE = 16;
-/** Messages waiting beyond this are dropped unanswered: their boxes send them again. */
-const MOST_WAITING = 10_000;
 /** How often commands just issued in admin are sent out. */
 const FRESH_EVERY_MS = 5_000;
 /** Login refusals (MQTT 3 and 5 codes): not authorized, bad user name or password. */
@@ -61,11 +60,13 @@ export async function startGateway(
       });
       client = c;
       const memory = new LineMemory();
-      const waiting: [string, Buffer][] = [];
+      // Messages beyond the line's limits (waiting.ts) are dropped unanswered: their boxes send
+      // them again.
+      const waiting = new Waiting();
       let running = 0;
       const work = () => {
         while (running < AT_ONCE && waiting.length > 0) {
-          const [topic, payload] = waiting.shift() as [string, Buffer];
+          const [topic, payload] = waiting.next() as [string, Buffer];
           running++;
           handleUp(pool, topic, payload, Date.now(), memory)
             .then((replies) => {
@@ -80,9 +81,7 @@ export async function startGateway(
         }
       };
       c.on('message', (topic, payload) => {
-        if (waiting.length >= MOST_WAITING) return;
-        waiting.push([topic, payload]);
-        work();
+        if (waiting.add(topic, payload)) work();
       });
       c.on('error', (e) => {
         log(`broker: ${e.message}`);

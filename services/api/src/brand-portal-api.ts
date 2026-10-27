@@ -60,6 +60,7 @@ import {
   campaignReportFor,
   askSalesForDeal,
   payFromPortal,
+  NOT_STAFF_DRAFT,
   reviewPage,
   brandLogo,
   setBrandLogo,
@@ -500,7 +501,8 @@ export async function handleBrandPortal(
   const ownBooking = async (brandId: string) => {
     const id = new URL(req.url ?? '/', 'http://x').searchParams.get('booking') ?? '';
     const r = await pool.query<{ ads_due_at: Date; first_hour_at: Date }>(
-      'SELECT ads_due_at, first_hour_at FROM bookings WHERE booking_id = $1 AND brand_id = $2',
+      `SELECT ads_due_at, first_hour_at FROM bookings b
+        WHERE booking_id = $1 AND brand_id = $2 AND ${NOT_STAFF_DRAFT}`,
       [id, brandId],
     );
     const b = r.rows[0];
@@ -530,12 +532,18 @@ export async function handleBrandPortal(
       throw new HttpError(429, 'Too many ads uploaded today: try again tomorrow, or call us');
     const name = new URL(req.url ?? '/', 'http://x').searchParams.get('name') ?? '';
     await oneUpload(me.address, now, () =>
-      withUpload(req, 'brand-ads', MAX_AD_UPLOAD_BYTES, async (data) => {
-        const ad = await refused(() =>
-          uploadAd(pool, store, { brandId: a.brandId, name, data, by }, now),
-        );
-        send(res, 200, { ad: adShown(ad) });
-      }),
+      withUpload(
+        req,
+        'brand-ads',
+        MAX_AD_UPLOAD_BYTES,
+        async (data) => {
+          const ad = await refused(() =>
+            uploadAd(pool, store, { brandId: a.brandId, name, data, by }, now),
+          );
+          send(res, 200, { ad: adShown(ad) });
+        },
+        a.brandId,
+      ),
     );
     return true;
   }
@@ -564,12 +572,18 @@ export async function handleBrandPortal(
     if (!tryOnce(previews, `logo:${me.address}`, now, 30))
       throw new HttpError(429, 'Too many logos this hour: try again later');
     await oneUpload(me.address, now, () =>
-      withUpload(req, 'brand-logos', MAX_LOGO_BYTES, async (data) => {
-        const l = await refused(() =>
-          setBrandLogo(pool, store, { brandId: a.brandId, data, by: portalBy(me.address) }, now),
-        );
-        send(res, 200, { logo: { width: l.width, height: l.height } });
-      }),
+      withUpload(
+        req,
+        'brand-logos',
+        MAX_LOGO_BYTES,
+        async (data) => {
+          const l = await refused(() =>
+            setBrandLogo(pool, store, { brandId: a.brandId, data, by: portalBy(me.address) }, now),
+          );
+          send(res, 200, { logo: { width: l.width, height: l.height } });
+        },
+        a.brandId,
+      ),
     );
     return true;
   }

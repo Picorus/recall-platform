@@ -2,12 +2,15 @@
 // uploads refused whole). The broker (EMQX) checks the TLS handshake: the box holds the key of a
 // certificate our certificate authority signed. These checks add what only we know: the certificate
 // is one we issued and recorded for this screen, it is in date, not revoked, and the screen was not
-// reported lost or stolen.
+// reported lost or stolen, nor retired.
 import { createHash, X509Certificate } from 'node:crypto';
 import { isScreenId } from '@recall/domain';
 import { heardFrom } from './health.js';
 import type { Pool } from 'pg';
 import { inTransaction } from './makeups.js';
+
+/** Days a retired screen may still connect, to send what it holds (a screen keeps 7 days). */
+export const RETIRED_SENDS_DAYS = 7;
 
 export type LineVerdict =
   { readonly ok: true; readonly serial: string } | { readonly ok: false; readonly reason: string };
@@ -60,6 +63,16 @@ export async function screenMayConnect(
     [r.clientId],
   );
   if (!keys.rows[0]?.live) return { ok: false, reason: 'the screen was reported lost or stolen' };
+  // Retired for good (P3.4): shut out once it has had a week to send what it still holds (a box
+  // retired with plays it never sent gets them in; its plays keep 7 days), P7.1.
+  const service = await pool.query<{ kind: string; at: string }>(
+    `SELECT kind, extract(epoch FROM at)::bigint AS at FROM screen_service_events
+      WHERE screen_id = $1 AND at <= to_timestamp($2) ORDER BY id DESC LIMIT 1`,
+    [r.clientId, now],
+  );
+  const last = service.rows[0];
+  if (last?.kind === 'retired' && now >= Number(last.at) + RETIRED_SENDS_DAYS * 86_400)
+    return { ok: false, reason: 'the screen is retired' };
   return { ok: true, serial: cert.serial };
 }
 

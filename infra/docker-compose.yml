@@ -11,7 +11,7 @@ services:
       POSTGRES_PASSWORD: ${LOCAL_POSTGRES_PASSWORD:-recall}
       POSTGRES_DB: recall
     ports:
-      - '5432:5432'
+      - '127.0.0.1:5432:5432'
     volumes:
       - db-data:/home/postgres/pgdata
       - ./db/init.sql:/docker-entrypoint-initdb.d/001-extensions.sql:ro
@@ -25,7 +25,7 @@ services:
     # Job queue (BullMQ).
     image: redis:7.4.11-alpine
     ports:
-      - '6379:6379'
+      - '127.0.0.1:6379:6379'
     healthcheck:
       test: ['CMD', 'redis-cli', 'ping']
       interval: 5s
@@ -36,8 +36,8 @@ services:
     # The line to every screen. Dashboard: http://localhost:18083 (admin / public on first start).
     image: emqx/emqx:5.8.6
     ports:
-      - '1883:1883'
-      - '18083:18083'
+      - '127.0.0.1:1883:1883'
+      - '127.0.0.1:18083:18083'
     healthcheck:
       test: ['CMD', '/opt/emqx/bin/emqx', 'ctl', 'status']
       interval: 10s
@@ -49,7 +49,7 @@ services:
     image: chrislusf/seaweedfs:4.48
     command: server -dir=/data -s3 -s3.port=8333
     ports:
-      - '8333:8333'
+      - '127.0.0.1:8333:8333'
     volumes:
       - s3-data:/data
     healthcheck:

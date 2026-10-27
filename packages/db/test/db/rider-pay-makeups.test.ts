@@ -17,7 +17,7 @@ import { createBooking, moveBooking, savePriceBook } from '../../src/bookings.js
 import { addScreenKey } from '../../src/plays.js';
 import { accrueRiderPay, assignScreen, monthBounds } from '../../src/rider-pay.js';
 import { storeUpload } from '../../src/screen-reports.js';
-import { freshDatabase } from './fresh-db.js';
+import { freshDatabase, chooseAds } from './fresh-db.js';
 
 let db: Awaited<ReturnType<typeof freshDatabase>>;
 let pool: pg.Pool;
@@ -113,6 +113,7 @@ describe('rider pay and make-ups', () => {
     );
     await moveBooking(pool, 'BK-X', 'awaiting-payment', { by: 'priya', actor: 'admin' }, BOOKED);
     await moveBooking(pool, 'BK-X', 'paid', { by: 'gateway', actor: 'system' }, BOOKED + 60);
+    await chooseAds(pool, 'BK-X');
     await moveBooking(pool, 'BK-X', 'ads-approved', { by: 'priya', actor: 'admin' }, BOOKED + 120);
     await assignScreen(pool, 'scr-x', 'R-OLD', start, 'fitter');
     await screenKey('scr-x');

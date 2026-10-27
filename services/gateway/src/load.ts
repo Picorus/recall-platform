@@ -85,6 +85,12 @@ export async function runLoad(o: {
       ['ads-approved', booked + 180],
       ['running', hour],
     ] as const;
+    // Its ad chosen (plays count only for an ad the booking ran, P7.1).
+    await pool.query(
+      `INSERT INTO booking_ad_sets (booking_id, version, ad_ids, set_by, set_at)
+       VALUES ('BK-LOAD', 1, '{ad-load}', 'load', to_timestamp($1))`,
+      [booked + 90],
+    );
     for (const [s, at] of steps)
       await moveBooking(pool, 'BK-LOAD', s, { by: 'load', actor: 'system' }, at);
     // Each screen its own play key, as in real life.

@@ -35,7 +35,9 @@ import {
   addStaff,
   changeAccess,
   endSession,
+  ipRange,
   openInvite,
+  RANGE_SHARE,
   resetStaff,
   sessionMember,
   signIn,
@@ -204,15 +206,21 @@ class Gate {
   /** Places each address holds (running or queued): one address cannot fill the queue. */
   private readonly held = new Map<string, number>();
   async run<T>(who: string, f: () => Promise<T>): Promise<T> {
-    const mine = this.held.get(who) ?? 0;
-    if (mine >= PER_ADDRESS) throw new HttpError(429, 'Busy. Try again in a moment.');
-    this.held.set(who, mine + 1);
+    // The address, and the /48 it is part of (ip-range.ts, P7.1): a rented range cannot fill it.
+    const range = ipRange(who);
+    const keys = range ? [who, `range:${range}`] : [who];
+    const most = (key: string) => (key === who ? PER_ADDRESS : PER_ADDRESS * RANGE_SHARE * 2);
+    if (keys.some((key) => (this.held.get(key) ?? 0) >= most(key)))
+      throw new HttpError(429, 'Busy. Try again in a moment.');
+    for (const key of keys) this.held.set(key, (this.held.get(key) ?? 0) + 1);
     try {
       return await this.queued(f);
     } finally {
-      const n = (this.held.get(who) ?? 1) - 1;
-      if (n > 0) this.held.set(who, n);
-      else this.held.delete(who);
+      for (const key of keys) {
+        const n = (this.held.get(key) ?? 1) - 1;
+        if (n > 0) this.held.set(key, n);
+        else this.held.delete(key);
+      }
     }
   }
   private async queued<T>(f: () => Promise<T>): Promise<T> {

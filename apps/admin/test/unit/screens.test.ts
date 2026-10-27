@@ -17,9 +17,9 @@ describe('Screens page words', () => {
   });
 
   it('what can be done in each part of a screen life', () => {
-    expect(actionsFor('on-bike')).toEqual(['swap', 'unfit']);
-    expect(actionsFor('in-stock')).toEqual(['to-repair', 'retired']);
-    expect(actionsFor('in-repair')).toEqual(['repaired', 'retired']);
+    expect(actionsFor('on-bike')).toEqual(['swap', 'unfit', 'lost']);
+    expect(actionsFor('in-stock')).toEqual(['to-repair', 'retired', 'lost']);
+    expect(actionsFor('in-repair')).toEqual(['repaired', 'retired', 'lost']);
     expect(actionsFor('retired')).toEqual([]);
   });
 });

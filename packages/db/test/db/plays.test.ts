@@ -14,7 +14,7 @@ import { saveAreaVersion } from '../../src/areas.js';
 import { createBooking, moveBooking, savePriceBook } from '../../src/bookings.js';
 import { addScreenKey, countedPlaysFor, lineTotalsFor, revokeScreenKey } from '../../src/plays.js';
 import { storeUpload } from '../../src/screen-reports.js';
-import { freshDatabase } from './fresh-db.js';
+import { freshDatabase, chooseAds } from './fresh-db.js';
 
 let db: Awaited<ReturnType<typeof freshDatabase>>;
 let pool: pg.Pool;
@@ -88,6 +88,7 @@ beforeAll(async () => {
   );
   await moveBooking(pool, 'BK-P1', 'awaiting-payment', { by: 'priya', actor: 'admin' }, BOOKED);
   await moveBooking(pool, 'BK-P1', 'paid', { by: 'gateway', actor: 'system' }, BOOKED + 60);
+  await chooseAds(pool, 'BK-P1');
   await moveBooking(pool, 'BK-P1', 'ads-approved', { by: 'priya', actor: 'admin' }, BOOKED + 120);
   for (const s of ['scr-a', 'scr-b', 'scr-c', 'scr-d', 'scr-e']) {
     keys.set(s, newKey());
@@ -150,6 +151,34 @@ describe('plays in the database (P1.5)', () => {
     // Stolen at HOUR + 76: plays from seq 5 (HOUR + 75) count, seq 6 on do not.
     await revokeScreenKey(pool, 'scr-g', 'k1', 'prateek', 'screen stolen from bike', HOUR + 76);
     expect((await totals()).plays).toBe(before + 5);
+  });
+
+  it('a play of an ad its booking never ran does not count, whatever line it names (P7.1)', async () => {
+    keys.set('scr-m', newKey());
+    await addScreenKey(pool, 'scr-m', 'k1', keys.get('scr-m')?.publicKey ?? '', 'fitter');
+    const before = (await totals()).plays;
+    await upload('scr-m', [signed('scr-m', 1, { adId: 'someone-elses-ad' }), signed('scr-m', 2)]);
+    expect((await totals()).plays).toBe(before + 1);
+    const kept = await pool.query<{ reason: string | null }>(
+      `SELECT reason FROM plays WHERE screen_id = 'scr-m' ORDER BY seq`,
+    );
+    expect(kept.rows.map((x) => x.reason)).toEqual(['not one of its ads', null]);
+    // Only its latest choice: an ad it chose earlier and replaced does not count either.
+    await chooseAds(pool, 'BK-P1', ['ad-2']);
+    await upload('scr-m', [signed('scr-m', 3), signed('scr-m', 4, { adId: 'ad-2' })]);
+    expect((await totals()).plays).toBe(before + 2);
+    await chooseAds(pool, 'BK-P1', ['ad-1']); // back to what the other tests play
+  });
+
+  it('plays from before a key was given up that arrive after it was revoked never count (P7.1)', async () => {
+    keys.set('scr-n', newKey());
+    await addScreenKey(pool, 'scr-n', 'k1', keys.get('scr-n')?.publicKey ?? '', 'fitter');
+    const before = (await totals()).plays;
+    await upload('scr-n', [signed('scr-n', 1)]);
+    // Lost at HOUR + 3000: plays signed "before" it but sent afterwards could carry any start time.
+    await revokeScreenKey(pool, 'scr-n', 'k1', 'ops', 'screen stolen from bike', HOUR + 3000);
+    await upload('scr-n', [signed('scr-n', 2), signed('scr-n', 3)]);
+    expect((await totals()).plays).toBe(before + 1);
   });
 
   it('a line is named one way only: "…/08" for the 8 am line is not counted', async () => {
@@ -248,6 +277,7 @@ describe('plays in the database (P1.5)', () => {
     );
     await moveBooking(pool, 'BK-P2', 'awaiting-payment', { by: 'priya', actor: 'admin' }, BOOKED);
     await moveBooking(pool, 'BK-P2', 'paid', { by: 'gateway', actor: 'system' }, BOOKED + 60);
+    await chooseAds(pool, 'BK-P2');
     keys.set('scr-i', newKey());
     await addScreenKey(pool, 'scr-i', 'k1', keys.get('scr-i')?.publicKey ?? '', 'fitter');
     const line2 = lineIdOf('BK-P2', 'hyd-madhapur', '2027-08-24', 18);

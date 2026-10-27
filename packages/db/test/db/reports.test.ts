@@ -20,7 +20,7 @@ import { sendDueReports, setBrandContact } from '../../src/report-sends.js';
 import { buildDueReports, campaignReportFor, reportDueAt } from '../../src/reports.js';
 import { reportList, resendReport } from '../../src/report-desk.js';
 import { storeUpload } from '../../src/screen-reports.js';
-import { freshDatabase } from './fresh-db.js';
+import { freshDatabase, chooseAds } from './fresh-db.js';
 
 let db: Awaited<ReturnType<typeof freshDatabase>>;
 let pool: pg.Pool;
@@ -111,6 +111,7 @@ describe('the final report (P1.9.1)', () => {
     );
     await moveBooking(pool, 'BK-R', 'awaiting-payment', { by: 'priya', actor: 'admin' }, BOOKED);
     await moveBooking(pool, 'BK-R', 'paid', { by: 'gateway', actor: 'system' }, BOOKED + 60);
+    await chooseAds(pool, 'BK-R');
     await moveBooking(pool, 'BK-R', 'ads-approved', { by: 'priya', actor: 'admin' }, BOOKED + 120);
     const t10 = lineStartsAt({ date: DAY, startHour: 10 });
     const t11 = t10 + 3600;
@@ -268,6 +269,7 @@ describe('the final report (P1.9.1)', () => {
     const who = { by: 'priya', actor: 'admin' } as const;
     await moveBooking(pool, 'BK-T', 'awaiting-payment', who, BOOKED);
     await moveBooking(pool, 'BK-T', 'paid', { by: 'gateway', actor: 'system' }, BOOKED + 60);
+    await chooseAds(pool, 'BK-T');
     await moveBooking(pool, 'BK-T', 'ads-approved', who, BOOKED + 120);
     await moveBooking(pool, 'BK-T', 'running', { by: 'system', actor: 'system' }, ends - 3600);
     await moveBooking(pool, 'BK-T', 'done', { by: 'system', actor: 'system' }, ends);

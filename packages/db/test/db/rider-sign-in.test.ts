@@ -11,6 +11,7 @@ import {
   endRiderSession,
   riderSession,
 } from '../../src/rider-sign-in.js';
+import { RANGE_SHARE } from '../../src/ip-range.js';
 import { createRider, reviseRider } from '../../src/riders.js';
 import { freshDatabase } from './fresh-db.js';
 
@@ -172,15 +173,73 @@ describe('rider sign-in (P4.1)', () => {
     ).rejects.toThrow('this connection');
     // A brake on everyone's codes together (message costs).
     const all = await pool.query<{ n: string }>(
-      `SELECT count(*) AS n FROM rider_codes WHERE sent_at > to_timestamp($1) - interval '1 hour'`,
+      `SELECT count(*) AS n FROM rider_codes
+        WHERE sent_at > to_timestamp($1) - interval '1 hour' AND NOT known`,
       [NOW + 200],
     );
+    const busy = { ...R, codesPerHourAll: Number(all.rows[0]?.n) };
+    // Past the brake: the same answer as ever, but nothing is sent to a number with no account (so
+    // the answer never tells whether a number has one), P7.1.
+    const sentBefore = m.sent.length;
+    expect(
+      await askRiderCode(
+        pool,
+        m,
+        { ...ask, phone: '+919188888888', ip: '10.8.8.8' },
+        SECRET,
+        NOW + 200,
+        busy,
+      ),
+    ).toEqual({ expiresAt: NOW + 200 + R.codeSeconds });
+    expect(m.sent.length).toBe(sentBefore);
+    // A rider we know is never held up by codes asked for numbers nobody has (P7.1).
+    expect(
+      await askRiderCode(
+        pool,
+        m,
+        { ...ask, phone: RAVI, ip: '10.8.8.9' },
+        SECRET,
+        NOW + 2000,
+        busy,
+      ),
+    ).toEqual({ expiresAt: NOW + 2000 + R.codeSeconds });
+    expect(m.sent.at(-1)?.to).toBe(RAVI);
+  });
+
+  it('IPv6: each /64 has its own limit, and the whole /48 five times that (P7.1)', async () => {
+    const m = fakeMessages();
+    const ask = { channel: 'sms' as const, language: 'en' as const };
+    const t = NOW + 5 * 3600;
+    // 5 neighbours in one /48, each at its own limit, then a sixth is refused.
+    let n = 0;
+    for (let net = 1; net <= RANGE_SHARE; net++)
+      for (let i = 0; i < R.codesPerAddressHour; i++, n++)
+        await askRiderCode(
+          pool,
+          m,
+          { ...ask, phone: `+91920000${String(n).padStart(4, '0')}`, ip: `2001:db8:7:${net}::/64` },
+          SECRET,
+          t + n,
+        );
     await expect(
-      askRiderCode(pool, m, { ...ask, phone: '+919188888888', ip: '10.8.8.8' }, SECRET, NOW + 200, {
-        ...R,
-        codesPerHourAll: Number(all.rows[0]?.n),
-      }),
-    ).rejects.toThrow('busy');
+      askRiderCode(
+        pool,
+        m,
+        { ...ask, phone: '+919211111111', ip: '2001:db8:7:99::/64' },
+        SECRET,
+        t + n,
+      ),
+    ).rejects.toThrow('this connection');
+    // Another /48 is not held up.
+    expect(
+      await askRiderCode(
+        pool,
+        m,
+        { ...ask, phone: '+919211111111', ip: '2001:db8:8:1::/64' },
+        SECRET,
+        t + n,
+      ),
+    ).toMatchObject({});
   });
 
   it('wrong codes for one number are capped for the day, across connections', async () => {

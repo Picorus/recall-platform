@@ -10,3 +10,4 @@ Step-by-step "how to" for operations. One file per operation, added when the ope
 | [rider-app.md](rider-app.md) | Running and testing the rider app |
 | [brand-portal.md](brand-portal.md) | Running and testing the brand portal |
 | [load-test.md](load-test.md) | Proving the cloud keeps up with the whole fleet |
+| [security.md](security.md) | A lost or stolen screen; the limits in place; what to do before going live |

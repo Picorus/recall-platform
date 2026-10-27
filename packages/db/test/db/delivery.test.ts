@@ -18,7 +18,7 @@ import { bookingDelivery, dayDelivery, refundsWaiting } from '../../src/delivery
 import { settleDue } from '../../src/makeups.js';
 import { addScreenKey } from '../../src/plays.js';
 import { storeUpload } from '../../src/screen-reports.js';
-import { freshDatabase } from './fresh-db.js';
+import { freshDatabase, chooseAds } from './fresh-db.js';
 
 let db: Awaited<ReturnType<typeof freshDatabase>>;
 let pool: pg.Pool;
@@ -94,6 +94,7 @@ beforeAll(async () => {
   );
   await moveBooking(pool, 'BK-D1', 'awaiting-payment', { by: 'priya', actor: 'admin' }, BOOKED);
   await moveBooking(pool, 'BK-D1', 'paid', { by: 'gateway', actor: 'system' }, BOOKED + 60);
+  await chooseAds(pool, 'BK-D1');
   await moveBooking(pool, 'BK-D1', 'ads-approved', { by: 'ravi', actor: 'admin' }, BOOKED + 120);
   // 900 of the 17:00 line's plays, from 4 screens.
   for (const s of ['d1', 'd2', 'd3', 'd4']) {
@@ -156,6 +157,7 @@ describe('delivery (P3.10)', () => {
     );
     await moveBooking(pool, 'BK-D2', 'awaiting-payment', { by: 'priya', actor: 'admin' }, BOOKED);
     await moveBooking(pool, 'BK-D2', 'paid', { by: 'gateway', actor: 'system' }, BOOKED + 60);
+    await chooseAds(pool, 'BK-D2');
     await moveBooking(
       pool,
       'BK-D2',

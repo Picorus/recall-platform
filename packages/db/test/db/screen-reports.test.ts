@@ -16,7 +16,7 @@ import {
 } from '@recall/domain';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type pg from 'pg';
-import { minutesOf, storeUpload } from '../../src/screen-reports.js';
+import { MOST_AHEAD, minutesOf, storeUpload } from '../../src/screen-reports.js';
 import { freshDatabase } from './fresh-db.js';
 
 let db: Awaited<ReturnType<typeof freshDatabase>>;
@@ -110,6 +110,27 @@ describe('screen uploads in the database', () => {
     expect(
       await count('SELECT lost AS n FROM screen_inboxes WHERE screen_id = $1', ['scr-3']),
     ).toBe(0);
+  });
+
+  it('reports far ahead of a gap are left out: a box cannot park any number of them (P7.1)', async () => {
+    const live = (seq: number): Numbered => ({
+      seq,
+      at: T + seq,
+      report: { kind: 'live', t: T + seq, lat: 17.45, lng: 78.39, place: 'outside', moving: true },
+    });
+    // Number 1 never sent: 2 waits ahead of the gap, MOST_AHEAD is just in reach, + 1 is not.
+    const r = await storeUpload(
+      pool,
+      'scr-9',
+      [live(2), live(MOST_AHEAD), live(MOST_AHEAD + 1), live(10_000_000)],
+      1,
+    );
+    expect(r.ack).toBe(0);
+    const kept = await pool.query<{ seq: string }>(
+      'SELECT seq FROM screen_reports WHERE screen_id = $1 ORDER BY seq',
+      ['scr-9'],
+    );
+    expect(kept.rows.map((x) => Number(x.seq))).toEqual([2, MOST_AHEAD]);
   });
 
   it('stored reports can never be edited or deleted, and the inbox never moves back', async () => {

@@ -19,7 +19,7 @@ import { giveCut } from '../../src/cuts.js';
 import { accountTotals, trialBalance } from '../../src/ledger.js';
 import { addScreenKey, revokeScreenKey } from '../../src/plays.js';
 import { storeUpload } from '../../src/screen-reports.js';
-import { freshDatabase } from './fresh-db.js';
+import { freshDatabase, chooseAds } from './fresh-db.js';
 
 let db: Awaited<ReturnType<typeof freshDatabase>>;
 let pool: pg.Pool;
@@ -107,6 +107,7 @@ async function book(
   // A free trial goes through the same steps (paid at ₹0).
   await moveBooking(pool, id, 'awaiting-payment', { by: 'priya', actor: 'admin' }, BOOKED);
   await moveBooking(pool, id, 'paid', { by: 'gateway', actor: 'system' }, BOOKED + 60);
+  await chooseAds(pool, id);
   if (upTo === 'ads-approved')
     await moveBooking(pool, id, 'ads-approved', { by: 'priya', actor: 'admin' }, BOOKED + 120);
 }

@@ -39,14 +39,14 @@ export function certificateSoon(until: number | null, now: number): boolean {
 /** What staff may do with a screen in each part of its life. */
 export function actionsFor(
   life: ScreenLife,
-): readonly ('swap' | 'unfit' | 'to-repair' | 'repaired' | 'retired')[] {
+): readonly ('swap' | 'unfit' | 'to-repair' | 'repaired' | 'retired' | 'lost')[] {
   switch (life) {
     case 'on-bike':
-      return ['swap', 'unfit'];
+      return ['swap', 'unfit', 'lost'];
     case 'in-stock':
-      return ['to-repair', 'retired'];
+      return ['to-repair', 'retired', 'lost'];
     case 'in-repair':
-      return ['repaired', 'retired'];
+      return ['repaired', 'retired', 'lost'];
     default:
       return [];
   }
@@ -58,4 +58,5 @@ export const ACTION_NAMES = {
   'to-repair': 'Send to repair',
   repaired: 'Back from repair',
   retired: 'Retire for good',
+  lost: 'Report lost or stolen',
 } as const;

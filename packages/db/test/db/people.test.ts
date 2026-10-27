@@ -15,7 +15,7 @@ import { createBooking, moveBooking, savePriceBook } from '../../src/bookings.js
 import { addScreenKey } from '../../src/plays.js';
 import { bookingPeople } from '../../src/people.js';
 import { storeUpload } from '../../src/screen-reports.js';
-import { freshDatabase } from './fresh-db.js';
+import { freshDatabase, chooseAds } from './fresh-db.js';
 
 let db: Awaited<ReturnType<typeof freshDatabase>>;
 let pool: pg.Pool;
@@ -99,6 +99,7 @@ describe('people counts for a booking (P1.8.2–3)', () => {
     );
     await moveBooking(pool, 'BK-P', 'awaiting-payment', { by: 'priya', actor: 'admin' }, BOOKED);
     await moveBooking(pool, 'BK-P', 'paid', { by: 'gateway', actor: 'system' }, BOOKED + 60);
+    await chooseAds(pool, 'BK-P');
     await moveBooking(pool, 'BK-P', 'ads-approved', { by: 'priya', actor: 'admin' }, BOOKED + 120);
     await screenKey('scr-p');
     const at = lineStartsAt({ date: DAY, startHour: 10 });

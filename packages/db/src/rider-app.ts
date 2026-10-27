@@ -113,6 +113,16 @@ export async function changeOwnDetails(
     throw new Refusal('Your application is decided: call support to change your details');
   if (details.phone !== f.details.phone)
     throw new Refusal('Your mobile number is changed by support');
+  // Once a bank account was checked against his name, the name stays (P7.1): changing it and
+  // checking again would tell whose name any account is in.
+  if (details.name !== f.details.name) {
+    const banked = await pool.query(
+      `SELECT 1 FROM rider_checks WHERE rider_id = $1 AND kind = 'bank' LIMIT 1`,
+      [riderId],
+    );
+    if ((banked.rowCount ?? 0) > 0)
+      throw new Refusal('Your bank account was checked with this name: call support to change it');
+  }
   await reviseRider(pool, riderId, details, RIDER_APP, 'changed on the rider app', now);
 }
 

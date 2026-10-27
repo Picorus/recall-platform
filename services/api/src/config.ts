@@ -30,7 +30,8 @@ export interface ApiConfig extends StaffApiConfig {
   readonly port: number;
 }
 
-/** A fixed key for a laptop only: the API refuses it anywhere NODE_ENV is production. */
+/** A fixed key for a laptop only: the API refuses it in production and wherever it can be reached
+ * from another machine (the same rule as the fakes, P7.1). */
 const LAPTOP_KEY = '00'.repeat(32);
 
 export function readConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
@@ -41,7 +42,8 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     return v;
   };
   const keyText = env.STAFF_SECRET_KEY || (production ? need('STAFF_SECRET_KEY') : LAPTOP_KEY);
-  if (production && keyText === LAPTOP_KEY) throw new Error('STAFF_SECRET_KEY is the laptop key');
+  if ((production || !onlyLocal(env)) && keyText === LAPTOP_KEY)
+    throw new Error('STAFF_SECRET_KEY must be set (the laptop key works only on a laptop)');
   const origins = (
     env.ADMIN_ORIGINS || (production ? need('ADMIN_ORIGINS') : 'http://localhost:3001')
   )

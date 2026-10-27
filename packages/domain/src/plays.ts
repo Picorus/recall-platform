@@ -119,6 +119,9 @@ export interface LineForPlays {
   readonly endsAt: number;
   /** Plays promised (a line: bikes × plays per bike-hour) or owed (a make-up). */
   readonly plays: number;
+  /** The ads its booking runs (its latest choice): a play of any other ad counts for no brand,
+   * whatever line it names (P7.1). */
+  readonly ads?: readonly string[];
 }
 
 /** Why a play is refused outright (not stored as a play at all). */
@@ -181,6 +184,7 @@ export function judgePlay(
   const line = ctx.line;
   if (!line || line.lineId !== p.ref)
     return no(p.slot === 'make-up' ? 'not an open make-up' : 'not a sold booking line');
+  if (line.ads && !line.ads.includes(p.adId)) return no('not one of its ads');
   if (p.startAt < line.startsAt || p.startAt >= line.endsAt) return no('outside its hour');
   // Inside or in the edge zone of the line's own area (even where that edge overlaps a neighbour).
   const area = published(line.areaId);

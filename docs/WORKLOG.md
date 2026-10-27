@@ -2,6 +2,24 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 28 Oct 2026 · P7.1 · Security review
+- **Four reviews**, each by its own agent, reading the code: staff sign-in and roles (every route and the role it needs); brand and rider data (every portal and rider route, changing ids); screens and signed plays (one upload traced from the broker to the plays table); the websites, secrets, dependencies and outside services. None found a way to forge a play, read another account's data or take over an account. Runbook: `docs/RUNBOOKS/security.md`.
+- **Fixed:**
+  - Next.js 16.3.8 → 16.4.1 in both sites (two critical advisories and one high); the unused image service is off.
+  - A screen reported lost or stolen (Screens page, Operations admin, up to 7 days back): play keys given up from that moment, certificates revoked, off its bike, in one step. Before, nothing in the app revoked a stolen box. A revoked key's plays count only if they arrived before it was revoked. A retired screen is shut out once it has had 7 days to send what it holds.
+  - A play counts only for an ad its booking runs (its latest choice). Before, a tampered box could label any ad with a brand's line.
+  - The gateway's waiting line: 8 per screen, 256 MB and 10,000 in all. Reports more than 5,000 numbers ahead of a gap are left for later (a box could park reports forever).
+  - Sign-in: IPv6 limits also per /48 (5 times larger); the shared hourly brake on codes counts only numbers and emails with no account, and past it they get the usual answer but no code. Staff wrong tries and the password queue also per /48.
+  - Brand ad uploads: 4 at once, one per business; any upload slower than 8 KB a second after 10 seconds is stopped; the brand site's one-upload rule goes by the session cookie only.
+  - A staff draft booking cannot be reviewed, paid or given ads from the portal.
+  - A rider's name is fixed once a bank account was checked against it (otherwise the ₹1 check tells whose name any account is in).
+  - Audit log: an invite used, resets apart from first invites, staff sessions ended (migration 0061).
+  - The API's laptop key is refused wherever the API can be reached from another machine; the laptop services listen on 127.0.0.1.
+- **Second review, fixed with tests:** a retired screen holding unsent plays could never send them (now 7 days); the lost form used the laptop's clock (now hours before the server's now); the new brake answered differently for numbers with and without accounts (now the same); plays counted for an ad chosen earlier and replaced (now the latest choice only).
+- Tests: domain/db/API/gateway for each fix (lost screen, retired, ads, late plays after revocation, far-ahead reports, waiting line, /48 limits, quiet brake, uploads per business and too slow, staff drafts, bank-checked name, audit rows). Test helper `chooseAds` for tests that move a booking by hand. All: check 20/20, db 305, API 83, gateway 9, brand e2e 5, admin e2e 17.
+- Open (in the runbook): screen certificate renewal (2 years); key attestation at enrolment; a time window on payment callbacks (P6); a per-screen play cap and counting only fitted screens left as decisions.
+- Next: P7.3 coverage of the money and play code.
+
 ## 28 Oct 2026 · P7.2 · Load test at the full fleet
 - P7 split into steps (the plan names them, not their order): P7.1 security review, P7.2 load test, P7.3 coverage of the money and play code, P7.4 backups, restore and one-step rollback, P7.5 POC readiness list. The 2-week road test needs bikes (Prateek's team).
 - **The load test** (`services/gateway/src/load.ts`, `packages/db/test/load/payout-run.ts`, runbook `docs/RUNBOOKS/load-test.md`): 15,500 screens each sending what a screen sends every 30 seconds (position, 2 signed plays, the minute summary) through the gateway's own handling; and the Monday payout run for 15,500 riders.

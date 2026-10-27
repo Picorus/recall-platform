@@ -17,6 +17,7 @@ import {
 } from '@recall/domain';
 import { createHash, createHmac, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
+import { ipRange, RANGE_SHARE } from './ip-range.js';
 import { inTransaction } from './makeups.js';
 import { Refusal } from './refusal.js';
 
@@ -61,61 +62,87 @@ export async function askBrandCode(
     throw new RangeError('An email address gets its code by email; a number by WhatsApp or SMS');
   const what = ask.channel === 'email' ? 'email' : 'number';
   const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
-  const made = await inTransaction(pool, async (c): Promise<Refused | { codeId: string }> => {
-    await lock(c, ask.ip, ask.address);
-    const all = await c.query<{ n: string }>(
-      `SELECT count(*) AS n FROM brand_codes WHERE sent_at > to_timestamp($1) - interval '1 hour'`,
-      [now],
-    );
-    if (Number(all.rows[0]?.n ?? 0) >= rules.codesPerHourAll)
-      return { refused: 'Sign-in is busy: try again in a few minutes', why: { code: 'busy' } };
-    const r = await c.query<{ recent: string; today: string; first: string | null }>(
-      `SELECT count(*) FILTER (WHERE ip = $4 AND sent_at > to_timestamp($2) - interval '15 minutes') AS recent,
+  const made = await inTransaction(
+    pool,
+    async (c): Promise<Refused | { codeId: string } | { quiet: true }> => {
+      await lock(c, ask.ip, ask.address);
+      // Someone who already has an account is never held up by codes asked for made-up ones (P7.1).
+      const known = await c.query<{ known: boolean }>(
+        'SELECT EXISTS (SELECT 1 FROM brand_members WHERE address = $1 AND active) AS known',
+        [ask.address],
+      );
+      const isKnown = known.rows[0]?.known === true;
+      const all = await c.query<{ n: string }>(
+        `SELECT count(*) AS n FROM brand_codes
+        WHERE sent_at > to_timestamp($1) - interval '1 hour' AND NOT known`,
+        [now],
+      );
+      const r = await c.query<{ recent: string; today: string; first: string | null }>(
+        `SELECT count(*) FILTER (WHERE ip = $4 AND sent_at > to_timestamp($2) - interval '15 minutes') AS recent,
               count(*) FILTER (WHERE sent_at >= to_timestamp($3)) AS today,
               extract(epoch FROM min(sent_at) FILTER
                 (WHERE ip = $4 AND sent_at > to_timestamp($2) - interval '15 minutes'))::bigint AS first
          FROM brand_codes
         WHERE address = $1 AND sent_at >= least(to_timestamp($3), to_timestamp($2) - interval '15 minutes')`,
-      [ask.address, now, indiaDayStart(now), ask.ip],
-    );
-    const counts = r.rows[0];
-    if (Number(counts?.today ?? 0) >= rules.codesPerDay)
-      return {
-        refused: `Too many codes for this ${what} today: try again tomorrow`,
-        why: { code: 'too-many-today' },
-      };
-    if (Number(counts?.recent ?? 0) >= rules.codesPer15Min) {
-      const wait = minutes(Number(counts?.first ?? now) + 900 - now);
-      return {
-        refused: `Too many codes for this ${what}: try again in ${wait} minutes`,
-        why: { code: 'too-many-number', n: wait },
-      };
-    }
-    const byIp = await c.query<{ n: string }>(
-      `SELECT count(*) AS n FROM brand_codes
+        [ask.address, now, indiaDayStart(now), ask.ip],
+      );
+      const counts = r.rows[0];
+      if (Number(counts?.today ?? 0) >= rules.codesPerDay)
+        return {
+          refused: `Too many codes for this ${what} today: try again tomorrow`,
+          why: { code: 'too-many-today' },
+        };
+      if (Number(counts?.recent ?? 0) >= rules.codesPer15Min) {
+        const wait = minutes(Number(counts?.first ?? now) + 900 - now);
+        return {
+          refused: `Too many codes for this ${what}: try again in ${wait} minutes`,
+          why: { code: 'too-many-number', n: wait },
+        };
+      }
+      const byIp = await c.query<{ n: string }>(
+        `SELECT count(*) AS n FROM brand_codes
         WHERE ip = $1 AND sent_at > to_timestamp($2) - interval '1 hour'`,
-      [ask.ip, now],
-    );
-    if (Number(byIp.rows[0]?.n ?? 0) >= rules.codesPerAddressHour)
-      return {
-        refused: 'Too many codes from this connection: try again in an hour',
-        why: { code: 'too-many-connection' },
-      };
-    const ins = await c.query<{ code_id: string }>(
-      `INSERT INTO brand_codes (address, channel, code_hash, ip, sent_at, expires_at)
-       VALUES ($1, $2, $3, $4, to_timestamp($5), to_timestamp($6)) RETURNING code_id`,
-      [
-        ask.address,
-        ask.channel,
-        fingerprint(secret, ask.address, code),
-        ask.ip,
-        now,
-        now + rules.codeSeconds,
-      ],
-    );
-    return { codeId: ins.rows[0]?.code_id ?? '' };
-  });
+        [ask.ip, now],
+      );
+      // And the whole /48 it is part of (ip-range.ts).
+      const range = ipRange(ask.ip);
+      const byRange = range
+        ? await c.query<{ n: string }>(
+            `SELECT count(*) AS n FROM brand_codes
+            WHERE ip LIKE $1 AND sent_at > to_timestamp($2) - interval '1 hour'`,
+            [`${range}%`, now],
+          )
+        : undefined;
+      if (
+        Number(byIp.rows[0]?.n ?? 0) >= rules.codesPerAddressHour ||
+        Number(byRange?.rows[0]?.n ?? 0) >= rules.codesPerAddressHour * RANGE_SHARE
+      )
+        return {
+          refused: 'Too many codes from this connection: try again in an hour',
+          why: { code: 'too-many-connection' },
+        };
+      // Everyone's codes together are past the hourly brake (message costs): a number or email with
+      // no account gets the same answer as one with an account, but nothing is sent, so the answer
+      // never tells whether an account exists (P7.1).
+      if (!isKnown && Number(all.rows[0]?.n ?? 0) >= rules.codesPerHourAll) return { quiet: true };
+      const ins = await c.query<{ code_id: string }>(
+        `INSERT INTO brand_codes (address, channel, code_hash, ip, sent_at, expires_at, known)
+       VALUES ($1, $2, $3, $4, to_timestamp($5), to_timestamp($6), $7) RETURNING code_id`,
+        [
+          ask.address,
+          ask.channel,
+          fingerprint(secret, ask.address, code),
+          ask.ip,
+          now,
+          now + rules.codeSeconds,
+          isKnown,
+        ],
+      );
+      return { codeId: ins.rows[0]?.code_id ?? '' };
+    },
+  );
   if ('refused' in made) throw new Refusal(made.refused, made.why);
+  if ('quiet' in made) return { expiresAt: now + rules.codeSeconds };
   // Sent after the code is written down: its own key, so a retry never sends a second message.
   const key = `brand-code:${made.codeId}`;
   const mins = rules.codeSeconds / 60;

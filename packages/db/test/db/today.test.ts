@@ -27,7 +27,7 @@ import {
   makeUpsOwed,
   refundsThisWeek,
 } from '../../src/today.js';
-import { freshDatabase } from './fresh-db.js';
+import { freshDatabase, chooseAds } from './fresh-db.js';
 
 let db: Awaited<ReturnType<typeof freshDatabase>>;
 let pool: pg.Pool;
@@ -101,6 +101,7 @@ async function book(
   await moveBooking(pool, id, 'awaiting-payment', { by: 'priya', actor: 'admin' }, BOOKED);
   if (to === 'awaiting-payment') return;
   await moveBooking(pool, id, 'paid', { by: 'gateway', actor: 'system' }, BOOKED + 60);
+  await chooseAds(pool, id);
   if (to === 'paid')
     await moveBooking(pool, id, 'ads-approved', { by: 'priya', actor: 'admin' }, BOOKED + 120);
   if (to === 'cancelled')

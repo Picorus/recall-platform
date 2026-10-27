@@ -5,10 +5,13 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type pg from 'pg';
 import { revokeScreenKey } from '../../src/plays.js';
 import { assignScreen } from '../../src/rider-pay.js';
+import { certFingerprint, screenMayConnect } from '../../src/screen-line.js';
 import {
   enrolScreen,
   fitScreen,
+  reportScreenLost,
   screenStatus,
+  serviceScreen,
   unfitScreen,
   type SignedEnrolment,
 } from '../../src/screens.js';
@@ -157,6 +160,69 @@ describe('screens: enrolment and fitting (P2.1)', () => {
         NOW,
       ),
     ).rejects.toThrow('not enrolled');
+  });
+
+  it('reported lost or stolen (P7.1): keys given up from that moment, line closed, off its bike, once', async () => {
+    await approvedRider(pool, 'RD-000777', 'TS09EC7777');
+    const s = await enrolScreen(pool, ca, boxRequest('RK-LOST-0001'), 'w', NOW);
+    await fitScreen(
+      pool,
+      { qr: s.qr, plate: 'TS09EC7777', riderId: 'RD-000777' },
+      'fitter',
+      NOW + 100,
+    );
+    const lost = (lostAt: number, reason = 'bike stolen at Madhapur', now = NOW + 7200) =>
+      reportScreenLost(pool, { screenId: s.screenId, lostAt, reason, by: 'ops', now });
+    await expect(lost(NOW + 7300)).rejects.toThrow('now or earlier');
+    await expect(lost(NOW + 7200 - 8 * 86_400)).rejects.toThrow('last 7 days');
+    await expect(lost(NOW + 3600, 'gone')).rejects.toThrow('at least 5');
+    expect(await lost(NOW + 3600)).toEqual({ keys: 1, certificates: 1, unfitted: true });
+    expect((await screenStatus(pool, s.screenId, NOW + 7200))?.fitting).toBeUndefined();
+    const v = await pool.query<{ t: string }>(
+      `SELECT extract(epoch FROM plays_until)::bigint AS t FROM screen_key_revocations
+        WHERE screen_id = $1`,
+      [s.screenId],
+    );
+    expect(Number(v.rows[0]?.t)).toBe(NOW + 3600);
+    expect(
+      await screenMayConnect(
+        pool,
+        { clientId: s.screenId, commonName: s.screenId, fingerprint: certFingerprint(s.certPem) },
+        NOW + 7300,
+      ),
+    ).toEqual({ ok: false, reason: 'the certificate was revoked' });
+    await expect(lost(NOW + 3600)).rejects.toThrow('already reported lost');
+    const log = await pool.query<{ action: string }>(
+      `SELECT action FROM audit_log WHERE ref IN ($1, $2) ORDER BY action`,
+      [s.screenId, s.certSerial],
+    );
+    expect(log.rows.map((r) => r.action)).toEqual(
+      expect.arrayContaining(['certificate revoked', 'screen key revoked', 'screen fitted']),
+    );
+  });
+
+  it('a retired screen cannot open its line once it had a week to send what it holds (P7.1)', async () => {
+    const s = await enrolScreen(pool, ca, boxRequest('RK-RET-0001'), 'w', NOW);
+    const ask = (at: number) =>
+      screenMayConnect(
+        pool,
+        { clientId: s.screenId, commonName: s.screenId, fingerprint: certFingerprint(s.certPem) },
+        at,
+      );
+    expect(await ask(NOW + 10)).toMatchObject({ ok: true });
+    await serviceScreen(pool, {
+      screenId: s.screenId,
+      kind: 'retired',
+      reason: 'cracked panel',
+      by: 'ops',
+      now: NOW + 20,
+    });
+    // A week to send what it still holds, then shut out.
+    expect(await ask(NOW + 30)).toMatchObject({ ok: true });
+    expect(await ask(NOW + 20 + 7 * 86_400)).toEqual({
+      ok: false,
+      reason: 'the screen is retired',
+    });
   });
 
   it('records cannot be changed', async () => {

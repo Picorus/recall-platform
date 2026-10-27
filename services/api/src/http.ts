@@ -75,7 +75,13 @@ export function cookies(req: IncomingMessage): Map<string, string> {
 
 /** Uploads at once (each holds a file of up to 64 MB in memory), and how long one may take. */
 const MAX_UPLOADS = 2;
+/** Brand ads come from many businesses at once: more slots, and one per business (P7.1). */
+const MAX_BRAND_UPLOADS = 4;
 const UPLOAD_SECONDS = 180;
+/** After the first few seconds, an upload slower than this is stopped (P7.1): a sender trickling
+ * bytes cannot hold a slot for the whole UPLOAD_SECONDS. 8 KB a second is slower than a weak 2G phone. */
+const SLOW_AFTER_SECONDS = 10;
+const SLOWEST_BYTES_PER_SECOND = 8 * 1024;
 const uploading = new Map<string, number>();
 
 /** The body as bytes, refused past `max` (read as it arrives, never more held), when it takes
@@ -91,9 +97,15 @@ async function bodyBytes(req: IncomingMessage, max: number, seconds: number): Pr
     () => req.destroy(new HttpError(408, 'The upload took too long. Try again.')),
     seconds * 1000,
   );
+  const started = Date.now();
+  let size = 0;
+  const slow = setInterval(() => {
+    const s = (Date.now() - started) / 1000;
+    if (s >= SLOW_AFTER_SECONDS && size < s * SLOWEST_BYTES_PER_SECOND && size < declared)
+      req.destroy(new HttpError(408, 'The upload is too slow. Try again on a better connection.'));
+  }, 2_000);
   try {
     const chunks: Buffer[] = [];
-    let size = 0;
     for await (const c of req) {
       size += (c as Buffer).length;
       if (size > max) throw new HttpError(413, 'The file is too large');
@@ -103,6 +115,7 @@ async function bodyBytes(req: IncomingMessage, max: number, seconds: number): Pr
     return Buffer.concat(chunks, size);
   } finally {
     clearTimeout(late);
+    clearInterval(slow);
   }
 }
 
@@ -117,15 +130,22 @@ export async function withUpload(
   kind: 'ads' | 'documents' | 'rider-documents' | 'rider-problems' | 'brand-ads' | 'brand-logos',
   max: number,
   use: (data: Buffer) => Promise<void>,
+  /** Whose upload it is (a business): one at a time each, so one cannot take every slot. */
+  owner?: string,
 ): Promise<void> {
+  const most = kind === 'brand-ads' ? MAX_BRAND_UPLOADS : MAX_UPLOADS;
+  const mine = owner === undefined ? undefined : `${kind}:${owner}`;
+  if (mine !== undefined && (uploading.get(mine) ?? 0) >= 1)
+    throw new HttpError(429, 'Another upload for this business is still going: wait for it');
   const n = uploading.get(kind) ?? 0;
-  if (n >= MAX_UPLOADS)
-    throw new HttpError(503, 'Other uploads are running. Try again in a minute.');
+  if (n >= most) throw new HttpError(503, 'Other uploads are running. Try again in a minute.');
   uploading.set(kind, n + 1);
+  if (mine !== undefined) uploading.set(mine, 1);
   try {
     await use(await bodyBytes(req, max, UPLOAD_SECONDS));
   } finally {
     uploading.set(kind, (uploading.get(kind) ?? 1) - 1);
+    if (mine !== undefined) uploading.delete(mine);
   }
 }
 
