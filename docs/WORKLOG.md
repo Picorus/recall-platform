@@ -7,6 +7,7 @@ Newest first. Each entry: date · step id · what changed · tests · open issue
 - **Team** (`GET/POST /portal/team`, page `/team`): who can use the business; an owner adds people by mobile number or work email as "Owner" or "Can book", changes or removes them; never themselves; at most 20 people (a setting). Every change is a new version with who and why, as staff changes are.
 - Links from campaigns: Invoices, Team, Help; Help links to business details, team and invoices.
 - Tests: domain 2 (ad rules in words follow the settings; answers carry no number that is a setting); API 1 (answers, ad rules, a question becomes a support conversation and is listed; the owner adds a booker who then sees the business, a booker cannot change the team, nobody removes themselves, a removed person loses it); brand portal in a browser (an answer opened, a question sent and listed, a colleague added).
+- **Second review, fixed with tests:** two owners demoting each other at the same moment could leave a business with no owner, and two adds at once could pass the team size: every team change now re-checks, under the business's lock, that the one acting is still an owner, the size, and that an owner remains. "Your questions" showed conversations our staff opened about the business (their subjects are internal): now only those started on the portal.
 - Next: P5.10 agencies.
 
 ## 27 Oct 2026 · P5.8 · Brand portal: invoices and credit notes

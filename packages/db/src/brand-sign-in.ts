@@ -397,7 +397,30 @@ export async function setPortalMember(
   now: number,
 ): Promise<number> {
   return inTransaction(pool, async (c) => {
-    await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`brand-members:${m.brandId}`]);
+    await lockMembers(c, m.brandId);
+    return setMemberIn(c, m, now);
+  });
+}
+
+/** One business's people change one at a time (P5.9: checks and the change under one lock). */
+export async function lockMembers(c: Q, brandId: string): Promise<void> {
+  await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`brand-members:${brandId}`]);
+}
+
+/** setPortalMember's change, inside the caller's transaction holding `lockMembers`. */
+export async function setMemberIn(
+  c: Q,
+  m: {
+    readonly brandId: string;
+    readonly address: string;
+    readonly role: BrandMemberRole;
+    readonly active: boolean;
+    readonly reason: string;
+    readonly by: string;
+  },
+  now: number,
+): Promise<number> {
+  {
     const b = await c.query('SELECT 1 FROM brands WHERE brand_id = $1', [m.brandId]);
     if (b.rowCount === 0) throw new Refusal('No such brand or agency');
     const last = await c.query<{ version: number; role: string; active: boolean }>(
@@ -418,5 +441,5 @@ export async function setPortalMember(
       [m.brandId, m.address, version, m.role, m.active, m.reason, m.by, now],
     );
     return version;
-  });
+  }
 }

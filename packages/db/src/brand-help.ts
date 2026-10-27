@@ -4,7 +4,7 @@
 // never themselves; every change is a new version with who and why (hard rule 3).
 import type { BrandMemberRole, BrandSignInRules } from '@recall/domain';
 import type { Pool } from 'pg';
-import { portalMembers, setPortalMember, type PortalMember } from './brand-sign-in.js';
+import { lockMembers, portalMembers, setMemberIn, type PortalMember } from './brand-sign-in.js';
 import { inTransaction } from './makeups.js';
 import { Refusal } from './refusal.js';
 import { threadFromBrandPortal } from './support.js';
@@ -17,14 +17,15 @@ export interface BrandQuestion {
   readonly state: 'open' | 'waiting' | 'done';
 }
 
-/** The business's latest conversations with us (its questions, deals), newest first. */
+/** The business's latest conversations started on the portal (questions, deals), newest first;
+ * conversations our staff opened about it are theirs, not shown. */
 export async function brandQuestions(c: Q, brandId: string): Promise<BrandQuestion[]> {
   const r = await c.query<{ at: string; subject: string; state: string | null }>(
     `SELECT extract(epoch FROM t.created_at)::bigint AS at, t.subject,
             (SELECT state FROM support_steps s WHERE s.thread_id = t.thread_id
               ORDER BY seq DESC LIMIT 1) AS state
        FROM support_threads t
-      WHERE t.party_kind = 'brand' AND t.party_id = $1
+      WHERE t.party_kind = 'brand' AND t.party_id = $1 AND t.created_by = 'brand portal'
       ORDER BY t.created_at DESC LIMIT 20`,
     [brandId],
   );
@@ -79,7 +80,11 @@ export async function brandTeam(c: Q, brandId: string): Promise<PortalMember[]> 
   return (await portalMembers(c, brandId)).filter((m) => m.active);
 }
 
-/** The owner adds, changes or removes one person (never themselves). */
+/**
+ * An owner adds, changes or removes one person (never themselves). Under the business's lock: the
+ * one acting is still an owner, the team stays within its size, and an owner always remains (two
+ * owners demoting each other at once cannot leave none).
+ */
 export async function setTeamMember(
   pool: Pool,
   m: {
@@ -97,26 +102,32 @@ export async function setTeamMember(
     throw new Refusal('You cannot change your own access: ask another owner, or us', {
       code: 'self',
     });
-  if (m.active) {
-    const team = await brandTeam(pool, m.brandId);
-    const already = team.some((x) => x.address === m.address);
-    if (!already && team.length >= rules.teamMax)
+  return inTransaction(pool, async (c) => {
+    await lockMembers(c, m.brandId);
+    const team = await brandTeam(c, m.brandId);
+    if (!team.some((x) => x.address === m.owner && x.role === 'owner'))
+      throw new Refusal('Only an owner changes the team', { code: 'not-owner' });
+    if (m.active && !team.some((x) => x.address === m.address) && team.length >= rules.teamMax)
       throw new Refusal(`A business has at most ${rules.teamMax} people: remove someone first`, {
         code: 'team-full',
       });
-  }
-  return setPortalMember(
-    pool,
-    {
-      brandId: m.brandId,
-      address: m.address,
-      role: m.role,
-      active: m.active,
-      reason: m.active
-        ? 'added by its owner on the brand portal'
-        : 'removed by its owner on the brand portal',
-      by: `portal:${m.owner}`.slice(0, 120),
-    },
-    now,
-  );
+    const owners =
+      team.filter((x) => x.address !== m.address && x.role === 'owner').length +
+      (m.active && m.role === 'owner' ? 1 : 0);
+    if (owners === 0) throw new Refusal('A business always keeps an owner', { code: 'last-owner' });
+    return setMemberIn(
+      c,
+      {
+        brandId: m.brandId,
+        address: m.address,
+        role: m.role,
+        active: m.active,
+        reason: m.active
+          ? 'added by its owner on the brand portal'
+          : 'removed by its owner on the brand portal',
+        by: `portal:${m.owner}`.slice(0, 120),
+      },
+      now,
+    );
+  });
 }
