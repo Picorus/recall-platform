@@ -146,7 +146,7 @@ export default function App() {
         {(fontsReady || fontsFailed) &&
           step.at === 'home' &&
           step.me.riderId !== null &&
-          (step.me.status === 'left' || step.me.status === 'rejected') && (
+          !['applied', 'approved', 'active', 'paused'].includes(step.me.status ?? '') && (
             <Home lang={lang} me={step.me} onSignOut={() => void signOut()} />
           )}
       </LangContext.Provider>

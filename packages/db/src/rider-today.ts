@@ -4,7 +4,7 @@
 // rules (packages/domain/src/rider-today.ts). Read only: the pay run stays the one that pays.
 import {
   daysBetween,
-  dayEarnings,
+  earningsByDay,
   dailyTotals,
   DEFAULT_RIDER_PAY_RULES,
   DEFAULT_TODAY_RULES,
@@ -23,6 +23,7 @@ import type { Pool } from 'pg';
 import { priceBooks } from './bookings.js';
 import { businessModes } from './business-mode.js';
 import { fleetScreens } from './fleet.js';
+import { monthBounds } from './rider-pay.js';
 import { minutesOf } from './screen-reports.js';
 
 type Q = Pick<Pool, 'query'>;
@@ -70,7 +71,8 @@ async function stretchesOf(pool: Q, riderId: string, from: number, to: number) {
        FROM (SELECT screen_id, rider_id, from_at,
                     lead(from_at) OVER (PARTITION BY screen_id ORDER BY from_at) AS next_at
                FROM rider_screens
-              WHERE screen_id IN (SELECT screen_id FROM rider_screens WHERE rider_id = $1)) s
+              WHERE screen_id IN (SELECT screen_id FROM rider_screens WHERE rider_id = $1)
+                AND from_at < to_timestamp($3)) s
       WHERE rider_id = $1 AND from_at < to_timestamp($3)
         AND (next_at IS NULL OR next_at > to_timestamp($2))
       ORDER BY from_at`,
@@ -88,7 +90,8 @@ export async function riderToday(pool: Q, riderId: string, now: number): Promise
   // The week of today's business day (a Monday 01:00 is still Sunday's: that week).
   const monday = toIndiaTime(new Date(weekStartOf(opensAt(today)) * 1000)).date;
   const days = daysBetween(monday, today);
-  const from = opensAt(days[0] ?? today);
+  // From the 1st of the week's first month: the month so far decides the cap.
+  const from = opensAt(`${monday.slice(0, 7)}-01`);
   const to = Math.min(now, closesAt(today));
 
   const [books, changes, stretches] = await Promise.all([
@@ -96,9 +99,13 @@ export async function riderToday(pool: Q, riderId: string, now: number): Promise
     businessModes(pool),
     stretchesOf(pool, riderId, from, to),
   ]);
-  // The rider pay in force now (the defaults on a laptop with no price book saved yet).
-  const rules =
-    (priceBookAt(books, isoAt(now)) ?? books.at(-1))?.riderPay ?? DEFAULT_RIDER_PAY_RULES;
+  // Each month's rider pay: the price book in force when it starts, as the pay run takes it (the
+  // defaults on a laptop with no price book saved yet; none in force: nothing paid).
+  const rulesOf = (month: string) =>
+    books.length === 0
+      ? DEFAULT_RIDER_PAY_RULES
+      : priceBookAt(books, isoAt(monthBounds(month).start))?.riderPay;
+  const rules = rulesOf(today.slice(0, 7)) ?? DEFAULT_RIDER_PAY_RULES;
 
   // A minute belongs to whoever rode its screen at its start (as the pay run counts).
   const minutes: MinuteSummary[] = [];
@@ -107,23 +114,26 @@ export async function riderToday(pool: Q, riderId: string, now: number): Promise
       if (m.minute >= s.from && m.minute < s.to) minutes.push(m);
   const totals = dailyTotals(minutes);
   const pocFirst = pocFirstMonth(changes);
-  const perDay = days.map((day) => {
-    const countedSeconds = totals.get(day)?.countedSeconds ?? 0;
-    const held = stretches.some((s) => s.from < closesAt(day) && s.to > opensAt(day));
-    const mode = modeAt(changes, opensAt(day)) === 'poc' ? 'poc' : 'regular';
-    return {
-      day,
-      countedSeconds,
-      earnedPaise: dayEarnings(rules, pocFirst, { day, countedSeconds, held, mode }),
-    };
-  });
+  const all = daysBetween(`${monday.slice(0, 7)}-01`, today).map((day) => ({
+    day,
+    countedSeconds: totals.get(day)?.countedSeconds ?? 0,
+    held: stretches.some((s) => s.from < closesAt(day) && s.to > opensAt(day)),
+    mode: modeAt(changes, opensAt(day)) === 'poc' ? ('poc' as const) : ('regular' as const),
+  }));
+  const earned = earningsByDay(all, rulesOf, pocFirst);
+  const perDay = days.map((day) => ({
+    day,
+    countedSeconds: totals.get(day)?.countedSeconds ?? 0,
+    earnedPaise: earned.get(day) ?? 0,
+  }));
 
   // His screen now: the one on his bike.
   const fitted = await pool.query<{ screen_id: string }>(
-    `SELECT screen_id FROM (
-       SELECT DISTINCT ON (screen_id) screen_id, rider_id, from_at FROM screen_fittings
-        WHERE from_at <= to_timestamp($2) ORDER BY screen_id, from_at DESC) x
-      WHERE rider_id = $1 ORDER BY from_at DESC LIMIT 1`,
+    `SELECT f.screen_id FROM screen_fittings f
+      WHERE f.rider_id = $1 AND f.from_at <= to_timestamp($2)
+        AND NOT EXISTS (SELECT 1 FROM screen_fittings g WHERE g.screen_id = f.screen_id
+                         AND g.from_at > f.from_at AND g.from_at <= to_timestamp($2))
+      ORDER BY f.from_at DESC LIMIT 1`,
     [riderId, now],
   );
   const screenId = fitted.rows[0]?.screen_id;

@@ -1,9 +1,9 @@
 // P4.4: the rider app's Today page. What a rider earned so far today and this week, worked out by
 // the same rules as his pay (rider-pay.ts) so the app never promises more than the pay run gives:
-// a POC day pays the month's base spread over its days when he held a screen that day; a regular
-// day pays ₹25 a counted moving hour. His share of sales comes later (it is known only once the
-// hours his plays sold for are settled), and the monthly cap on hours applies over the month: the
-// app says so. All amounts before TDS, in whole paise.
+// a POC day pays the month's base spread over its days when he held a screen that day (paid once
+// the day ends); a regular day pays ₹25 a counted moving hour, up to the month's cap, rounded as the
+// month's total is. His share of sales comes later (known only once the hours his plays sold for
+// are settled): the app says so. All amounts before TDS, in whole paise.
 import { pocBaseOf, pocDayPaise, pocMonthOf, type RiderPayRules } from './rider-pay.js';
 
 export interface RiderDay {
@@ -22,19 +22,50 @@ export function hourlyPaise(rules: RiderPayRules, seconds: number): number {
   return Math.floor((seconds * rules.perMovingHourPaise * 2 + 3600) / 7200);
 }
 
-/** One day's earnings before TDS (the sales share apart). `pocFirst`: the POC's first month. */
-export function dayEarnings(
-  rules: RiderPayRules,
+/**
+ * Each day's earnings before TDS (the sales share apart), as the pay run will give them. `days` are
+ * every business day from the 1st of each month shown up to today, in order; `rulesOf` gives the
+ * rider pay in force at the start of a month (as the pay run takes it), or undefined when no price
+ * book is (nothing is paid then). Hourly pay is worked out as the month's running total, capped
+ * and rounded as the pay run does once a month: a day earns what the month's total grew by, so
+ * the days add up exactly to the month and nothing past the cap is shown.
+ */
+export function earningsByDay(
+  days: readonly RiderDay[],
+  rulesOf: (month: string) => RiderPayRules | undefined,
   pocFirst: string | undefined,
-  d: RiderDay,
-): number {
-  if (d.mode === 'regular') return hourlyPaise(rules, d.countedSeconds);
-  const month = d.day.slice(0, 7);
-  const n = pocMonthOf(pocFirst, month);
-  if (n === undefined || !d.held) return 0;
-  const [y, m] = month.split('-').map(Number) as [number, number];
-  const daysInMonth = new Date(Date.UTC(y, m, 0)).getUTCDate();
-  return pocDayPaise(pocBaseOf(rules, n), daysInMonth, Number(d.day.slice(8, 10)));
+): Map<string, number> {
+  const out = new Map<string, number>();
+  let month = '';
+  let seconds = 0;
+  for (const d of days) {
+    const m = d.day.slice(0, 7);
+    if (m !== month) {
+      month = m;
+      seconds = 0;
+    }
+    const rules = rulesOf(m);
+    if (!rules) {
+      out.set(d.day, 0);
+      continue;
+    }
+    if (d.mode === 'regular') {
+      const cap = rules.monthlyCapHours * 3600;
+      const before = hourlyPaise(rules, Math.min(seconds, cap));
+      seconds += d.countedSeconds;
+      out.set(d.day, hourlyPaise(rules, Math.min(seconds, cap)) - before);
+      continue;
+    }
+    const n = pocMonthOf(pocFirst, m);
+    if (n === undefined || !d.held) {
+      out.set(d.day, 0);
+      continue;
+    }
+    const [y, mo] = m.split('-').map(Number) as [number, number];
+    const daysInMonth = new Date(Date.UTC(y, mo, 0)).getUTCDate();
+    out.set(d.day, pocDayPaise(pocBaseOf(rules, n), daysInMonth, Number(d.day.slice(8, 10))));
+  }
+  return out;
 }
 
 /** Mobile signal as bars, 0 (none) to 4, from dBm; null when the box has not said. */

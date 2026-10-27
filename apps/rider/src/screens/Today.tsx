@@ -16,7 +16,14 @@ interface Day {
   readonly earnedPaise: number;
 }
 
+/** India time of day, "14:05". */
+const indiaClock = (t: number) => {
+  const d = new Date((t + 19_800) * 1000);
+  return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
+};
+
 export interface TodayPage {
+  readonly at: number;
   readonly screen: {
     readonly screenId: string;
     readonly state: 'moving' | 'stopped' | 'offline' | 'at-hub';
@@ -95,11 +102,24 @@ export function Today({
   const signOut = useRef(onSignOut);
   signOut.current = onSignOut;
 
+  // Only the newest look counts (a slow answer never overwrites a newer one), and none after the
+  // page has closed.
+  const asked = useRef(0);
+  useEffect(
+    () => () => {
+      asked.current = -1;
+    },
+    [],
+  );
   const load = useCallback(async () => {
+    const mine = ++asked.current;
     try {
-      setPage(await call<TodayPage>('/rider/today', { token }));
+      const p = await call<TodayPage>('/rider/today', { token });
+      if (mine !== asked.current) return;
+      setPage(p);
       setError('');
     } catch (e) {
+      if (mine !== asked.current) return;
       if (e instanceof ApiError && e.status === 401) signOut.current();
       else
         setError(
@@ -123,6 +143,7 @@ export function Today({
       </View>
       {me.status === 'paused' && <Alert>{say(lang, 'status_paused')}</Alert>}
       {error !== '' && <Alert>{error}</Alert>}
+      {error !== '' && page && <Muted small>{say(lang, 'asOf', { t: indiaClock(page.at) })}</Muted>}
       {!page && error === '' && <Muted>{say(lang, 'loading')}</Muted>}
 
       {page && (
