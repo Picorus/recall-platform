@@ -163,8 +163,9 @@ export async function riderLoanPage(
     };
   }
   const given = await c.query<{ paise: string | null }>(
-    `SELECT sum(p.debit) AS paise FROM ledger_entries e JOIN ledger_postings p USING (entry_id)
-      WHERE e.kind = 'poc-finish-bonus' AND e.ref = $1 AND p.account = 'rider-earnings'`,
+    `SELECT sum(p.debit - p.credit) AS paise FROM ledger_entries e JOIN ledger_postings p USING (entry_id)
+      WHERE e.ref = $1 AND p.account = 'rider-earnings' AND p.party = $1
+        AND e.kind IN ('poc-finish-bonus', 'poc-finish-bonus-reversed')`,
     [riderId],
   );
   const givenPaise = Number(given.rows[0]?.paise ?? 0);

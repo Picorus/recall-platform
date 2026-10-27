@@ -34,13 +34,22 @@ function words(x: string, what: string, max: number, min = 1): string {
   return t;
 }
 
-/** The rider or brand a phone or email belongs to now (a rider first, by phone), or null. */
+/**
+ * The rider or brand a phone or email belongs to now (a rider first, by phone), or null. A number
+ * phone companies gave out again belongs to the rider still with RECALL (as sign-in has it); only
+ * when none is, to the newest rider who had it.
+ */
 async function partyOf(c: Q, contact: string): Promise<{ kind: PartyKind; id: string } | null> {
   if (PHONE.test(contact)) {
     const r = await c.query<{ rider_id: string }>(
-      `SELECT rider_id FROM (SELECT DISTINCT ON (rider_id) rider_id, phone FROM rider_versions
-                              ORDER BY rider_id, version DESC) v
-        WHERE v.phone = $1 ORDER BY rider_id DESC LIMIT 1`,
+      `SELECT r.rider_id FROM riders r
+         JOIN LATERAL (SELECT phone FROM rider_versions x WHERE x.rider_id = r.rider_id
+                        ORDER BY version DESC LIMIT 1) v ON true
+         LEFT JOIN LATERAL (SELECT status FROM rider_steps t WHERE t.rider_id = r.rider_id
+                             ORDER BY seq DESC LIMIT 1) st ON true
+        WHERE v.phone = $1
+        ORDER BY coalesce(st.status, '') IN ('left', 'rejected'), r.created_at DESC, r.rider_id DESC
+        LIMIT 1`,
       [contact],
     );
     if (r.rows[0]) return { kind: 'rider', id: r.rows[0].rider_id };
@@ -129,10 +138,13 @@ export async function receiveMessage(
       [`${m.channel}:${m.providerId}`],
     );
     if (seen.rows[0]) return { threadId: seen.rows[0].thread_id, isNew: false };
+    // His own latest conversation on this channel: never one of someone who had the number before.
+    const party = await partyOf(c, contact);
     const last = await c.query<{ thread_id: string }>(
       `SELECT thread_id FROM support_threads WHERE contact = $1 AND channel = $2
+          AND party_kind IS NOT DISTINCT FROM $3 AND party_id IS NOT DISTINCT FROM $4
         ORDER BY created_at DESC LIMIT 1`,
-      [contact, m.channel],
+      [contact, m.channel, party?.kind ?? null, party?.id ?? null],
     );
     let threadId = last.rows[0]?.thread_id;
     // The same lock as staff notes, replies and steps on this conversation.
@@ -140,7 +152,6 @@ export async function receiveMessage(
     const text = (m.text.trim() || '(no text)').slice(0, 10_000);
     if (!threadId) {
       threadId = newThreadId();
-      const party = await partyOf(c, contact);
       // One line, no control characters (it becomes an email subject in replies).
       const subject =
         (m.subject?.trim() || text.split(/\r?\n/)[0] || 'Message')

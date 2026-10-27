@@ -4,9 +4,15 @@
 import { fakeFileStore } from '@recall/adapters';
 import type pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { problemsOfThread, reportScreenProblem, riderProblems } from '../../src/rider-care.js';
-import { createRider } from '../../src/riders.js';
-import { stepThread, supportThread } from '../../src/support.js';
+import {
+  askSupport,
+  problemsOfThread,
+  reportScreenProblem,
+  riderProblems,
+  riderRequests,
+} from '../../src/rider-care.js';
+import { createRider, stepRider } from '../../src/riders.js';
+import { receiveMessage, stepThread, supportThread } from '../../src/support.js';
 import { freshDatabase } from './fresh-db.js';
 
 let db: Awaited<ReturnType<typeof freshDatabase>>;
@@ -127,5 +133,79 @@ describe('screen problems from the rider app (P4.8)', () => {
       { riderId, phone, kind: 'damage', note: '', photo: null },
       NOW + 86_400 + 400,
     );
+  });
+
+  it('P4.9: a question from the app starts a conversation; his requests; a limit a day', async () => {
+    await expect(askSupport(pool, { riderId, phone, text: 'hi' }, NOW)).rejects.toMatchObject({
+      why: { code: 'say-what' },
+    });
+    const later = NOW + 3 * 86_400;
+    const q = await askSupport(
+      pool,
+      { riderId, phone, text: 'When is my payout?\nI changed my bank last week.' },
+      later,
+    );
+    expect(await supportThread(pool, q.threadId)).toMatchObject({
+      subject: 'Rider app: When is my payout?',
+      party: { kind: 'rider', id: riderId },
+    });
+    const mine = await riderRequests(pool, riderId);
+    expect(mine[0]).toMatchObject({ subject: 'Rider app: When is my payout?', state: 'open' });
+    // Problems and questions together: 10 a day from the app.
+    for (let i = 0; i < 9; i++)
+      await askSupport(pool, { riderId, phone, text: `Question ${i}` }, later + 10 + i);
+    await expect(
+      askSupport(pool, { riderId, phone, text: 'One more' }, later + 100),
+    ).rejects.toMatchObject({ why: { code: 'too-many-reports' } });
+  });
+
+  it("a number given out again: his WhatsApp message is his, never the old rider's", async () => {
+    const shared = '+919811199999';
+    const old = await createRider(
+      pool,
+      {
+        details: { name: 'Old Owner', phone: shared, bikePlate: null, rides: '', apps: [] },
+        channel: 'admin',
+        by: 'Omar',
+        reason: 'walk-in',
+      },
+      NOW - 9 * 86_400,
+    );
+    const first = await receiveMessage(
+      pool,
+      {
+        channel: 'whatsapp',
+        from: shared,
+        text: 'My last pay?',
+        providerId: 'wamid.old1',
+        at: NOW - 8 * 86_400,
+      },
+      NOW - 8 * 86_400,
+    );
+    await stepRider(pool, old, 'left', 'Omar', 'moved to Pune', NOW - 7 * 86_400);
+    const fresh = await createRider(
+      pool,
+      {
+        details: { name: 'New Owner', phone: shared, bikePlate: null, rides: '', apps: [] },
+        channel: 'app',
+        by: 'rider app',
+        reason: 'signed up on the rider app',
+      },
+      NOW - 86_400,
+    );
+    const next = await receiveMessage(
+      pool,
+      {
+        channel: 'whatsapp',
+        from: shared,
+        text: 'How do I get a screen?',
+        providerId: 'wamid.new1',
+        at: NOW,
+      },
+      NOW,
+    );
+    expect(next.threadId).not.toBe(first.threadId);
+    expect((await supportThread(pool, next.threadId))?.party).toMatchObject({ id: fresh });
+    expect((await supportThread(pool, first.threadId))?.party).toMatchObject({ id: old });
   });
 });

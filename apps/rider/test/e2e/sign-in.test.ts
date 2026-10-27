@@ -524,6 +524,15 @@ it("a rider on the road sees his screen, today's and this week's hours and earni
   await page
     .getByText('The bank takes your EMI from your account. RECALL never collects it.')
     .waitFor();
+  // P4.9: Help: a question to support, his requests, the common questions.
+  await page.getByRole('tab', { name: 'Help' }).click();
+  await page.getByLabel('Your question').fill('When does the bonus come?');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await page.getByText('Sent. We will reply on WhatsApp.').waitFor();
+  await page.getByText(/Rider app: When does the bonus come\?/).waitFor();
+  await page.getByRole('button', { name: 'When am I paid?' }).click();
+  await page.getByText(/Every Monday, to your checked bank account or UPI/).waitFor();
+  await shot(page, 'rider-help');
   await page.getByRole('tab', { name: 'Today' }).click();
   await page.getByText('On and playing').waitFor();
   expect(errors).toEqual([]);

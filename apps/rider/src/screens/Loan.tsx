@@ -40,10 +40,13 @@ export function Loan({
   lang,
   token,
   onSignOut,
+  onBack,
 }: {
   readonly lang: RiderLanguage;
   readonly token: string;
   readonly onSignOut: () => void;
+  /** Back to the Screen tab. */
+  readonly onBack?: () => void;
 }) {
   const [page, setPage] = useState<LoanPage>();
   const [error, setError] = useState('');
@@ -68,6 +71,11 @@ export function Loan({
   const l = page?.loan;
   return (
     <Screen>
+      {onBack && (
+        <View style={{ alignSelf: 'flex-start' }}>
+          <LinkButton label={say(lang, 'back')} onPress={onBack} />
+        </View>
+      )}
       <Title>{say(lang, 'loanTitle')}</Title>
       {error !== '' && <Alert>{error}</Alert>}
       {!page && error === '' && <Muted>{say(lang, 'loading')}</Muted>}

@@ -5,7 +5,7 @@
 import type { RiderLanguage } from '@recall/domain';
 import * as ImagePicker from 'expo-image-picker';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { BackHandler, Pressable, View } from 'react-native';
 import { ApiError, call, upload } from '../api';
 import { say, sayError, type Key } from '../i18n';
 import { color, touch } from '../theme';
@@ -67,6 +67,15 @@ export function Care({
   useEffect(() => {
     void load();
   }, [load]);
+  // Android's back button closes the loan page (not the app).
+  useEffect(() => {
+    if (!showLoan) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      setShowLoan(false);
+      return true;
+    });
+    return () => sub.remove();
+  }, [showLoan]);
 
   const pick = async (camera: boolean) => {
     const options: ImagePicker.ImagePickerOptions = { mediaTypes: ['images'], quality: 0.6 };
@@ -82,17 +91,22 @@ export function Care({
     if (!kind) return;
     setBusy(true);
     setError('');
-    const path = `/rider/problems?kind=${kind}&note=${encodeURIComponent(note.trim())}`;
+    const path = `/rider/problems?kind=${kind}`;
     try {
-      if (photo) await upload(path, photo, token);
-      else await call(path, { token, body: {} });
+      if (photo) await upload(path, photo, token, { 'x-note': encodeURIComponent(note.trim()) });
+      else await call(path, { token, body: { note: note.trim() } });
       setKind(undefined);
       setNote('');
       setPhoto(undefined);
       setSent(true);
-      await load();
     } catch (e) {
       failed(e);
+      setBusy(false);
+      return;
+    }
+    // Sent: a failed refresh of his list is not a failed report.
+    try {
+      await load();
     } finally {
       setBusy(false);
     }
@@ -100,12 +114,7 @@ export function Care({
 
   if (showLoan)
     return (
-      <View style={{ flex: 1 }}>
-        <Loan lang={lang} token={token} onSignOut={onSignOut} />
-        <View style={{ position: 'absolute', top: 12, right: 12 }}>
-          <LinkButton label={say(lang, 'back')} onPress={() => setShowLoan(false)} />
-        </View>
-      </View>
+      <Loan lang={lang} token={token} onSignOut={onSignOut} onBack={() => setShowLoan(false)} />
     );
 
   return (
@@ -132,6 +141,7 @@ export function Care({
               onPress={() => {
                 setKind(k);
                 setSent(false);
+                setError('');
               }}
               style={{
                 minHeight: touch.min,

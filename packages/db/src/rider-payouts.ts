@@ -66,8 +66,8 @@ export async function riderPayouts(pool: Q, riderId: string, now: number): Promi
         WHERE l.rider_id = $1 ORDER BY l.run_id DESC LIMIT 26`,
       [riderId],
     ),
-    pool.query<{ at: Date; paise: string }>(
-      `SELECT e.at, p.credit - p.debit AS paise
+    pool.query<{ at: Date; ref: string; paise: string }>(
+      `SELECT e.at, e.ref, p.credit - p.debit AS paise
          FROM ledger_postings p JOIN ledger_entries e USING (entry_id)
         WHERE p.account = 'tds-payable' AND p.party = $1`,
       [riderId],
@@ -75,7 +75,10 @@ export async function riderPayouts(pool: Q, riderId: string, now: number): Promi
   ]);
   const quarters = new Map<string, number>();
   for (const t of tds.rows) {
-    const q = quarterOf(indiaDate(Math.floor(t.at.getTime() / 1000)));
+    // By the month the pay was for ("RD-…/YYYY-MM"), so a later correction lands in its own
+    // quarter; otherwise (the finishing bonus) when it was given.
+    const month = /\/(\d{4}-\d{2})$/.exec(t.ref)?.[1];
+    const q = quarterOf(month ? `${month}-01` : indiaDate(Math.floor(t.at.getTime() / 1000)));
     quarters.set(q, (quarters.get(q) ?? 0) + Number(t.paise));
   }
   return {
@@ -98,7 +101,7 @@ export async function riderPayouts(pool: Q, riderId: string, now: number): Promi
                 : 'sending',
     })),
     tds: [...quarters]
-      .filter(([, p]) => p !== 0)
+      .filter(([, p]) => p > 0)
       .sort(([a], [b]) => (a < b ? 1 : -1))
       .map(([quarter, paise]) => ({ quarter, paise })),
   };

@@ -69,7 +69,12 @@ export interface Me {
 }
 
 /** Sends a picture the rider took or chose (P4.2) as the request body. */
-export async function upload<T>(path: string, uri: string, token: string): Promise<T> {
+export async function upload<T>(
+  path: string,
+  uri: string,
+  token: string,
+  headers: Readonly<Record<string, string>> = {},
+): Promise<T> {
   let body: Blob;
   try {
     body = await (await fetch(uri)).blob();
@@ -83,7 +88,11 @@ export async function upload<T>(path: string, uri: string, token: string): Promi
   try {
     r = await fetch(`${API_URL}${path}`, {
       method: 'POST',
-      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/octet-stream' },
+      headers: {
+        ...headers,
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/octet-stream',
+      },
       body,
       signal: abort.signal,
     });
