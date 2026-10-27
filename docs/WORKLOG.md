@@ -2,6 +2,13 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 27 Oct 2026 · P4.11 · Rider app: profile and settings
+- **Profile** (`packages/db/src/rider-profile.ts`, migration 0053, routes `GET /rider/profile`, `POST /rider/requests`), opened from Today: his name, rider id, number and plate; the app's language (Telugu, Hindi, English); his papers and where each stands, with the insurance's end date, and "Send a new one" for a renewed RC or insurance (allowed after approval; staff look at it as before); where he is paid (masked).
+- **Requests to support**, each a conversation on the support desk, once while one is open: change my bank account (a super admin checks the new account with ₹1 with him on a call; the app never takes account details, so a phone in the wrong hands cannot move his pay), leave RECALL (staff use his rider page's leaving list: screen back, last pay, the bank told), delete my account (marked URGENT: once the screen, pay and loan are settled, his details are erased, keeping only what the law requires; open question 18 sets for how long). A public page, `/rider/delete-account`, says how to ask (Google Play needs it).
+- Tests: database 1 (his profile, requests opened once each, again after support marks one done, no account numbers written); API 1 (profile, a request, the public page, a renewed insurance taken after approval but not a new photo); browser 1 (language switch, asking to leave).
+- **The rider app (P4) is complete.** Waiting on outside accounts: the Expo/Play Store account for phone notifications and the store listing (21), the real WhatsApp/SMS sign-in (16, 23), the providers for checks and payouts (16, 17), the bank's loan link (20), and someone to check the Telugu and Hindi words (22). The erasure itself (DPDP) follows the lawyer's answer to 18.
+- Next: P5, the brand portal.
+
 ## 27 Oct 2026 · P4.10 · Rider app: alerts
 - PR #70 (screen loan, screen care, help) merged with all checks green.
 - **Alerts** (`packages/db/src/rider-alerts.ts`, rules and words in `packages/domain/src/rider-alerts.ts`, migration 0052): every 2 minutes the API makes the alerts that are due, each once: his payout paid (with the amount), his fitted screen silent for 30 minutes in business hours (once per silent spell), its battery at 20% or less and not charging (once a day), a repair or swap booked for his screen. Then each new one goes to the phones he is signed in on, in the language his app is set to; **never while his bike is moving** (it waits until he stops), never one older than a day, never again to a phone that left. The 30 minutes and 20% are settings (Settings → Rider app limits).

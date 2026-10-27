@@ -42,6 +42,11 @@
 // P4.10:
 //   POST /rider/push              { token, language }  this phone's notification token
 //   GET  /rider/alerts            his alerts, newest first
+// P4.11:
+//   GET  /rider/profile           his details, papers, where he is paid (masked), open requests
+//   POST /rider/requests          { kind: bank-change | leave | delete }  a request to staff
+//   GET  /rider/delete-account    a public page: how to ask for an account to be deleted (Google Play)
+// Papers: once approved he may still send a renewed RC or insurance (staff look at it as before).
 import type { PayoutDestination } from '@recall/adapters';
 import {
   answerPanel,
@@ -78,6 +83,8 @@ import {
   riderRequests,
   askSupport,
   registerPush,
+  riderProfile,
+  riderRequest,
   riderAlerts,
   riderMonths,
   setting,
@@ -122,6 +129,15 @@ function tryOnce(
   m.set(key, mine?.hour === hour ? { hour, n: mine.n + 1 } : { hour, n: 1 });
   return true;
 }
+
+/** P4.11: the public page on asking for a rider account to be deleted (English; plain words). */
+const DELETE_ACCOUNT_PAGE = `<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>Delete your RECALL rider account</title>
+<style>body{font-family:system-ui,sans-serif;margin:24px;max-width:640px;line-height:1.5;color:#111}</style></head><body>
+<h1>Delete your RECALL rider account</h1>
+<p>In the RECALL rider app: open <b>Today</b>, then <b>Profile and settings</b>, then <b>Delete my account</b>. Or message RECALL support on WhatsApp from the number you signed up with.</p>
+<p>We first take back the screen and settle your last pay and your screen loan with the bank. Then your name, phone number, photos, vehicle papers and bank details are erased. We keep only what the law requires (pay and tax records), for as long as it requires.</p>
+</body></html>`;
 
 /** The key sign-in codes are fingerprinted with: its own, made from the API's secret key. */
 const codeKey = (cfg: StaffApiConfig) =>
@@ -181,6 +197,17 @@ export async function handleRiderApp(
       throw e;
     }
   };
+  // P4.11: how to ask for an account to be deleted, for anyone (a store listing links here).
+  if (path === '/rider/delete-account' && method === 'GET') {
+    res.writeHead(200, {
+      'content-type': 'text/html; charset=utf-8',
+      'x-content-type-options': 'nosniff',
+      'content-security-policy':
+        "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+    });
+    res.end(DELETE_ACCOUNT_PAGE);
+    return true;
+  }
   // P4.5: the statement page, opened in the phone's browser from a signed link (no token header).
   const st = /^\/rider\/statement\/([A-Za-z0-9_.-]{20,300})$/.exec(path);
   if (st && method === 'GET') {
@@ -308,6 +335,15 @@ export async function handleRiderApp(
     if (!months.includes(month))
       throw new HttpError(400, 'Pick one of your months', { code: 'bad-month' });
     send(res, 200, await riderEarnings(pool, riderId, month, now, months));
+    return true;
+  }
+  if (path === '/rider/profile' && method === 'GET') {
+    send(res, 200, await refused(() => riderProfile(pool, riderId, now)));
+    return true;
+  }
+  if (path === '/rider/requests' && method === 'POST') {
+    const kind = str(await jsonBody(req), 'kind', 20);
+    send(res, 200, await refused(() => riderRequest(pool, { riderId, phone: s.phone, kind }, now)));
     return true;
   }
   if (path === '/rider/alerts' && method === 'GET') {
@@ -453,7 +489,17 @@ export async function handleRiderApp(
     const store = cfg.files;
     if (!store) throw new HttpError(503, 'Uploads are not set up yet', { code: 'not-set-up' });
     const kind = new URLSearchParams((req.url ?? '').split('?')[1] ?? '').get('kind') ?? '';
-    await open();
+    // While his application is open, any of his papers; after approval, a renewed RC or insurance.
+    const renewal = async () => {
+      const page = await refused(() => joinPage(pool, riderId, now));
+      if (page.canChange) return;
+      if (
+        !['approved', 'active', 'paused'].includes(page.status) ||
+        !['rc', 'insurance'].includes(kind)
+      )
+        throw new HttpError(409, 'Your application is decided: call support', { code: 'decided' });
+    };
+    await renewal();
     if ((await appUploadsToday(pool, riderId, now)) >= rules.uploadsPerRiderDay)
       throw new HttpError(429, 'Too many pictures today: try again tomorrow', {
         code: 'too-many-uploads',
@@ -463,8 +509,8 @@ export async function handleRiderApp(
     uploadingRiders.add(riderId);
     try {
       await withUpload(req, 'rider-documents', MAX_DOCUMENT_BYTES, async (data) => {
-        // Still open once the picture has arrived (it may have been decided meanwhile).
-        await open();
+        // Still allowed once the picture has arrived (it may have been decided meanwhile).
+        await renewal();
         const doc = await refused(() =>
           uploadRiderDocument(pool, store, { riderId, kind, data, by: RIDER_APP }, now),
         );

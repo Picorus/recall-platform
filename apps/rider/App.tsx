@@ -1,6 +1,6 @@
 // The rider app (P4). P4.1: language, sign-in with a code, and who is signed in. P4.2: a new
 // number signs up, then the six joining steps while his application is open. P4.3: once approved,
-// booking his fitting, the screen's QR and the fitting check. P4.4–P4.5: on the road, Today and Earnings. The screens are a
+// booking his fitting, the screen's QR and the fitting check. P4.4–P4.11: on the road, Today, Earnings, Payouts, Screen, Help and the profile. The screens are a
 // small set of steps, so the app moves between them itself (no navigation library); Android's back
 // button goes back a step.
 import { RIDER_LANGUAGES, type RiderLanguage } from '@recall/domain';
@@ -138,7 +138,13 @@ export default function App() {
         {(fontsReady || fontsFailed) &&
           step.at === 'home' &&
           (step.me.status === 'active' || step.me.status === 'paused') && (
-            <OnRoad lang={lang} token={step.token} me={step.me} onSignOut={() => void signOut()} />
+            <OnRoad
+              lang={lang}
+              token={step.token}
+              me={step.me}
+              onLanguage={chooseLanguage}
+              onSignOut={() => void signOut()}
+            />
           )}
         {(fontsReady || fontsFailed) && step.at === 'home' && step.me.status === 'approved' && (
           <Fitting lang={lang} token={step.token} onSignOut={() => void signOut()} />

@@ -96,11 +96,14 @@ export function Today({
   lang,
   token,
   me,
+  onProfile,
   onSignOut,
 }: {
   readonly lang: RiderLanguage;
   readonly token: string;
   readonly me: Me;
+  /** P4.11: opens his profile and settings. */
+  readonly onProfile?: () => void;
   readonly onSignOut: () => void;
 }) {
   const [page, setPage] = useState<TodayPage>();
@@ -156,6 +159,11 @@ export function Today({
       <View style={{ gap: 4 }}>
         <Muted small>{say(lang, 'hello')}</Muted>
         <Title>{me.name ?? say(lang, 'welcome')}</Title>
+        {onProfile && (
+          <View style={{ alignSelf: 'flex-start' }}>
+            <LinkButton label={say(lang, 'profileLink')} onPress={onProfile} />
+          </View>
+        )}
       </View>
       {me.status === 'paused' && <Alert>{say(lang, 'status_paused')}</Alert>}
       {error !== '' && <Alert>{error}</Alert>}

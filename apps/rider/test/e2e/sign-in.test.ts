@@ -542,5 +542,17 @@ it("a rider on the road sees his screen, today's and this week's hours and earni
   await shot(page, 'rider-help');
   await page.getByRole('tab', { name: 'Today' }).click();
   await page.getByText('On and playing').waitFor();
+  // P4.11: profile and settings: Telugu, then back to English; asking to leave.
+  await page.getByRole('button', { name: 'Profile and settings' }).click();
+  await page.getByText('Your papers').waitFor();
+  await page.getByRole('radio', { name: 'తెలుగు' }).click();
+  await page.getByText('మీ పత్రాలు').waitFor();
+  await page.getByRole('radio', { name: 'English' }).click();
+  await page.getByRole('button', { name: 'Leave RECALL' }).click();
+  await page.getByRole('button', { name: 'Yes, ask support' }).click();
+  await page.getByText('Leaving asked: support will call you.').waitFor();
+  await shot(page, 'rider-profile');
+  await page.getByRole('button', { name: 'Back' }).first().click();
+  await page.getByText('On and playing').waitFor();
   expect(errors).toEqual([]);
 }, 120_000);

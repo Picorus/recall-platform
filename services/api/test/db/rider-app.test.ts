@@ -394,6 +394,32 @@ describe('rider app fitting routes (P4.3)', () => {
     expect((await post('/rider/push', { token: 'x', language: 'te' }, auth)).body).toMatchObject({
       why: 'bad-token',
     });
+    // P4.11: his profile; asking to leave; the public page on deleting an account.
+    expect((await get('/rider/profile')).body).toMatchObject({
+      riderId,
+      name: 'Kiran Rao',
+      bikePlate: 'TS08CD4321',
+      open: [],
+    });
+    expect((await post('/rider/requests', { kind: 'leave' }, auth)).body).toEqual({ isNew: true });
+    expect((await get('/rider/profile')).body).toMatchObject({ open: ['leave'] });
+    const del = await fetch(`${url}/rider/delete-account`);
+    expect(del.status).toBe(200);
+    expect(await del.text()).toContain('Delete your RECALL rider account');
+    // An approved rider may still send a renewed insurance, not a new photo.
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 1, 2]);
+    const ins = await fetch(`${url}/rider/documents?kind=insurance`, {
+      method: 'POST',
+      headers: { ...auth, 'content-type': 'application/octet-stream' },
+      body: png,
+    });
+    expect(ins.status).toBe(200);
+    const photo = await fetch(`${url}/rider/documents?kind=photo`, {
+      method: 'POST',
+      headers: { ...auth, 'content-type': 'application/octet-stream' },
+      body: png,
+    });
+    expect(photo.status).toBe(409);
     // A changed link is refused.
     expect((await fetch(`${url}${link.slice(0, -2)}xx`)).status).toBe(404);
   });
