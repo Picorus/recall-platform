@@ -147,8 +147,8 @@ function Manage({
       {action === 'lost' && (
         <>
           <p className="error">
-            Nothing it shows from that moment counts, its line to us closes and it comes off its bike.
-            This cannot be undone.
+            Nothing it shows from that moment counts, its line to us closes and it comes off its
+            bike. This cannot be undone.
           </p>
           <label className="rc-field">
             <span className="rc-field__label">Went missing how many hours ago (0 = now)</span>
