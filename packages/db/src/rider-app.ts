@@ -13,6 +13,7 @@ import {
   type RiderFacts,
 } from '@recall/domain';
 import type { Pool } from 'pg';
+import type { RiderSignInRules } from '@recall/domain';
 import { inTransaction } from './makeups.js';
 import { Refusal } from './refusal.js';
 import { riderForPhone, type RiderSession } from './rider-sign-in.js';
@@ -118,6 +119,74 @@ export async function changeOwnDetails(
 const checkState = (c: CheckFact, done: boolean): StepState =>
   !c ? 'todo' : c.state === 'pending' ? 'waiting' : done ? 'done' : 'again';
 
+/**
+ * Why a check must be done again, in words for the rider: never the name a bank or ID holds (the
+ * app would otherwise tell anyone whose name an account is in; staff see it on the rider page).
+ */
+function againWhy(kind: 'identity' | 'bank' | 'agreement', c: CheckFact): string | null {
+  if (!c) return null;
+  if (c.state === 'failed')
+    return kind === 'bank' && /^the bank holds it as/.test(c.reason ?? '')
+      ? 'the name on the account is not yours'
+      : (c.reason ?? null);
+  if (c.state !== 'passed') return null;
+  if (!c.current)
+    return kind === 'agreement' ? 'a new agreement is ready to sign' : 'your account changed';
+  return kind === 'bank'
+    ? 'the name on the account is not yours'
+    : kind === 'identity'
+      ? 'the name on your ID is not the name you gave'
+      : 'the signer is not you';
+}
+
+/**
+ * Before he starts a check from the app (each costs RECALL money): an ID or agreement check still
+ * waiting is opened again (its link), never started twice; at most a few a day for him, and a
+ * brake for everyone. Returns the waiting check's link, or null to start a new one.
+ */
+export async function beforeAppCheck(
+  pool: Pool,
+  riderId: string,
+  kind: 'identity' | 'agreement' | 'bank',
+  now: number,
+  rules: RiderSignInRules,
+): Promise<string | null> {
+  if (kind !== 'bank') {
+    const waiting = await pool.query<{ link: string | null }>(
+      `SELECT c.link FROM rider_checks c
+        WHERE c.rider_id = $1 AND c.kind = $2
+          AND NOT EXISTS (SELECT 1 FROM rider_check_results r WHERE r.check_id = c.check_id)
+        ORDER BY c.seq DESC LIMIT 1`,
+      [riderId, kind],
+    );
+    const link = waiting.rows[0]?.link;
+    if (link) return link;
+  }
+  const counts = await pool.query<{ mine: string; all: string }>(
+    `SELECT count(*) FILTER (WHERE rider_id = $1 AND kind = $2) AS mine, count(*) AS all
+       FROM rider_checks
+      WHERE started_by = $3 AND started_at > to_timestamp($4) - interval '1 day'`,
+    [riderId, kind, RIDER_APP, now],
+  );
+  if (Number(counts.rows[0]?.mine ?? 0) >= rules.checksPerRiderDay)
+    throw new Refusal('Too many tries today: try again tomorrow, or call support', {
+      code: 'too-many-checks',
+    });
+  if (Number(counts.rows[0]?.all ?? 0) >= rules.checksPerDayAll)
+    throw new Refusal('Checks are busy today: try again tomorrow', { code: 'busy' });
+  return null;
+}
+
+/** Pictures he sent from the app in the last day (a cap on storage and on staff's work). */
+export async function appUploadsToday(pool: Pool, riderId: string, now: number): Promise<number> {
+  const r = await pool.query<{ n: string }>(
+    `SELECT count(*) AS n FROM rider_documents
+      WHERE rider_id = $1 AND uploaded_by = $2 AND uploaded_at > to_timestamp($3) - interval '1 day'`,
+    [riderId, RIDER_APP, now],
+  );
+  return Number(r.rows[0]?.n ?? 0);
+}
+
 /** Worst first: a step is only as far as its least finished part. */
 const worst = (...s: StepState[]): StepState =>
   s.includes('again')
@@ -147,15 +216,13 @@ export async function joinPage(pool: Pool, riderId: string, now: number): Promis
     return { state, expiresOn: d?.expiresOn ?? null };
   };
   const documents = { photo: doc('photo'), rc: doc('rc'), insurance: doc('insurance') };
-  const identity = {
-    state: checkState(f.identity, doneOf('Identity (KYC)')),
-    reason: f.identity?.reason ?? null,
+  const check = (kind: 'identity' | 'bank' | 'agreement', c: CheckFact, item: string) => {
+    const state = checkState(c, doneOf(item));
+    return { state, reason: state === 'again' ? againWhy(kind, c) : null };
   };
-  const bank = { state: checkState(f.bank, doneOf('Bank or UPI')), reason: f.bank?.reason ?? null };
-  const agreement = {
-    state: checkState(f.agreement, doneOf('Agreement')),
-    reason: f.agreement?.reason ?? null,
-  };
+  const identity = check('identity', f.identity, 'Identity (KYC)');
+  const bank = check('bank', f.bank, 'Bank or UPI');
+  const agreement = check('agreement', f.agreement, 'Agreement');
   const plate: StepState = f.details.bikePlate ? 'done' : 'todo';
   const steps = [
     { step: 'profile' as const, state: documents.photo.state },

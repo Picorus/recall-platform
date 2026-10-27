@@ -4,7 +4,14 @@
 import { fakeBankCheck, fakeEsign, fakeFileStore, fakeKyc, fakeMessages } from '@recall/adapters';
 import type pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { changeOwnDetails, joinAsRider, joinPage, RIDER_APP } from '../../src/rider-app.js';
+import { DEFAULT_RIDER_SIGN_IN as R } from '@recall/domain';
+import {
+  beforeAppCheck,
+  changeOwnDetails,
+  joinAsRider,
+  joinPage,
+  RIDER_APP,
+} from '../../src/rider-app.js';
 import {
   checkRiderBank,
   refreshRiderChecks,
@@ -248,5 +255,70 @@ describe('joining on the rider app (P4.2)', () => {
         NOW + 90,
       ),
     ).rejects.toThrow('decided');
+  });
+
+  it('a number given out again never opens the old rider; his new owner signs up afresh', async () => {
+    const phone = '+919900044444';
+    const old = await createRider(
+      pool,
+      {
+        details: { name: 'Old Owner', phone, bikePlate: null, rides: '', apps: [] },
+        channel: 'admin',
+        by: 'Omar',
+        reason: 'walk-in',
+      },
+      NOW - 7200,
+    );
+    await stepRider(pool, old, 'left', 'Omar', 'moved to Pune', NOW - 3600);
+    const { s } = await signIn(phone, '10.4.0.1');
+    expect(s.riderId).toBeNull();
+    const fresh = await joinAsRider(
+      pool,
+      s,
+      { name: 'New Owner', phone, bikePlate: null, rides: 'Uppal', apps: [] },
+      NOW,
+    );
+    expect(fresh).not.toBe(old);
+    expect((await joinPage(pool, fresh, NOW)).details.name).toBe('New Owner');
+  });
+
+  it("checks from the app: a waiting one opens again, a few a day, the bank's name never shown", async () => {
+    const phone = '+919900055555';
+    const { s } = await signIn(phone, '10.5.0.1');
+    const riderId = await joinAsRider(
+      pool,
+      s,
+      { name: 'Lakshmi Devi', phone, bikePlate: null, rides: '', apps: [] },
+      NOW,
+    );
+    expect(await beforeAppCheck(pool, riderId, 'identity', NOW, R)).toBeNull();
+    const started = await startIdentityCheck(pool, fakeKyc(), riderId, RIDER_APP, NOW);
+    // Still waiting: the same link, nothing new paid for.
+    expect(await beforeAppCheck(pool, riderId, 'identity', NOW + 60, R)).toBe(started.link);
+    // A bank account in someone else's name: the rider is told only that it is not his.
+    const bank = fakeBankCheck();
+    for (let i = 0; i < R.checksPerRiderDay; i++) {
+      await beforeAppCheck(pool, riderId, 'bank', NOW + i, R);
+      await checkRiderBank(
+        pool,
+        bank,
+        riderId,
+        { kind: 'upi', vpa: `x${i}@okaxis`, name: 'Somebody Else' },
+        { who: RIDER_APP, superAdmin: false },
+        NOW + i,
+      );
+    }
+    const page = await joinPage(pool, riderId, NOW + 10);
+    expect(page.bank).toEqual({ state: 'again', reason: 'the name on the account is not yours' });
+    expect(JSON.stringify(page)).not.toContain('Somebody');
+    await expect(beforeAppCheck(pool, riderId, 'bank', NOW + 20, R)).rejects.toThrow(
+      'Too many tries today',
+    );
+    // Tomorrow, again.
+    expect(await beforeAppCheck(pool, riderId, 'bank', NOW + 86_400 + 60, R)).toBeNull();
+    // A brake for everyone together.
+    await expect(
+      beforeAppCheck(pool, riderId, 'agreement', NOW + 30, { ...R, checksPerDayAll: 2 }),
+    ).rejects.toThrow('busy');
   });
 });

@@ -498,12 +498,13 @@ export default function SettingsPageView() {
             )}
           </Section>
 
-          <Section {...common('riderSignIn')} title="Rider sign-in limits">
+          <Section {...common('riderSignIn')} title="Rider app limits">
             {(v, set) => (
               <>
                 <p className="muted">
-                  Riders sign in with a code sent on WhatsApp or by SMS. These limits stop guessing
-                  and keep message costs down; each message costs money.
+                  Riders sign in with a code sent on WhatsApp or by SMS, and start their own ID,
+                  agreement and bank checks. These limits stop guessing and keep costs down; each
+                  message and check costs money.
                 </p>
                 <div className="cal-bar">
                   {RIDER_SIGN_IN_LABELS.map(([k, label]) => (

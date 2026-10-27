@@ -24,6 +24,12 @@ export interface RiderSignInRules {
   readonly codesPerHourAll: number;
   /** A session ends by itself after this many days without use. */
   readonly idleDays: number;
+  /** P4.2: ID, agreement or bank checks one rider may start in a day from the app (each costs). */
+  readonly checksPerRiderDay: number;
+  /** P4.2: checks started from the app in a day, everyone together (a brake on costs). */
+  readonly checksPerDayAll: number;
+  /** P4.2: pictures one rider may send in a day from the app. */
+  readonly uploadsPerRiderDay: number;
 }
 
 export const DEFAULT_RIDER_SIGN_IN: RiderSignInRules = {
@@ -36,6 +42,9 @@ export const DEFAULT_RIDER_SIGN_IN: RiderSignInRules = {
   wrongPerAddressHour: 50,
   codesPerHourAll: 2000,
   idleDays: 90,
+  checksPerRiderDay: 3,
+  checksPerDayAll: 500,
+  uploadsPerRiderDay: 20,
 };
 
 /** Each rule's sensible range (checked when a super admin changes them in Settings). */
@@ -51,6 +60,9 @@ export const RIDER_SIGN_IN_RANGES: Readonly<
   wrongPerAddressHour: [5, 1000],
   codesPerHourAll: [10, 100_000],
   idleDays: [1, 365],
+  checksPerRiderDay: [1, 20],
+  checksPerDayAll: [10, 100_000],
+  uploadsPerRiderDay: [3, 200],
 };
 
 export const RIDER_LANGUAGES = ['te', 'hi', 'en'] as const;

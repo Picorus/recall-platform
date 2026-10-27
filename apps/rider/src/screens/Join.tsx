@@ -3,7 +3,7 @@
 // Changes are open while his application is; the server checks every rule again.
 import { plateOf, RIDER_APPS, type RiderLanguage } from '@recall/domain';
 import * as ImagePicker from 'expo-image-picker';
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { BackHandler, Linking, Platform, Pressable, View } from 'react-native';
 import { ApiError, call, upload, type JoinPage, type JoinStep, type StepState } from '../api';
 import { say, sayError, type Key } from '../i18n';
@@ -239,7 +239,8 @@ function DocumentRow({
       </View>
       <Muted small>{say(lang, `doc.${state}` as Key)}</Muted>
       {error !== '' && <Alert>{error}</Alert>}
-      {canChange && state !== 'done' && state !== 'waiting' && (
+      {/* A picture waiting for a look can be replaced (staff look at the newest). */}
+      {canChange && state !== 'done' && (
         <View style={{ gap: 8 }}>
           {/* The web build (tests) has no camera; a phone has both. */}
           {Platform.OS !== 'web' && (
@@ -322,6 +323,10 @@ function OutsideStep({
         <MainButton label={start} busy={busy} onPress={go} />
       )}
       {state === 'waiting' && <MainButton label={finished} busy={busy} onPress={check} />}
+      {/* Closed the provider's page too soon: the same check opens again (never a new one). */}
+      {canChange && state === 'waiting' && (
+        <LinkButton label={say(lang, 'openAgain')} disabled={busy} onPress={go} />
+      )}
     </View>
   );
 }
@@ -423,11 +428,14 @@ export function Join({
 }: {
   readonly lang: RiderLanguage;
   readonly token: string;
+  /** Also called when his session has ended elsewhere (he signs in again from the start). */
   readonly onSignOut: () => void;
 }) {
   const [page, setPage] = useState<JoinPage | null>(null);
   const [error, setError] = useState('');
   const [open, setOpen] = useState<JoinStep | null>(null);
+  const signOut = useRef(onSignOut);
+  signOut.current = onSignOut;
   const load = useCallback(
     () =>
       call<JoinPage>('/rider/join', { token })
@@ -435,7 +443,10 @@ export function Join({
           setPage(p);
           setError('');
         })
-        .catch((e: unknown) => setError(failed(lang, e))),
+        .catch((e: unknown) => {
+          if (e instanceof ApiError && e.status === 401) signOut.current();
+          else setError(failed(lang, e));
+        }),
     [lang, token],
   );
   useEffect(() => {

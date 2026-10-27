@@ -199,7 +199,15 @@ describe('rider app joining routes (P4.2)', () => {
       body: new TextEncoder().encode('%PDF-1.4 hello'),
     });
     expect(pdfPhoto.status).toBe(400);
-    expect((await post('/rider/identity', {}, auth)).body.link).toMatch(/^https:/);
+    const id1 = (await post('/rider/identity', {}, auth)).body.link;
+    expect(id1).toMatch(/^https:/);
+    // Still waiting: the same link again, nothing new started (each check costs).
+    expect((await post('/rider/identity', {}, auth)).body.link).toBe(id1);
+    // An account in someone else's name: never told whose it is.
+    expect(
+      (await post('/rider/bank', { kind: 'upi', vpa: 'other@okaxis', name: 'Anita Sharma' }, auth))
+        .body,
+    ).toEqual({ outcome: 'failed', reason: 'the name on the account is not yours' });
     expect((await post('/rider/checks', {}, auth)).body).toEqual({ answered: 1 });
     expect(
       (await post('/rider/bank', { kind: 'upi', vpa: 'ramesh@okaxis', name: 'Ramesh Naidu' }, auth))
