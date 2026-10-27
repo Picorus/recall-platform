@@ -9,6 +9,7 @@ Newest first. Each entry: date · step id · what changed · tests · open issue
 - **Back where you were after signing in**: opening the report link signed out goes to sign-in, then straight to the report (only pages of this site are allowed as the way back).
 - "See the report" on each Done campaign once its report is made.
 - Tests: API 1 (listed as ready, the page and the PDF for its own people, nobody else, no odd ids, signed out); brand unit 2 (the way back after signing in: this site only); brand portal in a browser 1 (report link signed out → sign-in → the report, the PDF downloaded, from Done campaigns, book again).
+- **Second review:** no security problems (access, the way back after sign-in, the report shown with no scripts, escaping all checked). Fixed: on an iPhone, sharing failed because the PDF was fetched after the press (the PDF is now fetched once the report shows, so Share and Download act at once); a download over the hourly limit could save an error as the PDF; the report is re-fitted when the phone turns; "Back to campaigns" shows even when a report is not ready.
 - Next: P5.8 invoices and credit notes.
 
 ## 27 Oct 2026 · P5.6 · Brand portal: review and pay
