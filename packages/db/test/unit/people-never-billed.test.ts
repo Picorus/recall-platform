@@ -30,6 +30,9 @@ const ALLOWED = [
   'packages/domain/scripts/play-vectors.ts',
   // design system sample text ("People counts are approximate."), no numbers
   'packages/design/src/tokens.ts',
+  // the rider app's words: the camera line in the agreement ("This screen counts people. It records
+  // nothing."), in three languages; no numbers (P4.2)
+  'apps/rider/src/i18n.ts',
 ];
 /** Lines allowed elsewhere: loading the people settings with the price book. */
 const ALLOWED_LINES = [
