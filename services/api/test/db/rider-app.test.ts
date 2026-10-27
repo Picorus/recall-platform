@@ -315,5 +315,12 @@ describe('rider app fitting routes (P4.3)', () => {
       check: { commandId, panel: 'ok', gps: 'waiting', ready: false },
     });
     expect((await post('/rider/fitting/nope', {}, auth)).status).toBe(404);
+    // P4.4: his Today page: his screen, nothing ridden yet.
+    expect((await get('/rider/today')).body).toMatchObject({
+      screen: { screenId: box.screenId, state: 'offline' },
+      today: { countedSeconds: 0, earnedPaise: 0 },
+      week: { countedSeconds: 0, earnedPaise: 0 },
+      perMovingHourPaise: 2_500,
+    });
   });
 });

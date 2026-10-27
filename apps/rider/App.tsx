@@ -1,6 +1,6 @@
 // The rider app (P4). P4.1: language, sign-in with a code, and who is signed in. P4.2: a new
 // number signs up, then the six joining steps while his application is open. P4.3: once approved,
-// booking his fitting, the screen's QR and the fitting check. The screens are a
+// booking his fitting, the screen's QR and the fitting check. P4.4: on the road, Today. The screens are a
 // small set of steps, so the app moves between them itself (no navigation library); Android's back
 // button goes back a step.
 import { RIDER_LANGUAGES, type RiderLanguage } from '@recall/domain';
@@ -17,6 +17,7 @@ import { Join } from './src/screens/Join';
 import { JoinStart } from './src/screens/JoinStart';
 import { Offline } from './src/screens/Offline';
 import { SignIn, type CodeSent } from './src/screens/SignIn';
+import { Today } from './src/screens/Today';
 import { stored } from './src/storage';
 import { FONT_FILES } from './src/fonts';
 import { color } from './src/theme';
@@ -134,14 +135,18 @@ export default function App() {
         {(fontsReady || fontsFailed) && step.at === 'home' && step.me.status === 'applied' && (
           <Join lang={lang} token={step.token} onSignOut={() => void signOut()} />
         )}
+        {(fontsReady || fontsFailed) &&
+          step.at === 'home' &&
+          (step.me.status === 'active' || step.me.status === 'paused') && (
+            <Today lang={lang} token={step.token} me={step.me} onSignOut={() => void signOut()} />
+          )}
         {(fontsReady || fontsFailed) && step.at === 'home' && step.me.status === 'approved' && (
           <Fitting lang={lang} token={step.token} onSignOut={() => void signOut()} />
         )}
         {(fontsReady || fontsFailed) &&
           step.at === 'home' &&
           step.me.riderId !== null &&
-          step.me.status !== 'applied' &&
-          step.me.status !== 'approved' && (
+          (step.me.status === 'left' || step.me.status === 'rejected') && (
             <Home lang={lang} me={step.me} onSignOut={() => void signOut()} />
           )}
       </LangContext.Provider>

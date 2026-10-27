@@ -134,6 +134,29 @@ const en = {
   'err.signed-out': 'Please sign in again.',
   'err.offline': 'No internet. Check your connection and try again.',
   'err.other': 'Something went wrong. Try again.',
+  // P4.4 today.
+  hoursMinutes: '{h} h {m} min',
+  yourScreen: 'Your screen',
+  'screen.moving': 'On and playing',
+  'screen.stopped': 'On. Bike stopped: the screen rests after 10 minutes',
+  'screen.offline': 'Off or no signal. Check the power, or call RECALL.',
+  battery: 'Battery {n}%',
+  batteryCharging: 'Battery {n}%, charging',
+  signal: 'Signal',
+  signalOf: 'Signal {n} of 4',
+  noScreen: 'No screen on your bike. Call RECALL.',
+  todayTitle: 'Today',
+  weekTitle: 'This week',
+  movingHours: 'Moving hours',
+  earned: 'Earned',
+  payPoc:
+    'Test period: your daily pay for each day you have the screen, plus the founding bonus at the month end. Before tax. Paid every Monday.',
+  payRegular:
+    '{rate} for each moving hour (up to {cap} hours a month), plus your share of sales, added later. Before tax. Paid every Monday.',
+  stopRuleTitle: 'Keep moving',
+  stopRule:
+    'If the bike stops for more than 10 minutes, the screen rests and your hours pause. They start again as soon as you ride.',
+  refresh: 'Refresh',
   // P4.3 fitting.
   loading: 'Loading…',
   yes: 'Yes',
@@ -322,6 +345,29 @@ const te: Record<Key, string> = {
   'err.signed-out': 'దయచేసి మళ్లీ సైన్ ఇన్ చేయండి.',
   'err.offline': 'ఇంటర్నెట్ లేదు. మీ కనెక్షన్ చూసి మళ్లీ ప్రయత్నించండి.',
   'err.other': 'ఏదో తప్పు జరిగింది. మళ్లీ ప్రయత్నించండి.',
+  // P4.4 today.
+  hoursMinutes: '{h} గం {m} ని',
+  yourScreen: 'మీ స్క్రీన్',
+  'screen.moving': 'ఆన్‌లో ఉంది, ప్లే అవుతోంది',
+  'screen.stopped': 'ఆన్‌లో ఉంది. బైక్ ఆగింది: 10 నిమిషాల తర్వాత స్క్రీన్ విశ్రాంతి తీసుకుంటుంది',
+  'screen.offline': 'ఆఫ్ లేదా సిగ్నల్ లేదు. పవర్ చూడండి, లేదా RECALLకు కాల్ చేయండి.',
+  battery: 'బ్యాటరీ {n}%',
+  batteryCharging: 'బ్యాటరీ {n}%, ఛార్జ్ అవుతోంది',
+  signal: 'సిగ్నల్',
+  signalOf: 'సిగ్నల్ 4లో {n}',
+  noScreen: 'మీ బైక్‌పై స్క్రీన్ లేదు. RECALLకు కాల్ చేయండి.',
+  todayTitle: 'ఈ రోజు',
+  weekTitle: 'ఈ వారం',
+  movingHours: 'నడిపిన గంటలు',
+  earned: 'సంపాదన',
+  payPoc:
+    'పరీక్ష కాలం: స్క్రీన్ ఉన్న ప్రతి రోజుకు మీ రోజువారీ చెల్లింపు, నెల చివర ఫౌండింగ్ బోనస్. పన్నుకు ముందు. ప్రతి సోమవారం చెల్లిస్తాం.',
+  payRegular:
+    'ప్రతి నడిపిన గంటకు {rate} (నెలకు {cap} గంటల వరకు), తర్వాత అమ్మకాలలో మీ వాటా. పన్నుకు ముందు. ప్రతి సోమవారం చెల్లిస్తాం.',
+  stopRuleTitle: 'నడుపుతూ ఉండండి',
+  stopRule:
+    'బైక్ 10 నిమిషాల కంటే ఎక్కువ ఆగితే, స్క్రీన్ విశ్రాంతి తీసుకుంటుంది, మీ గంటలు ఆగుతాయి. మీరు నడపగానే మళ్లీ మొదలవుతాయి.',
+  refresh: 'రిఫ్రెష్ చేయండి',
   // P4.3 fitting.
   loading: 'లోడ్ అవుతోంది…',
   yes: 'అవును',
@@ -508,6 +554,29 @@ const hi: Record<Key, string> = {
   'err.signed-out': 'कृपया फिर से साइन इन करें।',
   'err.offline': 'इंटरनेट नहीं है। अपना कनेक्शन देखकर फिर कोशिश करें।',
   'err.other': 'कुछ गड़बड़ हो गई। फिर कोशिश करें।',
+  // P4.4 today.
+  hoursMinutes: '{h} घं {m} मि',
+  yourScreen: 'आपकी स्क्रीन',
+  'screen.moving': 'चालू है और चल रही है',
+  'screen.stopped': 'चालू है। बाइक रुकी है: 10 मिनट बाद स्क्रीन आराम करती है',
+  'screen.offline': 'बंद है या सिग्नल नहीं है। बिजली देखें, या RECALL को कॉल करें।',
+  battery: 'बैटरी {n}%',
+  batteryCharging: 'बैटरी {n}%, चार्ज हो रही है',
+  signal: 'सिग्नल',
+  signalOf: 'सिग्नल 4 में से {n}',
+  noScreen: 'आपकी बाइक पर स्क्रीन नहीं है। RECALL को कॉल करें।',
+  todayTitle: 'आज',
+  weekTitle: 'इस हफ़्ते',
+  movingHours: 'चलने के घंटे',
+  earned: 'कमाई',
+  payPoc:
+    'टेस्ट अवधि: स्क्रीन वाले हर दिन का आपका रोज़ का भुगतान, और महीने के अंत में फ़ाउंडिंग बोनस। टैक्स से पहले। हर सोमवार भुगतान।',
+  payRegular:
+    'हर चलने के घंटे के {rate} (महीने में {cap} घंटे तक), और बाद में बिक्री में आपका हिस्सा। टैक्स से पहले। हर सोमवार भुगतान।',
+  stopRuleTitle: 'चलते रहें',
+  stopRule:
+    'बाइक 10 मिनट से ज़्यादा रुके तो स्क्रीन आराम करती है और आपके घंटे रुक जाते हैं। चलाते ही फिर शुरू हो जाते हैं।',
+  refresh: 'रीफ़्रेश करें',
   // P4.3 fitting.
   loading: 'लोड हो रहा है…',
   yes: 'हाँ',

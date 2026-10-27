@@ -2,6 +2,13 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 27 Oct 2026 · P4.4 · Rider app: Today
+- PR #68 (fitting) merged with all checks green.
+- **Today page** (`packages/db/src/rider-today.ts`, rules in `packages/domain/src/rider-today.ts`, route `GET /rider/today`): for a rider on the road (riding or paused). His screen now: "On and playing", "On. Bike stopped" or "Off or no signal", with battery (and charging) and signal bars. His counted moving hours today and this week (Monday to today), counted exactly as his pay counts them: minutes of the screens he rode while he rode them, inside the pay zone and business hours. What they earned before tax, by the same rules as the pay run: ₹25 a moving hour in regular business (the same paise, a test holds it), or in the test period (POC) the month's base for each day he had a screen. His sales share comes later and the 260-hour monthly cap applies over the month: the page says so. A reminder of the 10-minute stop rule. The page looks again every minute.
+- **App**: the Today screen (in Telugu, Hindi and English) replaces the plain status page for riders on the road; riders who left or were turned down still see the plain page.
+- Tests: domain 3 (hourly pay identical to the pay run for many lengths, POC days add up to the month's base, nothing before the POC or on a day without a screen, signal bars, days of a week); database 3 (only the hours while he rode, last week left out, a Monday 01:00 still Sunday's, another rider's day; the screen moving with battery and signal, then off; POC days); API 1 (the route); browser 1 (a rider on the road sees "On and playing", 1 h 30 min and ₹37.50 today and this week).
+- Next: P4.5, Earnings (day, week and month; the POC's progress to 150 hours; monthly statement).
+
 ## 27 Oct 2026 · P4.3 · Rider app: fitting
 - PR #67 (joining) merged with all checks green.
 - **Booking** (`packages/db/src/rider-app-fitting.ts`, routes `/rider/fitting*` in `services/api/src/rider-app-api.ts`): once approved, the app shows the fitting times open at centres that are on (Settings), with the address and places left (never who else is booked). He books one, changes it or cancels it; the same booking rules as staff (P3.11.3).

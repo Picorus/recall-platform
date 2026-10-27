@@ -22,6 +22,8 @@
 //   POST /rider/fitting/fit       { code }  the screen's QR (or the id printed under it), at his slot
 //   POST /rider/fitting/check     start the fitting check on his screen
 //   POST /rider/fitting/panel     { commandId, seen }  every part of the panel lit up, or not
+// P4.4:
+//   GET  /rider/today             his screen now, moving hours and earnings today and this week
 import type { PayoutDestination } from '@recall/adapters';
 import {
   answerPanel,
@@ -47,6 +49,7 @@ import {
   endRiderSession,
   Refusal,
   riderSession,
+  riderToday,
   setting,
   type RiderSession,
 } from '@recall/db';
@@ -242,6 +245,10 @@ export async function handleRiderApp(
     if (method !== 'GET') throw new HttpError(405, 'Not allowed');
     const page = await refused(() => joinPage(pool, riderId, now));
     send(res, 200, { ...page, loanBank: (await setting(pool, 'loanBank')).name });
+    return true;
+  }
+  if (path === '/rider/today' && method === 'GET') {
+    send(res, 200, await riderToday(pool, riderId, now));
     return true;
   }
   if (path === '/rider/fitting' && method === 'GET') {

@@ -34,6 +34,7 @@ export * from './updates.js';
 export * from './fitting.js';
 export * from './staff.js';
 export * from './today.js';
+export * from './rider-today.js';
 export * from './calendar.js';
 export * from './brands.js';
 export * from './ad-checks.js';
