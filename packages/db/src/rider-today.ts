@@ -18,6 +18,7 @@ import {
   weekStartOf,
   type FleetState,
   type MinuteSummary,
+  type RiderPayRules,
 } from '@recall/domain';
 import type { Pool } from 'pg';
 import { priceBooks } from './bookings.js';
@@ -85,15 +86,25 @@ async function stretchesOf(pool: Q, riderId: string, from: number, to: number) {
   }));
 }
 
-export async function riderToday(pool: Q, riderId: string, now: number): Promise<RiderToday> {
-  const today = todayOf(now);
-  // The week of today's business day (a Monday 01:00 is still Sunday's: that week).
-  const monday = toIndiaTime(new Date(weekStartOf(opensAt(today)) * 1000)).date;
-  const days = daysBetween(monday, today);
-  // From the 1st of the week's first month: the month so far decides the cap.
-  const from = opensAt(`${monday.slice(0, 7)}-01`);
-  const to = Math.min(now, closesAt(today));
+export interface RiderDayFull extends RiderTodayDay {
+  readonly held: boolean;
+  readonly mode: 'poc' | 'regular';
+}
 
+/**
+ * His business days from `first` (the 1st of a month: the month so far decides the cap) to `last`,
+ * each with his counted moving seconds and what it earned by his pay rules, up to `now`; and the
+ * rider pay of `last`'s month.
+ */
+export async function riderDays(
+  pool: Q,
+  riderId: string,
+  first: string,
+  last: string,
+  now: number,
+): Promise<{ days: RiderDayFull[]; rules: RiderPayRules; pocFirst: string | undefined }> {
+  const from = opensAt(first);
+  const to = Math.min(now, closesAt(last));
   const [books, changes, stretches] = await Promise.all([
     priceBooks(pool),
     businessModes(pool),
@@ -105,8 +116,6 @@ export async function riderToday(pool: Q, riderId: string, now: number): Promise
     books.length === 0
       ? DEFAULT_RIDER_PAY_RULES
       : priceBookAt(books, isoAt(monthBounds(month).start))?.riderPay;
-  const rules = rulesOf(today.slice(0, 7)) ?? DEFAULT_RIDER_PAY_RULES;
-
   // A minute belongs to whoever rode its screen at its start (as the pay run counts).
   const minutes: MinuteSummary[] = [];
   for (const s of stretches)
@@ -114,18 +123,37 @@ export async function riderToday(pool: Q, riderId: string, now: number): Promise
       if (m.minute >= s.from && m.minute < s.to) minutes.push(m);
   const totals = dailyTotals(minutes);
   const pocFirst = pocFirstMonth(changes);
-  const all = daysBetween(`${monday.slice(0, 7)}-01`, today).map((day) => ({
+  const base = daysBetween(first, last).map((day) => ({
     day,
     countedSeconds: totals.get(day)?.countedSeconds ?? 0,
-    held: stretches.some((s) => s.from < closesAt(day) && s.to > opensAt(day)),
+    // A day not yet begun was not held.
+    held:
+      opensAt(day) <= now && stretches.some((s) => s.from < closesAt(day) && s.to > opensAt(day)),
     mode: modeAt(changes, opensAt(day)) === 'poc' ? ('poc' as const) : ('regular' as const),
   }));
-  const earned = earningsByDay(all, rulesOf, pocFirst);
-  const perDay = days.map((day) => ({
-    day,
-    countedSeconds: totals.get(day)?.countedSeconds ?? 0,
-    earnedPaise: earned.get(day) ?? 0,
-  }));
+  const earned = earningsByDay(base, rulesOf, pocFirst);
+  return {
+    days: base.map((d) => ({ ...d, earnedPaise: earned.get(d.day) ?? 0 })),
+    rules: rulesOf(last.slice(0, 7)) ?? DEFAULT_RIDER_PAY_RULES,
+    pocFirst,
+  };
+}
+
+export async function riderToday(pool: Q, riderId: string, now: number): Promise<RiderToday> {
+  const today = todayOf(now);
+  // The week of today's business day (a Monday 01:00 is still Sunday's: that week).
+  const monday = toIndiaTime(new Date(weekStartOf(opensAt(today)) * 1000)).date;
+
+  const { days: all, rules } = await riderDays(
+    pool,
+    riderId,
+    `${monday.slice(0, 7)}-01`,
+    today,
+    now,
+  );
+  const perDay = all
+    .filter((d) => d.day >= monday)
+    .map(({ day, countedSeconds, earnedPaise }) => ({ day, countedSeconds, earnedPaise }));
 
   // His screen now: the one on his bike.
   const fitted = await pool.query<{ screen_id: string }>(
@@ -164,7 +192,7 @@ export async function riderToday(pool: Q, riderId: string, now: number): Promise
   return {
     at: now,
     screen,
-    mode: modeAt(changes, now) === 'poc' ? 'poc' : 'regular',
+    mode: modeAt(await businessModes(pool), now) === 'poc' ? 'poc' : 'regular',
     today: todayRow,
     week: {
       days: perDay,

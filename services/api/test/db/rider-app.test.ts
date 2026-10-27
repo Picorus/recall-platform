@@ -322,5 +322,25 @@ describe('rider app fitting routes (P4.3)', () => {
       week: { countedSeconds: 0, earnedPaise: 0 },
       perMovingHourPaise: 2_500,
     });
+    // P4.5: his earnings this month, and his statement by a signed link (no token header).
+    expect((await get('/rider/earnings')).body).toMatchObject({
+      month: '2027-08',
+      months: ['2027-08'],
+      totalPaise: 0,
+      soldAsOf: null,
+    });
+    expect((await get('/rider/earnings?month=2027-01')).body).toMatchObject({ why: 'bad-month' });
+    expect((await post('/rider/statement', { month: '2026-01' }, auth)).status).toBe(400);
+    const st = await post('/rider/statement', { month: '2027-08' }, auth);
+    const link = String(st.body.path);
+    expect(link).toMatch(/^\/rider\/statement\/[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
+    const page = await fetch(`${url}${link}`);
+    expect(page.status).toBe(200);
+    expect(page.headers.get('content-type')).toContain('text/html');
+    const html = await page.text();
+    expect(html).toContain('RECALL rider statement');
+    expect(html).toContain('Kiran Rao · ' + riderId + ' · 2027-08');
+    // A changed link is refused.
+    expect((await fetch(`${url}${link.slice(0, -2)}xx`)).status).toBe(404);
   });
 });

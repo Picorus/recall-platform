@@ -238,7 +238,7 @@ The rider app does four jobs: get a rider signed up and fitted, show what he ear
 8. **P4.8 Screen care.** How to charge and look after the screen; report a problem (not turning on, damage, theft, accident) with a photo of the damage; book a repair or swap.
 9. **P4.9 Help.** Common questions, WhatsApp chat, call, open requests and their status.
 10. **P4.10 Alerts.** Payout sent, screen offline or low battery, repair booked. Silent while moving.
-11. **P4.11 Profile and settings.** Language, documents, change bank (checked again), leave RECALL (return-the-screen steps).
+11. **P4.11 Profile and settings.** Language, documents, change bank (checked again), leave RECALL (return-the-screen steps), and **delete my account** (Prateek, 27 Oct 2026; also required by Google Play, with a web page for it): the request is logged, staff settle the screen, money and loan first, then his personal details (name, phone, photos, papers, bank details) are erased or blanked; only what the law says must be kept (pay and tax records) stays, for the time open question 18 sets.
 
 ### What the app does not do
 

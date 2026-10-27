@@ -2,7 +2,7 @@
 // language, a wrong number, a code on WhatsApp, a wrong code, signed in as a known rider, still
 // signed in after a reload, signed out; a new number by SMS in Hindi is welcomed to the sign-up.
 // P4.3: an approved rider books his fitting, the screen is fitted at his slot and checked.
-// P4.4: a rider on the road sees his screen, hours and earnings.
+// P4.4: a rider on the road sees his screen, hours and earnings. P4.5: his month and statement.
 // Needs `pnpm test:e2e` (it builds the app for the web first) and DATABASE_URL (pnpm services:up).
 import {
   fakeBankCheck,
@@ -486,5 +486,20 @@ it("a rider on the road sees his screen, today's and this week's hours and earni
   if (minutes === 90) await page.getByText('₹37.50').first().waitFor();
   await page.getByText('Keep moving').waitFor();
   await shot(page, 'rider-today');
+  // P4.5: Earnings, this month, and the statement opens in the browser.
+  await page.getByRole('tab', { name: 'Earnings' }).click();
+  await page.getByText('This month so far').waitFor();
+  await page.getByText('Your share of sales (added at the next pay update)').waitFor();
+  if (minutes === 90) await page.getByText('₹37.50').first().waitFor();
+  await shot(page, 'rider-earnings');
+  const [statement] = await Promise.all([
+    page.context().waitForEvent('page'),
+    page.getByRole('button', { name: 'Download my statement' }).click(),
+  ]);
+  await statement.getByText('RECALL rider statement').waitFor();
+  await statement.getByText(`Suresh Babu · ${riderId}`, { exact: false }).waitFor();
+  await shot(statement, 'rider-statement');
+  await page.getByRole('tab', { name: 'Today' }).click();
+  await page.getByText('On and playing').waitFor();
   expect(errors).toEqual([]);
 }, 120_000);

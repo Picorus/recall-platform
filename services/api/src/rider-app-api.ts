@@ -24,6 +24,10 @@
 //   POST /rider/fitting/panel     { commandId, seen }  every part of the panel lit up, or not
 // P4.4:
 //   GET  /rider/today             his screen now, moving hours and earnings today and this week
+// P4.5:
+//   GET  /rider/earnings?month=YYYY-MM   days, weeks and the month's parts (this month by default)
+//   POST /rider/statement         { month }  a link to his statement page (15 minutes)
+//   GET  /rider/statement/<token> the statement page itself (printable; no sign-in needed)
 import type { PayoutDestination } from '@recall/adapters';
 import {
   answerPanel,
@@ -50,6 +54,8 @@ import {
   Refusal,
   riderSession,
   riderToday,
+  riderEarnings,
+  riderMonths,
   setting,
   type RiderSession,
 } from '@recall/db';
@@ -66,6 +72,7 @@ import { createHmac } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Pool } from 'pg';
 import { HttpError, jsonBody, send, str, withUpload } from './http.js';
+import { statementPage, statementToken } from './rider-statement.js';
 import { callerIp, type StaffApiConfig } from './staff-api.js';
 
 /** Riders with an upload going now: one at a time each (a slow phone never holds two slots). */
@@ -149,6 +156,22 @@ export async function handleRiderApp(
       throw e;
     }
   };
+  // P4.5: the statement page, opened in the phone's browser from a signed link (no token header).
+  const st = /^\/rider\/statement\/([A-Za-z0-9_.-]{20,300})$/.exec(path);
+  if (st && method === 'GET') {
+    const html = await statementPage(pool, cfg.secretKey, st[1] ?? '', now);
+    if (!html)
+      throw new HttpError(404, 'This link has run out: open the statement again in the app');
+    res.writeHead(200, {
+      'content-type': 'text/html; charset=utf-8',
+      'cache-control': 'no-store',
+      'referrer-policy': 'no-referrer',
+      'content-security-policy':
+        "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; frame-ancestors 'none'",
+    });
+    res.end(html);
+    return true;
+  }
   // The limits in force (a super admin's setting; P4.1).
   const rules = await setting(pool, 'riderSignIn');
   const ip = () =>
@@ -249,6 +272,24 @@ export async function handleRiderApp(
   }
   if (path === '/rider/today' && method === 'GET') {
     send(res, 200, await riderToday(pool, riderId, now));
+    return true;
+  }
+  if (path === '/rider/earnings' && method === 'GET') {
+    const asked = new URLSearchParams((req.url ?? '').split('?')[1] ?? '').get('month');
+    const months = await riderMonths(pool, riderId, now);
+    const month = asked ?? months[0] ?? '';
+    if (!months.includes(month))
+      throw new HttpError(400, 'Pick one of your months', { code: 'bad-month' });
+    send(res, 200, await riderEarnings(pool, riderId, month, now));
+    return true;
+  }
+  if (path === '/rider/statement' && method === 'POST') {
+    const month = str(await jsonBody(req), 'month', 7);
+    if (!(await riderMonths(pool, riderId, now)).includes(month))
+      throw new HttpError(400, 'Pick one of your months', { code: 'bad-month' });
+    send(res, 200, {
+      path: `/rider/statement/${statementToken(cfg.secretKey, riderId, month, now)}`,
+    });
     return true;
   }
   if (path === '/rider/fitting' && method === 'GET') {
