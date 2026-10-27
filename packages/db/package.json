@@ -13,7 +13,8 @@
     "test": "vitest run --passWithNoTests test/unit",
     "test:db": "vitest run test/db",
     "migrate": "tsx src/cli-migrate.ts",
-    "coverage": "vitest run --coverage"
+    "coverage": "vitest run --coverage",
+    "backup": "tsx src/cli-backup.ts"
   },
   "dependencies": {
     "@recall/adapters": "workspace:*",
