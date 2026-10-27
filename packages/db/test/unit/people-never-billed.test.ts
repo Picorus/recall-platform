@@ -42,6 +42,8 @@ const ALLOWED = [
   // "people" here means a business's team on the portal (who may sign in), not audience counts (P5.9)
   'packages/db/src/brand-help.ts',
   'apps/brand/app/team/page.tsx',
+  // the load test makes the messages a screen sends, which carry its signed count; it bills nothing (P7.2)
+  'services/gateway/src/load.ts',
 ];
 /** Lines allowed elsewhere: loading the people settings with the price book. */
 const ALLOWED_LINES = [

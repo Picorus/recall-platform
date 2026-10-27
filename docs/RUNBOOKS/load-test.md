@@ -33,7 +33,7 @@ preparing, approving and sending the Monday run through the fake payouts provide
 | What | Result |
 | --- | --- |
 | Screens: 15,500 × 4 rounds, 62,000 messages, 124,000 plays | 506 a second with one gateway (517 arrive); half under 30 ms, 99% under 68 ms; none refused |
-| Payout run, 15,500 riders | see WORKLOG (P7.2) |
+| Payout run, 15,500 riders | prepared in 66 s, all paid in 85 s, no problems |
 
 **For the POC and launch:** run two gateways (the broker shares the screens between them) on
 their own machine, and the database on at least 4 cores: about twice what the fleet needs.
