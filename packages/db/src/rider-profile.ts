@@ -88,6 +88,14 @@ export async function riderRequest(
   if (!(RIDER_REQUEST_KINDS as readonly string[]).includes(r.kind))
     throw new Refusal('What do you want to do?', { code: 'bad-kind' });
   const kind = r.kind as RiderRequestKind;
+  if (kind !== 'delete') {
+    const st = await pool.query<{ status: string | null }>(
+      'SELECT status FROM rider_steps WHERE rider_id = $1 ORDER BY seq DESC LIMIT 1',
+      [r.riderId],
+    );
+    if (['left', 'rejected'].includes(st.rows[0]?.status ?? ''))
+      throw new Refusal('You are not with RECALL now: call support', { code: 'not-with-us' });
+  }
   return inTransaction(pool, async (c) => {
     await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`requests:${r.riderId}`]);
     if ((await openRequests(c, r.riderId)).includes(kind)) return { isNew: false };

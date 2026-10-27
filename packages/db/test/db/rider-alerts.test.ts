@@ -179,4 +179,78 @@ describe('rider alerts (P4.10)', () => {
     expect((await sendRiderAlerts(pool, push, NOW + 2 * 86_400)).sent).toBe(0);
     await expect(registerPush(pool, tokenHash, 'x', 'en', NOW)).rejects.toThrow('Not a push token');
   });
+
+  it('no morning alert for a night off; quiet at night; 3 failures and it stops; a handset passed on', async () => {
+    const push = fakePush();
+    // Wednesday 07:59 India time: the screen was last heard at 01:30 (the night before).
+    const wed = Date.UTC(2027, 7, 25, 2, 29) / 1000;
+    await report(3, 'live', Date.UTC(2027, 7, 24, 20, 0) / 1000, { lat: 1, lng: 1, moving: false });
+    const before = (await riderAlerts(pool, riderId)).length;
+    await makeRiderAlerts(pool, wed + 3 * 3600, R);
+    // Nothing new: last heard before today's business day opened.
+    expect((await riderAlerts(pool, riderId)).length).toBe(before);
+    // An alert made at 23:00 India time waits for the morning.
+    await registerPush(pool, tokenHash, 'ExponentPushToken[night1]', 'en', wed - 9 * 3600);
+    const night = Date.UTC(2027, 7, 24, 17, 30) / 1000;
+    await pool.query(
+      `INSERT INTO rider_alerts (alert_id, rider_id, kind, ref, vals, at)
+       VALUES ('ALR-0000000000A1', $1, 'repair-booked', 'service:night', '{}', to_timestamp($2))`,
+      [riderId, night],
+    );
+    expect((await sendRiderAlerts(pool, push, night + 60, R)).held).toBeGreaterThan(0);
+    expect(push.sent).toHaveLength(0);
+    // A provider that keeps failing: tried 3 times, then left.
+    const failing = { send: () => Promise.resolve({ status: 'failed' as const, reason: 'down' }) };
+    const morning = Date.UTC(2027, 7, 25, 3, 0) / 1000;
+    for (let i = 0; i < 4; i++) await sendRiderAlerts(pool, failing, morning + i * 120, R);
+    const tries = await pool.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM rider_alert_pushes WHERE alert_id = 'ALR-0000000000A1'
+          AND push_token = 'ExponentPushToken[night1]'`,
+    );
+    expect(tries.rows[0]?.n).toBe(3);
+    // His handset goes to another rider who signs in on it: only the new owner is reached.
+    const other = '+919811177002';
+    const otherId = await createRider(
+      pool,
+      {
+        details: { name: 'Mohan', phone: other, bikePlate: null, rides: '', apps: [] },
+        channel: 'admin',
+        by: 'Omar',
+        reason: 'walk-in',
+      },
+      morning - 3600,
+    );
+    await askRiderCode(
+      pool,
+      messages,
+      { phone: other, channel: 'whatsapp', ip: '10.9.0.2', language: 'en' },
+      SECRET,
+      morning,
+    );
+    const m = messages.sent.at(-1);
+    const code = m?.channel === 'whatsapp' ? (m.params[0] ?? '') : '';
+    const { token } = await checkRiderCode(
+      pool,
+      { phone: other, code, ip: '10.9.0.2' },
+      SECRET,
+      morning,
+    );
+    const theirs = await riderSession(pool, token, morning);
+    await registerPush(
+      pool,
+      theirs?.tokenHash ?? '',
+      'ExponentPushToken[night1]',
+      'en',
+      morning + 600,
+    );
+    await pool.query(
+      `INSERT INTO rider_alerts (alert_id, rider_id, kind, ref, vals, at)
+       VALUES ('ALR-0000000000A2', $1, 'repair-booked', 'service:old-owner', '{}', to_timestamp($2))`,
+      [riderId, morning + 700],
+    );
+    const fresh = fakePush();
+    await sendRiderAlerts(pool, fresh, morning + 800, R);
+    expect(fresh.sent.filter((p) => p.key.startsWith('ALR-0000000000A2'))).toEqual([]);
+    expect(otherId).toMatch(/^RD-/);
+  });
 });

@@ -7,6 +7,7 @@ import type { PushAdapter } from '@recall/adapters';
 import {
   alertWords,
   businessDayOf,
+  DEFAULT_RIDER_SIGN_IN,
   formatRupees,
   mayPush,
   paise,
@@ -18,6 +19,7 @@ import {
 } from '@recall/domain';
 import { createHash, randomBytes } from 'node:crypto';
 import type { Pool } from 'pg';
+import { inTransaction } from './makeups.js';
 import { Refusal } from './refusal.js';
 
 type Q = Pick<Pool, 'query'>;
@@ -117,15 +119,18 @@ export async function makeRiderAlerts(
               ORDER BY seq DESC LIMIT 1) = 'active'`,
     [now],
   );
-  const open = businessDayOf(new Date(now * 1000)) !== null;
+  // Today's business day and when it opened (08:00 India time); none between 02:00 and 08:00.
+  const day = businessDayOf(new Date(now * 1000));
+  const opened = day === null ? null : Date.parse(`${day}T02:30:00Z`) / 1000;
   for (const f of fitted.rows) {
     const heard = f.heard === null ? null : Number(f.heard);
-    // Silent in business hours (a spell of silence: one alert; not one heard from in a day).
+    // Silent since it was last heard today (one alert a spell): a screen switched off at night
+    // is not news at 08:00.
     if (
-      open &&
+      opened !== null &&
       heard !== null &&
-      now - heard >= rules.alertOfflineMinutes * 60 &&
-      now - heard < 86_400
+      heard >= opened &&
+      now - heard >= rules.alertOfflineMinutes * 60
     )
       count(
         await add(
@@ -171,73 +176,134 @@ export async function makeRiderAlerts(
   return made;
 }
 
+/** Tries of one alert on one phone before it is given up. */
+export const ALERT_TRIES = 3;
+
 /**
- * Sends the alerts of the last day not yet sent to each phone he is signed in on, unless his bike
- * is moving now (then later). A phone that left (its token gone) is not tried again.
+ * The phones he can be reached on now: each of his sessions still valid (not ended, used within
+ * the idle limit, and his number unchanged since it opened) with its latest push token, when that
+ * session is the one that registered the token last (a handset passed on reaches only its new
+ * owner) and the token has not been reported gone since.
+ */
+async function phonesOf(c: Q, riderId: string, now: number, idleDays: number) {
+  const r = await c.query<{ push_token: string; language: RiderLanguage }>(
+    `WITH mine AS (
+       SELECT token_hash FROM rider_sessions WHERE rider_id = $1
+       UNION SELECT token_hash FROM rider_session_joins WHERE rider_id = $1),
+     valid AS (
+       SELECT s.token_hash FROM rider_sessions s JOIN mine USING (token_hash)
+        WHERE NOT EXISTS (SELECT 1 FROM rider_session_ends e WHERE e.token_hash = s.token_hash)
+          AND s.phone = (SELECT phone FROM rider_versions v WHERE v.rider_id = $1
+                          ORDER BY version DESC LIMIT 1)
+          AND greatest(s.started_at, (SELECT max(at) FROM rider_session_seen w
+                                       WHERE w.token_hash = s.token_hash))
+              > to_timestamp($2) - make_interval(days => $3)),
+     latest AS (
+       SELECT DISTINCT ON (p.token_hash) p.id, p.token_hash, p.push_token, p.language, p.at
+         FROM rider_push_tokens p JOIN valid USING (token_hash)
+        ORDER BY p.token_hash, p.id DESC)
+     SELECT l.push_token, l.language FROM latest l
+      WHERE NOT EXISTS (SELECT 1 FROM rider_push_tokens o
+                         WHERE o.push_token = l.push_token AND o.id > l.id)
+        AND NOT EXISTS (SELECT 1 FROM rider_alert_pushes g
+                         WHERE g.push_token = l.push_token AND g.status = 'gone' AND g.at >= l.at)`,
+    [riderId, now, idleDays],
+  );
+  return r.rows;
+}
+
+/** Whether the bike carrying the screen he rides now (his current fitting) is moving now. */
+async function ridingNow(c: Q, riderId: string, now: number): Promise<boolean> {
+  const r = await c.query<{ moving: boolean | null }>(
+    `SELECT (SELECT (x.body->>'moving')::boolean FROM screen_reports x
+              WHERE x.screen_id = f.screen_id AND x.kind = 'live'
+                AND x.made_at > to_timestamp($2) - interval '5 minutes'
+              ORDER BY x.made_at DESC LIMIT 1) AS moving
+       FROM screen_fittings f
+      WHERE f.rider_id = $1 AND f.from_at <= to_timestamp($2)
+        AND NOT EXISTS (SELECT 1 FROM screen_fittings g WHERE g.screen_id = f.screen_id
+                         AND g.from_at > f.from_at AND g.from_at <= to_timestamp($2))`,
+    [riderId, now],
+  );
+  return r.rows.some((x) => x.moving === true);
+}
+
+/**
+ * Sends the alerts of the last day not yet sent to each phone he can be reached on, unless his
+ * bike is moving now or it is night in India (then later). A phone where one fails 3 times is
+ * given up for that alert. One sweep at a time (several API servers never send one twice).
  */
 export async function sendRiderAlerts(
-  pool: Q,
+  pool: Pool,
   push: PushAdapter,
   now: number,
+  rules: RiderSignInRules = DEFAULT_RIDER_SIGN_IN,
 ): Promise<{ sent: number; held: number; failed: number }> {
-  const due = await pool.query<{
-    alert_id: string;
-    rider_id: string;
-    kind: RiderAlertKind;
-    vals: Record<string, string | number>;
-    at: string;
-    push_token: string;
-    language: RiderLanguage;
-    moving: boolean;
-  }>(
-    `SELECT a.alert_id, a.rider_id, a.kind, a.vals, extract(epoch FROM a.at)::bigint AS at,
-            t.push_token, t.language,
-            coalesce((SELECT (r.body->>'moving')::boolean FROM screen_reports r
-                       WHERE r.kind = 'live' AND r.made_at > to_timestamp($1) - interval '5 minutes'
-                         AND r.screen_id = (SELECT f.screen_id FROM screen_fittings f
-                                             WHERE f.rider_id = a.rider_id AND f.from_at <= to_timestamp($1)
-                                             ORDER BY f.from_at DESC LIMIT 1)
-                       ORDER BY r.made_at DESC LIMIT 1), false) AS moving
-       FROM rider_alerts a
-       JOIN LATERAL (
-         -- Each of his sessions still open: its latest push token.
-         SELECT DISTINCT ON (p.token_hash) p.push_token, p.language
-           FROM rider_push_tokens p
-           JOIN rider_sessions s ON s.token_hash = p.token_hash
-          WHERE coalesce(s.rider_id, (SELECT j.rider_id FROM rider_session_joins j
-                                       WHERE j.token_hash = s.token_hash)) = a.rider_id
-            AND NOT EXISTS (SELECT 1 FROM rider_session_ends e WHERE e.token_hash = s.token_hash)
-          ORDER BY p.token_hash, p.id DESC) t ON true
-      WHERE a.at > to_timestamp($1) - interval '1 day'
-        AND NOT EXISTS (SELECT 1 FROM rider_alert_pushes x WHERE x.alert_id = a.alert_id
-                          AND x.push_token = t.push_token AND x.status IN ('sent', 'gone'))
-        AND NOT EXISTS (SELECT 1 FROM rider_alert_pushes g WHERE g.push_token = t.push_token
-                          AND g.status = 'gone')
-      ORDER BY a.at LIMIT 500`,
-    [now],
-  );
-  let sent = 0;
-  let held = 0;
-  let failed = 0;
-  for (const d of due.rows) {
-    if (!mayPush(Number(d.at), now, d.moving)) {
-      held += 1;
-      continue;
-    }
-    const w = alertWords(d.language, d.kind, d.vals);
-    const key = `${d.alert_id}:${createHash('sha256').update(d.push_token).digest('hex').slice(0, 16)}`;
-    const r = await push
-      .send({ key, token: d.push_token, title: w.title, body: w.body })
-      .catch((e: unknown) => ({ status: 'failed' as const, reason: String(e).slice(0, 200) }));
-    if (r.status === 'sent') sent += 1;
-    else failed += 1;
-    await pool.query(
-      `INSERT INTO rider_alert_pushes (alert_id, push_token, status, detail, at)
-       VALUES ($1, $2, $3, $4, to_timestamp($5))`,
-      [d.alert_id, d.push_token, r.status, r.status === 'failed' ? r.reason : null, now],
+  const out = { sent: 0, held: 0, failed: 0 };
+  return inTransaction(pool, async (c) => {
+    const got = await c.query<{ ok: boolean }>(
+      "SELECT pg_try_advisory_xact_lock(hashtext('rider-alert-sweep')) AS ok",
     );
-  }
-  return { sent, held, failed };
+    if (!got.rows[0]?.ok) return out;
+    const alerts = await c.query<{
+      alert_id: string;
+      rider_id: string;
+      kind: RiderAlertKind;
+      vals: Record<string, string | number>;
+      at: string;
+    }>(
+      `SELECT alert_id, rider_id, kind, vals, extract(epoch FROM at)::bigint AS at
+         FROM rider_alerts WHERE at > to_timestamp($1) - interval '1 day' ORDER BY at`,
+      [now],
+    );
+    const byRider = new Map<string, typeof alerts.rows>();
+    for (const a of alerts.rows) byRider.set(a.rider_id, [...(byRider.get(a.rider_id) ?? []), a]);
+    for (const [riderId, his] of byRider) {
+      const phones = await phonesOf(c, riderId, now, rules.idleDays);
+      if (phones.length === 0) continue;
+      const tries = await c.query<{
+        alert_id: string;
+        push_token: string;
+        done: boolean;
+        failed: number;
+      }>(
+        `SELECT alert_id, push_token, bool_or(status IN ('sent', 'gone')) AS done,
+                count(*) FILTER (WHERE status = 'failed')::int AS failed
+           FROM rider_alert_pushes WHERE alert_id = ANY($1) GROUP BY alert_id, push_token`,
+        [his.map((a) => a.alert_id)],
+      );
+      const tried = new Map(tries.rows.map((t) => [`${t.alert_id} ${t.push_token}`, t]));
+      const todo = his.flatMap((a) =>
+        phones
+          .filter((p) => {
+            const t = tried.get(`${a.alert_id} ${p.push_token}`);
+            return !t?.done && (t?.failed ?? 0) < ALERT_TRIES;
+          })
+          .map((p) => ({ a, p })),
+      );
+      if (todo.length === 0) continue;
+      const moving = await ridingNow(c, riderId, now);
+      for (const { a, p } of todo) {
+        if (!mayPush(Number(a.at), now, moving)) {
+          out.held += 1;
+          continue;
+        }
+        const w = alertWords(p.language, a.kind, a.vals);
+        const hash = createHash('sha256').update(p.push_token).digest('hex').slice(0, 16);
+        const r = await push
+          .send({ key: `${a.alert_id}:${hash}`, token: p.push_token, title: w.title, body: w.body })
+          .catch((e: unknown) => ({ status: 'failed' as const, reason: String(e).slice(0, 200) }));
+        if (r.status === 'sent') out.sent += 1;
+        else out.failed += 1;
+        await c.query(
+          `INSERT INTO rider_alert_pushes (alert_id, push_token, status, detail, at)
+           VALUES ($1, $2, $3, $4, to_timestamp($5))`,
+          [a.alert_id, p.push_token, r.status, r.status === 'failed' ? r.reason : null, now],
+        );
+      }
+    }
+    return out;
+  });
 }
 
 /** His alerts for the app's list, newest first (at most 30). */

@@ -46,3 +46,10 @@ CREATE TRIGGER rider_alert_pushes_no_change BEFORE UPDATE OR DELETE ON rider_ale
 CREATE TRIGGER rider_alert_pushes_no_truncate BEFORE TRUNCATE ON rider_alert_pushes
   FOR EACH STATEMENT EXECUTE FUNCTION recall_append_only();
 GRANT SELECT, INSERT ON rider_push_tokens, rider_alerts, rider_alert_pushes TO recall_app;
+
+-- Finding a rider's sessions, a push token's latest phone, and recent payouts quickly (the alert
+-- sweep runs every 2 minutes for the whole fleet).
+CREATE INDEX rider_push_tokens_token ON rider_push_tokens (push_token, id DESC);
+CREATE INDEX rider_sessions_rider ON rider_sessions (rider_id);
+CREATE INDEX rider_session_joins_rider ON rider_session_joins (rider_id);
+CREATE INDEX payout_attempts_paid_at ON payout_attempts (at) WHERE status = 'paid';

@@ -25,14 +25,20 @@ export async function freshDatabase(): Promise<{ pool: pg.Pool; drop: () => Prom
   // lock on the shared database; once the role is there, the rest migrate side by side.
   const first = await admin.connect();
   try {
-    await first.query("SELECT pg_advisory_lock(hashtext('recall-test-first-migration'))");
+    await first.query('BEGIN');
+    // Released when this transaction ends, whatever happens (a failed migration never keeps it).
+    await first.query("SELECT pg_advisory_xact_lock(hashtext('recall-test-first-migration'))");
     const role = await first.query("SELECT 1 FROM pg_roles WHERE rolname = 'recall_app'");
     if (role.rows.length === 0) await migrate(pool);
-    await first.query("SELECT pg_advisory_unlock(hashtext('recall-test-first-migration'))");
+    await first.query('COMMIT');
     if (role.rows.length > 0) await migrate(pool);
-  } finally {
-    first.release();
+  } catch (e) {
+    await first.query('ROLLBACK').catch(() => undefined);
+    first.release(true);
+    await admin.end();
+    throw e;
   }
+  first.release();
   return {
     pool,
     drop: async () => {

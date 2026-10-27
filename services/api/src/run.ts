@@ -112,10 +112,10 @@ if (reports) {
 const alerts = () => {
   const now = Math.floor(Date.now() / 1000);
   setting(pool, 'riderSignIn')
-    .then((rules) => makeRiderAlerts(pool, now, rules))
-    .then(async () => {
+    .then(async (rules) => {
+      await makeRiderAlerts(pool, now, rules);
       if (!cfg.push) return;
-      const s = await sendRiderAlerts(pool, cfg.push, now);
+      const s = await sendRiderAlerts(pool, cfg.push, now, rules);
       if (s.failed > 0) console.error(`api: ${s.failed} rider notifications failed`);
     })
     .catch((e: unknown) => console.error('api: rider alerts failed', e))

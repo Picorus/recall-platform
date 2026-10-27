@@ -67,7 +67,16 @@ export function alertWords(
   return { title: fill(title), body: fill(body) };
 }
 
-/** Whether an alert made at `madeAt` may go to his phone at `now`: not while he rides, not stale. */
+/** No notification between these hours, India time (a phone buzzing at 3 am helps nobody). */
+export const QUIET_FROM_HOUR = 22;
+export const QUIET_UNTIL_HOUR = 7;
+
+/**
+ * Whether an alert made at `madeAt` may go to his phone at `now`: not while he rides, not at night
+ * in India, not stale.
+ */
 export function mayPush(madeAt: number, now: number, moving: boolean): boolean {
-  return !moving && now - madeAt <= ALERT_SEND_WITHIN;
+  const hour = Math.floor(((((now + 19_800) % 86_400) + 86_400) % 86_400) / 3600);
+  const night = hour >= QUIET_FROM_HOUR || hour < QUIET_UNTIL_HOUR;
+  return !moving && !night && now - madeAt <= ALERT_SEND_WITHIN;
 }
