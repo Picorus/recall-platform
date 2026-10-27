@@ -34,3 +34,20 @@ Plex Mono) are bundled in the app, so phones without them still show them correc
 A rider signs out on the app. Staff ending a rider's sessions (a lost phone) comes with the admin
 rider page's next change; until then, `endRiderSession` in `packages/db` does it (logged in the
 audit log under riders).
+
+## Fitting a screen (P4.3)
+
+1. A super admin switches a fitting centre on (Settings → Fitting centres); Operations open fitting
+   times there (Riders → Fitting slots).
+2. The approved rider books a time in the app.
+3. At that time (from 30 minutes before to 2 hours after; Settings → Rider app limits), the
+   technician takes the rider's phone, taps "Scan the screen's QR code" and points it at the box (or
+   types the id printed under the QR). The app says why if the screen cannot go on (on another
+   bike, in repair, not his number plate…).
+4. "Start the fitting check": the screen lights every part for 2 minutes and checks GPS, 4G, camera
+   and battery. The technician answers "Did every part of the screen light up?".
+5. When the app shows "Ready", staff see the same on the admin rider page, confirm with the
+   technician that this screen is on this bike (the QR code alone does not prove it), and switch him
+   to riding.
+
+A wrong fitting is taken off on the Screens page ("Take off", with why).

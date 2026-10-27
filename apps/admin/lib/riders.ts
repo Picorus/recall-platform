@@ -149,6 +149,8 @@ export interface RiderPage {
   readonly checks: readonly CheckView[];
   readonly payoutAccount: string | null;
   readonly fitting: FittingSlot | null;
+  /** P4.3: the latest fitting check of his screen, or null. */
+  readonly fittingCheck: FittingCheck | null;
   readonly money: RiderMoney;
   readonly leaving: readonly { item: string; done: boolean; detail: string }[];
   readonly timeline: readonly { at: number; by: string; text: string }[];
@@ -168,6 +170,32 @@ export function documentStatus(d: RiderDocument): string {
 }
 
 /** "Wed 2 Jun, 10:00 · 2 h · Kukatpally warehouse (1 of 4 booked)". */
+type Part = 'ok' | 'fail' | 'unknown' | 'waiting';
+
+export interface FittingCheck {
+  readonly startedAt: number;
+  readonly gps: Part;
+  readonly line: Part;
+  readonly camera: Part;
+  readonly battery: Part;
+  readonly panel: Part;
+  readonly ready: boolean;
+}
+
+/** One line for staff: ready, or which parts did not pass. */
+export function fittingCheckText(c: FittingCheck, when: (t: number) => string): string {
+  const parts: [string, Part][] = [
+    ['GPS', c.gps],
+    ['4G line', c.line],
+    ['camera', c.camera],
+    ['battery', c.battery],
+    ['panel (technician)', c.panel],
+  ];
+  if (c.ready) return `Fitting check ${when(c.startedAt)}: ready, every part passed.`;
+  const open = parts.filter(([, p]) => p !== 'ok').map(([n, p]) => `${n} ${p}`);
+  return `Fitting check ${when(c.startedAt)}: not ready (${open.join(', ')}).`;
+}
+
 export function slotText(s: FittingSlot, when: (t: number) => string): string {
   const h = s.minutes % 60 === 0 ? `${s.minutes / 60} h` : `${s.minutes} min`;
   return `${when(s.startsAt)} · ${h} · ${s.centre} (${s.booked.length} of ${s.bikes} booked)`;

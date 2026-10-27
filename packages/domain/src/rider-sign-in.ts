@@ -30,6 +30,12 @@ export interface RiderSignInRules {
   readonly checksPerDayAll: number;
   /** P4.2: pictures one rider may send in a day from the app. */
   readonly uploadsPerRiderDay: number;
+  /** P4.3: a screen can be fitted from the app from this many minutes before his slot starts… */
+  readonly fitEarlyMinutes: number;
+  /** P4.3: …until this many minutes after it ends (only then, so a QR seen elsewhere is no use). */
+  readonly fitLateMinutes: number;
+  /** P4.3: fitting checks one rider may start in a day (each lights the screen and waits on it). */
+  readonly fittingChecksPerDay: number;
 }
 
 export const DEFAULT_RIDER_SIGN_IN: RiderSignInRules = {
@@ -45,6 +51,9 @@ export const DEFAULT_RIDER_SIGN_IN: RiderSignInRules = {
   checksPerRiderDay: 3,
   checksPerDayAll: 500,
   uploadsPerRiderDay: 20,
+  fitEarlyMinutes: 30,
+  fitLateMinutes: 120,
+  fittingChecksPerDay: 10,
 };
 
 /** Each rule's sensible range (checked when a super admin changes them in Settings). */
@@ -63,6 +72,9 @@ export const RIDER_SIGN_IN_RANGES: Readonly<
   checksPerRiderDay: [1, 20],
   checksPerDayAll: [10, 100_000],
   uploadsPerRiderDay: [3, 200],
+  fitEarlyMinutes: [0, 240],
+  fitLateMinutes: [0, 720],
+  fittingChecksPerDay: [1, 50],
 };
 
 export const RIDER_LANGUAGES = ['te', 'hi', 'en'] as const;

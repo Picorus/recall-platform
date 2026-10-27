@@ -1,5 +1,6 @@
 // The rider app (P4). P4.1: language, sign-in with a code, and who is signed in. P4.2: a new
-// number signs up, then the six joining steps while his application is open. The screens are a
+// number signs up, then the six joining steps while his application is open. P4.3: once approved,
+// booking his fitting, the screen's QR and the fitting check. The screens are a
 // small set of steps, so the app moves between them itself (no navigation library); Android's back
 // button goes back a step.
 import { RIDER_LANGUAGES, type RiderLanguage } from '@recall/domain';
@@ -10,6 +11,7 @@ import { ActivityIndicator, BackHandler, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ApiError, call, type Me } from './src/api';
 import { Code } from './src/screens/Code';
+import { Fitting } from './src/screens/Fitting';
 import { Home } from './src/screens/Home';
 import { Join } from './src/screens/Join';
 import { JoinStart } from './src/screens/JoinStart';
@@ -132,10 +134,14 @@ export default function App() {
         {(fontsReady || fontsFailed) && step.at === 'home' && step.me.status === 'applied' && (
           <Join lang={lang} token={step.token} onSignOut={() => void signOut()} />
         )}
+        {(fontsReady || fontsFailed) && step.at === 'home' && step.me.status === 'approved' && (
+          <Fitting lang={lang} token={step.token} onSignOut={() => void signOut()} />
+        )}
         {(fontsReady || fontsFailed) &&
           step.at === 'home' &&
           step.me.riderId !== null &&
-          step.me.status !== 'applied' && (
+          step.me.status !== 'applied' &&
+          step.me.status !== 'approved' && (
             <Home lang={lang} me={step.me} onSignOut={() => void signOut()} />
           )}
       </LangContext.Provider>

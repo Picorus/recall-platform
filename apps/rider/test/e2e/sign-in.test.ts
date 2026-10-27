@@ -1,11 +1,25 @@
 // The rider app (web build) in a real browser against the real API and a real database (P4.1):
 // language, a wrong number, a code on WhatsApp, a wrong code, signed in as a known rider, still
 // signed in after a reload, signed out; a new number by SMS in Hindi is welcomed to the sign-up.
+// P4.3: an approved rider books his fitting, the screen is fitted at his slot and checked.
 // Needs `pnpm test:e2e` (it builds the app for the web first) and DATABASE_URL (pnpm services:up).
-import { fakeBankCheck, fakeEsign, fakeFileStore, fakeKyc, fakeMessages } from '@recall/adapters';
+import {
+  fakeBankCheck,
+  fakeDeviceCa,
+  fakeEsign,
+  fakeFileStore,
+  fakeKyc,
+  fakeMessages,
+} from '@recall/adapters';
 import { apiHandler } from '@recall/api';
-import { createRider, reviewRiderDocument } from '@recall/db';
-import { freshDatabase } from '@recall/db/test-db';
+import {
+  createRider,
+  enrolScreen,
+  openFittingSlot,
+  reviewRiderDocument,
+  storeUpload,
+} from '@recall/db';
+import { boxRequest, freshDatabase } from '@recall/db/test-db';
 import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
@@ -287,3 +301,109 @@ it('a new rider signs up and goes through every step to the screen loan', async 
   await shot(page, 'rider-join-done');
   expect(errors).toEqual([]);
 }, 180_000);
+
+it('an approved rider books his fitting; at his slot the screen is fitted and checked', async () => {
+  const now = Math.floor(Date.now() / 1000);
+  const riderId = await createRider(
+    db.pool,
+    {
+      details: {
+        name: 'Kiran Rao',
+        phone: '+919100054321',
+        bikePlate: 'TS08CD4321',
+        rides: 'Kondapur',
+        apps: [],
+      },
+      channel: 'admin',
+      by: 'Omar',
+      reason: 'walk-in',
+    },
+    now - 7200,
+  );
+  await db.pool.query(
+    `INSERT INTO rider_steps (rider_id, seq, status, reason, by_who, at)
+     VALUES ($1, 2, 'approved', 'all checked', 'Omar', to_timestamp($2))`,
+    [riderId, now - 3600],
+  );
+  await db.pool.query(
+    `INSERT INTO settings (key, version, value, saved_by, reason)
+     VALUES ('fittingCentres', 1, $1, 'Prateek', 'the first centre')`,
+    [JSON.stringify([{ name: 'Madhapur hub', address: 'Plot 5, Madhapur', on: true }])],
+  );
+  // One soon (his), one tomorrow.
+  await openFittingSlot(
+    db.pool,
+    { centre: 'Madhapur hub', startsAt: now + 600, minutes: 60, bikes: 4, by: 'Omar' },
+    now - 60,
+  );
+  await openFittingSlot(
+    db.pool,
+    { centre: 'Madhapur hub', startsAt: now + 86_400, minutes: 60, bikes: 4, by: 'Omar' },
+    now - 60,
+  );
+  const box = await enrolScreen(
+    db.pool,
+    fakeDeviceCa(),
+    boxRequest('RK-E2E-FIT', now - 3600),
+    'w',
+    now - 3600,
+  );
+  const { page, errors } = await phonePage();
+  await page.getByLabel('Mobile number').fill('91000 54321');
+  await page.getByRole('button', { name: 'Send code on WhatsApp' }).click();
+  await page.getByText('Type the code').waitFor();
+  await page.getByLabel('Code').fill(codeFor('+919100054321'));
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.getByText('Get your screen fitted').waitFor();
+  await page.getByText('Plot 5, Madhapur').first().waitFor();
+  await shot(page, 'rider-fitting-slots');
+  await page.getByRole('button', { name: 'Book this time' }).first().click();
+  // His slot is in 10 minutes: the technician fits it now, on this phone.
+  await page.getByText('At the fitting centre').waitFor();
+  await shot(page, 'rider-fitting-at-centre');
+  await page.getByLabel('Or type the code under the QR').fill('RECALL1:SCR-0000000A');
+  await page.getByRole('button', { name: 'Fit this screen' }).click();
+  await page.getByRole('alert').getByText('This is not a RECALL screen code.').waitFor();
+  await page.getByLabel('Or type the code under the QR').fill(box.screenId.toLowerCase());
+  await page.getByRole('button', { name: 'Fit this screen' }).click();
+  await page.getByText('Your screen is on your bike TS08CD4321.').waitFor();
+  await page.getByRole('button', { name: 'Start the fitting check' }).click();
+  await page.getByText('Did every part of the screen light up?').waitFor();
+  await shot(page, 'rider-fitting-check');
+  await page.getByRole('button', { name: 'Yes' }).click();
+  // The box answers through its outbox; the app looks again by itself.
+  const r = await db.pool.query<{ id: string }>(
+    `SELECT id FROM screen_commands WHERE screen_id = $1 AND command = 'fitting-check'`,
+    [box.screenId],
+  );
+  const id = r.rows[0]?.id ?? '';
+  const at = Math.floor(Date.now() / 1000);
+  await storeUpload(
+    db.pool,
+    box.screenId,
+    [
+      {
+        seq: 1,
+        at,
+        report: {
+          kind: 'fitting',
+          id,
+          at,
+          gpsAccuracyM: 5,
+          lineUp: true,
+          camera: 'ok',
+          batteryPct: 90,
+          charging: true,
+          panel: 'unknown',
+        },
+      },
+    ],
+    1,
+    at,
+  );
+  await page.getByText('Ready. RECALL will switch you on soon and message you.').waitFor({
+    timeout: 20_000,
+  });
+  await shot(page, 'rider-fitting-ready');
+  expect(errors).toEqual([]);
+}, 120_000);
