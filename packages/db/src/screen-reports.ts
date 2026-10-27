@@ -70,10 +70,18 @@ export async function storeUpload(
   }
 }
 
+/**
+ * How far past the next number expected (or the oldest the screen still holds) a report is taken
+ * (P7.1): about 10 hours of a screen's reports. A screen sends oldest first, so this never holds a
+ * real one back for long; without it, a tampered box could park any number of reports ahead of a
+ * gap it never fills, and every later upload of that screen would read them all again.
+ */
+export const MOST_AHEAD = 5_000;
+
 async function storeUploadOnce(
   pool: Pool,
   screenId: string,
-  batch: readonly Numbered[],
+  sent: readonly Numbered[],
   oldestHeld: number,
   now: number,
 ): Promise<Stored> {
@@ -91,6 +99,13 @@ async function storeUploadOnce(
     );
     const upTo = Number(box.rows[0]?.up_to ?? 0);
     const lost = Number(box.rows[0]?.lost ?? 0);
+    // Too far ahead: left out, not answered for; the screen sends them again later.
+    const proven = Math.min(
+      ...sent.flatMap((n) => (Number.isSafeInteger(n.seq) && n.seq > 0 ? [n.seq] : [])),
+    );
+    const held = Number.isSafeInteger(oldestHeld) ? Math.min(oldestHeld, proven) : proven;
+    const from = Math.max(upTo, Number.isFinite(held) ? held - 1 : 0);
+    const batch = sent.filter((n) => !Number.isSafeInteger(n.seq) || n.seq <= from + MOST_AHEAD);
     // Reports already stored that arrived ahead of a gap.
     const waiting = await c.query<{ seq: string; kind: string; made_at: Date; body: Report }>(
       'SELECT seq, kind, made_at, body FROM screen_reports WHERE screen_id = $1 AND seq > $2',
