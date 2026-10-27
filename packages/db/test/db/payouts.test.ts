@@ -14,6 +14,7 @@ import {
   sendPayoutRun,
 } from '../../src/payouts.js';
 import { assignScreen, monthBounds } from '../../src/rider-pay.js';
+import { nextPayoutDate, quarterOf, riderPayouts } from '../../src/rider-payouts.js';
 import { checkedPayoutAccount, freshDatabase } from './fresh-db.js';
 
 let db: Awaited<ReturnType<typeof freshDatabase>>;
@@ -142,6 +143,46 @@ describe('the Monday payout run (P1.7.7)', () => {
     const week = netFor(22) - netFor(15);
     // The 16 Aug run is not approved yet: its amounts are not listed again.
     expect(run.lines.map((l) => l.amountPaise)).toEqual([week, week, week, week]);
+  });
+
+  it("the rider app's Payouts page (P4.6): next Monday, his payouts in words, his TDS", async () => {
+    const now = ist('2027-08-25T12:00:00');
+    const paid = await riderPayouts(pool, 'RD-000801', now);
+    expect(paid).toMatchObject({
+      nextDate: '2027-08-30',
+      account: expect.stringContaining('@okbank'),
+    });
+    expect(paid.history.map((h) => [h.date, h.state])).toEqual([
+      ['2027-08-23', 'sending'],
+      ['2027-08-16', 'sending'],
+      ['2027-08-09', 'paid'],
+    ]);
+    const closed = await riderPayouts(pool, 'RD-000804', now);
+    expect(closed.history.at(-1)).toEqual({
+      date: '2027-08-09',
+      amountPaise: netFor(8),
+      state: 'next-run',
+    });
+    expect(closed.owedPaise).toBeGreaterThan(0);
+    expect(closed.tds).toHaveLength(1);
+    expect(closed.tds[0]?.quarter).toBe('FY2027-28 Q2');
+    expect(closed.tds[0]?.paise).toBeGreaterThan(0);
+    // Staff's notes and the provider's reasons are not his page's.
+    expect(JSON.stringify(closed)).not.toContain('account closed');
+    expect((await riderPayouts(pool, 'RD-000803', now)).history[0]?.state).toBe('sending');
+  });
+
+  it('the next payout Monday, and quarters of the financial year', () => {
+    expect(nextPayoutDate(ist('2027-08-30T09:59:00'))).toBe('2027-08-30');
+    expect(nextPayoutDate(ist('2027-08-30T10:00:00'))).toBe('2027-09-06');
+    expect(nextPayoutDate(ist('2027-09-01T08:00:00'))).toBe('2027-09-06');
+    expect(nextPayoutDate(ist('2027-09-05T23:00:00'))).toBe('2027-09-06');
+    expect(['2027-04-01', '2027-07-31', '2027-12-31', '2028-03-31'].map(quarterOf)).toEqual([
+      'FY2027-28 Q1',
+      'FY2027-28 Q2',
+      'FY2027-28 Q3',
+      'FY2027-28 Q4',
+    ]);
   });
 
   it('the whole ledger balances', async () => {

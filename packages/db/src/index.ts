@@ -50,3 +50,4 @@ export * from './rider-app.js';
 export * from './rider-app-fitting.js';
 export * from './rider-today.js';
 export * from './rider-earnings.js';
+export * from './rider-payouts.js';

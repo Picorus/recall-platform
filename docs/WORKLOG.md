@@ -2,6 +2,13 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 27 Oct 2026 · P4.6 · Rider app: Payouts
+- **Payouts page** (`packages/db/src/rider-payouts.ts`, route `GET /rider/payouts`): the next payout Monday (today when it is a Monday before the 10:00 run) and what he is owed now (the Monday run works out the final figure, less tax); where it goes (his checked bank or UPI, masked), or a warning that nothing can be paid until one is checked; each payout of the last 26 weeks in words for him: paid, being sent, did not go through (tried again), could not be paid (comes with the next payout), on hold (call support). Staff's hold reasons and the bank's messages are not shown to him. The tax (TDS) held back, by quarter of the financial year, for his Form 16A.
+- **App**: a Payouts tab; every word in Telugu, Hindi and English.
+- Tests: database 2 (his payouts in words after paid, retried and given-up payouts, no staff or bank reasons shown, TDS by quarter; the next Monday and the quarters); API 1 (the route for a rider with nothing yet); browser 1 (the Payouts tab).
+- Open: the Form 16A certificate itself comes with the TDS filing (P6, with the accountant).
+- Next: P4.7, the screen loan.
+
 ## 27 Oct 2026 · P4.5 · Rider app: Earnings
 - **Earnings page** (`packages/db/src/rider-earnings.ts`, route `GET /rider/earnings?month=`): a month at a time (this month first, up to 12 back from his first screen). The total before tax and its parts: moving hours × ₹25 (capped at 260 a month), the test-period daily pay, his share of sales as of the pay run's last update (with its date), and bonuses given. Each week (Monday to Sunday) and each day with hours. In the POC: his hours toward the founding bonus (a bar to 150; it starts at 100) and what it comes to so far. A closed month shows what the pay run posted, never a late upload it did not pay. The days come from the same code as Today, so the two pages always agree.
 - **What each pay posting was made of** (migration 0050, `rider_pay_lines`): the ledger keeps only amounts; each time the pay run posts a change for a rider and month, the month's parts (hours, POC base, hourly, sales share, total, TDS) are kept beside that entry, never changed.

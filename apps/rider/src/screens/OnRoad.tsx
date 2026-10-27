@@ -1,5 +1,5 @@
-// P4.4–P4.5: a rider on the road moves between his pages with tabs at the bottom (Today, Earnings;
-// payouts, the screen loan, care and help join them as they come).
+// P4.4–P4.6: a rider on the road moves between his pages with tabs at the bottom (Today, Earnings,
+// Payouts; the screen loan, care and help join them as they come).
 import type { RiderLanguage } from '@recall/domain';
 import { useState } from 'react';
 import { Pressable, View } from 'react-native';
@@ -9,11 +9,13 @@ import { say, type Key } from '../i18n';
 import { color, touch } from '../theme';
 import { Words } from '../ui';
 import { Earnings } from './Earnings';
+import { Payouts } from './Payouts';
 import { Today } from './Today';
 
 const TABS = [
   ['today', 'tab.today'],
   ['earnings', 'tab.earnings'],
+  ['payouts', 'tab.payouts'],
 ] as const satisfies readonly (readonly [string, Key])[];
 type Tab = (typeof TABS)[number][0];
 
@@ -35,6 +37,7 @@ export function OnRoad({
       <View style={{ flex: 1 }}>
         {tab === 'today' && <Today lang={lang} token={token} me={me} onSignOut={onSignOut} />}
         {tab === 'earnings' && <Earnings lang={lang} token={token} onSignOut={onSignOut} />}
+        {tab === 'payouts' && <Payouts lang={lang} token={token} onSignOut={onSignOut} />}
       </View>
       <View
         accessibilityRole="tablist"

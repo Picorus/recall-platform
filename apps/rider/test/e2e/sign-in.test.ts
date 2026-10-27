@@ -2,7 +2,7 @@
 // language, a wrong number, a code on WhatsApp, a wrong code, signed in as a known rider, still
 // signed in after a reload, signed out; a new number by SMS in Hindi is welcomed to the sign-up.
 // P4.3: an approved rider books his fitting, the screen is fitted at his slot and checked.
-// P4.4: a rider on the road sees his screen, hours and earnings. P4.5: his month and statement.
+// P4.4: a rider on the road sees his screen, hours and earnings. P4.5: his month and statement. P4.6: his payouts.
 // Needs `pnpm test:e2e` (it builds the app for the web first) and DATABASE_URL (pnpm services:up).
 import {
   fakeBankCheck,
@@ -499,6 +499,12 @@ it("a rider on the road sees his screen, today's and this week's hours and earni
   await statement.getByText('RECALL rider statement').waitFor();
   await statement.getByText(`Suresh Babu · ${riderId}`, { exact: false }).waitFor();
   await shot(statement, 'rider-statement');
+  // P4.6: Payouts: the next Monday, no checked account yet.
+  await page.getByRole('tab', { name: 'Payouts' }).click();
+  await page.getByText(/Next payout: Monday \d\d\/\d\d\/\d{4}/).waitFor();
+  await page.getByText('No bank or UPI checked yet: we cannot pay you. Call support.').waitFor();
+  await page.getByText('No payouts yet.').waitFor();
+  await shot(page, 'rider-payouts');
   await page.getByRole('tab', { name: 'Today' }).click();
   await page.getByText('On and playing').waitFor();
   expect(errors).toEqual([]);

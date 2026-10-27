@@ -28,6 +28,8 @@
 //   GET  /rider/earnings?month=YYYY-MM   days, weeks and the month's parts (this month by default)
 //   POST /rider/statement         { month }  a link to his statement page (15 minutes)
 //   GET  /rider/statement/<token> the statement page itself (printable; no sign-in needed)
+// P4.6:
+//   GET  /rider/payouts           next Monday's payout, his account (masked), history, TDS by quarter
 import type { PayoutDestination } from '@recall/adapters';
 import {
   answerPanel,
@@ -55,6 +57,7 @@ import {
   riderSession,
   riderToday,
   riderEarnings,
+  riderPayouts,
   riderMonths,
   setting,
   type RiderSession,
@@ -283,6 +286,10 @@ export async function handleRiderApp(
     if (!months.includes(month))
       throw new HttpError(400, 'Pick one of your months', { code: 'bad-month' });
     send(res, 200, await riderEarnings(pool, riderId, month, now, months));
+    return true;
+  }
+  if (path === '/rider/payouts' && method === 'GET') {
+    send(res, 200, await riderPayouts(pool, riderId, now));
     return true;
   }
   if (path === '/rider/statement' && method === 'POST') {

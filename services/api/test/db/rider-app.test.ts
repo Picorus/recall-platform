@@ -340,6 +340,15 @@ describe('rider app fitting routes (P4.3)', () => {
     const html = await page.text();
     expect(html).toContain('RECALL rider statement');
     expect(html).toContain('Kiran Rao · ' + riderId + ' · 2027-08');
+    // P4.6: his payouts: nothing yet, no checked account, the next Monday.
+    expect((await get('/rider/payouts')).body).toEqual({
+      at: NOW / 1000,
+      nextDate: '2027-08-30',
+      owedPaise: 0,
+      account: null,
+      history: [],
+      tds: [],
+    });
     // A changed link is refused.
     expect((await fetch(`${url}${link.slice(0, -2)}xx`)).status).toBe(404);
   });
