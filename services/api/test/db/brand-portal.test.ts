@@ -3,7 +3,7 @@
 // portal's origins; a staff cookie opens nothing here and a portal cookie opens no staff route;
 // Sales gives and removes portal access on a brand's page.
 import { freshDatabase } from '@recall/db/test-db';
-import { fakeMessages } from '@recall/adapters';
+import { fakeGst, fakeMessages } from '@recall/adapters';
 import { createAccount } from '@recall/db';
 import { randomBytes } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
@@ -28,6 +28,7 @@ const CFG: StaffApiConfig = {
   secureCookies: true,
   proxyHops: 0,
   messages,
+  gst: fakeGst(),
 };
 const member = members(() => pool, NOW);
 
@@ -207,5 +208,63 @@ describe('brand portal sign-in routes (P5.1)', () => {
       { origin: ADMIN, cookie: sales },
     );
     expect((await call('/portal/me', undefined, { cookie: s.session })).body.accounts).toEqual([]);
+  });
+
+  it('a new person sets up their business from its GST number and owns it (P5.2)', async () => {
+    const s = await signIn('+919848077777', 'whatsapp');
+    const c = { origin: PORTAL, cookie: s.session };
+    const form = await call('/portal/business-form', undefined, { cookie: s.session });
+    expect(form.body.types).toContainEqual({ key: 'food', label: 'Food and drink' });
+    expect(form.body.states).toContainEqual({ code: '36', name: 'Telangana' });
+    expect(await call('/portal/gst', { gstin: '36 aapfu0939f1zw' }, c)).toMatchObject({
+      status: 200,
+      body: { status: 'found', stateName: 'Telangana' },
+    });
+    expect(await call('/portal/gst', { gstin: '36AAPFU0939F1ZX' }, c)).toMatchObject({
+      status: 400,
+      body: { why: 'bad-gstin' },
+    });
+    const made = await call(
+      '/portal/business',
+      {
+        gstin: '36AAPFU0939F1ZW',
+        name: 'Irani Chai',
+        kind: 'brand',
+        businessType: 'food',
+        invoiceEmail: 'Accounts@IraniChai.in',
+        phone: '98480 77777',
+      },
+      c,
+    );
+    expect(made).toMatchObject({ status: 200, body: { brandId: 'irani-chai' } });
+    expect((await call('/portal/me', undefined, { cookie: s.session })).body.accounts).toEqual([
+      { brandId: 'irani-chai', name: 'Irani Chai', kind: 'brand', role: 'owner' },
+    ]);
+    expect(
+      await call('/portal/business?brand=irani-chai', undefined, { cookie: s.session }),
+    ).toMatchObject({
+      status: 200,
+      body: {
+        gstin: '36AAPFU0939F1ZW',
+        invoiceEmail: 'accounts@iranichai.in',
+        businessType: 'food',
+      },
+    });
+    // Another business's page: the same answer as one that does not exist.
+    expect(
+      (await call('/portal/business?brand=chai-co', undefined, { cookie: s.session })).status,
+    ).toBe(404);
+    // The same GST number again, from someone else: refused.
+    const t = await signIn('+919848088888', 'sms');
+    expect(
+      await call(
+        '/portal/gst',
+        { gstin: '36AAPFU0939F1ZW' },
+        { origin: PORTAL, cookie: t.session },
+      ),
+    ).toMatchObject({ status: 400, body: { why: 'gstin-taken' } });
+    expect(
+      (await call('/portal/business', { name: 'x' }, { origin: PORTAL, cookie: t.session })).status,
+    ).toBe(400);
   });
 });

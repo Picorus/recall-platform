@@ -525,12 +525,13 @@ export default function SettingsPageView() {
             )}
           </Section>
 
-          <Section {...common('brandSignIn')} title="Brand portal sign-in limits">
+          <Section {...common('brandSignIn')} title="Brand portal limits">
             {(v, set) => (
               <>
                 <p className="muted">
                   Brands and agencies sign in to the brand portal with a code sent on WhatsApp, by
-                  SMS or by email. These limits stop guessing and keep message costs down.
+                  SMS or by email, and look up their GST number when they set up. These limits stop
+                  guessing and keep message and lookup costs down.
                 </p>
                 <div className="cal-bar">
                   {BRAND_SIGN_IN_LABELS.map(([k, label]) => (

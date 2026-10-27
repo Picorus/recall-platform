@@ -2,9 +2,10 @@
 // business signs in with a WhatsApp code and is welcomed; a person RECALL's team gave access signs
 // in by email and sees their brand; wrong codes are told; sign-out ends it.
 // Needs `next build` first and DATABASE_URL (pnpm services:up).
-import { fakeMessages } from '@recall/adapters';
+import { fakeGst, fakeMessages } from '@recall/adapters';
+import { PRICE_BOOK_V1 } from '@recall/domain';
 import { apiHandler } from '@recall/api';
-import { createAccount, setPortalMember } from '@recall/db';
+import { createAccount, savePriceBook, setPortalMember } from '@recall/db';
 import { freshDatabase } from '@recall/db/test-db';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
@@ -45,6 +46,7 @@ beforeAll(async () => {
         secureCookies: true,
         proxyHops: 1,
         messages,
+        gst: fakeGst(),
       },
       (l) => console.error(l),
     ),
@@ -76,6 +78,7 @@ beforeAll(async () => {
   }
   browser = await chromium.launch();
   const now = Math.floor(Date.now() / 1000);
+  await savePriceBook(db.pool, PRICE_BOOK_V1, 'prateek');
   await createAccount(
     db.pool,
     {
@@ -157,5 +160,40 @@ it('a person given access signs in by email and sees their brand', async () => {
   // The site passes only the portal's routes: a staff route is not reachable through it.
   const staff = await page.evaluate(async () => (await fetch('/api/staff/me')).status);
   expect(staff).toBe(404);
+  await page.close();
+}, 60_000);
+
+it('a new business sets itself up from its GST number and sees its free week (P5.2)', async () => {
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto(`${SITE}/sign-in`);
+  await page.getByLabel('Mobile number').fill('98480 22222');
+  await page.getByRole('button', { name: 'Send code on WhatsApp' }).click();
+  await page.getByText('to +91 98480 22222').waitFor();
+  await page.getByLabel('Code').fill(lastCode('+919848022222'));
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.getByRole('link', { name: 'Set up your business' }).click();
+  await page.getByLabel('GST number', { exact: true }).fill('36aapfu0939f1zw');
+  await page.getByRole('button', { name: 'Find my business' }).click();
+  await page.getByText('Test Business AAPFU0939F Private Limited').waitFor();
+  // The trade name is offered as the business name.
+  expect(await page.getByLabel('Business name').inputValue()).toBe('Test AAPFU');
+  await page.getByLabel('Business name').fill('Irani Chai');
+  await page.getByLabel('Kind of business').selectOption({ label: 'Food and drink' });
+  await page.getByLabel('Email for invoices').fill('accounts@iranichai.in');
+  expect(await page.getByLabel('Mobile for WhatsApp messages').inputValue()).toBe(
+    '+91 98480 22222',
+  );
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/brand-business-new.png`, fullPage: true });
+  await page.getByRole('button', { name: 'Save my business' }).click();
+  await page.getByRole('heading', { name: 'Irani Chai' }).waitFor();
+  await page.getByRole('heading', { name: 'Your free week' }).waitFor();
+  await page.getByText('36AAPFU0939F1ZW').waitFor();
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/brand-business.png`, fullPage: true });
+  // Its first page now lists it.
+  await page.goto(SITE);
+  await page.getByRole('link', { name: 'Irani Chai' }).waitFor();
+  expect(errors).toEqual([]);
   await page.close();
 }, 60_000);

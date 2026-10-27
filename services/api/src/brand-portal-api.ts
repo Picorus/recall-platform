@@ -6,7 +6,16 @@
 //   POST /portal/sign-in    { address, code }   a session; the accounts it may act for
 //   GET  /portal/me         who is signed in and their accounts (none: a new business, P5.2)
 //   POST /portal/sign-out   ends this session
+// P5.2, your business:
+//   GET  /portal/business-form              the kinds of business and the states, for the form
+//   POST /portal/gst        { gstin }       its details from the GST records (or "type them")
+//   POST /portal/business   { gstin|null, name, kind, businessType, invoiceEmail, phone,
+//                             legalName?, stateCode?, address? }   sets it up; the person owns it
+//   GET  /portal/business?brand=<id>        its details and the free week, for its people only
 import {
+  businessPage,
+  lookUpGst,
+  setUpBusiness,
   askBrandCode,
   brandSession,
   checkBrandCode,
@@ -17,6 +26,10 @@ import {
   type BrandSession,
 } from '@recall/db';
 import {
+  BUSINESS_TYPES,
+  GST_STATES,
+  isBusinessType,
+  typedGstin,
   emailAddress,
   indiaMobile,
   showMobile,
@@ -171,6 +184,70 @@ export async function handleBrandPortal(
       shown: shown(me.address),
       accounts: await portalAccounts(pool, me.address),
     });
+    return true;
+  }
+  if (path === '/portal/business-form' && method === 'GET') {
+    send(res, 200, {
+      types: BUSINESS_TYPES.map(([key, label]) => ({ key, label })),
+      states: GST_STATES.map(([code, name]) => ({ code, name })),
+    });
+    return true;
+  }
+  if (path === '/portal/gst' && method === 'POST') {
+    const b = await jsonBody(req);
+    const gstin = typedGstin(str(b, 'gstin', 40));
+    send(
+      res,
+      200,
+      await refused(() => lookUpGst(pool, cfg.gst, { gstin, asker: me.address }, now, rules)),
+    );
+    return true;
+  }
+  if (path === '/portal/business' && method === 'POST') {
+    const b = await jsonBody(req);
+    const gstText = b.gstin === null || b.gstin === undefined ? '' : str(b, 'gstin', 40);
+    const kind = b.kind;
+    if (kind !== 'brand' && kind !== 'agency') throw new HttpError(400, 'A brand or an agency?');
+    const businessType = b.businessType;
+    if (!isBusinessType(businessType)) throw new HttpError(400, 'Which kind of business?');
+    const phone = indiaMobile(str(b, 'phone', 30));
+    if (!phone) throw new HttpError(400, 'A 10-digit mobile number for WhatsApp messages');
+    const invoiceEmail = emailAddress(str(b, 'invoiceEmail', 254));
+    if (!invoiceEmail) throw new HttpError(400, 'An email address for invoices');
+    const opt = (k: string, max: number) =>
+      b[k] === undefined || b[k] === null ? undefined : str(b, k, max);
+    const legalName = opt('legalName', 200);
+    const stateCode = opt('stateCode', 2);
+    const address = opt('address', 300);
+    const brandId = await refused(() =>
+      setUpBusiness(
+        pool,
+        {
+          asker: me.address,
+          gstin: gstText.trim() === '' ? null : typedGstin(gstText),
+          name: str(b, 'name', 120),
+          kind,
+          businessType,
+          invoiceEmail,
+          phone,
+          ...(legalName !== undefined ? { legalName } : {}),
+          ...(stateCode !== undefined ? { stateCode } : {}),
+          ...(address !== undefined ? { address } : {}),
+        },
+        now,
+        rules,
+      ),
+    );
+    send(res, 200, { brandId });
+    return true;
+  }
+  if (path === '/portal/business' && method === 'GET') {
+    const brandId = new URL(req.url ?? '/', 'http://x').searchParams.get('brand') ?? '';
+    const mine = (await portalAccounts(pool, me.address)).some((a) => a.brandId === brandId);
+    // Not theirs and not there look the same.
+    const page = mine ? await businessPage(pool, brandId, now) : undefined;
+    if (!page) throw new HttpError(404, 'No such business', { code: 'no-business' });
+    send(res, 200, page);
     return true;
   }
   throw new HttpError(404, 'Not found');

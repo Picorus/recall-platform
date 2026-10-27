@@ -22,6 +22,10 @@ export interface BrandSignInRules {
   readonly codesPerHourAll: number;
   /** A session ends by itself after this many days without use. */
   readonly idleDays: number;
+  /** P5.2: GST numbers one person may look up in a day (each lookup costs). */
+  readonly gstLookupsPerDay: number;
+  /** P5.2: businesses one person may set up in a day. */
+  readonly businessesPerDay: number;
 }
 
 export const DEFAULT_BRAND_SIGN_IN: BrandSignInRules = {
@@ -34,6 +38,8 @@ export const DEFAULT_BRAND_SIGN_IN: BrandSignInRules = {
   wrongPerAddressHour: 50,
   codesPerHourAll: 1000,
   idleDays: 30,
+  gstLookupsPerDay: 20,
+  businessesPerDay: 3,
 };
 
 /** Each rule's sensible range (checked when a super admin changes them in Settings). */
@@ -49,6 +55,8 @@ export const BRAND_SIGN_IN_RANGES: Readonly<
   wrongPerAddressHour: [5, 1000],
   codesPerHourAll: [10, 100_000],
   idleDays: [1, 90],
+  gstLookupsPerDay: [3, 200],
+  businessesPerDay: [1, 20],
 };
 
 export type BrandCodeChannel = 'whatsapp' | 'sms' | 'email';

@@ -51,3 +51,35 @@ export interface Me {
   readonly shown: string;
   readonly accounts: readonly Account[];
 }
+
+/** P5.2: a business as its portal shows it. */
+export interface Business {
+  readonly brandId: string;
+  readonly name: string;
+  readonly kind: 'brand' | 'agency';
+  readonly businessType: string | null;
+  readonly legalName: string | null;
+  readonly gstin: string | null;
+  readonly stateCode: string | null;
+  readonly stateName: string | null;
+  readonly address: string | null;
+  readonly invoiceEmail: string | null;
+  readonly phone: string | null;
+  readonly freeWeek: { readonly days: number; readonly bikeHours: number } | null;
+}
+
+export interface BusinessForm {
+  readonly types: readonly { key: string; label: string }[];
+  readonly states: readonly { code: string; name: string }[];
+}
+
+export type GstAnswer =
+  | {
+      readonly status: 'found';
+      readonly legalName: string;
+      readonly tradeName: string | null;
+      readonly stateCode: string;
+      readonly stateName: string | null;
+      readonly address: string;
+    }
+  | { readonly status: 'type-it' };

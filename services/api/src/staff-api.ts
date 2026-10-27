@@ -17,6 +17,7 @@ import type {
   PaymentsAdapter,
   PayoutsAdapter,
   PushAdapter,
+  GstAdapter,
 } from '@recall/adapters';
 import {
   accessProblem,
@@ -124,6 +125,8 @@ export interface StaffApiConfig {
   readonly push?: PushAdapter;
   /** Origins of the rider app's web build (tests, screenshots); the phone app sends none. */
   readonly riderOrigins?: readonly string[];
+  /** P5.2: GST number lookups for the brand portal. Absent: businesses type their details. */
+  readonly gst?: GstAdapter;
   /** P5.1: the brand portal's origins (its changes are taken only from these). */
   readonly brandOrigins?: readonly string[];
 }
