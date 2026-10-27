@@ -18,6 +18,7 @@ import {
 } from '@recall/domain';
 import { randomBytes } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
+import { ipRange, RANGE_SHARE } from './ip-range.js';
 import { inTransaction } from './makeups.js';
 
 type Q = Pick<PoolClient, 'query'>;
@@ -355,6 +356,15 @@ async function signInState(
       WHERE ip = $1 AND NOT ok AND why IN ('wrong', 'wrong-code') AND at > to_timestamp($2)`,
     [ip, ts(nowMs - rules.lockMs)],
   );
+  // And from the whole /48 it is part of (ip-range.ts, P7.1).
+  const range = ipRange(ip);
+  const fromRange = range
+    ? await c.query<{ n: string }>(
+        `SELECT count(*) AS n FROM staff_sign_ins
+          WHERE ip LIKE $1 AND NOT ok AND why IN ('wrong', 'wrong-code') AND at > to_timestamp($2)`,
+        [`${range}%`, ts(nowMs - rules.lockMs)],
+      )
+    : undefined;
   // Wrong tries for this email from this address since its last good sign-in. Counted by the email
   // typed, so an unknown email locks the same way (its answers look the same); tries refused while
   // locked do not add to the lock.
@@ -392,7 +402,9 @@ async function signInState(
     : { rows: [] };
   const k = cred.rows[0];
   return {
-    ipBlocked: Number(fromIp.rows[0]?.n) >= MAX_FAILURES_PER_IP,
+    ipBlocked:
+      Number(fromIp.rows[0]?.n) >= MAX_FAILURES_PER_IP ||
+      Number(fromRange?.rows[0]?.n ?? 0) >= MAX_FAILURES_PER_IP * RANGE_SHARE,
     codeLocked: Number(k?.code_fails ?? 0) >= rules.maxCodeFailures,
     locked: lockedUntil(
       fails.rows.map((x) => Number(x.at)),
