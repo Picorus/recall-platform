@@ -147,6 +147,9 @@ importers:
       '@recall/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@recall/workers':
+        specifier: workspace:*
+        version: link:../workers
       pg:
         specifier: 8.23.1
         version: 8.23.1

@@ -1,8 +1,16 @@
 // Starts the API from the environment.
 import { createServer } from 'node:http';
-import { advanceReadyBookings, expireUnpaid, prepareDueRun, settleDue } from '@recall/db';
+import {
+  advanceReadyBookings,
+  buildDueReports,
+  expireUnpaid,
+  prepareDueRun,
+  sendDueReports,
+  settleDue,
+} from '@recall/db';
 import pg from 'pg';
 import { readConfig } from './config.js';
+import { reportRender } from './report-render.js';
 import { apiHandler } from './staff-api.js';
 
 // A mistake in one request must never stop the API for everyone.
@@ -73,4 +81,25 @@ if (process.env.PAYOUT_PREPARE !== 'off') {
       .finally(() => setTimeout(prepare, 300_000).unref());
   };
   setTimeout(prepare, 60_000).unref();
+}
+
+// Every 5 minutes, when maps and messages are set up (fakes on a laptop; real ones in P6): final
+// reports that are due are built (P1.9.1), then sent to brands (P1.9.2). Each is built once and
+// sent once per channel; problems are logged and shown on the Reports page.
+const reports = cfg.reports;
+if (reports) {
+  const render = reportRender(reports.portalUrl);
+  const tick = () => {
+    const now = Math.floor(Date.now() / 1000);
+    buildDueReports(pool, reports.maps, now)
+      .then(async (b) => {
+        if (b.built.length > 0) console.log(`api: reports built: ${b.built.join(', ')}`);
+        for (const f of b.failed) console.error(`api: report for ${f.bookingId}: ${f.error}`);
+        const s = await sendDueReports(pool, reports.messages, render, now);
+        if (s.sent.length > 0) console.log(`api: reports sent: ${s.sent.join(', ')}`);
+      })
+      .catch((e: unknown) => console.error('api: reports failed', e))
+      .finally(() => setTimeout(tick, 300_000).unref());
+  };
+  setTimeout(tick, 60_000).unref();
 }

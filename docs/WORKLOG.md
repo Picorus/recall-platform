@@ -2,6 +2,36 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 27 Oct 2026 · P0.2 (CI) · Cheaper checks; repository to be public
+- GitHub Actions minutes ran out on 26 Oct (every job refused at once). Prateek chose to make the repository public (free minutes) and may make it private later.
+- Checked before: the whole history has no secrets or key files.
+- `.github/workflows/ci.yml`: the long jobs (format/lint/types/tests, laptop services, database and browser tests) run on pull requests only; a push to main runs the secret scan and the commit-message check. `.github/workflows/player.yml`: the screen player's Android job, only when `apps/player/`, the shared test vectors or this file change.
+- Next: merge PR #63 once its checks run.
+
+## 27 Oct 2026 · P3.15 · Support inbox
+- **Messages coming in** (`packages/adapters/src/inbound.ts`, with a working fake): the WhatsApp and email provider posts each message to `POST /support/inbound`, signed; a forged post is refused; a message posted twice is kept once. `SUPPORT_INBOUND_PROVIDER`: the fake on a laptop only; none in production until P6.
+- **Conversations** (migration 0044, `packages/db/src/support.ts`): a message joins the person's conversation on that channel, or starts one, matched to the rider (by phone) or brand (by its contact) it came from; a conversation marked done opens again when they write. Staff start one for a call or a visit (or to write first). Support admins reply on WhatsApp or by email (each reply its own message, sent once), add notes only staff see, take a conversation, and mark it waiting or done, with why. Every message, note and step kept in the order it happened.
+- **Support page**: the inbox (longest waiting first, with how long), a conversation's whole history, reply, note, take it, waiting, done, open again; a new conversation for a call or visit. Support looks (read-only members see phones masked) and Support admins act; a super admin too.
+- Tests: adapters 1 (only a signed, sound post is trusted); database 4 (matching a rider and a brand, kept once, waiting first, reply sent once, done and opened again, a call, nothing edited); API 1 (+ config); browser (a rider's WhatsApp message answered, noted, done).
+- **Second review, all fixed with tests:** two replies at the same moment could share a key (the second never delivered but shown as sent): now each reply is written down first and its own number is its key, and how it went is kept beside it; a reply with no answer (30 seconds, or the system stopping) shows as "not confirmed", never as sent or failed. Read-only members saw full phones in the history: masked there too, and emails masked. A message coming in and a staff action on the same conversation now take the same lock. Messages with a NUL or a line break in the subject (an email header risk) are refused. The provider's message id is kept per channel. "I'll take it" hides when you already have it.
+- Open: the real WhatsApp and email provider (P6); WhatsApp replies use an approved "support_reply" template until free text inside the 24-hour window is set up with the provider; support hours and auto-replies come with Settings (P3.17).
+- Next: P3.16, audit log.
+
+## 27 Oct 2026 · P3.14.2 · Business dashboard
+- **Dashboard** (`packages/db/src/dashboard.ts`, `services/api/src/dashboard-api.ts`, `apps/admin/app/dashboard`): the business month by month (India time, the last 6 months): bookings paid, bike-hours sold, the screens' on-time and moving bike-hours (from their minute summaries), screen time sold (bike-hours sold for days already over, as a share of the screens' on-time), money in (with GST), revenue earned as plays were delivered, refunds approved (how many, how much, share of revenue). This month's numbers as tiles. Sales and Finance look (and a super admin). Read-only; billing stays by bike-hours only.
+- Tests: database 1 (a paid booking, an unpaid draft left out, revenue, a refund, screen time; screen time sold counts only days already over); API 1; browser (the page).
+- Open: GitHub Actions stopped starting jobs on 26 Oct at 23:18 UTC (likely the account's Actions minutes): PR #63 waits for checks; Prateek to look at GitHub billing.
+- Next: P3.15, support inbox.
+
+## 27 Oct 2026 · P3.14.1 · Final reports in admin
+- P3.13 merged (PR #62).
+- P3.14 is done in two parts: **.1** final reports (this), **.2** business dashboards (fill, revenue, refunds, moving hours).
+- **Reports run for real now**: the API builds each due final report (P1.9.1) and sends it to the brand (P1.9.2) every 5 minutes, when maps and messages are set up: the fakes on a laptop nobody else can reach (`REPORTS_PROVIDER`), none in production until the real providers (P6). Where brands open a report: `BRAND_PORTAL_URL`.
+- **Reports page** (`packages/db/src/report-desk.ts`, `services/api/src/reports-desk-api.ts`, `apps/admin/app/reports`): every campaign that has ended, with where its report stands (waiting for its last checks, built and being sent, sent, no contact, could not be delivered), plays delivered, and each channel's last try. A report opens as the brand sees it (in a sandboxed frame), downloads as its PDF, and Sales or Support admins send it again on WhatsApp or email to the brand's contact now: its own message (never the first replayed), recorded with who asked, not twice within two minutes, never while the automatic sender runs. Sales, Support and Finance look.
+- Tests: database 1 (the list and a staff re-send); API 1 (who looks and opens, who re-sends, refusals, nothing without messages set up) + config; browser (an ended campaign, its report, sent again by email).
+- Open: the real maps and messages providers (P6).
+- Next: P3.14.2, business dashboard.
+
 ## 27 Oct 2026 · P3.13.3 · Agencies and aggregators: statements and payments
 - Prateek confirmed (27 Oct): the automatic Monday pay run needs one approver; only a super admin records a refund the provider never answered about (DECISIONS).
 - **Cuts** (existing P1.7.4 logic, now in admin): a super admin gives a cut on a paid booking to an agency or an aggregator (rate from the price book unless set, the partner's GST, why); once per kind per booking. Cuts are earned as plays are delivered.

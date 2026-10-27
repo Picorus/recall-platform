@@ -18,6 +18,7 @@ import { addScreenKey } from '../../src/plays.js';
 import { settleDue } from '../../src/makeups.js';
 import { sendDueReports, setBrandContact } from '../../src/report-sends.js';
 import { buildDueReports, campaignReportFor, reportDueAt } from '../../src/reports.js';
+import { reportList, resendReport } from '../../src/report-desk.js';
 import { storeUpload } from '../../src/screen-reports.js';
 import { freshDatabase } from './fresh-db.js';
 
@@ -293,5 +294,44 @@ describe('the final report (P1.9.1)', () => {
     expect(messages.sent.map((m) => [m.to, m.key])).toEqual([
       ['right@example.in', 'report:BK-T:email:right@example.in'],
     ]);
+  });
+
+  it('P3.14.1: the list of ended campaigns and a staff re-send (its own message, once per press)', async () => {
+    const t = Date.UTC(2027, 9, 25) / 1000;
+    const list = await reportList(pool, t);
+    expect(
+      list.map((r) => [r.bookingId, r.stage, r.sends.email?.status, r.sends.email?.tries]),
+    ).toEqual([
+      ['BK-T', 'sent', 'sent', 2],
+      ['BK-R', 'sent', 'sent', 2],
+    ]);
+    expect(list[1]).toMatchObject({ promised: 2_000, delivered: 1_700, deliveredBp: 8_500 });
+    const messages = fakeMessages();
+    const render = {
+      link: (id: string) => `https://brand.recall.example/campaigns/${id}/report`,
+      html: () => '<p>report</p>',
+      pdf: () => Promise.resolve(new Uint8Array([37, 80, 68, 70])),
+    };
+    const who = { id: 'STF-000000000001', name: 'Priya' };
+    expect(await resendReport(pool, messages, render, 'BK-R', 'email', who, t)).toBe('sent');
+    expect(messages.sent.map((m) => [m.to, m.key])).toEqual([
+      ['brand@example.in', 'report-resend:BK-R:email:3'],
+    ]);
+    await expect(
+      resendReport(pool, messages, render, 'BK-R', 'email', who, t + 60),
+    ).rejects.toThrow('wait two minutes');
+    expect(await resendReport(pool, messages, render, 'BK-R', 'whatsapp', who, t + 60)).toBe(
+      'sent',
+    );
+    await expect(resendReport(pool, messages, render, 'BK-T', 'whatsapp', who, t)).rejects.toThrow(
+      'no WhatsApp number',
+    );
+    await expect(resendReport(pool, messages, render, 'BK-NONE', 'email', who, t)).rejects.toThrow(
+      'No report',
+    );
+    const last = await pool.query<{ detail: string }>(
+      `SELECT detail FROM report_sends WHERE booking_id = 'BK-R' AND channel = 'email' ORDER BY try DESC LIMIT 1`,
+    );
+    expect(last.rows[0]?.detail).toMatch(/^re-sent by Priya: /);
   });
 });

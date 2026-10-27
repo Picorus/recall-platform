@@ -33,7 +33,7 @@ import {
 import { randomBytes } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Pool } from 'pg';
-import { HttpError, jsonBody, send, str } from './http.js';
+import { HttpError, jsonBody, rawBody, send, str } from './http.js';
 import { staffFor, type StaffApiConfig } from './staff-api.js';
 
 const mayLook = (a: StaffAccess) =>
@@ -67,18 +67,6 @@ function readLines(x: unknown): BookingLine[] {
       throw new HttpError(400, 'Each line needs areaId, date, startHour and bikes');
     return { areaId: o.areaId, date: o.date, startHour: o.startHour, bikes: o.bikes };
   });
-}
-
-/** The raw body (the signature covers its exact bytes), up to 16 KB. */
-async function rawBody(req: IncomingMessage): Promise<string> {
-  const chunks: Buffer[] = [];
-  let size = 0;
-  for await (const c of req) {
-    size += (c as Buffer).length;
-    if (size > 16 * 1024) throw new HttpError(413, 'Too large');
-    chunks.push(c as Buffer);
-  }
-  return Buffer.concat(chunks).toString('utf8');
 }
 
 export async function handleBookings(

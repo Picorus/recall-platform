@@ -3,10 +3,16 @@ import {
   fakeBankCheck,
   fakeEsign,
   fakeFileStore,
+  fakeInbound,
   fakeKyc,
+  fakeMaps,
+  fakeMessages,
   fakePayments,
   fakePayouts,
   type FileStore,
+  type InboundAdapter,
+  type MapsAdapter,
+  type MessagesAdapter,
   type PaymentsAdapter,
   type PayoutsAdapter,
 } from '@recall/adapters';
@@ -55,6 +61,8 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
   const files = filesFrom(env, production);
   const riderChecks = riderChecksFrom(env, production);
   const payouts = payoutsFrom(env, production);
+  const reports = reportsFrom(env, production);
+  const inbound = inboundFrom(env, production);
   return {
     databaseUrl: need('DATABASE_URL'),
     host: env.API_HOST || '127.0.0.1',
@@ -67,6 +75,8 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     ...(files ? { files } : {}),
     ...(riderChecks ? { riderChecks } : {}),
     ...(payouts ? { payouts } : {}),
+    ...(reports ? { reports } : {}),
+    ...(inbound ? { inbound } : {}),
   };
 }
 
@@ -162,6 +172,50 @@ export function payoutsFrom(
   if (production || !onlyLocal(env))
     throw new Error('The fake payout provider is for a laptop only (nobody else can reach it)');
   return fakePayouts();
+}
+
+/**
+ * Final campaign reports (P3.14.1): street names (maps), sending to brands (WhatsApp and email) and
+ * where the brand opens its report (`BRAND_PORTAL_URL`). The real providers come with their accounts
+ * (P6); until then production builds and sends no reports. On a laptop (only one nobody else can
+ * reach) the fakes stand in: nothing leaves the machine.
+ */
+export function reportsFrom(
+  env: NodeJS.ProcessEnv,
+  production: boolean,
+): StaffApiConfig['reports'] {
+  const provider = env.REPORTS_PROVIDER || (production ? '' : 'fake');
+  if (provider === '') return undefined;
+  if (provider !== 'fake')
+    throw new Error(
+      `REPORTS_PROVIDER ${provider} is not available yet (real providers come in P6)`,
+    );
+  if (production || !onlyLocal(env))
+    throw new Error('The fake maps and messages are for a laptop only (nobody else can reach it)');
+  const portal = (env.BRAND_PORTAL_URL || 'http://localhost:3000').replace(/\/+$/, '');
+  const maps: MapsAdapter = fakeMaps();
+  const messages: MessagesAdapter = fakeMessages();
+  return { maps, messages, portalUrl: portal };
+}
+
+/**
+ * Messages people send us (P3.15): the provider posts each one, signed. The real one comes with the
+ * WhatsApp and email accounts (P6); until then production receives none. On a laptop (only one
+ * nobody else can reach) the fake stands in, with its key public in the code.
+ */
+export function inboundFrom(
+  env: NodeJS.ProcessEnv,
+  production: boolean,
+): InboundAdapter | undefined {
+  const provider = env.SUPPORT_INBOUND_PROVIDER || (production ? '' : 'fake');
+  if (provider === '') return undefined;
+  if (provider !== 'fake')
+    throw new Error(
+      `SUPPORT_INBOUND_PROVIDER ${provider} is not available yet (real providers come in P6)`,
+    );
+  if (production || !onlyLocal(env))
+    throw new Error('The fake inbound messages are for a laptop only (nobody else can reach it)');
+  return fakeInbound();
 }
 
 /**
