@@ -2,6 +2,15 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 27 Oct 2026 · P5.7 · Brand portal: final report
+- PR #74 (P5.5–P5.6) merged with all checks green.
+- **The report on the portal** (`GET /portal/report`, `GET /portal/report/pdf`, page `/campaigns/<booking>/report`): the same report our team sees and the "Done" message links to (P1.9, P3.14): plays delivered of promised, different bikes, made-up plays, the heat map, busiest streets, hour by hour, people as an approximate range (never billed). "Download PDF", "Share on WhatsApp" (on a phone the PDF itself goes to WhatsApp or any app; elsewhere the summary in WhatsApp), "Book again".
+- The link in the message has no business in it: the report says whose it is, and only that business's people open it (anyone else, or a made-up number: "no report"). PDFs are limited to 30 an hour per person (each takes the server a moment).
+- **Back where you were after signing in**: opening the report link signed out goes to sign-in, then straight to the report (only pages of this site are allowed as the way back).
+- "See the report" on each Done campaign once its report is made.
+- Tests: API 1 (listed as ready, the page and the PDF for its own people, nobody else, no odd ids, signed out); brand unit 2 (the way back after signing in: this site only); brand portal in a browser 1 (report link signed out → sign-in → the report, the PDF downloaded, from Done campaigns, book again).
+- Next: P5.8 invoices and credit notes.
+
 ## 27 Oct 2026 · P5.6 · Brand portal: review and pay
 - **Review and pay** (`packages/domain/src/booking-terms.ts`, `packages/db/src/brand-pay.ts`, migration 0057, `GET /portal/review`, `POST /portal/pay`, page `/pay`): the booking line by line (each day and area with its hours, bikes, band and price), the repeat discount, GST as it will be invoiced (CGST and SGST in Telangana, IGST elsewhere) and the total; the five plain rules (what we promise, the edge of an area, if we fall short, your ads on time, your report) with one tick box; then payment in full at the payment provider (UPI, card or net banking). The agreement is kept once per booking with the rules' version, who and from where; a changed version must be read again. A draft that would now start inside the 15 days is refused. Hours sold meanwhile are said plainly. The payment link is the staff one (P3.8.2): bikes kept from then, the GST invoice made on payment.
 - **The steps flow**: Book → Your ads → Review and pay; "Review and pay" on each unpaid campaign; ads can be added after paying too, until they are due.

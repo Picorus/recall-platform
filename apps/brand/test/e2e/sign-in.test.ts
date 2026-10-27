@@ -3,7 +3,7 @@
 // in by email and sees their brand; wrong codes are told; sign-out ends it.
 // Needs `next build` first and DATABASE_URL (pnpm services:up).
 import { fakeFileStore, fakeGst, fakeMessages, fakePayments } from '@recall/adapters';
-import { launchAreas, PRICE_BOOK_V1 } from '@recall/domain';
+import { launchAreas, PRICE_BOOK_V1, type CampaignReport } from '@recall/domain';
 import { apiHandler } from '@recall/api';
 import {
   applyLinkStatus,
@@ -90,7 +90,12 @@ beforeAll(async () => {
   }
   browser = await chromium.launch();
   const now = Math.floor(Date.now() / 1000);
-  await savePriceBook(db.pool, PRICE_BOOK_V1, 'prateek');
+  // In force (with the areas) from long ago: a campaign that ran last week is booked on them (P5.7).
+  await savePriceBook(
+    db.pool,
+    { ...PRICE_BOOK_V1, validFrom: '2020-01-01T00:00:00.000Z' },
+    'prateek',
+  );
   await saveSetting(
     db.pool,
     'freeWeek',
@@ -110,7 +115,7 @@ beforeAll(async () => {
     },
     now - 60,
   );
-  for (const a of launchAreas('2026-11-01T00:00:00.000Z'))
+  for (const a of launchAreas('2020-01-01T00:00:00.000Z'))
     await saveAreaVersion(db.pool, { ...a, draft: false }, 'system');
   const day = new Date((now + 30 * 86_400) * 1000).toISOString().slice(0, 10);
   await createBooking(
@@ -136,6 +141,54 @@ beforeAll(async () => {
     'awaiting-payment',
     { by: 'Sana', actor: 'admin' },
     now - 40,
+  );
+  // P5.7: a campaign that ran last week, with its final report built.
+  const ranOn = new Date((now - 5 * 86_400) * 1000).toISOString().slice(0, 10);
+  await createBooking(
+    db.pool,
+    {
+      bookingId: 'BK-E2E-DONE',
+      brandId: 'chai-co',
+      request: {
+        lines: [
+          { areaId: 'hyd-madhapur', date: ranOn, startHour: 19, bikes: 40 },
+          { areaId: 'hyd-madhapur', date: ranOn, startHour: 20, bikes: 40 },
+        ],
+        repeatMonths: 1,
+        channel: 'admin',
+      },
+      by: 'Sana',
+    },
+    now - 30 * 86_400,
+  );
+  const who = { by: 'Sana', actor: 'admin' } as const;
+  const sys = { by: 'system', actor: 'system' } as const;
+  await moveBooking(db.pool, 'BK-E2E-DONE', 'awaiting-payment', who, now - 30 * 86_400);
+  await moveBooking(db.pool, 'BK-E2E-DONE', 'paid', sys, now - 29 * 86_400);
+  await moveBooking(db.pool, 'BK-E2E-DONE', 'ads-approved', who, now - 20 * 86_400);
+  await moveBooking(db.pool, 'BK-E2E-DONE', 'running', sys, now - 5 * 86_400);
+  await moveBooking(db.pool, 'BK-E2E-DONE', 'done', sys, now - 4 * 86_400);
+  const report: CampaignReport = {
+    bookingId: 'BK-E2E-DONE',
+    brandId: 'chai-co',
+    from: now - 5 * 86_400,
+    until: now - 5 * 86_400 + 3600,
+    builtAt: now - 3 * 86_400,
+    lines: [],
+    promised: 3_000,
+    delivered: 2_850,
+    deliveredBp: 9_500,
+    missing: 150,
+    bikes: 29,
+    makeUps: { opened: 1, plays: 120 },
+    refund: undefined,
+    heatMap: [],
+    streets: [{ name: 'Hitech City Road', plays: 900 }],
+    people: { low: 9_000, high: 13_000, approximate: true, text: '9,000–13,000 (approximate)' },
+  };
+  await db.pool.query(
+    `INSERT INTO campaign_reports (booking_id, built_at, report) VALUES ($1, to_timestamp($2), $3)`,
+    [report.bookingId, report.builtAt, JSON.stringify(report)],
   );
   await setPortalMember(
     db.pool,
@@ -212,6 +265,40 @@ it('a person given access signs in by email and sees their brand', async () => {
   // The site passes only the portal's routes: a staff route is not reachable through it.
   const staff = await page.evaluate(async () => (await fetch('/api/staff/me')).status);
   expect(staff).toBe(404);
+  await page.close();
+}, 60_000);
+
+it('the report link from the "Done" message: sign in, then the report; PDF and book again (P5.7)', async () => {
+  const page = await browser.newPage();
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  // Signed out (a fresh browser): to sign-in, then back to the report.
+  await page.goto(`${SITE}/campaigns/BK-E2E-DONE/report`);
+  await page.getByRole('button', { name: 'Email' }).click();
+  await page.getByLabel('Work email').fill('media@chaico.in');
+  await page.getByRole('button', { name: 'Send code by email' }).click();
+  await page.getByText('by email to media@chaico.in').waitFor();
+  await page.getByLabel('Code').fill(lastCode('media@chaico.in'));
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.getByRole('heading', { name: 'Campaign report' }).waitFor();
+  expect(new URL(page.url()).pathname).toBe('/campaigns/BK-E2E-DONE/report');
+  const report = page.frameLocator('iframe[title="Report BK-E2E-DONE"]');
+  await report.getByText('Hitech City Road').waitFor();
+  await report.getByText('9,000–13,000 (approximate)', { exact: false }).first().waitFor();
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/brand-report.png`, fullPage: true });
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    page.getByRole('link', { name: 'Download PDF' }).click(),
+  ]);
+  expect(download.suggestedFilename()).toBe('RECALL-report-BK-E2E-DONE.pdf');
+  // From its campaigns too: "See the report" on the Done one.
+  await page.getByRole('link', { name: 'Back to campaigns' }).click();
+  await page.getByRole('tab', { name: /^Done/ }).click();
+  const card = page.getByRole('listitem', { name: 'Campaign BK-E2E-DONE' });
+  await card.getByRole('link', { name: 'See the report' }).click();
+  await page.getByRole('link', { name: 'Book again' }).click();
+  await page.getByRole('heading', { name: 'Book for Chai Co' }).waitFor();
+  expect(errors).toEqual([]);
   await page.close();
 }, 60_000);
 

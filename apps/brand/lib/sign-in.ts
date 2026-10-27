@@ -23,3 +23,9 @@ export function timeLeft(seconds: number): string {
   const s = Math.max(0, Math.floor(seconds));
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
+
+/** Where to go after signing in (P5.7: the report link in the "Done" message): a page of this site
+ * only, never another site ("//evil", "/\\evil", "https:…"); else the start page. */
+export function backTo(next: string | null): string {
+  return next && /^\/(?![/\\])[A-Za-z0-9/_?=&%.-]{0,300}$/.test(next) ? next : '/';
+}

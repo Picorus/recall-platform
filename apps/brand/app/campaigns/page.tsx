@@ -147,6 +147,14 @@ export default function CampaignsPage() {
                         Your ads
                       </Link>
                     )}
+                  {c.report && (
+                    <Link
+                      className="rc-button rc-button--primary"
+                      href={`/campaigns/${encodeURIComponent(c.bookingId)}/report`}
+                    >
+                      See the report
+                    </Link>
+                  )}
                   <Link href={`/book?${q}&again=${encodeURIComponent(c.bookingId)}`}>
                     Book again
                   </Link>

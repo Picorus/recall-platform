@@ -97,6 +97,18 @@ export interface Campaign {
   readonly bikeHours: number;
   readonly playsPromised: number;
   readonly totalPaise: number;
+  /** Its final report is ready (P5.7). */
+  readonly report: boolean;
+}
+
+/** P5.7: a campaign's final report. */
+export interface Report {
+  readonly account: Account;
+  readonly bookingId: string;
+  readonly period: string;
+  readonly summary: readonly string[];
+  /** The report as a whole page, the same one the "Done" message links to. */
+  readonly html: string;
 }
 
 export interface Campaigns {

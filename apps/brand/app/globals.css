@@ -228,3 +228,12 @@ a.rc-button {
   white-space: nowrap;
   word-break: normal;
 }
+
+/* P5.7: the final report, shown whole inside the page. */
+.report-frame {
+  width: 100%;
+  min-height: 480px;
+  border: 0;
+  border-radius: 12px;
+  background: #fff;
+}

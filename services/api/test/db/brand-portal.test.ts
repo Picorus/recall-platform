@@ -6,7 +6,7 @@ import { freshDatabase } from '@recall/db/test-db';
 import { fakeFileStore, fakeGst, fakeMessages, fakePayments } from '@recall/adapters';
 import { readFileSync } from 'node:fs';
 import { createAccount, saveAreaVersion, savePriceBook } from '@recall/db';
-import { launchAreas, PRICE_BOOK_V1 } from '@recall/domain';
+import { launchAreas, PRICE_BOOK_V1, type CampaignReport } from '@recall/domain';
 import { randomBytes } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -508,5 +508,68 @@ describe('brand portal sign-in routes (P5.1)', () => {
         })
       ).status,
     ).toBe(404);
+  });
+
+  it('the final report: its page and PDF for its own people only; listed as ready (P5.7)', async () => {
+    const s = owner;
+    const list = await call('/portal/campaigns?brand=irani-chai', undefined, { cookie: s.session });
+    const booking = String((list.body.campaigns as { bookingId: string }[])[0]?.bookingId);
+    expect((list.body.campaigns as { report: boolean }[])[0]?.report).toBe(false);
+    expect(
+      await call(`/portal/report?booking=${booking}`, undefined, { cookie: s.session }),
+    ).toMatchObject({ status: 404, body: { why: 'no-report' } });
+    const report: CampaignReport = {
+      bookingId: booking,
+      brandId: 'irani-chai',
+      from: NOW / 1000 - 7200,
+      until: NOW / 1000,
+      builtAt: NOW / 1000,
+      lines: [],
+      promised: 6_000,
+      delivered: 5_400,
+      deliveredBp: 9_000,
+      missing: 600,
+      bikes: 28,
+      makeUps: { opened: 0, plays: 0 },
+      refund: undefined,
+      heatMap: [],
+      streets: [],
+      people: { low: 20_000, high: 28_000, approximate: true, text: '20,000–28,000 (approximate)' },
+    };
+    await pool.query(
+      `INSERT INTO campaign_reports (booking_id, built_at, report) VALUES ($1, to_timestamp($2), $3)`,
+      [booking, report.builtAt, JSON.stringify(report)],
+    );
+    const again = await call('/portal/campaigns?brand=irani-chai', undefined, {
+      cookie: s.session,
+    });
+    expect((again.body.campaigns as { report: boolean }[])[0]?.report).toBe(true);
+    // No brand in the link (as the "Done" message sends it): the report says whose it is.
+    const r = await call(`/portal/report?booking=${booking}`, undefined, { cookie: s.session });
+    expect(r.status).toBe(200);
+    expect(r.body).toMatchObject({ bookingId: booking, account: { brandId: 'irani-chai' } });
+    expect(String(r.body.html)).toContain('<!doctype html>');
+    expect((r.body.summary as string[]).join(' ')).toMatch(/5,400 of 6,000 plays delivered/);
+    const pdf = await fetch(`${url}/portal/report/pdf?booking=${booking}`, {
+      headers: { cookie: s.session },
+    });
+    expect(pdf.status).toBe(200);
+    expect(pdf.headers.get('content-type')).toBe('application/pdf');
+    expect(pdf.headers.get('content-disposition')).toContain(`RECALL-report-${booking}.pdf`);
+    expect(
+      Buffer.from(await pdf.arrayBuffer())
+        .subarray(0, 5)
+        .toString(),
+    ).toBe('%PDF-');
+    // Someone else's, not there, odd ids, signed out: nothing.
+    const t = await signIn('+919848066666', 'sms');
+    for (const [path, cookie] of [
+      [`/portal/report?booking=${booking}`, t.session],
+      [`/portal/report/pdf?booking=${booking}`, t.session],
+      ['/portal/report?booking=BK-NONE', s.session],
+      ['/portal/report?booking=../x', s.session],
+    ] as const)
+      expect((await fetch(`${url}${path}`, { headers: { cookie } })).status).toBe(404);
+    expect((await fetch(`${url}/portal/report?booking=${booking}`)).status).toBe(401);
   });
 });

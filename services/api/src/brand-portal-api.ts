@@ -33,7 +33,11 @@
 //   GET  /portal/review?brand=<id>&booking=<id>   the booking line by line, GST, total, the rules
 //   POST /portal/pay?brand=<id>&booking=<id> { agree: true, termsVersion }  the payment link
 //   POST /portal/deal?brand=<id>&booking=<id>   a 6- or 12-month deal: the sales team calls
+// P5.7, the final report (the link in the "Done" message has no brand: the report says whose it is):
+//   GET  /portal/report?booking=<id>        the report as a page, its summary, the business
+//   GET  /portal/report/pdf?booking=<id>    its PDF, to keep or share
 import {
+  campaignReportFor,
   askSalesForDeal,
   payFromPortal,
   reviewPage,
@@ -77,7 +81,10 @@ import {
   showMobile,
   typedCode,
   type BrandCodeChannel,
+  reportPeriod,
+  reportSummary,
 } from '@recall/domain';
+import { renderReportHtml, renderReportPdf } from '@recall/workers';
 import { createHmac } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Pool } from 'pg';
@@ -671,6 +678,46 @@ export async function handleBrandPortal(
       setBookingAds(pool, b.bookingId, ids as string[], portalBy(me.address), now),
     );
     send(res, 200, { version });
+    return true;
+  }
+  /** The final report asked for (?booking=), if one of this person's businesses owns it; else 404
+   * (not theirs and not there look the same). */
+  const ownReport = async () => {
+    const id = new URL(req.url ?? '/', 'http://x').searchParams.get('booking') ?? '';
+    const report = /^BK-[A-Za-z0-9-]{1,36}$/.test(id)
+      ? await campaignReportFor(pool, id)
+      : undefined;
+    const a = report
+      ? (await portalAccounts(pool, me.address)).find((x) => x.brandId === report.brandId)
+      : undefined;
+    if (!report || !a)
+      throw new HttpError(404, 'No report for this campaign yet', { code: 'no-report' });
+    return { report, account: a };
+  };
+  if (path === '/portal/report' && method === 'GET') {
+    const { report, account: a } = await ownReport();
+    send(res, 200, {
+      account: a,
+      bookingId: report.bookingId,
+      period: reportPeriod(report),
+      summary: reportSummary(report),
+      html: renderReportHtml(report),
+    });
+    return true;
+  }
+  if (path === '/portal/report/pdf' && method === 'GET') {
+    const { report } = await ownReport();
+    if (!tryOnce(previews, `pdf:${me.address}`, now, 30))
+      throw new HttpError(429, 'Too many downloads this hour: try again later');
+    const pdf = Buffer.from(await renderReportPdf(report));
+    res.writeHead(200, {
+      'content-type': 'application/pdf',
+      'content-length': pdf.length,
+      'content-disposition': `attachment; filename="RECALL-report-${report.bookingId}.pdf"`,
+      'cache-control': 'private, no-store',
+      'x-content-type-options': 'nosniff',
+    });
+    res.end(pdf);
     return true;
   }
   if (path === '/portal/campaigns' && method === 'GET') {

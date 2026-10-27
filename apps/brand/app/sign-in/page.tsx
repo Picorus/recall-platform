@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState, type FormEvent } from 'react';
 import { api, ApiError, type Me } from '../../lib/api';
 import {
+  backTo,
   looksLikeCode,
   looksLikeEmail,
   looksLikeMobile,
@@ -37,7 +38,7 @@ export default function SignIn() {
   // Already signed in: straight in.
   useEffect(() => {
     api<Me>('/me')
-      .then(() => router.replace('/'))
+      .then(() => router.replace(backTo(new URLSearchParams(window.location.search).get('next'))))
       .catch(() => undefined);
   }, [router]);
   useEffect(() => {
@@ -80,7 +81,7 @@ export default function SignIn() {
     setError('');
     try {
       await api<Me>('/sign-in', { address: sent.address, code });
-      router.replace('/');
+      router.replace(backTo(new URLSearchParams(window.location.search).get('next')));
     } catch (err) {
       setError(message(err));
       setBusy(false);
