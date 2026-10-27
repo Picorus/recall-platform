@@ -118,6 +118,10 @@ section + section {
   display: grid;
   gap: var(--space-2);
 }
+fieldset.plain {
+  border: 0;
+  min-width: 0;
+}
 .filters {
   align-items: center;
 }

@@ -6,8 +6,10 @@
 import type { InboundMessage, MessagesAdapter } from '@recall/adapters';
 import { randomBytes } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
+import { fillWording } from '@recall/domain';
 import { inTransaction } from './makeups.js';
 import { Refusal } from './refusal.js';
+import { setting } from './settings.js';
 
 type Q = Pick<PoolClient, 'query'>;
 
@@ -263,6 +265,9 @@ export async function replyThread(
     throw new Refusal(
       'This conversation was a call or a visit: add a note, or start one on WhatsApp',
     );
+  // The wording is a setting (P3.17), read before the reply is written down.
+  const wording = (await setting(pool, 'messages')).supportReply;
+  const values = { reply: body, subject: thread.subject };
   // The reply is written down first, under the conversation's lock: its number is its key, so two
   // replies never share one, and a reply sent but never confirmed is still there to see.
   const seq = await inTransaction(pool, async (c) => {
@@ -286,18 +291,22 @@ export async function replyThread(
             channel: 'whatsapp',
             key,
             to: thread.contact,
-            template: 'support_reply',
+            template: wording.whatsappTemplate,
             params: [body],
           }
         : {
             channel: 'email',
             key,
             to: thread.contact,
-            subject: `Re: ${thread.subject}`.replace(/[\r\n]+/g, ' ').slice(0, 200),
-            text: `${body}\n\nRECALL support`,
-            html: `<p>${body
+            subject: fillWording(wording.emailSubject, values)
+              .replace(/[\r\n]+/g, ' ')
+              .slice(0, 200),
+            text: fillWording(wording.emailText, values),
+            html: fillWording(wording.emailText, values)
               .replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`)
-              .replace(/\n/g, '<br>')}</p><p>RECALL support</p>`,
+              .split(/\n{2,}/)
+              .map((para) => `<p>${para.replace(/\n/g, '<br>')}</p>`)
+              .join(''),
             attachments: [],
           },
     )

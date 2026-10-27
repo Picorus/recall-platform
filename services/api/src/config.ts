@@ -18,7 +18,7 @@ import {
 } from '@recall/adapters';
 import { randomBytes } from 'node:crypto';
 import { readKey } from './secrets.js';
-import type { StaffApiConfig } from './staff-api.js';
+import type { Connection, StaffApiConfig } from './staff-api.js';
 
 export interface ApiConfig extends StaffApiConfig {
   readonly databaseUrl: string;
@@ -63,7 +63,30 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
   const payouts = payoutsFrom(env, production);
   const reports = reportsFrom(env, production);
   const inbound = inboundFrom(env, production);
+  const connection = (service: string, on: boolean, provider: string): Connection => ({
+    service,
+    state: !on ? 'off' : provider === 'fake' ? 'stand-in' : 'on',
+    provider: on ? provider : '',
+  });
+  const providerOf = (name: string) => env[name] || (production ? '' : 'fake');
+  const connections = [
+    connection('Brand payments', payments !== undefined, providerOf('PAYMENTS_PROVIDER')),
+    connection(
+      'Rider checks (KYC, e-sign, bank)',
+      riderChecks !== undefined,
+      providerOf('RIDER_CHECKS_PROVIDER'),
+    ),
+    connection('Rider payouts', payouts !== undefined, providerOf('PAYOUTS_PROVIDER')),
+    connection(
+      'Maps, WhatsApp and email out',
+      reports !== undefined,
+      providerOf('REPORTS_PROVIDER'),
+    ),
+    connection('Messages coming in', inbound !== undefined, providerOf('SUPPORT_INBOUND_PROVIDER')),
+    connection('Ad file store', files !== undefined, 'fake'),
+  ];
   return {
+    connections,
     databaseUrl: need('DATABASE_URL'),
     host: env.API_HOST || '127.0.0.1',
     port: Number(env.API_PORT || 8080),

@@ -7,6 +7,7 @@ import type { CampaignReport } from '@recall/domain';
 import type { Pool, PoolClient } from 'pg';
 import { inTransaction } from './makeups.js';
 import { Refusal } from './refusal.js';
+import { setting } from './settings.js';
 import { sendReportMessage, type Channel, type ReportRender } from './report-sends.js';
 
 type Q = Pick<PoolClient, 'query'>;
@@ -178,6 +179,7 @@ export async function resendReport(
         row.report,
         render,
         `report-resend:${bookingId}:${channel}:${n + 1}`,
+        (await setting(pool, 'messages')).reportReady,
       ).catch(
         (e: unknown) =>
           ({

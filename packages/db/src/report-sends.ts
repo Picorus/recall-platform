@@ -4,10 +4,18 @@
 // until staff set a new one (which gets its own tries). Once every channel has been sent, or given
 // up with at least one sent, the booking moves to report-sent.
 import type { MessagesAdapter } from '@recall/adapters';
-import { reportPeriod, reportSummary, type CampaignReport } from '@recall/domain';
+import {
+  DEFAULT_SETTINGS,
+  fillWording,
+  reportPeriod,
+  reportSummary,
+  type CampaignReport,
+  type Wording,
+} from '@recall/domain';
 import type { Pool } from 'pg';
 import { moveBooking } from './bookings.js';
 import { inTransaction } from './makeups.js';
+import { setting } from './settings.js';
 
 export const MAX_REPORT_TRIES = 3;
 /** A passing failure is tried again after this long, so a short outage does not use up the tries. */
@@ -80,6 +88,7 @@ export async function sendDueReports(
                         ORDER BY seq DESC LIMIT 1) s ON true
         WHERE s.state = 'done' ORDER BY r.built_at, r.booking_id`,
     );
+    const wording = (await setting(pool, 'messages')).reportReady;
     for (const d of due.rows) {
       const contact = await pool.query<{ phone: string | null; email: string | null }>(
         `SELECT phone, email FROM brand_contacts WHERE brand_id = $1 AND set_at <= to_timestamp($2)
@@ -123,7 +132,15 @@ export async function sendDueReports(
           state[ch] = 'open';
           continue;
         }
-        const result = await sendReportMessage(messages, ch, address, d.report, render).catch(
+        const result = await sendReportMessage(
+          messages,
+          ch,
+          address,
+          d.report,
+          render,
+          undefined,
+          wording,
+        ).catch(
           (e: unknown) =>
             ({
               status: 'failed',
@@ -185,23 +202,33 @@ export async function sendReportMessage(
   r: CampaignReport,
   render: ReportRender,
   key = `report:${r.bookingId}:${channel}:${to}`,
+  wording: Wording = DEFAULT_SETTINGS.messages.reportReady,
 ) {
   const link = render.link(r.bookingId);
   const summary = reportSummary(r);
+  const values = {
+    booking: r.bookingId,
+    period: reportPeriod(r),
+    summary: summary.join('\n'),
+    link,
+  };
   if (channel === 'whatsapp')
     return messages.send({
       channel,
       key,
       to,
-      template: 'campaign_report_ready',
+      template: wording.whatsappTemplate,
       params: [r.bookingId, reportPeriod(r), summary[0] ?? '', link],
     });
   return messages.send({
     channel,
     key,
     to,
-    subject: `Your RECALL campaign report: ${r.bookingId} (${reportPeriod(r)})`,
-    text: [...summary, '', `See the full report: ${link}`].join('\n'),
+    // The wording is a setting (P3.17); a value never carries a line break into the subject.
+    subject: fillWording(wording.emailSubject, values)
+      .replace(/[\r\n]+/g, ' ')
+      .slice(0, 200),
+    text: fillWording(wording.emailText, values),
     html: render.html(r),
     attachments: [
       {

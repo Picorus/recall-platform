@@ -1,5 +1,5 @@
 'use client';
-// P3.11.3: fitting slots at the warehouse, from now on, with who is booked; an Operations admin opens
+// P3.11.3: fitting slots at the fitting centres, from now on, with who is booked; an Operations admin opens
 // one (a centre, a start in India time, how long, how many bikes). Riders are booked from their panel.
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { api, ApiError } from '../../lib/api';
@@ -28,6 +28,15 @@ export default function FittingSlots({
       );
   }, []);
   useEffect(load, [load]);
+  // Slots open at a fitting centre that is on in Settings (P3.17).
+  const [centres, setCentres] = useState<readonly string[]>();
+  useEffect(() => {
+    api<{ settings: { fittingCentres: { value: { name: string; on: boolean }[] } } }>('/settings')
+      .then((x) =>
+        setCentres(x.settings.fittingCentres.value.filter((c) => c.on).map((c) => c.name)),
+      )
+      .catch(() => setCentres([]));
+  }, []);
   const open = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const form = e.currentTarget;
@@ -69,11 +78,22 @@ export default function FittingSlots({
           </li>
         ))}
       </ul>
-      {canAct && (
+      {canAct && centres?.length === 0 && (
+        <p className="muted">
+          No fitting centre is on: a super admin adds one in Settings (Fitting centres).
+        </p>
+      )}
+      {canAct && centres && centres.length > 0 && (
         <form className="cal-bar" onSubmit={open} aria-label="Open a fitting slot">
           <label className="rc-field">
             <span className="rc-field__label">Centre</span>
-            <input className="rc-input" name="centre" maxLength={80} required />
+            <select className="rc-input" name="centre" required>
+              {centres.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
           </label>
           <label className="rc-field">
             <span className="rc-field__label">Starts (India time)</span>

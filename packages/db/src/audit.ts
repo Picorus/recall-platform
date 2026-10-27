@@ -21,6 +21,7 @@ export const AUDIT_AREAS = [
   'riders',
   'screens',
   'support',
+  'settings',
 ] as const;
 export type AuditArea = (typeof AUDIT_AREAS)[number];
 

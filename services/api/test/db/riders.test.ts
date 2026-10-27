@@ -1,6 +1,7 @@
 // P3.11.1: rider routes: Operations and Support look; an Operations admin adds riders, changes them,
 // checks their documents and moves their steps; Support adds notes.
 import { fakeBankCheck, fakeEsign, fakeFileStore, fakeKyc } from '@recall/adapters';
+import { saveSetting } from '@recall/db';
 import { freshDatabase } from '@recall/db/test-db';
 import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -175,7 +176,20 @@ describe('rider routes (P3.11.1)', () => {
       404,
     );
 
-    // Fitting (P3.11.3): Operations open a slot (India time) and book him; the page shows it.
+    // Fitting (P3.11.3): Operations open a slot (India time) and book him; the page shows it. The
+    // centre must be one that is on in Settings (P3.17).
+    expect(
+      (await post(omar, '/riders/slots', { centre: 'Nowhere', startsAt: '2027-06-02T10:00' })).body
+        .error,
+    ).toMatch('Settings');
+    await saveSetting(
+      pool,
+      'fittingCentres',
+      [{ name: 'Kukatpally warehouse', address: 'Plot 4, KPHB Phase 1', on: true }],
+      { id: 'STF-000000000001', role: 'super-admin' },
+      'First centre',
+      0,
+    );
     const slotBody = (startsAt: string) => ({
       centre: 'Kukatpally warehouse',
       startsAt,

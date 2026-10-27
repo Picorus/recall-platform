@@ -72,6 +72,7 @@ beforeAll(async () => {
         payouts: fakePayouts(),
         reports: { maps: fakeMaps(), messages, portalUrl: 'http://localhost:3000' },
         inbound,
+        connections: [{ service: 'Brand payments', state: 'stand-in', provider: 'fake' }],
       },
       (l) => console.error(l),
       clock,
@@ -624,6 +625,47 @@ it('booking for a brand: a draft from its page, the payment link, paid, the time
   expect(errors).toEqual([]);
 }, 120_000);
 
+it('the Settings page: a fitting centre added, a support number refused then saved', async () => {
+  const page = await browser.newPage();
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  shift += 30_000;
+  await page.goto(`${SITE}/sign-in`);
+  await page.getByLabel('Email').fill('prateek@recall.in');
+  await page.getByLabel('Password').fill(PW);
+  await page.getByLabel('Code from your authenticator app').fill(totpCode(SECRET.value, step()));
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.getByText('Prateek · Super admin').waitFor();
+  await page.getByRole('link', { name: 'Settings' }).click();
+  const centres = page.getByRole('region', { name: 'Fitting centres' });
+  await centres.getByText('No centre yet.').waitFor();
+  await centres.getByLabel('New centre').fill('Kukatpally warehouse');
+  await centres.getByLabel('Its address').fill('Plot 4, KPHB Phase 1, Kukatpally');
+  await centres.getByRole('button', { name: 'Add centre' }).click();
+  await centres.getByLabel('Why').fill('First fitting centre');
+  await centres.getByRole('button', { name: 'Save' }).click();
+  await centres.getByText(/^Version 1, saved by Prateek .*: First fitting centre$/).waitFor();
+  // A wrong number is refused in words; then saved.
+  const support = page.getByRole('region', { name: 'Support numbers and hours' });
+  await support.getByText(/Support is (open|closed) now/).waitFor();
+  await support.getByRole('button', { name: 'Add a number' }).click();
+  await support.getByLabel('For').fill('Riders');
+  await support.getByLabel('Number').fill('+91 12345');
+  await support.getByLabel('Why').fill('Rider helpline');
+  await support.getByRole('button', { name: 'Save' }).click();
+  await support.getByRole('alert').getByText('Support number: +91 and 10 digits').waitFor();
+  await support.getByLabel('Number').fill('+91 98480 12345');
+  await support.getByRole('button', { name: 'Save' }).click();
+  await support.getByText(/^Version 1, saved by Prateek/).waitFor();
+  expect(await support.getByLabel('Number').inputValue()).toBe('+919848012345');
+  await page.getByRole('table', { name: 'Connections' }).getByText('Brand payments').waitFor();
+  if (process.env.SCREENSHOT_DIR) {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.screenshot({ path: `${process.env.SCREENSHOT_DIR}/settings.png`, fullPage: true });
+  }
+  expect(errors).toEqual([]);
+}, 120_000);
+
 it('the Riders page: a walk-in rider added, his documents checked, approved, a note', async () => {
   const page = await browser.newPage();
   const errors: string[] = [];
@@ -708,7 +750,7 @@ it('the Riders page: a walk-in rider added, his documents checked, approved, a n
   const day = new Date(clock() + 86_400_000 + 330 * 60_000).toISOString().slice(0, 10);
   const slots = page.getByRole('region', { name: 'Fitting slots' });
   const openSlot = slots.getByRole('form', { name: 'Open a fitting slot' });
-  await openSlot.getByLabel('Centre').fill('Kukatpally warehouse');
+  await openSlot.getByLabel('Centre').selectOption('Kukatpally warehouse');
   await openSlot.getByLabel('Starts (India time)').fill(`${day}T10:00`);
   await openSlot.getByRole('button', { name: 'Open slot' }).click();
   await slots.getByText(/Kukatpally warehouse \(0 of 4 booked\)/).waitFor();
