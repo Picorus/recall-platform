@@ -202,7 +202,7 @@ it('a person given access signs in by email and sees their brand', async () => {
   const card = page.getByRole('listitem', { name: 'Campaign BK-E2E-1' });
   await card.getByText('To pay').waitFor();
   await card.getByText('80').waitFor();
-  await card.getByText('Not paid yet').waitFor();
+  await card.getByText('Waiting for your payment', { exact: false }).waitFor();
   await card.getByRole('link', { name: 'Book again' }).waitFor();
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/brand-campaigns.png`, fullPage: true });
   // The site passes only the portal's routes: a staff route is not reachable through it.

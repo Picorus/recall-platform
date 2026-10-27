@@ -83,6 +83,9 @@ describe('book (P5.4)', () => {
     const soon = await portalQuote(pool, { ...plan, startDate: '2027-08-30' }, NOW);
     expect(soon.price).not.toBeNull();
     expect(soon.problems[0]).toMatch(/^Campaigns booked here start on or after Wed 8 Sep/);
+    expect((await portalQuote(pool, { ...plan, areaIds: ['made-up'] }, NOW)).problems).toEqual([
+      'Pick your areas from the map',
+    ]);
     expect((await portalQuote(pool, { ...plan, bikes: 500 }, NOW)).problems).toEqual([
       'From 5 to 100 bikes each hour',
     ]);

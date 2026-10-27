@@ -87,7 +87,7 @@ export type GstAnswer =
 /** P5.3: one campaign on the portal. */
 export interface Campaign {
   readonly bookingId: string;
-  readonly stage: 'to-pay' | 'scheduled' | 'running' | 'done' | 'cancelled';
+  readonly stage: 'to-pay' | 'scheduled' | 'running' | 'done' | 'cancelled' | 'missed';
   readonly note: string | null;
   readonly trial: boolean;
   readonly areas: readonly string[];
@@ -131,6 +131,7 @@ export interface BookForm {
   }[];
   readonly picks: readonly { key: string; label: string; hours: readonly number[] }[];
   readonly earliestStart: string;
+  readonly leadDays: number;
   readonly minBikes: number;
   readonly maxBikes: number;
   readonly maxWeeks: number;

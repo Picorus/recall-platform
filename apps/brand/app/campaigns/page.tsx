@@ -17,7 +17,7 @@ const TABS: readonly (readonly [Tab, string])[] = [
 const tabOf = (c: Campaign): Tab =>
   c.stage === 'running'
     ? 'running'
-    : c.stage === 'done' || c.stage === 'cancelled'
+    : c.stage === 'done' || c.stage === 'cancelled' || c.stage === 'missed'
       ? 'done'
       : 'scheduled';
 const STAGE: Record<Campaign['stage'], { word: string; chip: string }> = {
@@ -26,6 +26,7 @@ const STAGE: Record<Campaign['stage'], { word: string; chip: string }> = {
   running: { word: 'Running', chip: 'rc-chip--go' },
   done: { word: 'Done', chip: 'rc-chip--offline' },
   cancelled: { word: 'Cancelled', chip: 'rc-chip--stop' },
+  missed: { word: 'Ads missed', chip: 'rc-chip--stop' },
 };
 
 export default function CampaignsPage() {

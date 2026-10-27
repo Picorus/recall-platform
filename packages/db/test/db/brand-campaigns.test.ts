@@ -77,11 +77,21 @@ describe('my campaigns (P5.3)', () => {
     expect(list[1]?.totalPaise).toBeGreaterThan(0);
   });
 
-  it('running in its hours, done after them, cancelled kept', async () => {
+  it('running in its hours once its ads are approved (missed if never), done after them, cancelled kept', async () => {
     const paid = (await portalCampaigns(pool, 'chai-co', NOW)).find(
       (x) => x.bookingId === 'BK-C-PAID',
     );
     if (!paid) throw new Error('missing');
+    // Paid but its ads never approved: past its first hour it did not run.
+    expect(
+      (await portalCampaigns(pool, 'chai-co', paid.firstHourAt + 60)).find(
+        (x) => x.bookingId === 'BK-C-PAID',
+      ),
+    ).toMatchObject({
+      stage: 'missed',
+      note: 'Your ads did not arrive in time, so this campaign did not run',
+    });
+    await step('BK-C-PAID', 'ads-approved');
     const during = await portalCampaigns(pool, 'chai-co', paid.firstHourAt + 60);
     expect(during.find((x) => x.bookingId === 'BK-C-PAID')?.stage).toBe('running');
     const after = await portalCampaigns(pool, 'chai-co', paid.lastHourEndsAt + 60);

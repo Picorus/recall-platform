@@ -55,6 +55,9 @@ import type { Pool } from 'pg';
 import { cookies, HttpError, jsonBody, send, str } from './http.js';
 import { callerIp, type StaffApiConfig } from './staff-api.js';
 
+/** People whose booking is being saved now. */
+const saving = new Set<string>();
+
 /** Price checks each person made this hour (the live summary asks on every change). */
 const quotes = new Map<string, { readonly hour: number; n: number }>();
 
@@ -324,8 +327,11 @@ export async function handleBrandPortal(
   if (path === '/portal/book-form' && method === 'GET') {
     const a = await account();
     const again = new URL(req.url ?? '/', 'http://x').searchParams.get('again');
-    const plan = again ? await planFrom(pool, a.brandId, again, now, rules) : undefined;
-    send(res, 200, { account: a, form: await bookForm(pool, now, rules), plan: plan ?? null });
+    const plan = again
+      ? await refused(() => planFrom(pool, a.brandId, again, now, rules))
+      : undefined;
+    const form = await refused(() => bookForm(pool, now, rules));
+    send(res, 200, { account: a, form, plan: plan ?? null });
     return true;
   }
   if (path === '/portal/quote' && method === 'POST') {
@@ -340,9 +346,18 @@ export async function handleBrandPortal(
   if (path === '/portal/bookings' && method === 'POST') {
     const a = await account();
     const plan = planOf(await jsonBody(req));
-    const bookingId = await refused(() =>
-      bookFromPortal(pool, { brandId: a.brandId, plan, by: portalBy(me.address) }, now, rules),
-    );
+    // One at a time per person, so the day's limit is counted right.
+    if (saving.has(me.address))
+      throw new HttpError(429, 'Your last booking is still being saved: wait a moment');
+    saving.add(me.address);
+    let bookingId: string;
+    try {
+      bookingId = await refused(() =>
+        bookFromPortal(pool, { brandId: a.brandId, plan, by: portalBy(me.address) }, now, rules),
+      );
+    } finally {
+      saving.delete(me.address);
+    }
     send(res, 200, { bookingId });
     return true;
   }

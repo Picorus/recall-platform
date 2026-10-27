@@ -66,6 +66,8 @@ export default function BookPage() {
   useEffect(() => {
     if (!plan || !brand) return;
     const mine = ++asked.current;
+    // The price on screen is for the plan before: never booked by mistake on a stale one.
+    setPrice(undefined);
     const t = setTimeout(() => {
       api<PlanPrice>(`/quote?brand=${encodeURIComponent(brand)}`, { plan })
         .then((p) => mine === asked.current && setPrice(p))
@@ -223,7 +225,7 @@ export default function BookPage() {
                   onChange={(e) => set({ startDate: e.target.value })}
                 />
                 <span className="rc-field__help">
-                  At least 15 days ahead; sooner through our team.
+                  At least {form.leadDays} days ahead; sooner through our team.
                 </span>
               </label>
               <label className="rc-field">

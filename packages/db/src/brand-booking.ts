@@ -8,6 +8,7 @@ import {
   BookingError,
   DEFAULT_BRAND_SIGN_IN,
   HOUR_PICKS,
+  MAX_PORTAL_LINES,
   PORTAL_HOURS,
   bandOf,
   bikeHourPaise,
@@ -38,9 +39,6 @@ import { Refusal } from './refusal.js';
 
 type Q = Pick<Pool, 'query'>;
 
-/** A plan may make at most this many booking lines (a typing slip, not a campaign). */
-export const MAX_PORTAL_LINES = 5_000;
-
 export interface BookForm {
   readonly areas: readonly {
     readonly areaId: string;
@@ -57,6 +55,8 @@ export interface BookForm {
   }[];
   readonly picks: readonly { key: string; label: string; hours: readonly number[] }[];
   readonly earliestStart: string;
+  /** Days ahead a portal booking must start (the price book's). */
+  readonly leadDays: number;
   readonly minBikes: number;
   readonly maxBikes: number;
   readonly maxWeeks: number;
@@ -73,6 +73,12 @@ async function bookNow(c: Q, now: number): Promise<PriceBook> {
   const book = priceBookAt(await priceBooks(c), isoAt(now));
   if (!book) throw new Refusal('Booking is not open yet: call us', { code: 'no-price-book' });
   return book;
+}
+
+/** A plan's areas that are not on the map (only RECALL's own areas can be picked). */
+async function unknownAreas(c: Q, plan: PortalPlan, now: number, book: PriceBook) {
+  const ok = new Set((await sellableAreas(c, earliestStart(now, book))).map((a) => a.areaId));
+  return plan.areaIds.every((id) => ok.has(id)) ? [] : ['Pick your areas from the map'];
 }
 
 /** The areas a brand can pick: on and published at the earliest start. */
@@ -115,6 +121,7 @@ export async function bookForm(
     })),
     picks: HOUR_PICKS.map((p) => ({ key: p.key, label: p.label, hours: p.hours })),
     earliestStart: from,
+    leadDays: book.portalLeadDays,
     minBikes: book.minBikesPerLine,
     maxBikes: rules.maxBikesPerHour,
     maxWeeks: rules.maxWeeks,
@@ -197,7 +204,10 @@ export async function portalQuote(
   rules: BrandSignInRules = DEFAULT_BRAND_SIGN_IN,
 ): Promise<PortalQuote> {
   const book = await bookNow(pool, now);
-  const first = planProblems(plan, book, rules);
+  const first = [
+    ...planProblems(plan, book, rules),
+    ...(await unknownAreas(pool, plan, now, book)),
+  ];
   if (first.length > 0) return { price: null, problems: first };
   const lines = planLines(plan);
   if (lines.length === 0)
@@ -268,6 +278,7 @@ export async function bookFromPortal(
 ): Promise<string> {
   const book = await bookNow(pool, now);
   const problems = planProblems(b.plan, book, rules);
+  problems.push(...(await unknownAreas(pool, b.plan, now, book)));
   if (problems.length > 0) throw new Refusal(problems.join('. '));
   // Counted by the database's own clock (the time a booking was written).
   const made = await pool.query<{ n: string }>(

@@ -93,6 +93,20 @@ describe('booking on the portal (P5.4)', () => {
     expect(planProblems({ ...plan, repeatMonths: 3 }, B, L)).toContain(
       'Repeat for 6 or 12 months, or not at all',
     );
+    expect(planProblems({ ...plan, startDate: '2027-02-30' }, B, L)).toEqual(['Pick a start date']);
+    // A huge plan is refused from its size alone, before any line is made.
+    const huge = {
+      ...plan,
+      areaIds: Array.from({ length: 100 }, (_, i) => `a-${i}`),
+      hours: [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25],
+      weekdays: [1, 2, 3, 4, 5, 6, 7],
+      weeks: 4,
+      repeatMonths: 12,
+    };
+    expect(planProblems(huge, B, L)).toEqual([
+      'Too many hours for one booking: book it in parts, or call us',
+    ]);
+    expect(planLines(huge)).toEqual([]);
     expect(planProblems({ ...plan, repeatMonths: 6, weeks: 5 }, B, L)).toContain(
       'A monthly repeat runs up to 4 weeks a month',
     );

@@ -43,6 +43,22 @@ export interface PortalPlan {
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const utc = (d: string) => Date.parse(`${d}T00:00:00Z`);
 const iso = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+/** A real calendar date ("2027-02-30" is not). */
+const realDate = (d: string) => DATE.test(d) && !Number.isNaN(utc(d)) && iso(utc(d)) === d;
+
+/** A plan may make at most this many booking lines (a typing slip, not a campaign). */
+export const MAX_PORTAL_LINES = 5_000;
+
+/** How many lines a plan makes, worked out without making them. */
+export function planLineCount(p: PortalPlan): number {
+  return (
+    new Set(p.areaIds).size *
+    new Set(p.hours).size *
+    new Set(p.weekdays).size *
+    Math.max(0, p.weeks) *
+    Math.max(0, p.repeatMonths)
+  );
+}
 
 /**
  * Where month `months` of a deal starts: the same day of the month, or, in a month too short for
@@ -67,7 +83,7 @@ export function planProblems(
   if (p.hours.some((h) => !PORTAL_HOURS.includes(h))) out.push('Hours run from 8 am to 1 am');
   if (p.weekdays.some((d) => !Number.isInteger(d) || d < 1 || d > 7))
     out.push('Days of the week: Monday to Sunday');
-  if (!DATE.test(p.startDate) || Number.isNaN(utc(p.startDate))) out.push('Pick a start date');
+  if (!realDate(p.startDate)) out.push('Pick a start date');
   if (!Number.isInteger(p.weeks) || p.weeks < 1 || p.weeks > limits.maxWeeks)
     out.push(`From 1 to ${limits.maxWeeks} weeks (longer through our team)`);
   if (
@@ -80,6 +96,8 @@ export function planProblems(
     out.push('Repeat for 6 or 12 months, or not at all');
   // Each month's weeks must fit inside that month (the deal spreads hours evenly).
   if (p.repeatMonths > 1 && p.weeks > 4) out.push('A monthly repeat runs up to 4 weeks a month');
+  if (out.length === 0 && planLineCount(p) > MAX_PORTAL_LINES)
+    out.push('Too many hours for one booking: book it in parts, or call us');
   return out;
 }
 
@@ -89,7 +107,8 @@ export function planLines(p: PortalPlan): BookingLine[] {
   const days = new Set(p.weekdays);
   const areas = [...new Set(p.areaIds)].sort();
   const hours = [...new Set(p.hours)].sort((a, b) => a - b);
-  if (days.size === 0 || !DATE.test(p.startDate)) return lines;
+  if (days.size === 0 || !realDate(p.startDate) || planLineCount(p) > MAX_PORTAL_LINES)
+    return lines;
   // Months are counted from the first day that plays (as the deal's spread check counts them).
   let first = p.startDate;
   while (!days.has(new Date(`${first}T00:00:00Z`).getUTCDay() || 7))
