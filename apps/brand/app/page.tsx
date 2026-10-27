@@ -48,7 +48,7 @@ export default function Home() {
                 </Link>{' '}
                 <span className="muted">
                   · {a.kind === 'agency' ? 'Agency' : 'Brand'} ·{' '}
-                  {a.role === 'owner' ? 'Owner' : 'Can book'}
+                  {a.via ? `through ${a.via.name}` : a.role === 'owner' ? 'Owner' : 'Can book'}
                 </span>
               </li>
             ))}

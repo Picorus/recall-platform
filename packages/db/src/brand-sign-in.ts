@@ -319,6 +319,8 @@ export interface PortalAccount {
   readonly name: string;
   readonly kind: 'brand' | 'agency';
   readonly role: BrandMemberRole;
+  /** P5.10: reached through an agency the person works for (they book for its brands), or null. */
+  readonly via: { readonly agencyId: string; readonly name: string } | null;
 }
 
 /**
@@ -326,15 +328,37 @@ export interface PortalAccount {
  * the account itself is active.
  */
 export async function portalAccounts(c: Q, address: string): Promise<PortalAccount[]> {
-  const r = await c.query<{ brand_id: string; name: string; kind: string; role: string }>(
-    `SELECT m.brand_id, v.name, b.kind, m.role
-       FROM (SELECT DISTINCT ON (brand_id) brand_id, role, active FROM brand_members
-              WHERE address = $1 ORDER BY brand_id, version DESC) m
-       JOIN brands b USING (brand_id)
-       JOIN LATERAL (SELECT name, active FROM brand_versions x WHERE x.brand_id = m.brand_id
-                      ORDER BY version DESC LIMIT 1) v ON true
-      WHERE m.active AND v.active
-      ORDER BY v.name, m.brand_id`,
+  const r = await c.query<{
+    brand_id: string;
+    name: string;
+    kind: string;
+    role: string;
+    via_id: string | null;
+    via_name: string | null;
+  }>(
+    `WITH mine AS (
+       SELECT m.brand_id, v.name, b.kind, m.role
+         FROM (SELECT DISTINCT ON (brand_id) brand_id, role, active FROM brand_members
+                WHERE address = $1 ORDER BY brand_id, version DESC) m
+         JOIN brands b USING (brand_id)
+         JOIN LATERAL (SELECT name, active FROM brand_versions x WHERE x.brand_id = m.brand_id
+                        ORDER BY version DESC LIMIT 1) v ON true
+        WHERE m.active AND v.active),
+     -- P5.10: the brands our team linked to an agency the person works for (as each brand's latest
+     -- details say now): they book and add ads for them, never manage the brand's own team.
+     clients AS (
+       SELECT c.brand_id, c.name, 'brand' AS kind, 'booker' AS role, a.brand_id AS via_id,
+              a.name AS via_name
+         FROM mine a
+         JOIN LATERAL (SELECT DISTINCT ON (brand_id) brand_id, name, agency_id, active
+                         FROM brand_versions ORDER BY brand_id, version DESC) c
+           ON c.agency_id = a.brand_id AND c.active
+        WHERE a.kind = 'agency'
+          AND NOT EXISTS (SELECT 1 FROM mine d WHERE d.brand_id = c.brand_id))
+     SELECT brand_id, name, kind, role, NULL AS via_id, NULL AS via_name FROM mine
+     UNION ALL
+     SELECT DISTINCT ON (brand_id) brand_id, name, kind, role, via_id, via_name FROM clients
+     ORDER BY name, brand_id`,
     [address],
   );
   return r.rows.map((x) => ({
@@ -342,6 +366,7 @@ export async function portalAccounts(c: Q, address: string): Promise<PortalAccou
     name: x.name,
     kind: x.kind as PortalAccount['kind'],
     role: x.role as BrandMemberRole,
+    via: x.via_id && x.via_name ? { agencyId: x.via_id, name: x.via_name } : null,
   }));
 }
 

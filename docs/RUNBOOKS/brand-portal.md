@@ -88,6 +88,13 @@ API's `/portal/...` routes and nothing else: a page on the portal can never reac
 - Team: owners add people by mobile number or email, as Owner or Can book, and remove them. Staff
   can still give or remove access on the admin Brands page. Limits: Settings → Brand portal limits.
 
+## Agencies (P5.10)
+
+- Link a brand to its agency on the admin Brands page (the brand's account details: agency). The
+  agency's people then see that brand on the portal and book for it.
+- The agency's statement is on its own page (Statement): give its share on a booking in admin
+  (Money → partners, super admin) and it shows as plays are delivered.
+
 ## Tests
 
 - `pnpm --filter @recall/brand test`: the sign-in page's checks.

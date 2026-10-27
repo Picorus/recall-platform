@@ -89,6 +89,12 @@ export default function TeamPage() {
             People who can use {page.account.name} on the portal. &ldquo;Can book&rdquo; people
             book, add ads and pay; owners also manage this team.
           </p>
+          {page.agency && (
+            <p className="muted">
+              People at your agency, {page.agency}, can also book and add ads for you. Ask us on
+              Help to change your agency.
+            </p>
+          )}
           <ul className="plain" aria-label="People">
             {page.team.map((m) => (
               <li

@@ -239,8 +239,8 @@ describe('brand portal sign-in (P5.1)', () => {
       NOW,
     );
     expect(await portalAccounts(pool, ASHA)).toEqual([
-      { brandId: 'adwise', name: 'Adwise Media', kind: 'agency', role: 'booker' },
-      { brandId: 'chai-co', name: 'Chai Co', kind: 'brand', role: 'owner' },
+      { brandId: 'adwise', name: 'Adwise Media', kind: 'agency', role: 'booker', via: null },
+      { brandId: 'chai-co', name: 'Chai Co', kind: 'brand', role: 'owner', via: null },
     ]);
     await expect(
       setPortalMember(

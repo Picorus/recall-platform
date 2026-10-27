@@ -2,6 +2,13 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 28 Oct 2026 · P5.10 · Brand portal: agencies
+- **One agency login, many brands** (`portalAccounts` in `packages/db/src/brand-sign-in.ts`): an agency's people also see every brand our team linked to that agency (the brand's own details name it), as "Can book": they book, add ads and pay on each brand's own account, never manage the brand's team. Removed from the agency, or the brand moved to another agency or none: the brand goes at once. The brand's Team page says which agency also books for it.
+- **The agency's statement** (`GET /portal/statement`, page `/statement`, linked from the agency's page): the month's share on each booking our team gave one (P3.13.3: given by a super admin, never automatic), the GST it charges, the TDS held back, what we paid (date, amount, bank reference; never our staff's names), its invoices, owed at the start and end. Its share is never on a brand's invoice.
+- The agency's page lists its brands; the start page says "through <agency>" for them.
+- Tests: database (accounts carry where they came from); API 1 (the agency's person sees the linked brand, books for it, cannot change its team, sees the agency in the brand's team; the statement, only for the agency; removed from the agency, the brand is gone); brand portal in a browser 1 (agency → its brands → statement → a brand). Found by the browser test and fixed: going from the agency's page to a brand's page kept showing the agency (the page reads its business once): brand links load the page afresh.
+- Next: P5.11 messages.
+
 ## 28 Oct 2026 · P5.9 · Brand portal: help and team
 - **Help** (`packages/domain/src/brand-help.ts`, `packages/db/src/brand-help.ts`, `GET/POST /portal/help`, page `/help`): plain answers to what brands ask most (what they pay for, proof of plays, shortfalls, people estimate, ad deadline, starting sooner, changes, invoices, colleagues); numbers from the price book, never written in. Our brand numbers to call or WhatsApp, the hours and whether we are open now (Settings → Support). The ad rules in words, from the same settings the automatic checks use. "Ask us": a question goes to the support desk as a conversation about the business (replies by WhatsApp or email); "Your questions" shows where each stands. Questions per person per day: Settings → Brand portal limits (10).
 - **Team** (`GET/POST /portal/team`, page `/team`): who can use the business; an owner adds people by mobile number or work email as "Owner" or "Can book", changes or removes them; never themselves; at most 20 people (a setting). Every change is a new version with who and why, as staff changes are.

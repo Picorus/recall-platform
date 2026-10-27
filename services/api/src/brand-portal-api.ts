@@ -19,7 +19,7 @@
 //                                           of an earlier booking, for "Book again")
 //   POST /portal/quote?brand=<id>    { plan }  the live price and what stops it
 //   POST /portal/bookings?brand=<id> { plan }  saves it as the business's booking (to pay next)
-// P5.5, your ads (a brand's own; an agency adds them on each brand's account):
+// P5.5, your ads (a brand's own; an agency adds them on each of its brands' accounts, P5.10):
 //   GET  /portal/ads?brand=<id>                     its ads with their automatic checks and review
 //   POST /portal/ads/upload?brand=<id>&name=<name>  the file as the body (checked as staff uploads are)
 //   GET  /portal/ads/file?brand=<id>&ad=<id>        the file itself, to see it
@@ -41,11 +41,15 @@
 //   POST /portal/help?brand=<id>    { subject, text }  a question to our support desk
 //   GET  /portal/team?brand=<id>    who has access
 //   POST /portal/team?brand=<id>    { address, role: owner|booker, active }  its owner only
+// P5.10, agencies (an agency's people also see the brands our team linked to it, and book for them):
+//   GET  /portal/statement?brand=<agency>&month=YYYY-MM   its monthly statement: cuts by booking,
+//                                           GST, TDS, payments, invoices (never on a brand's invoice)
 // P5.8, invoices and credit notes:
 //   GET  /portal/invoices?brand=<id>[&fy=2027-28]      a year's documents, the years there are
 //   GET  /portal/invoices/pdf?brand=<id>&doc=RC-27-28-000123  one as a PDF (its number, - for /)
 //   GET  /portal/invoices/year-pdf?brand=<id>&fy=<fy>  all of a year's in one PDF
 import {
+  partnerStatement,
   askFromPortal,
   brandQuestions,
   brandTeam,
@@ -836,8 +840,36 @@ export async function handleBrandPortal(
     send(res, 200, { threadId });
     return true;
   }
+  if (path === '/portal/statement' && method === 'GET') {
+    const a = await account();
+    if (a.kind !== 'agency')
+      throw new HttpError(400, 'Statements are for agencies', { code: 'not-an-agency' });
+    const asked = new URL(req.url ?? '/', 'http://x').searchParams.get('month');
+    const month =
+      asked && /^\d{4}-(0[1-9]|1[0-2])$/.test(asked)
+        ? asked
+        : new Date((now + 19_800) * 1000).toISOString().slice(0, 7);
+    const s = await partnerStatement(pool, a.brandId, 'agency', month);
+    // Our staff's names stay ours: payments show the date, amount and bank reference.
+    send(res, 200, {
+      account: a,
+      ...s,
+      payments: s.payments.map((p) => ({
+        at: p.at,
+        amountPaise: p.amountPaise,
+        reference: p.reference,
+      })),
+    });
+    return true;
+  }
   if (path === '/portal/team' && method === 'GET') {
     const a = await account();
+    const ag = await pool.query<{ name: string | null }>(
+      `SELECT (SELECT name FROM brand_versions g WHERE g.brand_id = v.agency_id
+                ORDER BY version DESC LIMIT 1) AS name
+         FROM brand_versions v WHERE v.brand_id = $1 ORDER BY version DESC LIMIT 1`,
+      [a.brandId],
+    );
     send(res, 200, {
       account: a,
       me: me.address,
@@ -848,6 +880,8 @@ export async function handleBrandPortal(
         since: m.setAt,
       })),
       max: rules.teamMax,
+      // P5.10: the agency our team linked: its people book for this brand too.
+      agency: ag.rows[0]?.name ?? null,
     });
     return true;
   }
