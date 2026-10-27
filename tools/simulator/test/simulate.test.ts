@@ -48,30 +48,36 @@ const maps = [
   ...(osmRoads() ? [{ name: 'real roads', roads: osmRoads() ?? gridMap(), bikes: 40 }] : []),
 ];
 
-describe.each(maps)('fleet runs on the $name (P1.10.3)', ({ roads, bikes }) => {
-  const run = (name: string, seed = 11) =>
-    simulate({ scenario: scenarioNamed(name), bikes, seconds: 40 * 60, seed, roads });
+// Each test runs whole 40-minute fleets (about 2 to 4 s here, more on a busy CI machine): a time
+// limit of 60 s, not the default 5 s.
+describe.each(maps)(
+  'fleet runs on the $name (P1.10.3)',
+  { timeout: 60_000 },
+  ({ roads, bikes }) => {
+    const run = (name: string, seed = 11) =>
+      simulate({ scenario: scenarioNamed(name), bikes, seconds: 40 * 60, seed, roads });
 
-  it('are repeatable from a seed', () => {
-    expect(run('normal', 3)).toEqual(run('normal', 3));
-  });
+    it('are repeatable from a seed', () => {
+      expect(run('normal', 3)).toEqual(run('normal', 3));
+    });
 
-  it.each(['normal', 'rain', 'cricket', 'outage'])(
-    '%s: every report stored exactly once, none lost; clock within 5% of the truth and never over; areas agree',
-    (name) => {
-      const r = run(name);
-      expect(r.bikes).toBeGreaterThan(5);
+    it.each(['normal', 'rain', 'cricket', 'outage'])(
+      '%s: every report stored exactly once, none lost; clock within 5% of the truth and never over; areas agree',
+      (name) => {
+        const r = run(name);
+        expect(r.bikes).toBeGreaterThan(5);
+        expect(r.reportsStored).toBe(r.reportsMade);
+        expect(r.reportsLost).toBe(0);
+        expect(r.clockSeconds).toBeLessThanOrEqual(r.truthClockSeconds * 1.01);
+        expect(r.clockSeconds).toBeGreaterThanOrEqual(r.truthClockSeconds * 0.95);
+        expect(r.insideAgreed / r.insideSeconds).toBeGreaterThan(0.95);
+      },
+    );
+
+    it('an outage means reports are sent again, but still stored only once', () => {
+      const r = run('outage');
+      expect(r.reportsResent).toBeGreaterThan(r.reportsMade);
       expect(r.reportsStored).toBe(r.reportsMade);
-      expect(r.reportsLost).toBe(0);
-      expect(r.clockSeconds).toBeLessThanOrEqual(r.truthClockSeconds * 1.01);
-      expect(r.clockSeconds).toBeGreaterThanOrEqual(r.truthClockSeconds * 0.95);
-      expect(r.insideAgreed / r.insideSeconds).toBeGreaterThan(0.95);
-    },
-  );
-
-  it('an outage means reports are sent again, but still stored only once', () => {
-    const r = run('outage');
-    expect(r.reportsResent).toBeGreaterThan(r.reportsMade);
-    expect(r.reportsStored).toBe(r.reportsMade);
-  });
-});
+    });
+  },
+);
