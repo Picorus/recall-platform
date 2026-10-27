@@ -2,6 +2,12 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 27 Oct 2026 · P4.7 · Rider app: screen loan
+- **Loan page** (`riderLoanPage` in `packages/db/src/screen-loans.ts`, route `GET /rider/loan`): his screen loan as the bank reports it (staff record it, P1.7.8): where it stands in plain words (applied, approved, running, paid off, late), the loan, the monthly EMI and months, the EMI holiday (no EMI until the first one), the next EMI date and EMIs left. The day-90 bonus (for finishing the test period and keeping the screen): given, or its amount and when it comes; not shown when there was never a test period. Before he applies: the bank's name from Settings and where its form opens. Always: the bank takes the EMI, RECALL never does.
+- **App**: a Loan tab; every word in Telugu, Hindi and English.
+- Tests: database 1 (the holiday, then the next EMI and EMIs left, no day-90 bonus without a POC, none before he applies); API 1; browser 1.
+- Next: P4.8, screen care (how to charge and look after it; report a problem with a photo; book a repair or swap).
+
 ## 27 Oct 2026 · P4.6 · Rider app: Payouts
 - **Payouts page** (`packages/db/src/rider-payouts.ts`, route `GET /rider/payouts`): the next payout Monday (today when it is a Monday before the 10:00 run) and what he is owed now (the Monday run works out the final figure, less tax); where it goes (his checked bank or UPI, masked), or a warning that nothing can be paid until one is checked; each payout of the last 26 weeks in words for him: paid, being sent, did not go through (tried again), could not be paid (comes with the next payout), on hold (call support). Staff's hold reasons and the bank's messages are not shown to him. The tax (TDS) held back, by quarter of the financial year, for his Form 16A.
 - **App**: a Payouts tab; every word in Telugu, Hindi and English.

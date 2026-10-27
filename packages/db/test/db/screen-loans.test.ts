@@ -1,7 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type pg from 'pg';
 import { trialBalance } from '../../src/ledger.js';
-import { moveScreenLoan, recordScreenLoan, riderLoans } from '../../src/screen-loans.js';
+import {
+  moveScreenLoan,
+  recordScreenLoan,
+  riderLoanPage,
+  riderLoans,
+} from '../../src/screen-loans.js';
 import { freshDatabase } from './fresh-db.js';
 
 let db: Awaited<ReturnType<typeof freshDatabase>>;
@@ -29,6 +34,26 @@ describe('the screen loan record (P1.7.8)', () => {
     await moveScreenLoan(pool, 'LN-0001', 'disbursed', 'priya', 'paid to RECALL as seller');
     const [l] = await riderLoans(pool, 'R-AAA', '2028-02-10');
     expect(l).toMatchObject({ status: 'disbursed', nextEmi: '2028-03-05', emisLeft: 35 });
+  });
+
+  it("the rider app's loan page (P4.7): the EMI holiday, the next EMI, the day-90 bonus", async () => {
+    const dec = Date.parse('2027-12-10T06:00:00Z') / 1000;
+    let p = await riderLoanPage(pool, 'R-AAA', dec, 'Dhanlaxmi Bank');
+    expect(p.loan).toMatchObject({
+      loanId: 'LN-0001',
+      amountPaise: 3_100_000,
+      emiPaise: 137_000,
+      status: 'disbursed',
+      nextEmi: '2028-02-05',
+      emisLeft: 36,
+      holidayUntil: '2028-02-05',
+    });
+    expect(p.loan?.disbursedOn).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    // No POC ever switched on: no day-90 bonus.
+    expect(p.day90).toBeNull();
+    p = await riderLoanPage(pool, 'R-AAA', Date.parse('2028-02-10T06:00:00Z') / 1000, 'X');
+    expect(p.loan).toMatchObject({ holidayUntil: null, nextEmi: '2028-03-05', emisLeft: 35 });
+    expect((await riderLoanPage(pool, 'R-NONE', dec, 'Dhanlaxmi Bank')).loan).toBeNull();
   });
 
   it('statuses only move forward', async () => {

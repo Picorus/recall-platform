@@ -30,6 +30,8 @@
 //   GET  /rider/statement/<token> the statement page itself (printable; no sign-in needed)
 // P4.6:
 //   GET  /rider/payouts           next Monday's payout, his account (masked), history, TDS by quarter
+// P4.7:
+//   GET  /rider/loan              his screen loan as the bank reports it, the EMI holiday, the day-90 bonus
 import type { PayoutDestination } from '@recall/adapters';
 import {
   answerPanel,
@@ -58,6 +60,7 @@ import {
   riderToday,
   riderEarnings,
   riderPayouts,
+  riderLoanPage,
   riderMonths,
   setting,
   type RiderSession,
@@ -286,6 +289,11 @@ export async function handleRiderApp(
     if (!months.includes(month))
       throw new HttpError(400, 'Pick one of your months', { code: 'bad-month' });
     send(res, 200, await riderEarnings(pool, riderId, month, now, months));
+    return true;
+  }
+  if (path === '/rider/loan' && method === 'GET') {
+    const bank = (await setting(pool, 'loanBank')).name;
+    send(res, 200, await riderLoanPage(pool, riderId, now, bank));
     return true;
   }
   if (path === '/rider/payouts' && method === 'GET') {

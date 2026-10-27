@@ -349,6 +349,12 @@ describe('rider app fitting routes (P4.3)', () => {
       history: [],
       tds: [],
     });
+    // P4.7: no screen loan yet; the bank from Settings.
+    expect((await get('/rider/loan')).body).toEqual({
+      loan: null,
+      bank: 'Dhanlaxmi Bank',
+      day90: null,
+    });
     // A changed link is refused.
     expect((await fetch(`${url}${link.slice(0, -2)}xx`)).status).toBe(404);
   });
