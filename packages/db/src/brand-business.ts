@@ -1,11 +1,13 @@
 // P5.2 in the database: a business sets itself up on the brand portal. Its GST number is looked up
 // in the GST records (each lookup kept, a few a day per person) and the legal name, state and
 // address on its invoices come from the record; with no lookup service (production until P6) or the
-// service down, or no GST number at all, the business types them. One account per GST number: a
-// number already with RECALL is refused (its owner adds the person instead). Setting up makes the
+// service down, or no GST number at all, the business types them. A GST number is public, so it never
+// blocks anyone: a second account with the same number is shown to staff, who settle it before an
+// invoice carries the number. The business name (shown on campaigns) is its own, apart from the
+// legal name on invoices. Setting up makes the
 // account, its tax details, its contact (invoice email and WhatsApp number), its type and the person
 // as its owner, all at once. New businesses are offered one free week (the price book's trial).
-import type { GstAdapter, GstLookup } from '@recall/adapters';
+import type { GstAdapter, GstLookup, GstRecord } from '@recall/adapters';
 import {
   BUSINESS_TYPES,
   DEFAULT_BRAND_SIGN_IN,
@@ -40,19 +42,31 @@ const indiaDayStart = (now: number) => {
 /** Who made an account on the portal, as kept on it (the column holds 120 characters). */
 const portalBy = (asker: string) => `portal:${asker}`.slice(0, 120);
 
-/** The active account that already has this GST number, if any. */
-async function gstinTaken(c: Q, gstin: string): Promise<boolean> {
-  const r = await c.query(
-    `SELECT 1
-       FROM (SELECT DISTINCT ON (brand_id) brand_id, gstin FROM brand_tax_profiles
-              WHERE brand_id IN (SELECT brand_id FROM brand_tax_profiles WHERE gstin = $1)
-              ORDER BY brand_id, set_at DESC) t
-       JOIN LATERAL (SELECT active FROM brand_versions v WHERE v.brand_id = t.brand_id
-                      ORDER BY version DESC LIMIT 1) v ON true
-      WHERE t.gstin = $1 AND v.active`,
-    [gstin],
+/**
+ * Other active accounts whose tax details carry the same GST number as this one's. A GST number is
+ * public, so anyone can type a business's number: it never blocks a second account (the real owner
+ * is never locked out), and staff see the clash on both accounts and settle it before an invoice
+ * carries the number (P5.6).
+ */
+export async function sameGstinAccounts(
+  c: Q,
+  brandId: string,
+): Promise<{ brandId: string; name: string }[]> {
+  const r = await c.query<{ brand_id: string; name: string }>(
+    `WITH latest AS (
+       SELECT DISTINCT ON (brand_id) brand_id, gstin FROM brand_tax_profiles
+        ORDER BY brand_id, set_at DESC),
+     live AS (
+       SELECT DISTINCT ON (brand_id) brand_id, name, active FROM brand_versions
+        ORDER BY brand_id, version DESC)
+     SELECT o.brand_id, v.name
+       FROM latest me JOIN latest o ON o.gstin = me.gstin AND o.brand_id <> me.brand_id
+       JOIN live v ON v.brand_id = o.brand_id
+      WHERE me.brand_id = $1 AND me.gstin IS NOT NULL AND v.active
+      ORDER BY v.name`,
+    [brandId],
   );
-  return (r.rowCount ?? 0) > 0;
+  return r.rows.map((x) => ({ brandId: x.brand_id, name: x.name }));
 }
 
 export type GstLookupAnswer =
@@ -69,8 +83,8 @@ export type GstLookupAnswer =
 
 /**
  * Looks a GST number up for a person setting up a business. Refused when it is not a GSTIN, is
- * not in the records, is cancelled, already has a RECALL account, or the person has looked up too
- * many today.
+ * not in the records, is cancelled, or the person has looked up too many today. Says nothing about
+ * whether the number is with RECALL already (nobody learns who our customers are).
  */
 export async function lookUpGst(
   pool: Pool,
@@ -84,20 +98,36 @@ export async function lookUpGst(
     throw new Refusal('This is not a GST number: check it (15 characters, like 36ABCDE1234F1Z5)', {
       code: 'bad-gstin',
     });
-  if (await gstinTaken(pool, ask.gstin))
-    throw new Refusal(
-      'This GST number already has a RECALL account. Ask whoever set it up to add you, or call us.',
-      { code: 'gstin-taken' },
-    );
-  if (!gst) return { status: 'type-it' };
+  // Every lookup is kept and counted (each costs).
   const used = await pool.query<{ n: string }>(
     'SELECT count(*) AS n FROM gst_lookups WHERE asker = $1 AND at >= to_timestamp($2)',
     [ask.asker, indiaDayStart(now)],
   );
   if (Number(used.rows[0]?.n ?? 0) >= rules.gstLookupsPerDay)
-    throw new Refusal('Too many GST lookups today: type your details, or try again tomorrow', {
+    throw new Refusal('Too many GST lookups today: try again tomorrow, or call us', {
       code: 'too-many-lookups',
     });
+  const keep = (status: string, rec?: GstRecord) =>
+    pool.query(
+      `INSERT INTO gst_lookups (gstin, asker, status, legal_name, trade_name, state_code, address,
+                                active, at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, to_timestamp($9))`,
+      [
+        ask.gstin,
+        ask.asker,
+        status,
+        rec?.legalName.trim().slice(0, 200) ?? null,
+        rec?.tradeName?.trim().slice(0, 200) || null,
+        rec?.stateCode ?? null,
+        rec?.address.trim().slice(0, 500) ?? null,
+        rec?.active ?? null,
+        now,
+      ],
+    );
+  if (!gst) {
+    await keep('no-service');
+    return { status: 'type-it' };
+  }
   let timer: NodeJS.Timeout | undefined;
   const answer: GstLookup = await Promise.race([
     gst.lookup(ask.gstin).catch((e: unknown): GstLookup => ({
@@ -116,22 +146,7 @@ export async function lookUpGst(
       ? answer.record
       : undefined;
   const status = rec ? 'found' : answer.status === 'found' ? 'unavailable' : answer.status;
-  await pool.query(
-    `INSERT INTO gst_lookups (gstin, asker, status, legal_name, trade_name, state_code, address,
-                              active, at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, to_timestamp($9))`,
-    [
-      ask.gstin,
-      ask.asker,
-      status,
-      rec?.legalName.trim().slice(0, 200) ?? null,
-      rec?.tradeName?.trim().slice(0, 200) || null,
-      rec?.stateCode ?? null,
-      rec?.address.trim().slice(0, 500) ?? null,
-      rec?.active ?? null,
-      now,
-    ],
-  );
+  await keep(status, rec);
   if (status === 'not-found')
     throw new Refusal('This GST number is not in the GST records: check it', {
       code: 'gstin-not-found',
@@ -185,7 +200,6 @@ export async function setUpBusiness(
     throw new Refusal('An email address for invoices');
   return inTransaction(pool, async (c) => {
     await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`brand-set-up:${b.asker}`]);
-    if (b.gstin) await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`gstin:${b.gstin}`]);
     const made = await c.query<{ n: string }>(
       'SELECT count(*) AS n FROM brands WHERE created_by = $1 AND created_at >= to_timestamp($2)',
       [portalBy(b.asker), indiaDayStart(now)],
@@ -195,28 +209,35 @@ export async function setUpBusiness(
         code: 'too-many-businesses',
       });
 
-    let tax: { legalName: string; stateCode: string; address: string };
+    let tax: {
+      legalName: string;
+      stateCode: string;
+      address: string;
+      source: 'gst-record' | 'typed';
+      lookupId: string | null;
+    };
     if (b.gstin) {
       if (gstinProblems(b.gstin).length > 0) throw new Refusal('This is not a GST number');
-      if (await gstinTaken(c, b.gstin))
-        throw new Refusal(
-          'This GST number already has a RECALL account. Ask whoever set it up to add you, or call us.',
-          { code: 'gstin-taken' },
-        );
       const l = await c.query<{
+        id: string;
         status: string;
         legal_name: string | null;
         state_code: string | null;
         address: string | null;
         active: boolean | null;
       }>(
-        `SELECT status, legal_name, state_code, address, active FROM gst_lookups
+        // The service's last real answer wins over a later failure to answer.
+        `SELECT id, status, legal_name, state_code, address, active FROM gst_lookups
           WHERE gstin = $1 AND asker = $2 AND at > to_timestamp($3)
-          ORDER BY at DESC, id DESC LIMIT 1`,
+          ORDER BY (status IN ('found', 'not-found')) DESC, at DESC, id DESC LIMIT 1`,
         [b.gstin, b.asker, now - LOOKUP_LIFE_S],
       );
       const x = l.rows[0];
-      if (x?.status === 'found') {
+      if (!x)
+        throw new Refusal('Find your business by its GST number again, then save', {
+          code: 'look-up-again',
+        });
+      if (x.status === 'found') {
         // The record's details, never what was typed.
         if (!x.active)
           throw new Refusal('This GST number is cancelled or suspended in the GST records');
@@ -224,15 +245,20 @@ export async function setUpBusiness(
           legalName: x.legal_name ?? '',
           stateCode: x.state_code ?? '',
           address: x.address ?? '',
+          source: 'gst-record',
+          lookupId: x.id,
         };
-      } else if (x?.status === 'not-found') {
+      } else if (x.status === 'not-found') {
         throw new Refusal('This GST number is not in the GST records: check it');
       } else {
         // No lookup service (or it did not answer): what the business typed, in the GSTIN's state.
+        // Not checked: it never blocks the number's owner, and staff check it before invoicing.
         tax = {
           legalName: (b.legalName ?? '').trim(),
           stateCode: b.gstin.slice(0, 2),
           address: (b.address ?? '').trim(),
+          source: 'typed',
+          lookupId: null,
         };
       }
     } else {
@@ -240,6 +266,8 @@ export async function setUpBusiness(
         legalName: (b.legalName ?? '').trim(),
         stateCode: b.stateCode ?? '',
         address: (b.address ?? '').trim(),
+        source: 'typed',
+        lookupId: null,
       };
     }
     if (tax.legalName.length < 2 || tax.legalName.length > 200)
@@ -247,8 +275,9 @@ export async function setUpBusiness(
     if (!stateName(tax.stateCode)) throw new Refusal('Which state is your business in?');
     if (tax.address.length > 300) throw new Refusal('Address: at most 300 characters');
 
-    // Its id from its name: the first one free.
+    // Its id from its name: the first one free (one set-up at a time per name).
     const base = accountIdFrom(name);
+    await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`brand-id:${base}`]);
     let brandId = '';
     for (let i = 1; i <= 50 && !brandId; i++) {
       const id = i === 1 ? base : `${base}-${i}`;
@@ -268,9 +297,20 @@ export async function setUpBusiness(
       [brandId, name, by, now],
     );
     await c.query(
-      `INSERT INTO brand_tax_profiles (brand_id, set_at, legal_name, gstin, state_code, address, set_by)
-       VALUES ($1, to_timestamp($2), $3, $4, $5, $6, $7)`,
-      [brandId, now, tax.legalName, b.gstin, tax.stateCode, tax.address, by],
+      `INSERT INTO brand_tax_profiles (brand_id, set_at, legal_name, gstin, state_code, address, set_by,
+                                       source, gst_lookup_id)
+       VALUES ($1, to_timestamp($2), $3, $4, $5, $6, $7, $8, $9)`,
+      [
+        brandId,
+        now,
+        tax.legalName,
+        b.gstin,
+        tax.stateCode,
+        tax.address,
+        by,
+        tax.source,
+        tax.lookupId,
+      ],
     );
     await c.query(
       `INSERT INTO brand_contacts (brand_id, set_at, phone, email, set_by)
@@ -308,11 +348,31 @@ export interface BusinessPage {
   readonly freeWeek: { readonly days: number; readonly bikeHours: number } | null;
 }
 
-/** A business's details as its portal shows them, and whether its free week is still open. */
+/**
+ * What a free week is counted against: the business's phone and GST number, and the portal person
+ * asking (one free week per person, however many businesses they set up). The trial booking (P5.4)
+ * writes all of them; undefined when the phone is not a mobile number.
+ */
+export function freeWeekKeys(
+  business: { readonly phone: string; readonly gstin: string | null },
+  person: string,
+): string[] | undefined {
+  const keys = trialKeys({
+    phone: business.phone,
+    ...(business.gstin ? { gstin: business.gstin } : {}),
+  });
+  return keys ? [...keys, `member:${person}`] : undefined;
+}
+
+/**
+ * A business's details as its portal shows them, and whether its free week is still open for the
+ * person looking (`person`: their number or email).
+ */
 export async function businessPage(
   c: Q,
   brandId: string,
   now: number,
+  person: string,
 ): Promise<BusinessPage | undefined> {
   const r = await c.query<{
     name: string;
@@ -344,7 +404,7 @@ export async function businessPage(
   let freeWeek: BusinessPage['freeWeek'] = null;
   const keys =
     x.kind === 'brand' && x.phone
-      ? trialKeys({ phone: x.phone, ...(x.gstin ? { gstin: x.gstin } : {}) })
+      ? freeWeekKeys({ phone: x.phone, gstin: x.gstin }, person)
       : undefined;
   const book = priceBookAt(await priceBooks(c), isoAt(now));
   if (keys && book && book.trialDays > 0 && book.trialBikeHours > 0) {

@@ -65,6 +65,8 @@ export default function NewBusiness() {
       });
       router.replace(`/business?brand=${encodeURIComponent(r.brandId)}`);
     } catch (err) {
+      // The lookup ran out (the form was left open a long time): find the business again.
+      if (err instanceof ApiError && err.why === 'look-up-again') setGst(undefined);
       setError(message(err));
       setBusy(false);
     }

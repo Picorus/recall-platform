@@ -33,8 +33,10 @@ API's `/portal/...` routes and nothing else: a page on the portal can never reac
 - On a laptop the GST lookup is a fake: any well-formed GSTIN is "found" as a test business; one
   whose PAN part starts ZZZZZ is not found, YYYYY is cancelled, XXXXX makes the service fail (then the
   details are typed). Production has no lookup until a GST provider is signed (P6, `GST_PROVIDER`).
-- A GST number already with RECALL is refused: its owner adds the person (Brand portal access in the
-  admin, or the team page in P5.9).
+- A GST number never blocks a second account (anyone can know a business's number). When two
+  accounts carry one number, both show a red note on the admin Brands page: ask for the GST
+  certificate, then close the wrong account or correct its tax details. Tax details a business typed
+  (no GST record) show "not checked": check them before the first invoice.
 
 ## Tests
 

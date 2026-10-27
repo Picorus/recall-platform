@@ -1,14 +1,16 @@
 // P5.2: a business sets itself up on the brand portal: its GST number looked up (the record's
 // legal name, state and address, never typed ones), or typed details when the lookup service is
-// off or down, or no GST number; one account per GST number; the person becomes its owner; a few
-// lookups and set-ups a day; the free week while the business has not had it.
-import { fakeGst } from '@recall/adapters';
+// off or down, or no GST number; a GST number never blocks another account (staff see the clash);
+// the person becomes its owner; a few lookups and set-ups a day; the free week while not had.
+import { fakeGst, type GstAdapter } from '@recall/adapters';
 import { DEFAULT_BRAND_SIGN_IN as R, PRICE_BOOK_V1 } from '@recall/domain';
 import type pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   businessPage,
+  freeWeekKeys,
   lookUpGst,
+  sameGstinAccounts,
   setUpBusiness,
   type NewBusiness,
 } from '../../src/brand-business.js';
@@ -66,7 +68,7 @@ describe('your business (P5.2)', () => {
     expect(await portalAccounts(pool, ASHA)).toEqual([
       { brandId: 'chai-co', name: 'Chai Co', kind: 'brand', role: 'owner' },
     ]);
-    expect(await businessPage(pool, 'chai-co', NOW + 60)).toEqual({
+    expect(await businessPage(pool, 'chai-co', NOW + 60, ASHA)).toEqual({
       brandId: 'chai-co',
       name: 'Chai Co',
       kind: 'brand',
@@ -93,19 +95,20 @@ describe('your business (P5.2)', () => {
     );
   });
 
-  it('one account per GST number; a name already used gets the next free id', async () => {
+  it('someone else with the same GST number: never refused or told, both shown to staff; same name gets the next id', async () => {
     const other = '+919848022222';
-    await expect(lookUpGst(pool, fakeGst(), { gstin: CHAI, asker: other }, NOW)).rejects.toThrow(
-      'already has a RECALL account',
-    );
-    await expect(setUpBusiness(pool, { ...base, asker: other }, NOW)).rejects.toThrow(
-      'already has a RECALL account',
-    );
-    const g = gstin('36AABCD1234E1Z');
-    await lookUpGst(pool, fakeGst(), { gstin: g, asker: other }, NOW);
-    expect(await setUpBusiness(pool, { ...base, asker: other, gstin: g }, NOW + 1)).toBe(
-      'chai-co-2',
-    );
+    // The lookup says nothing about the number being with RECALL.
+    expect(await lookUpGst(pool, fakeGst(), { gstin: CHAI, asker: other }, NOW)).toMatchObject({
+      status: 'found',
+    });
+    const id = await setUpBusiness(pool, { ...base, asker: other }, NOW + 1);
+    expect(id).toBe('chai-co-2');
+    expect(await sameGstinAccounts(pool, 'chai-co')).toEqual([
+      { brandId: 'chai-co-2', name: 'Chai Co' },
+    ]);
+    expect(await sameGstinAccounts(pool, 'chai-co-2')).toEqual([
+      { brandId: 'chai-co', name: 'Chai Co' },
+    ]);
   });
 
   it('not in the records or cancelled: refused; the service down or off: the typed details', async () => {
@@ -154,7 +157,7 @@ describe('your business (P5.2)', () => {
       },
       NOW,
     );
-    expect(await businessPage(pool, id, NOW)).toMatchObject({
+    expect(await businessPage(pool, id, NOW, ASHA)).toMatchObject({
       kind: 'agency',
       legalName: 'Adwise Media LLP',
       stateCode: '29',
@@ -195,11 +198,11 @@ describe('your business (P5.2)', () => {
       },
       NOW,
     );
-    expect(await businessPage(pool, id, NOW)).toMatchObject({
+    expect(await businessPage(pool, id, NOW, ASHA)).toMatchObject({
       gstin: null,
       stateName: 'Telangana',
     });
-    expect((await businessPage(pool, id, NOW))?.freeWeek).not.toBeNull();
+    expect((await businessPage(pool, id, NOW, ASHA))?.freeWeek).not.toBeNull();
     const id2 = await setUpBusiness(
       pool,
       {
@@ -244,5 +247,90 @@ describe('your business (P5.2)', () => {
         NOW,
       ),
     ).rejects.toThrow('Too many businesses');
+  });
+
+  it('review: no skipping the lookup; a record beats a later failure; a typed number blocks nobody; same name at once', async () => {
+    const asker = '+919848055555';
+    const g = gstin('36ABCDF1234E1Z');
+    // Saving without looking the number up first.
+    await expect(
+      setUpBusiness(
+        pool,
+        { ...base, asker, gstin: g, name: 'Skip Co', legalName: 'Anything' },
+        NOW,
+      ),
+    ).rejects.toThrow('Find your business by its GST number again');
+    // Found, then the service fails on a second look: the record's details still go on invoices.
+    await lookUpGst(pool, fakeGst(), { gstin: g, asker }, NOW);
+    const down: GstAdapter = {
+      lookup: () => Promise.resolve({ status: 'unavailable', reason: 'down' }),
+    };
+    expect(await lookUpGst(pool, down, { gstin: g, asker }, NOW + 1)).toEqual({
+      status: 'type-it',
+    });
+    const id = await setUpBusiness(
+      pool,
+      { ...base, asker, gstin: g, name: 'Record Co', legalName: 'Typed Over' },
+      NOW + 2,
+    );
+    expect((await businessPage(pool, id, NOW + 2, asker))?.legalName).toBe(
+      'Test Business ABCDF1234E Private Limited',
+    );
+    const src = await pool.query<{ source: string; gst_lookup_id: string | null }>(
+      'SELECT source, gst_lookup_id FROM brand_tax_profiles WHERE brand_id = $1',
+      [id],
+    );
+    expect(src.rows[0]?.source).toBe('gst-record');
+    expect(src.rows[0]?.gst_lookup_id).not.toBeNull();
+
+    // With no lookup service, a typed GST number is kept as typed and never blocks its real owner.
+    const h = gstin('36ABCDG1234E1Z');
+    const typer = '+919848066600';
+    await lookUpGst(pool, undefined, { gstin: h, asker: typer }, NOW);
+    const typed = await setUpBusiness(
+      pool,
+      { ...base, asker: typer, gstin: h, name: 'Typed Co', legalName: 'Made Up Name' },
+      NOW,
+    );
+    expect(
+      (await pool.query('SELECT source FROM brand_tax_profiles WHERE brand_id = $1', [typed]))
+        .rows[0],
+    ).toEqual({ source: 'typed' });
+    const owner = '+919848066601';
+    await lookUpGst(pool, fakeGst(), { gstin: h, asker: owner }, NOW);
+    await setUpBusiness(pool, { ...base, asker: owner, gstin: h, name: 'Real Owner Co' }, NOW);
+    // The real owner was never blocked; staff see both.
+    expect((await sameGstinAccounts(pool, typed)).map((x) => x.name)).toEqual(['Real Owner Co']);
+
+    // Two people set up the same name at once: two accounts, no error.
+    const ids = await Promise.all(
+      ['+919848077701', '+919848077702'].map((a) =>
+        setUpBusiness(
+          pool,
+          {
+            ...base,
+            asker: a,
+            gstin: null,
+            name: 'Same Name',
+            legalName: 'Owner',
+            stateCode: '36',
+          },
+          NOW,
+        ),
+      ),
+    );
+    expect(ids.sort()).toEqual(['same-name', 'same-name-2']);
+  });
+
+  it('review: a free week is counted per person as well as per phone and GST number', () => {
+    expect(freeWeekKeys({ phone: '+919848011111', gstin: null }, 'media@adwise.in')).toEqual([
+      'phone:9848011111',
+      'member:media@adwise.in',
+    ]);
+    expect(freeWeekKeys({ phone: '+919848011111', gstin: CHAI }, ASHA)).toEqual([
+      'phone:9848011111',
+      `gstin:${CHAI}`,
+      `member:${ASHA}`,
+    ]);
   });
 });

@@ -30,9 +30,11 @@ interface Page {
     gstin: string | null;
     stateCode: string;
     address: string;
+    source: 'staff' | 'gst-record' | 'typed';
     by: string;
     at: number;
   } | null;
+  readonly sameGstin: readonly { brandId: string; name: string }[];
   readonly notes: readonly { note: string; by: string; at: number }[];
   /** P5.1: who may sign in to the brand portal for this account. */
   readonly portal: readonly {
@@ -505,7 +507,21 @@ export default function BrandsPage() {
               {page.tax && (
                 <span className="muted">
                   Set by {page.tax.by}, {when(page.tax.at)}
+                  {page.tax.source === 'gst-record' && ' · from the GST records'}
                 </span>
+              )}
+              {page.sameGstin.length > 0 && (
+                <p className="error">
+                  The same GST number is on {page.sameGstin.map((x) => x.name).join(', ')}. Find out
+                  which is the real business (ask for its GST certificate), then close the other
+                  account or correct its tax details. No invoice carries the number until then.
+                </p>
+              )}
+              {page.tax?.source === 'typed' && page.tax.gstin && (
+                <p className="error">
+                  Typed by the business, not checked against the GST records: check the GST number
+                  and legal name, then save them here before the first invoice.
+                </p>
               )}
               {mayTax(me) && (
                 <button className="rc-button rc-button--secondary" type="submit" disabled={busy}>

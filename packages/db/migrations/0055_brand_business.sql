@@ -1,6 +1,10 @@
 -- P5.2: a business sets itself up on the brand portal. What kind of business it is (versions by
 -- time: latest wins), and every GST number looked up in the GST records with what the record said
--- (so the details on an invoice can always be traced to it, and lookups can be limited).
+-- (so the details on an invoice can always be traced to it, and lookups can be limited). Tax
+-- details say where they came from: staff, the GST record (with the lookup) or typed by the business
+-- (not checked: staff check it before it goes on an invoice). A GST number never blocks another
+-- account (anyone can know a business's number); staff settle two accounts with one number. A free
+-- week is also counted per portal person.
 -- Append-only (hard rule 3).
 
 CREATE TABLE brand_profiles (
@@ -17,7 +21,9 @@ CREATE TABLE gst_lookups (
   gstin      text          NOT NULL CHECK (gstin ~ '^[0-9]{2}[A-Z0-9]{13}$'),
   -- Who asked: the portal sign-in's number or email.
   asker      brand_address NOT NULL,
-  status     text          NOT NULL CHECK (status IN ('found', 'not-found', 'unavailable')),
+  -- found / not-found / unavailable (the service failed): the GST service's answer; no-service: no
+  -- lookup service is set up (the business types its details).
+  status     text          NOT NULL CHECK (status IN ('found', 'not-found', 'unavailable', 'no-service')),
   legal_name text          CHECK (length(legal_name) <= 200),
   trade_name text          CHECK (length(trade_name) <= 200),
   state_code text          CHECK (state_code ~ '^[0-9]{2}$'),
@@ -29,6 +35,16 @@ CREATE TABLE gst_lookups (
 CREATE INDEX gst_lookups_asker ON gst_lookups (asker, at DESC);
 CREATE INDEX gst_lookups_gstin ON gst_lookups (gstin, at DESC);
 CREATE INDEX brand_tax_profiles_gstin ON brand_tax_profiles (gstin) WHERE gstin IS NOT NULL;
+
+ALTER TABLE brand_tax_profiles
+  ADD COLUMN source text NOT NULL DEFAULT 'staff' CHECK (source IN ('staff', 'gst-record', 'typed')),
+  ADD COLUMN gst_lookup_id bigint REFERENCES gst_lookups (id),
+  ADD CHECK ((source = 'gst-record') = (gst_lookup_id IS NOT NULL));
+
+-- A free week is counted per portal person too ("member:" and their number or email).
+ALTER TABLE trials_used DROP CONSTRAINT trials_used_identity_check;
+ALTER TABLE trials_used ADD CONSTRAINT trials_used_identity_check
+  CHECK (identity ~ '^(phone|gstin|member):');
 
 CREATE TRIGGER brand_profiles_no_change BEFORE UPDATE OR DELETE ON brand_profiles
   FOR EACH ROW EXECUTE FUNCTION recall_append_only();
@@ -160,6 +176,8 @@ UNION ALL SELECT started_at, address, 'brands', 'brand portal signed in', addres
             FROM brand_sessions
 UNION ALL SELECT at, by, 'brands', 'brand portal signed out', address, why, 'brand_session_ends:' || token_hash
             FROM brand_session_ends
+UNION ALL SELECT at, asker, 'brands', 'GST number looked up: ' || status, gstin, coalesce(legal_name, ''),
+                 'gst_lookups:' || id FROM gst_lookups
 UNION ALL SELECT set_at, set_by, 'brands', 'business type set', brand_id, business_type,
                  'brand_profiles:' || brand_id || ':' || set_at FROM brand_profiles
 ) x;

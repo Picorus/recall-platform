@@ -254,7 +254,7 @@ describe('brand portal sign-in routes (P5.1)', () => {
     expect(
       (await call('/portal/business?brand=chai-co', undefined, { cookie: s.session })).status,
     ).toBe(404);
-    // The same GST number again, from someone else: refused.
+    // The same GST number from someone else: looked up as usual (nothing says it is with us).
     const t = await signIn('+919848088888', 'sms');
     expect(
       await call(
@@ -262,7 +262,7 @@ describe('brand portal sign-in routes (P5.1)', () => {
         { gstin: '36AAPFU0939F1ZW' },
         { origin: PORTAL, cookie: t.session },
       ),
-    ).toMatchObject({ status: 400, body: { why: 'gstin-taken' } });
+    ).toMatchObject({ status: 200, body: { status: 'found' } });
     expect(
       (await call('/portal/business', { name: 'x' }, { origin: PORTAL, cookie: t.session })).status,
     ).toBe(400);

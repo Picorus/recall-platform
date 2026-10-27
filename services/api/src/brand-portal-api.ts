@@ -245,7 +245,7 @@ export async function handleBrandPortal(
     const brandId = new URL(req.url ?? '/', 'http://x').searchParams.get('brand') ?? '';
     const mine = (await portalAccounts(pool, me.address)).some((a) => a.brandId === brandId);
     // Not theirs and not there look the same.
-    const page = mine ? await businessPage(pool, brandId, now) : undefined;
+    const page = mine ? await businessPage(pool, brandId, now, me.address) : undefined;
     if (!page) throw new HttpError(404, 'No such business', { code: 'no-business' });
     send(res, 200, page);
     return true;
