@@ -5,8 +5,8 @@
 import { freshDatabase } from '@recall/db/test-db';
 import { fakeFileStore, fakeGst, fakeMessages, fakePayments } from '@recall/adapters';
 import { readFileSync } from 'node:fs';
-import { createAccount, saveAreaVersion, savePriceBook } from '@recall/db';
-import { launchAreas, PRICE_BOOK_V1 } from '@recall/domain';
+import { applyLinkStatus, createAccount, saveAreaVersion, savePriceBook } from '@recall/db';
+import { launchAreas, PRICE_BOOK_V1, type CampaignReport } from '@recall/domain';
 import { randomBytes } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -21,6 +21,7 @@ let server: Server;
 let url = '';
 const NOW = Date.UTC(2027, 7, 23, 4, 30); // milliseconds
 const messages = fakeMessages();
+const payments = fakePayments();
 const PORTAL = 'https://book.recall.test';
 const ADMIN = 'https://admin.test';
 const CFG: StaffApiConfig = {
@@ -32,7 +33,7 @@ const CFG: StaffApiConfig = {
   messages,
   gst: fakeGst(),
   files: fakeFileStore({ baseUrl: 'http://files', secret: 's' }),
-  payments: fakePayments(),
+  payments,
 };
 const member = members(() => pool, NOW);
 /** The owner of Irani Chai, signed in once (a number may ask for only a few codes). */
@@ -508,5 +509,190 @@ describe('brand portal sign-in routes (P5.1)', () => {
         })
       ).status,
     ).toBe(404);
+  });
+
+  it('the final report: its page and PDF for its own people only; listed as ready (P5.7)', async () => {
+    const s = owner;
+    const list = await call('/portal/campaigns?brand=irani-chai', undefined, { cookie: s.session });
+    const booking = String((list.body.campaigns as { bookingId: string }[])[0]?.bookingId);
+    expect((list.body.campaigns as { report: boolean }[])[0]?.report).toBe(false);
+    expect(
+      await call(`/portal/report?booking=${booking}`, undefined, { cookie: s.session }),
+    ).toMatchObject({ status: 404, body: { why: 'no-report' } });
+    const report: CampaignReport = {
+      bookingId: booking,
+      brandId: 'irani-chai',
+      from: NOW / 1000 - 7200,
+      until: NOW / 1000,
+      builtAt: NOW / 1000,
+      lines: [],
+      promised: 6_000,
+      delivered: 5_400,
+      deliveredBp: 9_000,
+      missing: 600,
+      bikes: 28,
+      makeUps: { opened: 0, plays: 0 },
+      refund: undefined,
+      heatMap: [],
+      streets: [],
+      people: { low: 20_000, high: 28_000, approximate: true, text: '20,000–28,000 (approximate)' },
+    };
+    await pool.query(
+      `INSERT INTO campaign_reports (booking_id, built_at, report) VALUES ($1, to_timestamp($2), $3)`,
+      [booking, report.builtAt, JSON.stringify(report)],
+    );
+    const again = await call('/portal/campaigns?brand=irani-chai', undefined, {
+      cookie: s.session,
+    });
+    expect((again.body.campaigns as { report: boolean }[])[0]?.report).toBe(true);
+    // No brand in the link (as the "Done" message sends it): the report says whose it is.
+    const r = await call(`/portal/report?booking=${booking}`, undefined, { cookie: s.session });
+    expect(r.status).toBe(200);
+    expect(r.body).toMatchObject({ bookingId: booking, account: { brandId: 'irani-chai' } });
+    expect(String(r.body.html)).toContain('<!doctype html>');
+    expect((r.body.summary as string[]).join(' ')).toMatch(/5,400 of 6,000 plays delivered/);
+    const pdf = await fetch(`${url}/portal/report/pdf?booking=${booking}`, {
+      headers: { cookie: s.session },
+    });
+    expect(pdf.status).toBe(200);
+    expect(pdf.headers.get('content-type')).toBe('application/pdf');
+    expect(pdf.headers.get('content-disposition')).toContain(`RECALL-report-${booking}.pdf`);
+    expect(
+      Buffer.from(await pdf.arrayBuffer())
+        .subarray(0, 5)
+        .toString(),
+    ).toBe('%PDF-');
+    // Someone else's, not there, odd ids, signed out: nothing.
+    const t = await signIn('+919848066666', 'sms');
+    for (const [path, cookie] of [
+      [`/portal/report?booking=${booking}`, t.session],
+      [`/portal/report/pdf?booking=${booking}`, t.session],
+      ['/portal/report?booking=BK-NONE', s.session],
+      ['/portal/report?booking=../x', s.session],
+    ] as const)
+      expect((await fetch(`${url}${path}`, { headers: { cookie } })).status).toBe(404);
+    expect((await fetch(`${url}/portal/report?booking=${booking}`)).status).toBe(401);
+  });
+
+  it('invoices: the tax invoice once paid, one or the whole year as a PDF; only its own (P5.8)', async () => {
+    const s = owner;
+    const get = (path: string, cookie = s.session) =>
+      fetch(`${url}${path}`, { headers: { cookie } });
+    const empty = await call('/portal/invoices?brand=irani-chai', undefined, { cookie: s.session });
+    expect(empty).toMatchObject({ status: 200, body: { documents: [], years: [] } });
+    // The booking paid at the provider (its link from review and pay): a tax invoice at once.
+    const link = await pool.query<{ link_id: string; booking_id: string }>(
+      `SELECT l.link_id, l.booking_id FROM payment_links l JOIN bookings b USING (booking_id)
+        WHERE b.brand_id = 'irani-chai' ORDER BY l.created_at DESC LIMIT 1`,
+    );
+    const linkId = link.rows[0]?.link_id ?? '';
+    payments.pay(linkId);
+    expect(await applyLinkStatus(pool, linkId, await payments.status(linkId), NOW / 1000)).toBe(
+      'paid',
+    );
+    const r = await call('/portal/invoices?brand=irani-chai', undefined, { cookie: s.session });
+    expect(r.status).toBe(200);
+    const docs = r.body.documents as {
+      docNo: string;
+      kind: string;
+      totalPaise: number;
+      bookingId: string;
+    }[];
+    expect(docs).toHaveLength(1);
+    expect(docs[0]).toMatchObject({
+      kind: 'invoice',
+      bookingId: link.rows[0]?.booking_id,
+      totalPaise: 5_664_000,
+    });
+    const fy = String(r.body.fy);
+    expect(r.body.years).toEqual([fy]);
+    const one = await get(
+      `/portal/invoices/pdf?brand=irani-chai&doc=${(docs[0]?.docNo ?? '').replaceAll('/', '-')}`,
+    );
+    expect(one.status).toBe(200);
+    expect(one.headers.get('content-type')).toBe('application/pdf');
+    expect(one.headers.get('content-disposition')).toMatch(/RECALL-RC-\d{2}-\d{2}-\d{6}\.pdf/);
+    expect(
+      Buffer.from(await one.arrayBuffer())
+        .subarray(0, 5)
+        .toString(),
+    ).toBe('%PDF-');
+    const year = await get(`/portal/invoices/year-pdf?brand=irani-chai&fy=${fy}`);
+    expect(year.status).toBe(200);
+    expect(year.headers.get('content-disposition')).toContain(`RECALL-invoices-${fy}.pdf`);
+    expect((await get('/portal/invoices/year-pdf?brand=irani-chai&fy=2019-20')).status).toBe(404);
+    expect((await get('/portal/invoices/pdf?brand=irani-chai&doc=RC-99-00-000001')).status).toBe(
+      404,
+    );
+    expect((await get('/portal/invoices/pdf?brand=irani-chai&doc=../x')).status).toBe(404);
+    // Not theirs: nothing.
+    const t = await signIn('+919848055555', 'sms');
+    expect((await get('/portal/invoices?brand=irani-chai', t.session)).status).toBe(404);
+    expect(
+      (
+        await get(
+          `/portal/invoices/pdf?brand=irani-chai&doc=${(docs[0]?.docNo ?? '').replaceAll('/', '-')}`,
+          t.session,
+        )
+      ).status,
+    ).toBe(404);
+  });
+
+  it('help: answers, numbers, ad rules, a question to support; team: the owner adds and removes (P5.9)', async () => {
+    const s = owner;
+    const c = { origin: PORTAL, cookie: s.session };
+    const h = await call('/portal/help?brand=irani-chai', undefined, { cookie: s.session });
+    expect(h.status).toBe(200);
+    expect((h.body.answers as unknown[]).length).toBeGreaterThan(5);
+    expect((h.body.adRules as string[])[0]).toMatch(/15 seconds/);
+    expect(
+      await call('/portal/help?brand=irani-chai', { subject: 'Hi', text: 'x' }, c),
+    ).toMatchObject({ status: 400 });
+    const q = await call(
+      '/portal/help?brand=irani-chai',
+      { subject: 'Start sooner', text: 'Can our campaign start next week?' },
+      c,
+    );
+    expect(q.status).toBe(200);
+    const thread = await pool.query(
+      'SELECT party_kind, party_id, subject FROM support_threads WHERE thread_id = $1',
+      [q.body.threadId],
+    );
+    expect(thread.rows[0]).toEqual({
+      party_kind: 'brand',
+      party_id: 'irani-chai',
+      subject: 'Start sooner',
+    });
+    const again = await call('/portal/help?brand=irani-chai', undefined, { cookie: s.session });
+    expect((again.body.questions as { subject: string }[]).map((x) => x.subject)).toContain(
+      'Start sooner',
+    );
+    // Team: the owner adds a booker, who then sees the business; a booker cannot change the team.
+    const team = await call('/portal/team?brand=irani-chai', undefined, { cookie: s.session });
+    expect(team.status).toBe(200);
+    const n = (team.body.team as unknown[]).length;
+    const set = (address: string, role: string, active: boolean, cookie = s.session) =>
+      call('/portal/team?brand=irani-chai', { address, role, active }, { origin: PORTAL, cookie });
+    expect((await set('98480 33333', 'booker', true)).status).toBe(200);
+    const b = await signIn('+919848033333', 'sms');
+    const theirs = await call('/portal/me', undefined, { cookie: b.session });
+    expect(theirs.body.accounts).toEqual([
+      expect.objectContaining({ brandId: 'irani-chai', role: 'booker' }),
+    ]);
+    expect(await set('98480 66666', 'owner', true, b.session)).toMatchObject({
+      status: 403,
+      body: { why: 'not-owner' },
+    });
+    // Not themselves; a made-up role refused; removed: gone.
+    const meNow = await call('/portal/me', undefined, { cookie: s.session });
+    expect(await set(String(meNow.body.address), 'booker', false)).toMatchObject({
+      status: 400,
+      body: { why: 'self' },
+    });
+    expect((await set('98480 33333', 'boss', true)).status).toBe(400);
+    expect((await set('98480 33333', 'booker', false)).status).toBe(200);
+    expect((await call('/portal/me', undefined, { cookie: b.session })).body.accounts).toEqual([]);
+    const after = await call('/portal/team?brand=irani-chai', undefined, { cookie: s.session });
+    expect((after.body.team as unknown[]).length).toBe(n);
   });
 });

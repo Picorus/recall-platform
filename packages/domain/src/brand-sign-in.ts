@@ -34,6 +34,10 @@ export interface BrandSignInRules {
   readonly bookingsPerDay: number;
   /** P5.5: ad files one person may upload on the portal in a day. */
   readonly adUploadsPerDay: number;
+  /** P5.9: questions one person may send from the portal's Help in a day. */
+  readonly questionsPerDay: number;
+  /** P5.9: most people with access to one business (its owner adds them on Team). */
+  readonly teamMax: number;
 }
 
 export const DEFAULT_BRAND_SIGN_IN: BrandSignInRules = {
@@ -52,6 +56,8 @@ export const DEFAULT_BRAND_SIGN_IN: BrandSignInRules = {
   maxWeeks: 8,
   bookingsPerDay: 20,
   adUploadsPerDay: 30,
+  questionsPerDay: 10,
+  teamMax: 20,
 };
 
 /** Each rule's sensible range (checked when a super admin changes them in Settings). */
@@ -73,6 +79,8 @@ export const BRAND_SIGN_IN_RANGES: Readonly<
   maxWeeks: [1, 26],
   bookingsPerDay: [1, 200],
   adUploadsPerDay: [2, 500],
+  questionsPerDay: [1, 100],
+  teamMax: [1, 200],
 };
 
 export type BrandCodeChannel = 'whatsapp' | 'sms' | 'email';

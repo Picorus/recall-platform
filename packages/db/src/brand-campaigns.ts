@@ -23,6 +23,8 @@ export interface PortalCampaign {
   readonly totalPaise: number;
   readonly firstHourAt: number;
   readonly lastHourEndsAt: number;
+  /** Whether its final report is ready (P5.7). */
+  readonly report: boolean;
 }
 
 export async function portalCampaigns(
@@ -88,6 +90,7 @@ export async function portalCampaigns(
       totalPaise: Number(x.total_paise),
       firstHourAt: first,
       lastHourEndsAt: last,
+      report: x.report,
     };
   });
 }

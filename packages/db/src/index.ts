@@ -49,6 +49,8 @@ export * from './rider-sign-in.js';
 export * from './brand-sign-in.js';
 export * from './brand-business.js';
 export * from './brand-campaigns.js';
+export * from './brand-invoices.js';
+export * from './brand-help.js';
 export * from './brand-booking.js';
 export * from './brand-logos.js';
 export * from './brand-pay.js';

@@ -13,6 +13,7 @@ const PASS_DOWN = [
   'content-length',
   'x-content-type-options',
   'content-security-policy',
+  'content-disposition',
 ];
 const MAX_BODY = 16 * 1024;
 

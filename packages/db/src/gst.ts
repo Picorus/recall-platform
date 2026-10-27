@@ -16,6 +16,7 @@ import type { Pool, PoolClient } from 'pg';
 import { priceBooks } from './bookings.js';
 import { inTransaction } from './makeups.js';
 import { Refusal } from './refusal.js';
+import { setting } from './settings.js';
 
 type Q = Pick<PoolClient, 'query'>;
 
@@ -26,6 +27,9 @@ export interface BrandTaxProfile {
   /** Two-digit state code: the place of supply. */
   readonly stateCode: string;
   readonly address?: string;
+  /** P5.8: staff checked the GST number (certificate or GST records). Not checked: kept as typed,
+   * and not printed on invoices until it is. Absent: checked (staff's own entry). */
+  readonly gstinChecked?: boolean;
 }
 
 /** Sets a brand's tax details (the latest are used on new invoices; old ones never change). */
@@ -44,9 +48,17 @@ export async function setBrandTaxProfile(
   if (!/^\d{2}$/.test(p.stateCode)) throw new RangeError('State code must be 2 digits');
   await inTransaction(pool, (c) =>
     c.query(
-      `INSERT INTO brand_tax_profiles (brand_id, legal_name, gstin, state_code, address, set_by)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [brandId, p.legalName.trim(), p.gstin ?? null, p.stateCode, p.address ?? '', by],
+      `INSERT INTO brand_tax_profiles (brand_id, legal_name, gstin, state_code, address, set_by, source)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [
+        brandId,
+        p.legalName.trim(),
+        p.gstin ?? null,
+        p.stateCode,
+        p.address ?? '',
+        by,
+        p.gstin !== undefined && p.gstinChecked === false ? 'typed' : 'staff',
+      ],
     ),
   );
 }
@@ -151,18 +163,56 @@ export async function issueGstDocument(
   const book = priceBookAt(await priceBooks(c), isoAt(d.at));
   if (!book) throw new Error('No price book in force');
   const supplier = book.taxes.supplierStateCode;
-  let recipient: { legal_name: string; gstin: string | null; state_code: string };
+  // RECALL's details as they are today, kept with the document (P5.8).
+  const company = await setting(c, 'company');
+  let recipient: {
+    legal_name: string;
+    gstin: string | null;
+    state_code: string;
+    address: string;
+  };
+  let gstBp: number;
+  let held: { gstin: string; why: 'typed' | 'shared' } | null = null;
   let against: string | null = null;
   let split: GstSplit;
   if (d.kind === 'invoice') {
     // The brand's tax details in force when the invoice is issued. A brand with none yet is billed
     // in RECALL's state under its brand id; the summary flags it so they are added before filing.
-    const p = await c.query<{ legal_name: string; gstin: string | null; state_code: string }>(
-      `SELECT legal_name, gstin, state_code FROM brand_tax_profiles
-        WHERE brand_id = $1 AND set_at <= to_timestamp($2) ORDER BY set_at DESC LIMIT 1`,
+    const p = await c.query<{
+      legal_name: string;
+      gstin: string | null;
+      state_code: string;
+      address: string;
+      source: 'staff' | 'gst-record' | 'typed';
+      shared: boolean;
+    }>(
+      `SELECT p.legal_name, p.gstin, p.state_code, p.address, p.source,
+              EXISTS (
+                SELECT 1 FROM (SELECT DISTINCT ON (brand_id) brand_id, gstin FROM brand_tax_profiles
+                                WHERE set_at <= to_timestamp($2) ORDER BY brand_id, set_at DESC) o
+                  JOIN (SELECT DISTINCT ON (brand_id) brand_id, active FROM brand_versions
+                         ORDER BY brand_id, version DESC) v ON v.brand_id = o.brand_id AND v.active
+                 WHERE o.gstin = p.gstin AND o.brand_id <> p.brand_id) AS shared
+         FROM brand_tax_profiles p
+        WHERE p.brand_id = $1 AND p.set_at <= to_timestamp($2) ORDER BY p.set_at DESC LIMIT 1`,
       [brandId, d.at],
     );
-    recipient = p.rows[0] ?? { legal_name: brandId, gstin: null, state_code: supplier };
+    const t = p.rows[0];
+    recipient = t ?? { legal_name: brandId, gstin: null, state_code: supplier, address: '' };
+    // The rate the tax was worked out at: the booking's price book.
+    const rb = await c.query<{ book: { gstBp: number } }>(
+      `SELECT p.book FROM bookings b JOIN price_books p ON p.version = b.price_book_version
+        WHERE b.booking_id = $1`,
+      [d.bookingId],
+    );
+    gstBp = rb.rows[0]?.book.gstBp ?? book.gstBp;
+    // A GST number is printed only when it is safe (Prateek, 27 Oct 2026): set by staff, or read
+    // from the GST records and on no other account. Typed by the brand, or on two accounts, it is
+    // held back (an invoice under someone else's number would give them a tax claim on it).
+    if (t?.gstin && t.source !== 'staff' && (t.source === 'typed' || t.shared)) {
+      held = { gstin: t.gstin, why: t.source === 'typed' ? 'typed' : 'shared' };
+      recipient = { ...t, gstin: null };
+    }
     split = splitGst(d.gst, supplier, recipient.state_code);
   } else {
     // A credit note copies its invoice's recipient and place of supply, and its CGST / SGST come
@@ -171,7 +221,11 @@ export async function issueGstDocument(
       doc_no: string;
       legal_name: string;
       gstin: string | null;
+      gstin_held: string | null;
+      gstin_held_why: 'typed' | 'shared' | null;
       place_of_supply: string;
+      recipient_address: string | null;
+      gst_bp: number | null;
       taxable: string;
       cgst: string;
       sgst: string;
@@ -181,7 +235,8 @@ export async function issueGstDocument(
       c_sgst: string;
       c_igst: string;
     }>(
-      `SELECT i.doc_no, i.legal_name, i.gstin, i.place_of_supply,
+      `SELECT i.doc_no, i.legal_name, i.gstin, i.gstin_held, i.gstin_held_why, i.place_of_supply,
+              i.recipient_address, i.gst_bp,
               i.taxable_paise AS taxable, i.cgst_paise AS cgst, i.sgst_paise AS sgst, i.igst_paise AS igst,
               coalesce(sum(n.taxable_paise), 0) AS c_taxable, coalesce(sum(n.cgst_paise), 0) AS c_cgst,
               coalesce(sum(n.sgst_paise), 0) AS c_sgst, coalesce(sum(n.igst_paise), 0) AS c_igst
@@ -193,7 +248,15 @@ export async function issueGstDocument(
     const i = inv.rows[0];
     if (!i) throw new Error(`No invoice for booking ${d.bookingId} to credit`);
     against = i.doc_no;
-    recipient = { legal_name: i.legal_name, gstin: i.gstin, state_code: i.place_of_supply };
+    recipient = {
+      legal_name: i.legal_name,
+      gstin: i.gstin,
+      state_code: i.place_of_supply,
+      address: i.recipient_address ?? '',
+    };
+    // A credit note reverses the invoice's tax: at the invoice's rate.
+    gstBp = i.gst_bp ?? book.gstBp;
+    if (i.gstin_held && i.gstin_held_why) held = { gstin: i.gstin_held, why: i.gstin_held_why };
     const left = {
       taxable: Number(i.taxable) - Number(i.c_taxable),
       cgst: Number(i.cgst) - Number(i.c_cgst),
@@ -218,9 +281,10 @@ export async function issueGstDocument(
   await c.query(
     `INSERT INTO gst_documents (doc_no, kind, fy, n, source_entry, booking_id, brand_id, against_doc,
        legal_name, gstin, place_of_supply, taxable_paise, cgst_paise, sgst_paise, igst_paise,
-       total_paise, issued_at, sac)
+       total_paise, issued_at, sac, gstin_held, gstin_held_why, supplier_name, supplier_gstin,
+       supplier_address, supplier_state, gst_bp, recipient_address)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, to_timestamp($17),
-             $18)`,
+             $18, $19, $20, $21, $22, $23, $24, $25, $26)`,
     [
       docNo,
       d.kind,
@@ -240,6 +304,14 @@ export async function issueGstDocument(
       d.taxable + d.gst,
       d.at,
       book.taxes.sacCode,
+      held?.gstin ?? null,
+      held?.why ?? null,
+      company.legalName,
+      company.gstin,
+      company.address,
+      supplier,
+      gstBp,
+      recipient.address.slice(0, 500),
     ],
   );
   return docNo;
@@ -278,6 +350,9 @@ export interface GstSummary {
   readonly eInvoice: 'not needed' | 'getting close' | 'needed';
   /** Invoices billed to a brand with no tax details: add them before filing. */
   readonly missingTaxDetails: readonly string[];
+  /** P5.8: invoices issued without the brand's GST number (typed, not checked, or on two
+   * accounts): staff check it; a corrected invoice is a credit note and a new invoice. */
+  readonly gstinHeld: readonly { docNo: string; gstin: string; why: 'typed' | 'shared' }[];
 }
 
 /** The month's GST summary (P1.7.9), from the documents and the ledger. */
@@ -362,6 +437,16 @@ export async function gstSummary(c: Q, month: string): Promise<GstSummary> {
       ORDER BY doc_no`,
     [from, to],
   );
+  const heldBack = await c.query<{
+    doc_no: string;
+    gstin_held: string;
+    gstin_held_why: 'typed' | 'shared';
+  }>(
+    `SELECT doc_no, gstin_held, gstin_held_why FROM gst_documents
+      WHERE issued_at >= to_timestamp($1) AND issued_at < to_timestamp($2) AND kind = 'invoice'
+        AND gstin_held IS NOT NULL ORDER BY doc_no`,
+    [from, to],
+  );
   return {
     month,
     invoices,
@@ -376,6 +461,11 @@ export async function gstSummary(c: Q, month: string): Promise<GstSummary> {
     yearTurnover,
     eInvoice,
     missingTaxDetails: missing.rows.map((r) => r.doc_no),
+    gstinHeld: heldBack.rows.map((r) => ({
+      docNo: r.doc_no,
+      gstin: r.gstin_held,
+      why: r.gstin_held_why,
+    })),
   };
 }
 
@@ -535,6 +625,10 @@ export async function accountantExport(
           ['turnover this financial year', rupees(s.yearTurnover)],
           ['e-invoicing', s.eInvoice],
           ['invoices missing tax details', s.missingTaxDetails.join(' ')],
+          [
+            'invoices without the brand GST number (check it)',
+            s.gstinHeld.map((h) => `${h.docNo}:${h.gstin}:${h.why}`).join(' '),
+          ],
         ],
       ),
     },

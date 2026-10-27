@@ -37,6 +37,11 @@ const ALLOWED = [
   // (approximate, never billed)") and an ad tip ("people see it for a few seconds"); no numbers (P5.5-6)
   'packages/domain/src/booking-terms.ts',
   'apps/brand/app/ads/page.tsx',
+  // Help's plain answer: people seen are an estimate, never billed (P5.9)
+  'packages/domain/src/brand-help.ts',
+  // "people" here means a business's team on the portal (who may sign in), not audience counts (P5.9)
+  'packages/db/src/brand-help.ts',
+  'apps/brand/app/team/page.tsx',
 ];
 /** Lines allowed elsewhere: loading the people settings with the price book. */
 const ALLOWED_LINES = [

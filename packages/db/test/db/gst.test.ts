@@ -10,6 +10,8 @@ import {
   recordPartnerInvoice,
   setBrandTaxProfile,
 } from '../../src/gst.js';
+import { createAccount } from '../../src/brands.js';
+import { saveSetting } from '../../src/settings.js';
 import { accountTotals, post } from '../../src/ledger.js';
 import { settleDue } from '../../src/makeups.js';
 import { freshDatabase } from './fresh-db.js';
@@ -347,5 +349,139 @@ describe('GST and the books (P1.7.9)', () => {
       pool.query("UPDATE gst_documents SET legal_name = 'X' WHERE n = 1"),
     ).rejects.toThrow();
     await expect(pool.query('DELETE FROM gst_documents')).rejects.toThrow();
+  });
+
+  it('a GST number goes on an invoice only when safe: staff-set, or from the GST record and on no other account (P5.8)', async () => {
+    for (const id of ['brand-real', 'brand-copy', 'brand-typed'])
+      await createAccount(
+        pool,
+        {
+          brandId: id,
+          kind: 'brand',
+          details: { name: id, agencyId: null, referredBy: null, active: true },
+          by: 'priya',
+          reason: 'test',
+        },
+        BOOKED - 3600,
+      );
+    const gstin = '36AABCU9603R1ZO';
+    const lookup = async () =>
+      (
+        await pool.query<{ id: string }>(
+          `INSERT INTO gst_lookups (gstin, asker, status, legal_name, state_code, active, at)
+           VALUES ($1, '+919800000001', 'found', 'Real Foods Pvt Ltd', '36', true, now()) RETURNING id`,
+          [gstin],
+        )
+      ).rows[0]?.id;
+    const fromRecord = async (brand: string) =>
+      pool.query(
+        `INSERT INTO brand_tax_profiles (brand_id, set_at, legal_name, gstin, state_code, set_by, source, gst_lookup_id)
+         VALUES ($1, to_timestamp($2), 'Real Foods Pvt Ltd', $3, '36', 'portal', 'gst-record', $4)`,
+        [brand, BOOKED - 1800, gstin, await lookup()],
+      );
+    // From the record, on one account: printed.
+    await fromRecord('brand-real');
+    await book('BK-P1', 'brand-real', 9);
+    // Typed by the brand: held back.
+    await pool.query(
+      `INSERT INTO brand_tax_profiles (brand_id, set_at, legal_name, gstin, state_code, set_by, source)
+       VALUES ('brand-typed', to_timestamp($1), 'Typed Co', '27AAPFU0939F1ZV', '27', 'portal', 'typed')`,
+      [BOOKED - 1800],
+    );
+    await book('BK-P2', 'brand-typed', 10);
+    // Someone else sets up the same number later: both accounts' next invoices hold it back.
+    await pool.query(
+      `INSERT INTO brand_tax_profiles (brand_id, set_at, legal_name, gstin, state_code, set_by, source, gst_lookup_id)
+       VALUES ('brand-copy', to_timestamp($1), 'Real Foods Pvt Ltd', $2, '36', 'portal', 'gst-record', $3)`,
+      [BOOKED - 900, gstin, await lookup()],
+    );
+    await book('BK-P3', 'brand-copy', 11);
+    await book('BK-P4', 'brand-real', 12);
+    // Staff check the certificate and set the real one's details: printed again.
+    await pool.query(
+      `INSERT INTO brand_tax_profiles (brand_id, set_at, legal_name, gstin, state_code, set_by)
+       VALUES ('brand-real', to_timestamp($1), 'Real Foods Pvt Ltd', $2, '36', 'priya')`,
+      [BOOKED - 600, gstin],
+    );
+    await book('BK-P5', 'brand-real', 13);
+    const r = await pool.query<{
+      booking_id: string;
+      gstin: string | null;
+      gstin_held: string | null;
+      gstin_held_why: string | null;
+    }>(
+      `SELECT booking_id, gstin, gstin_held, gstin_held_why FROM gst_documents
+        WHERE booking_id LIKE 'BK-P%' ORDER BY booking_id`,
+    );
+    expect(r.rows).toEqual([
+      { booking_id: 'BK-P1', gstin, gstin_held: null, gstin_held_why: null },
+      { booking_id: 'BK-P2', gstin: null, gstin_held: '27AAPFU0939F1ZV', gstin_held_why: 'typed' },
+      { booking_id: 'BK-P3', gstin: null, gstin_held: gstin, gstin_held_why: 'shared' },
+      { booking_id: 'BK-P4', gstin: null, gstin_held: gstin, gstin_held_why: 'shared' },
+      { booking_id: 'BK-P5', gstin, gstin_held: null, gstin_held_why: null },
+    ]);
+    const s = await gstSummary(pool, '2027-07');
+    expect(s.gstinHeld.map((h) => h.why)).toEqual(['typed', 'shared', 'shared']);
+  });
+
+  it('a document keeps what it printed: RECALL details, the rate, the address; staff tick "checked" (P5.8)', async () => {
+    // Before RECALL's details are filled in: kept empty (never a valid tax invoice).
+    const before = await pool.query<{ supplier_name: string; gst_bp: number }>(
+      `SELECT supplier_name, gst_bp FROM gst_documents WHERE booking_id = 'BK-P5'`,
+    );
+    expect(before.rows[0]).toEqual({ supplier_name: '', gst_bp: 1_800 });
+    const company = {
+      legalName: 'Recall Media Private Limited',
+      gstin: '36AABCU9603R1ZO',
+      address: 'Plot 1, Madhapur, Hyderabad 500081, Telangana',
+    };
+    await saveSetting(pool, 'company', company, SUPER, 'registered', 0);
+    await book('BK-P6', 'brand-real', 14);
+    const doc = async (id: string) =>
+      (
+        await pool.query(
+          `SELECT supplier_name, supplier_gstin, supplier_state, gst_bp FROM gst_documents
+            WHERE booking_id = $1`,
+          [id],
+        )
+      ).rows[0];
+    const kept = {
+      supplier_name: company.legalName,
+      supplier_gstin: company.gstin,
+      supplier_state: '36',
+      gst_bp: 1_800,
+    };
+    expect(await doc('BK-P6')).toEqual(kept);
+    // RECALL moves: the old document still prints what it printed.
+    await saveSetting(
+      pool,
+      'company',
+      { ...company, address: 'Somewhere else, Hyderabad 500032' },
+      SUPER,
+      'moved',
+      1,
+    );
+    expect(await doc('BK-P6')).toEqual(kept);
+    expect((await doc('BK-P5'))?.supplier_name).toBe('');
+    // Staff saving a GST number without ticking "checked" keep it as typed: not printed.
+    await setBrandTaxProfile(
+      pool,
+      'brand-z',
+      { legalName: 'Zed Ltd', gstin: '27AAPFU0939F1ZV', stateCode: '27', gstinChecked: false },
+      'priya',
+    );
+    await setBrandTaxProfile(
+      pool,
+      'brand-y',
+      { legalName: 'Why Ltd', gstin: '27AAPFU0939F1ZV', stateCode: '27', gstinChecked: true },
+      'priya',
+    );
+    const src = await pool.query(
+      `SELECT brand_id, source FROM brand_tax_profiles WHERE brand_id IN ('brand-y', 'brand-z') ORDER BY brand_id`,
+    );
+    expect(src.rows).toEqual([
+      { brand_id: 'brand-y', source: 'staff' },
+      { brand_id: 'brand-z', source: 'typed' },
+    ]);
   });
 });

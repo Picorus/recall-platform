@@ -2,3 +2,4 @@
 export * from './report-heat.js';
 export * from './report-html.js';
 export * from './report-pdf.js';
+export * from './tax-document-pdf.js';

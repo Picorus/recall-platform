@@ -12,7 +12,11 @@ export function useMe(): Me | undefined {
     api<Me>('/me')
       .then(setMe)
       .catch((e: unknown) => {
-        if (e instanceof ApiError && e.status === 401) router.replace('/sign-in');
+        if (e instanceof ApiError && e.status === 401) {
+          // Back to this page after signing in (the report link in a message, P5.7).
+          const here = window.location.pathname + window.location.search;
+          router.replace(here === '/' ? '/sign-in' : `/sign-in?next=${encodeURIComponent(here)}`);
+        }
       });
   }, [router]);
   return me;

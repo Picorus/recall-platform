@@ -545,6 +545,41 @@ export default function SettingsPageView() {
             )}
           </Section>
 
+          <Section {...common('company')} title="Company details on invoices">
+            {(v, set) => (
+              <>
+                <p className="muted">
+                  RECALL&apos;s legal name, GSTIN and address, printed on every tax invoice and
+                  credit note. Until all three are filled in, invoices say they are not valid tax
+                  invoices yet. Leave all three empty to clear them.
+                </p>
+                <Field label="Legal name">
+                  <input
+                    className="rc-input"
+                    value={v.legalName}
+                    onChange={(e) => set({ ...v, legalName: e.target.value })}
+                  />
+                </Field>
+                <Field label="GSTIN">
+                  <input
+                    className="rc-input mono"
+                    value={v.gstin}
+                    maxLength={15}
+                    onChange={(e) => set({ ...v, gstin: e.target.value.toUpperCase() })}
+                  />
+                </Field>
+                <Field label="Registered address">
+                  <textarea
+                    className="rc-input"
+                    rows={3}
+                    value={v.address}
+                    onChange={(e) => set({ ...v, address: e.target.value })}
+                  />
+                </Field>
+              </>
+            )}
+          </Section>
+
           <Section {...common('brandSignIn')} title="Brand portal limits">
             {(v, set) => (
               <>

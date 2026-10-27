@@ -74,6 +74,9 @@ export default function CampaignsPage() {
               <Link className="rc-button rc-button--primary" href={`/book?${q}`}>
                 Book
               </Link>
+              <Link href={`/invoices?${q}`}>Invoices</Link>
+              <Link href={`/team?${q}`}>Team</Link>
+              <Link href={`/help?${q}`}>Help</Link>
               <Link href={`/business?${q}`}>Business details</Link>
             </div>
           </div>
@@ -147,6 +150,14 @@ export default function CampaignsPage() {
                         Your ads
                       </Link>
                     )}
+                  {c.report && (
+                    <Link
+                      className="rc-button rc-button--primary"
+                      href={`/campaigns/${encodeURIComponent(c.bookingId)}/report`}
+                    >
+                      See the report
+                    </Link>
+                  )}
                   <Link href={`/book?${q}&again=${encodeURIComponent(c.bookingId)}`}>
                     Book again
                   </Link>

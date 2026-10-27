@@ -97,6 +97,72 @@ export interface Campaign {
   readonly bikeHours: number;
   readonly playsPromised: number;
   readonly totalPaise: number;
+  /** Its final report is ready (P5.7). */
+  readonly report: boolean;
+}
+
+/** P5.9: Help. */
+export interface Help {
+  readonly account: Account;
+  readonly phones: readonly { label: string; phone: string; whatsapp: boolean }[];
+  readonly open: boolean;
+  readonly days: readonly number[];
+  readonly opens: string;
+  readonly closes: string;
+  readonly answers: readonly { q: string; a: string }[];
+  readonly adRules: readonly string[];
+  readonly questions: readonly {
+    at: number;
+    subject: string;
+    state: 'open' | 'waiting' | 'done';
+  }[];
+}
+
+/** P5.9: Team. */
+export interface Team {
+  readonly account: Account;
+  readonly me: string;
+  readonly team: readonly {
+    address: string;
+    shown: string;
+    role: 'owner' | 'booker';
+    since: number;
+  }[];
+  readonly max: number;
+}
+
+/** P5.8: a tax invoice or credit note. */
+export interface TaxDocument {
+  readonly docNo: string;
+  readonly kind: 'invoice' | 'credit-note';
+  readonly issuedAt: number;
+  readonly againstDoc: string | null;
+  readonly bookingId: string;
+  readonly gstin: string | null;
+  readonly gstinHeld: boolean;
+  readonly taxablePaise: number;
+  readonly cgstPaise: number;
+  readonly sgstPaise: number;
+  readonly igstPaise: number;
+  readonly totalPaise: number;
+}
+
+export interface Invoices {
+  readonly account: Account;
+  readonly years: readonly string[];
+  readonly fy: string;
+  readonly documents: readonly TaxDocument[];
+  readonly truncated: boolean;
+}
+
+/** P5.7: a campaign's final report. */
+export interface Report {
+  readonly account: Account;
+  readonly bookingId: string;
+  readonly period: string;
+  readonly summary: readonly string[];
+  /** The report as a whole page, the same one the "Done" message links to. */
+  readonly html: string;
 }
 
 export interface Campaigns {

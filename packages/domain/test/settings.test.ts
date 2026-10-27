@@ -3,6 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   checkSetting,
+  companySet,
   checkSettingChange,
   DEFAULT_SETTINGS as D,
   fillWording,
@@ -141,6 +142,22 @@ describe('settings (P3.17)', () => {
     expect(D.freeWeek).toEqual({ on: false });
     expect(checkSetting('freeWeek', { on: true })).toEqual({ on: true });
     expect(() => checkSetting('freeWeek', { on: 'yes' })).toThrow('Free week: on or off');
+    // P5.8: the company's details on invoices: empty until saved; saved only whole and valid.
+    expect(D.company).toEqual({ legalName: '', gstin: '', address: '' });
+    expect(companySet(D.company)).toBe(false);
+    const co = checkSetting('company', {
+      legalName: 'Recall Media Private Limited',
+      gstin: '36aabcu9603r1zo',
+      address: 'Plot 1, Madhapur, Hyderabad 500081, Telangana',
+    });
+    expect(co.gstin).toBe('36AABCU9603R1ZO');
+    expect(companySet(co)).toBe(true);
+    expect(() => checkSetting('company', { ...co, gstin: '36AABCU9603R1ZX' })).toThrow(
+      'Company GSTIN',
+    );
+    expect(() => checkSetting('company', { ...co, legalName: 'X' })).toThrow('legal name');
+    expect(() => checkSetting('company', { ...co, address: '' })).toThrow('address');
+    expect(checkSetting('company', { legalName: ' ', gstin: '', address: '' })).toEqual(D.company);
   });
 
   it('screen-loan bank: a name', () => {
