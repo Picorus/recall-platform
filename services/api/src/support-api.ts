@@ -16,6 +16,7 @@ import {
   stepThread,
   supportInbox,
   supportThread,
+  problemsOfThread,
   type PartyKind,
   type SupportChannel,
   type SupportState,
@@ -106,6 +107,11 @@ export async function handleSupport(
       timeline: hide
         ? page.timeline.map((e) => (e.kind === 'in' ? { ...e, by: masked(e.by) } : e))
         : page.timeline,
+      // P4.8: a screen problem from the rider app, with a link to its photo (10 minutes).
+      problems: (await problemsOfThread(pool, page.threadId)).map(({ photoKey, ...p }) => ({
+        ...p,
+        photo: photoKey && cfg.files ? cfg.files.readLink(photoKey, now + 600) : null,
+      })),
       me: me.id,
     });
     return true;

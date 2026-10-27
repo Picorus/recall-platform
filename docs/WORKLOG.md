@@ -2,6 +2,13 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 27 Oct 2026 · P4.8 · Rider app: screen care
+- PR #69 (Today, Earnings, Payouts) merged with all checks green.
+- **Screen tab** (`packages/db/src/rider-care.ts`, migration 0051, routes `GET /rider/care`, `POST /rider/problems`): how to look after the screen (charge every night, wipe dry, rain is fine, park in the shade); report a problem: not turning on, damaged, stolen, an accident, or something else (with words), with a photo from the camera or gallery. Each report starts a support conversation with him on WhatsApp (P3.15), named for staff ("Screen damaged (SCR-…)"; a theft or an accident starts with "URGENT"); the photo is kept in file storage and staff open it from the conversation (a link that works 10 minutes). At most 5 reports a day. His reports and where each stands (we are on it, waiting for you, done). His screen loan (P4.7) opens from this tab, keeping the bottom bar to four tabs.
+- **Repairs and swaps are booked by support on the call** (not by the rider in the app): staff see the report, call or message him, and book the centre. Simpler for riders, and staff decide repair or swap.
+- Tests: database 2 (a theft report starts an urgent conversation with the photo stored and the audit log entry; something else needs words, an unknown kind or a PDF refused, his reports and their states after staff mark one done, 5 a day, again the next day); API 1 (a report with a photo, one without, his list); browser 1 (report a damaged screen from the Screen tab; it reaches support with his screen's id; then the loan).
+- Next: P4.9, Help.
+
 ## 27 Oct 2026 · P4.7 · Rider app: screen loan
 - **Loan page** (`riderLoanPage` in `packages/db/src/screen-loans.ts`, route `GET /rider/loan`): his screen loan as the bank reports it (staff record it, P1.7.8): where it stands in plain words (applied, approved, running, paid off, late), the loan, the monthly EMI and months, the EMI holiday (no EMI until the first one), the next EMI date and EMIs left. The day-90 bonus (for finishing the test period and keeping the screen): given, or its amount and when it comes; not shown when there was never a test period. Before he applies: the bank's name from Settings and where its form opens. Always: the bank takes the EMI, RECALL never does.
 - **App**: a Loan tab; every word in Telugu, Hindi and English.

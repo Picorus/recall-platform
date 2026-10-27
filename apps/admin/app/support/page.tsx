@@ -85,6 +85,21 @@ function Conversation({
         </p>
       )}
       {note && <p role="status">{note}</p>}
+      {(t.problems ?? []).map((p) => (
+        <p key={p.problemId}>
+          Screen problem {p.problemId} ({p.kind}){p.screenId ? ` on ${p.screenId}` : ''}
+          {p.photo ? (
+            <>
+              {' · '}
+              <a href={p.photo} target="_blank" rel="noreferrer">
+                Open the photo
+              </a>
+            </>
+          ) : (
+            ' · no photo'
+          )}
+        </p>
+      ))}
       <ol className="stack" aria-label="History" style={{ listStyle: 'none', padding: 0 }}>
         {t.timeline.map((e, i) => (
           <li key={i} className={e.kind === 'step' ? 'muted' : ''}>

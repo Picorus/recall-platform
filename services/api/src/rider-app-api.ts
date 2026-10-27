@@ -32,6 +32,9 @@
 //   GET  /rider/payouts           next Monday's payout, his account (masked), history, TDS by quarter
 // P4.7:
 //   GET  /rider/loan              his screen loan as the bank reports it, the EMI holiday, the day-90 bonus
+// P4.8:
+//   GET  /rider/care              his screen problem reports and where each stands
+//   POST /rider/problems?kind=&note=   a problem; the photo as the body (or none: an empty JSON body)
 import type { PayoutDestination } from '@recall/adapters';
 import {
   answerPanel,
@@ -61,6 +64,8 @@ import {
   riderEarnings,
   riderPayouts,
   riderLoanPage,
+  reportScreenProblem,
+  riderProblems,
   riderMonths,
   setting,
   type RiderSession,
@@ -289,6 +294,38 @@ export async function handleRiderApp(
     if (!months.includes(month))
       throw new HttpError(400, 'Pick one of your months', { code: 'bad-month' });
     send(res, 200, await riderEarnings(pool, riderId, month, now, months));
+    return true;
+  }
+  if (path === '/rider/care' && method === 'GET') {
+    send(res, 200, { problems: await riderProblems(pool, riderId) });
+    return true;
+  }
+  if (path === '/rider/problems' && method === 'POST') {
+    const q = new URLSearchParams((req.url ?? '').split('?')[1] ?? '');
+    const report = (photo: Uint8Array | null) =>
+      refused(() =>
+        reportScreenProblem(
+          pool,
+          cfg.files,
+          { riderId, phone: s.phone, kind: q.get('kind') ?? '', note: q.get('note') ?? '', photo },
+          now,
+        ),
+      );
+    if (String(req.headers['content-type'] ?? '').startsWith('application/octet-stream')) {
+      if (uploadingRiders.has(riderId))
+        throw new HttpError(429, 'One picture at a time', { code: 'one-at-a-time' });
+      uploadingRiders.add(riderId);
+      try {
+        await withUpload(req, 'rider-documents', MAX_DOCUMENT_BYTES, async (data) => {
+          send(res, 200, await report(data));
+        });
+      } finally {
+        uploadingRiders.delete(riderId);
+      }
+    } else {
+      await jsonBody(req);
+      send(res, 200, await report(null));
+    }
     return true;
   }
   if (path === '/rider/loan' && method === 'GET') {

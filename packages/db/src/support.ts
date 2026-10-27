@@ -539,3 +539,41 @@ export async function supportThread(c: Q, threadId: string): Promise<ThreadPage 
     .map((e) => ({ at: e.at, kind: e.kind, by: e.by, text: e.text, status: e.status }));
   return { ...toRow(row), timeline };
 }
+
+/**
+ * P4.8: a rider writes from the rider app (a screen problem, a question): a new conversation with
+ * him, on WhatsApp (replies go to his phone), inside the caller's transaction. Returns its id.
+ */
+export async function threadFromRiderApp(
+  c: PoolClient,
+  r: {
+    readonly riderId: string;
+    readonly phone: string;
+    readonly subject: string;
+    readonly text: string;
+    readonly at: number;
+  },
+): Promise<string> {
+  if (!PHONE.test(r.phone)) throw new Refusal('His mobile number is not a mobile number');
+  await lockThreads(c, r.phone);
+  const threadId = newThreadId();
+  await c.query(
+    `INSERT INTO support_threads (thread_id, channel, contact, party_kind, party_id, subject,
+       created_by, created_at) VALUES ($1, 'whatsapp', $2, 'rider', $3, $4, 'rider app', to_timestamp($5))`,
+    [threadId, r.phone, r.riderId, words(r.subject, 'What it is about', 200), r.at],
+  );
+  await addStep(c, threadId, {
+    state: 'open',
+    owner: null,
+    reason: 'sent from the rider app',
+    by: 'rider app',
+    at: r.at,
+  });
+  await addMessage(c, threadId, {
+    direction: 'in',
+    body: words(r.text, 'What happened', 10_000),
+    by: r.phone,
+    at: r.at,
+  });
+  return threadId;
+}
