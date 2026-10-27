@@ -16,7 +16,7 @@ Newest first. Each entry: date · step id · what changed · tests · open issue
   - Audit log: an invite used, resets apart from first invites, staff sessions ended (migration 0061).
   - The API's laptop key is refused wherever the API can be reached from another machine; the laptop services listen on 127.0.0.1.
 - **Second review, fixed with tests:** a retired screen holding unsent plays could never send them (now 7 days); the lost form used the laptop's clock (now hours before the server's now); the new brake answered differently for numbers with and without accounts (now the same); plays counted for an ad chosen earlier and replaced (now the latest choice only).
-- Tests: domain/db/API/gateway for each fix (lost screen, retired, ads, late plays after revocation, far-ahead reports, waiting line, /48 limits, quiet brake, uploads per business and too slow, staff drafts, bank-checked name, audit rows). Test helper `chooseAds` for tests that move a booking by hand. All: check 20/20, db 305, API 84, gateway 9, brand e2e 5, admin e2e 17.
+- Tests: domain/db/API/gateway for each fix (lost screen, retired, ads, late plays after revocation, far-ahead reports, waiting line, /48 limits, quiet brake, uploads per business and too slow, staff drafts, bank-checked name, audit rows). Test helper `chooseAds` for tests that move a booking by hand. All: check 20/20, db 305, API 83, gateway 9, brand e2e 5, admin e2e 17.
 - Open (in the runbook): screen certificate renewal (2 years); key attestation at enrolment; a time window on payment callbacks (P6); a per-screen play cap and counting only fitted screens left as decisions.
 - Next: P7.3 coverage of the money and play code.
 
