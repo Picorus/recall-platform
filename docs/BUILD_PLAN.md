@@ -396,7 +396,7 @@ Phases overlap on purpose: each starts once the part it depends on is stable, no
 | P2.1–P2.8 | Player on emulator | Done | Jan – Feb 2027 |
 | P2.9–P2.14 | Counter, health, updates, fitting check on the sample unit | Code done except the people counter (P2.9); proof on the sample unit blocked | Mar – Apr 2027 |
 | P3 | Admin portal | Done | Feb – May 2027 |
-| P4 | Rider app | Doing | Mar – Jun 2027 |
+| P4 | Rider app | Done (phone notifications and real sign-in messages wait for the outside accounts, P6) | Mar – Jun 2027 |
 | P6 | Real integrations (needs company accounts) | Blocked | Mar – Jul 2027 |
 | P7 | Hardening, load test, security audit, POC readiness | To do | Jun – Jul 2027 |
 | P5 | Brand portal for self-serve | To do | Jul – Oct 2027 |

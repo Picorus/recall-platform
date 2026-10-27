@@ -55,6 +55,8 @@ export interface RiderSignInRules {
   readonly fitEarlyMinutes: number;
   readonly fitLateMinutes: number;
   readonly fittingChecksPerDay: number;
+  readonly alertOfflineMinutes: number;
+  readonly alertBatteryPct: number;
 }
 
 /** What each rider sign-in rule means, in the order shown. */
@@ -74,6 +76,8 @@ export const RIDER_SIGN_IN_LABELS: readonly (readonly [keyof RiderSignInRules, s
   ['fitEarlyMinutes', 'Minutes before his fitting slot the app can fit his screen'],
   ['fitLateMinutes', 'Minutes after his fitting slot ends the app can still fit it'],
   ['fittingChecksPerDay', 'Fitting checks one rider may start in a day'],
+  ['alertOfflineMinutes', 'Minutes a fitted screen may be silent before its rider is told'],
+  ['alertBatteryPct', 'Screen battery (%) at which its rider is told to charge'],
 ];
 
 export interface Settings {

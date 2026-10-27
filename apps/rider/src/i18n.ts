@@ -134,6 +134,29 @@ const en = {
   'err.signed-out': 'Please sign in again.',
   'err.offline': 'No internet. Check your connection and try again.',
   'err.other': 'Something went wrong. Try again.',
+  // P4.11 profile.
+  profileTitle: 'Profile and settings',
+  profileLink: 'Profile and settings',
+  yourPapers: 'Your papers',
+  validUntil: 'Valid until {d}',
+  sendNewOne: 'Send a new one',
+  paidToTitle: 'You are paid to',
+  noAccountShort: 'No checked account yet.',
+  changeBank: 'Change my bank account',
+  sureBank:
+    'Support will call you to check the new account with ₹1. Your pay keeps going to the old one until then.',
+  leaveRecall: 'Leave RECALL',
+  sureLeave: 'Support will call you to take the screen back and settle your pay and screen loan.',
+  deleteAccount: 'Delete my account',
+  sureDelete:
+    'After the screen, your pay and your loan are settled, your details are erased. Only what the law requires is kept.',
+  yesAsk: 'Yes, ask support',
+  'request.sent.bank-change': 'Asked. Support will call you.',
+  'request.sent.leave': 'Asked. Support will call you.',
+  'request.sent.delete': 'Asked. Support will call you, then delete your account.',
+  'request.open.bank-change': 'Bank change asked: support will call you.',
+  'request.open.leave': 'Leaving asked: support will call you.',
+  'request.open.delete': 'Deletion asked: support will call you.',
   // P4.9 help.
   'tab.help': 'Help',
   helpTitle: 'Help',
@@ -279,6 +302,7 @@ const en = {
   stopRule:
     'If the bike stops for more than 10 minutes, the screen rests and your hours pause. They start again as soon as you ride.',
   refresh: 'Refresh',
+  alertsTitle: 'Alerts',
   asOf: 'Last updated {t}',
   // P4.3 fitting.
   loading: 'Loading…',
@@ -468,6 +492,30 @@ const te: Record<Key, string> = {
   'err.signed-out': 'దయచేసి మళ్లీ సైన్ ఇన్ చేయండి.',
   'err.offline': 'ఇంటర్నెట్ లేదు. మీ కనెక్షన్ చూసి మళ్లీ ప్రయత్నించండి.',
   'err.other': 'ఏదో తప్పు జరిగింది. మళ్లీ ప్రయత్నించండి.',
+  // P4.11 profile.
+  profileTitle: 'ప్రొఫైల్, సెట్టింగ్స్',
+  profileLink: 'ప్రొఫైల్, సెట్టింగ్స్',
+  yourPapers: 'మీ పత్రాలు',
+  validUntil: '{d} వరకు చెల్లుతుంది',
+  sendNewOne: 'కొత్తది పంపండి',
+  paidToTitle: 'మీకు చెల్లించే ఖాతా',
+  noAccountShort: 'ఇంకా చెక్ చేసిన ఖాతా లేదు.',
+  changeBank: 'నా బ్యాంక్ ఖాతా మార్చండి',
+  sureBank:
+    'కొత్త ఖాతాను ₹1తో చెక్ చేయడానికి సపోర్ట్ మీకు కాల్ చేస్తుంది. అప్పటివరకు చెల్లింపు పాత ఖాతాకే వెళ్తుంది.',
+  leaveRecall: 'RECALL వదిలేయండి',
+  sureLeave:
+    'స్క్రీన్ తిరిగి తీసుకుని, మీ చెల్లింపు, స్క్రీన్ లోన్ సెటిల్ చేయడానికి సపోర్ట్ మీకు కాల్ చేస్తుంది.',
+  deleteAccount: 'నా ఖాతా తొలగించండి',
+  sureDelete:
+    'స్క్రీన్, చెల్లింపు, లోన్ సెటిల్ అయ్యాక మీ వివరాలు తొలగిస్తాం. చట్టం కోరినవి మాత్రమే ఉంచుతాం.',
+  yesAsk: 'అవును, సపోర్ట్‌ను అడగండి',
+  'request.sent.bank-change': 'అడిగాం. సపోర్ట్ మీకు కాల్ చేస్తుంది.',
+  'request.sent.leave': 'అడిగాం. సపోర్ట్ మీకు కాల్ చేస్తుంది.',
+  'request.sent.delete': 'అడిగాం. సపోర్ట్ మీకు కాల్ చేసి, తర్వాత మీ ఖాతా తొలగిస్తుంది.',
+  'request.open.bank-change': 'బ్యాంక్ మార్పు అడిగారు: సపోర్ట్ కాల్ చేస్తుంది.',
+  'request.open.leave': 'వెళ్లిపోవడం అడిగారు: సపోర్ట్ కాల్ చేస్తుంది.',
+  'request.open.delete': 'తొలగింపు అడిగారు: సపోర్ట్ కాల్ చేస్తుంది.',
   // P4.9 help.
   'tab.help': 'సహాయం',
   helpTitle: 'సహాయం',
@@ -617,6 +665,7 @@ const te: Record<Key, string> = {
   stopRule:
     'బైక్ 10 నిమిషాల కంటే ఎక్కువ ఆగితే, స్క్రీన్ విశ్రాంతి తీసుకుంటుంది, మీ గంటలు ఆగుతాయి. మీరు నడపగానే మళ్లీ మొదలవుతాయి.',
   refresh: 'రిఫ్రెష్ చేయండి',
+  alertsTitle: 'హెచ్చరికలు',
   asOf: 'చివరిగా నవీకరించినది {t}',
   // P4.3 fitting.
   loading: 'లోడ్ అవుతోంది…',
@@ -804,6 +853,29 @@ const hi: Record<Key, string> = {
   'err.signed-out': 'कृपया फिर से साइन इन करें।',
   'err.offline': 'इंटरनेट नहीं है। अपना कनेक्शन देखकर फिर कोशिश करें।',
   'err.other': 'कुछ गड़बड़ हो गई। फिर कोशिश करें।',
+  // P4.11 profile.
+  profileTitle: 'प्रोफ़ाइल और सेटिंग',
+  profileLink: 'प्रोफ़ाइल और सेटिंग',
+  yourPapers: 'आपके काग़ज़',
+  validUntil: '{d} तक मान्य',
+  sendNewOne: 'नया भेजें',
+  paidToTitle: 'आपको भुगतान होता है',
+  noAccountShort: 'अभी कोई जाँचा हुआ खाता नहीं।',
+  changeBank: 'मेरा बैंक खाता बदलें',
+  sureBank:
+    'सपोर्ट आपको कॉल करके नए खाते को ₹1 से जाँचेगा। तब तक भुगतान पुराने खाते में जाता रहेगा।',
+  leaveRecall: 'RECALL छोड़ें',
+  sureLeave: 'सपोर्ट आपको कॉल करके स्क्रीन वापस लेगा और आपका भुगतान और स्क्रीन लोन निपटाएगा।',
+  deleteAccount: 'मेरा खाता हटाएँ',
+  sureDelete:
+    'स्क्रीन, भुगतान और लोन निपटने के बाद आपकी जानकारी मिटा दी जाएगी। सिर्फ़ क़ानून जो माँगे वही रखा जाता है।',
+  yesAsk: 'हाँ, सपोर्ट से कहें',
+  'request.sent.bank-change': 'कह दिया। सपोर्ट आपको कॉल करेगा।',
+  'request.sent.leave': 'कह दिया। सपोर्ट आपको कॉल करेगा।',
+  'request.sent.delete': 'कह दिया। सपोर्ट कॉल करेगा, फिर आपका खाता हटाएगा।',
+  'request.open.bank-change': 'बैंक बदलना माँगा: सपोर्ट कॉल करेगा।',
+  'request.open.leave': 'छोड़ना माँगा: सपोर्ट कॉल करेगा।',
+  'request.open.delete': 'हटाना माँगा: सपोर्ट कॉल करेगा।',
   // P4.9 help.
   'tab.help': 'मदद',
   helpTitle: 'मदद',
@@ -947,6 +1019,7 @@ const hi: Record<Key, string> = {
   stopRule:
     'बाइक 10 मिनट से ज़्यादा रुके तो स्क्रीन आराम करती है और आपके घंटे रुक जाते हैं। चलाते ही फिर शुरू हो जाते हैं।',
   refresh: 'रीफ़्रेश करें',
+  alertsTitle: 'सूचनाएँ',
   asOf: 'आख़िरी अपडेट {t}',
   // P4.3 fitting.
   loading: 'लोड हो रहा है…',

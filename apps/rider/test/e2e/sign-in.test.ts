@@ -473,6 +473,12 @@ it("a rider on the road sees his screen, today's and this week's hours and earni
      VALUES ($1, $2, 'live', to_timestamp($3), to_timestamp($3), '{"lat":17.43,"lng":78.44,"moving":true}')`,
     [box.screenId, minutes + 1, now - 60],
   );
+  // P4.10: an alert he was sent (his payout).
+  await db.pool.query(
+    `INSERT INTO rider_alerts (alert_id, rider_id, kind, ref, vals, at)
+     VALUES ('ALR-0000000000E2', $1, 'payout-paid', 'run:e2e', '{"amount":"₹1,234.50"}', to_timestamp($2))`,
+    [riderId, now - 600],
+  );
   const { page, errors } = await phonePage();
   await page.getByLabel('Mobile number').fill('91000 66666');
   await page.getByRole('button', { name: 'Send code on WhatsApp' }).click();
@@ -484,6 +490,7 @@ it("a rider on the road sees his screen, today's and this week's hours and earni
   await expect(page.getByText(h).count()).resolves.toBeGreaterThanOrEqual(2);
   // ₹25 an hour: 90 minutes is ₹37.50 (when the day has had 90 minutes yet).
   if (minutes === 90) await page.getByText('₹37.50').first().waitFor();
+  await page.getByText('₹1,234.50 is on its way to your account.').waitFor();
   await page.getByText('Keep moving').waitFor();
   await shot(page, 'rider-today');
   // P4.5: Earnings, this month, and the statement opens in the browser.
@@ -534,6 +541,18 @@ it("a rider on the road sees his screen, today's and this week's hours and earni
   await page.getByText(/Every Monday, to your checked bank account or UPI/).waitFor();
   await shot(page, 'rider-help');
   await page.getByRole('tab', { name: 'Today' }).click();
+  await page.getByText('On and playing').waitFor();
+  // P4.11: profile and settings: Telugu, then back to English; asking to leave.
+  await page.getByRole('button', { name: 'Profile and settings' }).click();
+  await page.getByText('Your papers').waitFor();
+  await page.getByRole('radio', { name: 'తెలుగు' }).click();
+  await page.getByText('మీ పత్రాలు').waitFor();
+  await page.getByRole('radio', { name: 'English' }).click();
+  await page.getByRole('button', { name: 'Leave RECALL' }).click();
+  await page.getByRole('button', { name: 'Yes, ask support' }).click();
+  await page.getByText('Leaving asked: support will call you.').waitFor();
+  await shot(page, 'rider-profile');
+  await page.getByRole('button', { name: 'Back' }).first().click();
   await page.getByText('On and playing').waitFor();
   expect(errors).toEqual([]);
 }, 120_000);

@@ -2,7 +2,13 @@
 // off; battery, signal), his counted moving hours and earnings today and this week (by his pay
 // rules, before tax; the sales share comes later), and the 10-minute stop rule. Looks again every
 // minute while open.
-import { formatRupees, paise, type RiderLanguage } from '@recall/domain';
+import {
+  alertWords,
+  formatRupees,
+  paise,
+  type RiderAlertKind,
+  type RiderLanguage,
+} from '@recall/domain';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 import { ApiError, call, type Me } from '../api';
@@ -90,14 +96,21 @@ export function Today({
   lang,
   token,
   me,
+  onProfile,
   onSignOut,
 }: {
   readonly lang: RiderLanguage;
   readonly token: string;
   readonly me: Me;
+  /** P4.11: opens his profile and settings. */
+  readonly onProfile?: () => void;
   readonly onSignOut: () => void;
 }) {
   const [page, setPage] = useState<TodayPage>();
+  // P4.10: his latest alerts (the same words his phone's notifications use).
+  const [alerts, setAlerts] = useState<
+    readonly { kind: RiderAlertKind; vals: Record<string, string | number>; at: number }[]
+  >([]);
   const [error, setError] = useState('');
   const signOut = useRef(onSignOut);
   signOut.current = onSignOut;
@@ -114,9 +127,15 @@ export function Today({
   const load = useCallback(async () => {
     const mine = ++asked.current;
     try {
-      const p = await call<TodayPage>('/rider/today', { token });
+      const [p, a] = await Promise.all([
+        call<TodayPage>('/rider/today', { token }),
+        call<{
+          alerts: { kind: RiderAlertKind; vals: Record<string, string | number>; at: number }[];
+        }>('/rider/alerts', { token }),
+      ]);
       if (mine !== asked.current) return;
       setPage(p);
+      setAlerts(a.alerts.slice(0, 3));
       setError('');
     } catch (e) {
       if (mine !== asked.current) return;
@@ -140,6 +159,11 @@ export function Today({
       <View style={{ gap: 4 }}>
         <Muted small>{say(lang, 'hello')}</Muted>
         <Title>{me.name ?? say(lang, 'welcome')}</Title>
+        {onProfile && (
+          <View style={{ alignSelf: 'flex-start' }}>
+            <LinkButton label={say(lang, 'profileLink')} onPress={onProfile} />
+          </View>
+        )}
       </View>
       {me.status === 'paused' && <Alert>{say(lang, 'status_paused')}</Alert>}
       {error !== '' && <Alert>{error}</Alert>}
@@ -230,6 +254,23 @@ export function Today({
                   })}
             </Muted>
           </View>
+
+          {alerts.length > 0 && (
+            <View style={s.card} accessibilityLabel={say(lang, 'alertsTitle')}>
+              <Label>{say(lang, 'alertsTitle')}</Label>
+              {alerts.map((a) => {
+                const w = alertWords(lang, a.kind, a.vals);
+                return (
+                  <View key={`${a.kind}-${a.at}`} style={{ gap: 2, paddingVertical: 4 }}>
+                    <Words weight="semibold" style={{ color: color.text, fontSize: 15 }}>
+                      {`${indiaClock(a.at)} · ${w.title}`}
+                    </Words>
+                    <Muted small>{w.body}</Muted>
+                  </View>
+                );
+              })}
+            </View>
+          )}
 
           <View style={[s.card, { borderColor: color.volt }]}>
             <Label>{say(lang, 'stopRuleTitle')}</Label>

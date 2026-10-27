@@ -1,8 +1,8 @@
 // P4.4–P4.8: a rider on the road moves between his pages with tabs at the bottom: Today, Earnings,
 // Payouts, Screen (care, problems and the screen loan), Help.
 import type { RiderLanguage } from '@recall/domain';
-import { useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { BackHandler, Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Me } from '../api';
 import { say, type Key } from '../i18n';
@@ -12,6 +12,7 @@ import { Earnings } from './Earnings';
 import { Help } from './Help';
 import { Care } from './Care';
 import { Payouts } from './Payouts';
+import { Profile } from './Profile';
 import { Today } from './Today';
 
 const TABS = [
@@ -27,19 +28,49 @@ export function OnRoad({
   lang,
   token,
   me,
+  onLanguage,
   onSignOut,
 }: {
   readonly lang: RiderLanguage;
   readonly token: string;
   readonly me: Me;
+  readonly onLanguage: (l: RiderLanguage) => void;
   readonly onSignOut: () => void;
 }) {
   const [tab, setTab] = useState<Tab>('today');
+  const [profile, setProfile] = useState(false);
+  // Android's back button closes the profile (not the app).
+  useEffect(() => {
+    if (!profile) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      setProfile(false);
+      return true;
+    });
+    return () => sub.remove();
+  }, [profile]);
+  if (profile)
+    return (
+      <Profile
+        lang={lang}
+        token={token}
+        onLanguage={onLanguage}
+        onBack={() => setProfile(false)}
+        onSignOut={onSignOut}
+      />
+    );
   const insets = useSafeAreaInsets();
   return (
     <View style={{ flex: 1, backgroundColor: color.ground }}>
       <View style={{ flex: 1 }}>
-        {tab === 'today' && <Today lang={lang} token={token} me={me} onSignOut={onSignOut} />}
+        {tab === 'today' && (
+          <Today
+            lang={lang}
+            token={token}
+            me={me}
+            onProfile={() => setProfile(true)}
+            onSignOut={onSignOut}
+          />
+        )}
         {tab === 'earnings' && <Earnings lang={lang} token={token} onSignOut={onSignOut} />}
         {tab === 'payouts' && <Payouts lang={lang} token={token} onSignOut={onSignOut} />}
         {tab === 'screen' && <Care lang={lang} token={token} onSignOut={onSignOut} />}

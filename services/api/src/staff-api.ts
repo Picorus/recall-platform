@@ -16,6 +16,7 @@ import type {
   MessagesAdapter,
   PaymentsAdapter,
   PayoutsAdapter,
+  PushAdapter,
 } from '@recall/adapters';
 import {
   accessProblem,
@@ -118,6 +119,8 @@ export interface StaffApiConfig {
   readonly connections?: readonly Connection[];
   /** WhatsApp and SMS out (P4.1: riders' sign-in codes). Absent: riders cannot sign in. */
   readonly messages?: MessagesAdapter;
+  /** Phone notifications to riders (P4.10). Absent: alerts are only listed in the app. */
+  readonly push?: PushAdapter;
   /** Origins of the rider app's web build (tests, screenshots); the phone app sends none. */
   readonly riderOrigins?: readonly string[];
 }
