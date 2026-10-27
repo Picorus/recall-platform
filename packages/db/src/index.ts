@@ -41,3 +41,4 @@ export * from './money.js';
 export * from './money-back.js';
 export * from './partners.js';
 export * from './report-desk.js';
+export * from './dashboard.js';

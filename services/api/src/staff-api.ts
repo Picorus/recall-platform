@@ -58,6 +58,7 @@ import { handleRiders } from './riders-api.js';
 import { handlePayouts } from './payouts-api.js';
 import { handleMoney } from './money-api.js';
 import { handleReportsDesk } from './reports-desk-api.js';
+import { handleDashboard } from './dashboard-api.js';
 import {
   decoyHash,
   hashPassword,
@@ -483,6 +484,7 @@ export function apiHandler(
       if (await handlePayouts(pool, cfg, req, res, nowMs)) return;
       if (await handleMoney(pool, cfg, req, res, nowMs)) return;
       if (await handleReportsDesk(pool, cfg, req, res, nowMs)) return;
+      if (await handleDashboard(pool, cfg, req, res, nowMs)) return;
       throw new HttpError(404, 'Not found');
     })().catch((e: unknown) => {
       if (e instanceof HttpError) return send(res, e.status, { error: e.message });

@@ -2,6 +2,12 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 27 Oct 2026 · P3.14.2 · Business dashboard
+- **Dashboard** (`packages/db/src/dashboard.ts`, `services/api/src/dashboard-api.ts`, `apps/admin/app/dashboard`): the business month by month (India time, the last 6 months): bookings paid, bike-hours sold, the screens' on-time and moving bike-hours (from their minute summaries), screen time sold (bike-hours sold for days already over, as a share of the screens' on-time), money in (with GST), revenue earned as plays were delivered, refunds approved (how many, how much, share of revenue). This month's numbers as tiles. Sales and Finance look (and a super admin). Read-only; billing stays by bike-hours only.
+- Tests: database 1 (a paid booking, an unpaid draft left out, revenue, a refund, screen time; screen time sold counts only days already over); API 1; browser (the page).
+- Open: GitHub Actions stopped starting jobs on 26 Oct at 23:18 UTC (likely the account's Actions minutes): PR #63 waits for checks; Prateek to look at GitHub billing.
+- Next: P3.15, support inbox.
+
 ## 27 Oct 2026 · P3.14.1 · Final reports in admin
 - P3.13 merged (PR #62).
 - P3.14 is done in two parts: **.1** final reports (this), **.2** business dashboards (fill, revenue, refunds, moving hours).
@@ -9,7 +15,7 @@ Newest first. Each entry: date · step id · what changed · tests · open issue
 - **Reports page** (`packages/db/src/report-desk.ts`, `services/api/src/reports-desk-api.ts`, `apps/admin/app/reports`): every campaign that has ended, with where its report stands (waiting for its last checks, built and being sent, sent, no contact, could not be delivered), plays delivered, and each channel's last try. A report opens as the brand sees it (in a sandboxed frame), downloads as its PDF, and Sales or Support admins send it again on WhatsApp or email to the brand's contact now: its own message (never the first replayed), recorded with who asked, not twice within two minutes, never while the automatic sender runs. Sales, Support and Finance look.
 - Tests: database 1 (the list and a staff re-send); API 1 (who looks and opens, who re-sends, refusals, nothing without messages set up) + config; browser (an ended campaign, its report, sent again by email).
 - Open: the real maps and messages providers (P6).
-- Next: P3.14.2, business dashboards.
+- Next: P3.14.2, business dashboard.
 
 ## 27 Oct 2026 · P3.13.3 · Agencies and aggregators: statements and payments
 - Prateek confirmed (27 Oct): the automatic Monday pay run needs one approver; only a super admin records a refund the provider never answered about (DECISIONS).

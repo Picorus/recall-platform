@@ -1011,3 +1011,26 @@ it('the Reports page: an ended campaign, its report as the brand sees it, sent a
   }
   expect(errors).toEqual([]);
 }, 120_000);
+
+it('the Dashboard: this month so far and month by month', async () => {
+  const page = await browser.newPage();
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  shift += 30_000;
+  await page.goto(`${SITE}/sign-in`);
+  await page.getByLabel('Email').fill('prateek@recall.in');
+  await page.getByLabel('Password').fill(PW);
+  await page.getByLabel('Code from your authenticator app').fill(totpCode(SECRET.value, step()));
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.getByText('Prateek · Super admin').waitFor();
+  await page.getByRole('link', { name: 'Dashboard' }).click();
+  await page.getByRole('region', { name: 'This month' }).getByText('Bike-hours sold').waitFor();
+  await expect
+    .poll(() => page.getByRole('table', { name: 'Month by month' }).getByRole('row').count())
+    .toBe(7);
+  if (process.env.SCREENSHOT_DIR) {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.screenshot({ path: `${process.env.SCREENSHOT_DIR}/dashboard.png`, fullPage: true });
+  }
+  expect(errors).toEqual([]);
+}, 120_000);
