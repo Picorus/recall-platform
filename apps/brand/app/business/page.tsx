@@ -1,6 +1,7 @@
 'use client';
 // P5.2: a business's details as RECALL has them (on its invoices), and its free week while it can
 // still have it. Changing details comes with Help and account (P5.9).
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { api, ApiError, type Business, type BusinessForm } from '../../lib/api';
 import { Shell, useMe } from '../../lib/session';
@@ -69,6 +70,7 @@ export default function BusinessPage() {
               <dd>{b.phone ? b.phone.replace(/^\+91(\d{5})(\d{5})$/, '+91 $1 $2') : '—'}</dd>
             </dl>
             <p className="muted">To change these, ask us from Help (coming soon).</p>
+            <Link href={`/campaigns?brand=${encodeURIComponent(b.brandId)}`}>Your campaigns</Link>
           </section>
         </>
       )}

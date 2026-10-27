@@ -26,6 +26,12 @@ export interface BrandSignInRules {
   readonly gstLookupsPerDay: number;
   /** P5.2: businesses one person may set up in a day. */
   readonly businessesPerDay: number;
+  /** P5.4: the most bikes a portal booking may ask for each hour (the fewest is the price book's). */
+  readonly maxBikesPerHour: number;
+  /** P5.4: the most weeks one portal booking may run (more through RECALL's team). */
+  readonly maxWeeks: number;
+  /** P5.4: bookings one person may make on the portal in a day. */
+  readonly bookingsPerDay: number;
 }
 
 export const DEFAULT_BRAND_SIGN_IN: BrandSignInRules = {
@@ -40,6 +46,9 @@ export const DEFAULT_BRAND_SIGN_IN: BrandSignInRules = {
   idleDays: 30,
   gstLookupsPerDay: 20,
   businessesPerDay: 3,
+  maxBikesPerHour: 100,
+  maxWeeks: 8,
+  bookingsPerDay: 20,
 };
 
 /** Each rule's sensible range (checked when a super admin changes them in Settings). */
@@ -57,6 +66,9 @@ export const BRAND_SIGN_IN_RANGES: Readonly<
   idleDays: [1, 90],
   gstLookupsPerDay: [3, 200],
   businessesPerDay: [1, 20],
+  maxBikesPerHour: [5, 1000],
+  maxWeeks: [1, 26],
+  bookingsPerDay: [1, 200],
 };
 
 export type BrandCodeChannel = 'whatsapp' | 'sms' | 'email';

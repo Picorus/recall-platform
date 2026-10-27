@@ -71,6 +71,9 @@ export interface BrandSignInRules {
   readonly idleDays: number;
   readonly gstLookupsPerDay: number;
   readonly businessesPerDay: number;
+  readonly maxBikesPerHour: number;
+  readonly maxWeeks: number;
+  readonly bookingsPerDay: number;
 }
 
 /** What each brand sign-in rule means, in the order shown (P5.1). */
@@ -86,6 +89,9 @@ export const BRAND_SIGN_IN_LABELS: readonly (readonly [keyof BrandSignInRules, s
   ['idleDays', 'Signed out after this many days unused (at most 90)'],
   ['gstLookupsPerDay', 'GST numbers one person may look up in a day'],
   ['businessesPerDay', 'Businesses one person may set up in a day'],
+  ['maxBikesPerHour', 'Most bikes a brand may book each hour on the portal'],
+  ['maxWeeks', 'Most weeks one portal booking may run'],
+  ['bookingsPerDay', 'Bookings one person may make on the portal in a day'],
 ];
 
 /** What each rider sign-in rule means, in the order shown. */

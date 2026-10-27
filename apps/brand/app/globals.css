@@ -106,3 +106,58 @@ a.rc-button {
   text-decoration: none;
   text-align: center;
 }
+.book {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: 1fr;
+}
+@media (min-width: 900px) {
+  .book {
+    grid-template-columns: 2fr 1fr;
+    align-items: start;
+  }
+  .summary {
+    position: sticky;
+    top: var(--space-3);
+  }
+}
+.area-map {
+  width: 100%;
+  height: auto;
+  background: var(--surface-0);
+  border: var(--line-width) solid var(--line);
+  border-radius: var(--radius-md);
+}
+.area path {
+  fill: var(--surface-1);
+  stroke: var(--line-strong);
+  stroke-width: 1.5;
+  cursor: pointer;
+}
+.area.on path {
+  fill: var(--brand-soft);
+  stroke: var(--brand-ink);
+  stroke-width: 2.5;
+}
+.area:focus-visible path {
+  stroke: var(--focus);
+  stroke-width: 3;
+}
+.area:focus {
+  outline: none;
+}
+.area text {
+  font: 600 20px var(--font-body);
+  fill: var(--ink);
+  pointer-events: none;
+}
+.hours {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.fields {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
