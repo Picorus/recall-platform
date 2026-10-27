@@ -197,10 +197,12 @@ export async function judgePlays(
   plays: readonly { seq: number; play: PlayReport }[],
   areas: readonly AreaVersion[],
   now: number,
+  /** The price books, when the caller has them (P7.2: read once, not for every upload). */
+  knownBooks?: readonly PriceBook[],
 ): Promise<Map<number, PlayJudgement>> {
   const out = new Map<number, PlayJudgement>();
   if (plays.length === 0) return out;
-  const books = await priceBooks(c);
+  const books = knownBooks ?? (await priceBooks(c));
   const keys = await c.query<{ key_id: string; public_key: string; until: string | null }>(
     `SELECT k.key_id, k.public_key, extract(epoch FROM r.plays_until)::bigint AS until
        FROM screen_keys k LEFT JOIN screen_key_revocations r USING (screen_id, key_id)

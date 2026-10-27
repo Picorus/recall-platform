@@ -1,7 +1,7 @@
 // Starts the gateway from the environment (names in .env.example; values never in the repository).
 import pg from 'pg';
 import { MIN_SECRET } from './emqx-config.js';
-import { startGateway } from './gateway.js';
+import { AT_ONCE, startGateway } from './gateway.js';
 
 const need = (name: string) => {
   const v = process.env[name];
@@ -15,7 +15,9 @@ const secret = (name: string) => {
   return v;
 };
 
-const pool = new pg.Pool({ connectionString: need('DATABASE_URL') });
+// P7.2: one connection for each message handled at once, plus a few for hooks and commands (the
+// default of 10 held the gateway to 10 messages at a time, whatever AT_ONCE said).
+const pool = new pg.Pool({ connectionString: need('DATABASE_URL'), max: AT_ONCE + 4 });
 // A connection the database drops while idle (a restart, a failover) is logged and replaced, never
 // allowed to stop the gateway.
 pool.on('error', (e) => console.error(`gateway: database connection lost: ${e.message}`));

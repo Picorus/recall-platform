@@ -12,7 +12,8 @@
     "test": "vitest run --passWithNoTests test/unit",
     "test:db": "vitest run test/db",
     "test:emqx": "vitest run test/emqx",
-    "start": "tsx src/run.ts"
+    "start": "tsx src/run.ts",
+    "load": "tsx src/load.ts"
   },
   "dependencies": {
     "@recall/adapters": "workspace:*",

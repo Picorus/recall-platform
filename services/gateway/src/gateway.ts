@@ -12,7 +12,7 @@ import { freshCommands } from '@recall/db';
 import { downTopic, MAX_COMMAND_LIFE_MS } from '@recall/domain';
 
 /** Messages handled at once; more wait their turn (each holds a database connection). */
-const AT_ONCE = 16;
+export const AT_ONCE = 16;
 /** Messages waiting beyond this are dropped unanswered: their boxes send them again. */
 const MOST_WAITING = 10_000;
 /** How often commands just issued in admin are sent out. */

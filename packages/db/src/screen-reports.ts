@@ -11,7 +11,7 @@ import {
   type Report,
 } from '@recall/domain';
 import type { Pool } from 'pg';
-import { allAreaVersions } from './areas.js';
+import { rulesNow } from './rules-cache.js';
 import { storeCommandResult } from './commands.js';
 import { storeFitting } from './fitting.js';
 import { heardFrom, storeHealth } from './health.js';
@@ -37,9 +37,19 @@ export interface Stored {
   readonly rejected: number;
 }
 
+/** Postgres codes for "two transactions got in each other's way; try again": a deadlock, and a
+ * serialization failure. */
+const TRY_AGAIN = new Set(['40P01', '40001']);
+/** Tries for one upload when it meets another in the database's way. */
+export const UPLOAD_TRIES = 3;
+
 /**
  * Stores one upload from one screen. `oldestHeld` is the smallest number the screen still keeps.
  * Uploads from the same screen are handled one at a time (row lock on its inbox).
+ *
+ * P7.2 (load test): when a new day starts, many uploads at once make the day's first plays and
+ * minutes, and the database's new day-pieces (TimescaleDB chunks) can deadlock two of them. Nothing
+ * was stored by the loser (its transaction is undone whole), so it is simply tried again.
  */
 export async function storeUpload(
   pool: Pool,
@@ -47,6 +57,25 @@ export async function storeUpload(
   batch: readonly Numbered[],
   oldestHeld: number,
   now: number = Math.floor(Date.now() / 1000),
+): Promise<Stored> {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await storeUploadOnce(pool, screenId, batch, oldestHeld, now);
+    } catch (e) {
+      const code = (e as { code?: unknown }).code;
+      if (attempt >= UPLOAD_TRIES || typeof code !== 'string' || !TRY_AGAIN.has(code)) throw e;
+      // A short, slightly random wait so the two do not meet again at once.
+      await new Promise((ok) => setTimeout(ok, 20 * attempt + Math.floor(Math.random() * 30)));
+    }
+  }
+}
+
+async function storeUploadOnce(
+  pool: Pool,
+  screenId: string,
+  batch: readonly Numbered[],
+  oldestHeld: number,
+  now: number,
 ): Promise<Stored> {
   const c = await pool.connect();
   try {
@@ -98,10 +127,23 @@ export async function storeUpload(
     const judged =
       newPlays.length === 0
         ? new Map<number, PlayJudgement>()
-        : await judgePlays(c, screenId, newPlays, await allAreaVersions(c), now);
+        : await (async () => {
+            const rules = await rulesNow(c);
+            return judgePlays(c, screenId, newPlays, rules.areas, now, rules.books);
+          })();
 
     let rejected = 0;
     const seen = new Set<number>();
+    // P7.2: every new report of the upload in one statement, then its plays in one (they were one
+    // statement each: most of an upload's trips to the database).
+    const reports: {
+      seq: number;
+      kind: string;
+      at: number | null;
+      body: string;
+      why: string | null;
+    }[] = [];
+    const plays: unknown[][] = [];
     for (const n of batch) {
       if (!isNew(n) || seen.has(n.seq)) continue;
       seen.add(n.seq);
@@ -110,45 +152,76 @@ export async function storeUpload(
       if (problem) {
         rejected += 1;
         setAside.add(n.seq);
-        await c.query(
-          `INSERT INTO screen_reports (screen_id, seq, kind, made_at, body, reject_reason)
-           VALUES ($1, $2, 'rejected', now(), $3, $4) ON CONFLICT DO NOTHING`,
-          [screenId, n.seq, JSON.stringify({ raw: rawCopy(n.report) }), problem],
-        );
+        reports.push({
+          seq: n.seq,
+          kind: 'rejected',
+          at: null,
+          body: JSON.stringify({ raw: rawCopy(n.report) }),
+          why: problem,
+        });
         continue;
       }
-      await c.query(
-        `INSERT INTO screen_reports (screen_id, seq, kind, made_at, body)
-         VALUES ($1, $2, $3, to_timestamp($4), $5) ON CONFLICT DO NOTHING`,
-        [screenId, n.seq, n.report.kind, n.at, JSON.stringify(n.report)],
-      );
+      reports.push({
+        seq: n.seq,
+        kind: n.report.kind,
+        at: n.at,
+        body: JSON.stringify(n.report),
+        why: null,
+      });
       if (n.report.kind === 'play' && j && !j.refused) {
         const p = n.report;
-        await c.query(
-          `INSERT INTO plays (screen_id, seq, start_at, key_id, slot, ref, ad_id, length_s, lat_e6,
-             lng_e6, accuracy_m, screen_place, cloud_place, counts, line_id, reason, people)
-           VALUES ($1, $2, to_timestamp($3), $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
-          [
-            screenId,
-            n.seq,
-            p.startAt,
-            p.keyId,
-            p.slot,
-            p.ref,
-            p.adId,
-            p.lengthS,
-            p.latE6,
-            p.lngE6,
-            p.accuracyM,
-            p.place,
-            j.cloudPlace,
-            j.count.counts,
-            j.count.counts === 'no' ? null : j.count.lineId,
-            j.count.counts === 'no' ? j.count.reason : null,
-            p.people,
-          ],
-        );
+        plays.push([
+          n.seq,
+          p.startAt,
+          p.keyId,
+          p.slot,
+          p.ref,
+          p.adId,
+          p.lengthS,
+          p.latE6,
+          p.lngE6,
+          p.accuracyM,
+          p.place,
+          j.cloudPlace,
+          j.count.counts,
+          j.count.counts === 'no' ? null : j.count.lineId,
+          j.count.counts === 'no' ? j.count.reason : null,
+          p.people,
+        ]);
       }
+    }
+    if (reports.length > 0)
+      // A set-aside report is stamped with the time it was received (its own time may be junk).
+      await c.query(
+        `INSERT INTO screen_reports (screen_id, seq, kind, made_at, body, reject_reason)
+         SELECT $1, r.seq, r.kind, coalesce(to_timestamp(r.at), now()), r.body, r.why
+           FROM unnest($2::bigint[], $3::text[], $4::double precision[], $5::jsonb[], $6::text[])
+             AS r (seq, kind, at, body, why)
+         ON CONFLICT DO NOTHING`,
+        [
+          screenId,
+          reports.map((r) => r.seq),
+          reports.map((r) => r.kind),
+          reports.map((r) => r.at),
+          reports.map((r) => r.body),
+          reports.map((r) => r.why),
+        ],
+      );
+    if (plays.length > 0) {
+      const col = (i: number) => plays.map((row) => row[i]);
+      await c.query(
+        `INSERT INTO plays (screen_id, seq, start_at, key_id, slot, ref, ad_id, length_s, lat_e6,
+           lng_e6, accuracy_m, screen_place, cloud_place, counts, line_id, reason, people)
+         SELECT $1, p.seq, to_timestamp(p.start_at), p.key_id, p.slot, p.ref, p.ad_id, p.length_s,
+                p.lat_e6, p.lng_e6, p.accuracy_m, p.screen_place, p.cloud_place, p.counts,
+                p.line_id, p.reason, p.people
+           FROM unnest($2::bigint[], $3::bigint[], $4::text[], $5::text[], $6::text[], $7::text[],
+                       $8::int[], $9::int[], $10::int[], $11::int[], $12::text[], $13::text[],
+                       $14::text[], $15::text[], $16::text[], $17::int[])
+             AS p (seq, start_at, key_id, slot, ref, ad_id, length_s, lat_e6, lng_e6, accuracy_m,
+                   screen_place, cloud_place, counts, line_id, reason, people)`,
+        [screenId, ...Array.from({ length: 16 }, (_, i) => col(i))],
+      );
     }
     // P2.11: health reports, in the order they are numbered, and the alerts they decide.
     for (const n of result.accepted) {
