@@ -583,6 +583,26 @@ describe('staff sign-in', () => {
       expect(s.password_hash).toMatch(/^scrypt\$/);
     }
   });
+
+  it('the audit log shows each invite used, resets apart from first invites, and sessions ended (P7.1)', async () => {
+    const log = await pool.query<{ who: string; action: string; detail: string }>(
+      `SELECT who, action, detail FROM audit_log WHERE area = 'staff' AND ref = $1`,
+      [adminId],
+    );
+    const actions = log.rows.map((r) => r.action);
+    expect(actions).toEqual(
+      expect.arrayContaining([
+        'invite made',
+        'reset: invite made',
+        'password and code set',
+        'staff session ended',
+      ]),
+    );
+    expect(actions.filter((a) => a === 'invite made')).toHaveLength(1);
+    expect(log.rows.filter((r) => r.action === 'staff session ended').map((r) => r.detail)).toEqual(
+      expect.arrayContaining(['switched-off']),
+    );
+  });
 });
 
 describe('robustness', () => {

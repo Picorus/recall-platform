@@ -21,6 +21,12 @@ import { inTransaction } from './makeups.js';
 import { Refusal } from './refusal.js';
 import { threadFromBrandPortal } from './support.js';
 
+/** A booking staff are still writing (made in admin, still a draft) is not the brand's to see, pay
+ * or give ads until staff send it (P7.1). For a query on `bookings b`. */
+export const NOT_STAFF_DRAFT = `NOT (b.channel = 'admin' AND
+  (SELECT e.state FROM booking_events e WHERE e.booking_id = b.booking_id
+    ORDER BY e.seq DESC LIMIT 1) = 'draft')`;
+
 type Q = Pick<Pool, 'query'>;
 const secs = (d: Date) => Math.floor(d.getTime() / 1000);
 
@@ -141,7 +147,7 @@ export async function reviewPage(
   }>(
     `SELECT trial, repeat_months, discount_paise, subtotal_paise, gst_paise, total_paise,
             first_hour_at, ads_due_at, price_book_version, channel
-       FROM bookings WHERE booking_id = $1 AND brand_id = $2`,
+       FROM bookings b WHERE booking_id = $1 AND brand_id = $2 AND ${NOT_STAFF_DRAFT}`,
     [bookingId, brandId],
   );
   const x = b.rows[0];
@@ -265,7 +271,7 @@ export async function payFromPortal(
 ): Promise<SentLink> {
   const b = await pool.query<Payable>(
     `SELECT first_hour_at, channel, trial, repeat_months, price_book_version
-       FROM bookings WHERE booking_id = $1 AND brand_id = $2`,
+       FROM bookings b WHERE booking_id = $1 AND brand_id = $2 AND ${NOT_STAFF_DRAFT}`,
     [p.bookingId, p.brandId],
   );
   const x = b.rows[0];

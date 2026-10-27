@@ -231,6 +231,15 @@ describe('joining on the rider app (P4.2)', () => {
       NOW + 50,
     );
     expect((await joinPage(pool, riderId, NOW + 60)).details.apps).toEqual(['rapido', 'uber']);
+    // His bank account was checked against his name: the name now stays (P7.1).
+    await expect(
+      changeOwnDetails(
+        pool,
+        riderId,
+        { name: 'Someone Else', phone, bikePlate: 'TS09EA1234', rides: '', apps: [] },
+        NOW + 55,
+      ),
+    ).rejects.toThrow('bank account was checked');
     await expect(
       changeOwnDetails(
         pool,

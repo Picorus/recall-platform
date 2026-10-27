@@ -11,7 +11,7 @@ import { portalCampaigns } from '../../src/brand-campaigns.js';
 import { askSalesForDeal, payFromPortal, reviewPage } from '../../src/brand-pay.js';
 import { applyLinkStatus } from '../../src/booking-desk.js';
 import { createAccount } from '../../src/brands.js';
-import { savePriceBook } from '../../src/bookings.js';
+import { createBooking, moveBooking, savePriceBook } from '../../src/bookings.js';
 import { setBrandTaxProfile } from '../../src/gst.js';
 import { freshDatabase } from './fresh-db.js';
 
@@ -228,5 +228,38 @@ describe('review and pay (P5.6)', () => {
     await expect(
       payFromPortal(pool, payments, { ...who, brandId: 'chai-co', bookingId: old }, NOW + 3600),
     ).rejects.toThrow('Prices changed');
+  });
+  it("a booking staff are still writing is not the brand's until they send it (P7.1)", async () => {
+    await createBooking(
+      pool,
+      {
+        bookingId: 'BK-STAFF-DRAFT',
+        brandId: 'chai-co',
+        request: {
+          lines: [{ areaId: 'hyd-madhapur', date: '2027-09-20', startHour: 19, bikes: 50 }],
+          repeatMonths: 1,
+          channel: 'admin',
+        },
+        by: 'Sana',
+      },
+      NOW,
+    );
+    expect(await reviewPage(pool, 'chai-co', 'BK-STAFF-DRAFT', NOW)).toBeUndefined();
+    await expect(
+      payFromPortal(
+        pool,
+        payments,
+        { ...who, brandId: 'chai-co', bookingId: 'BK-STAFF-DRAFT' },
+        NOW,
+      ),
+    ).rejects.toThrow('No such campaign');
+    await moveBooking(
+      pool,
+      'BK-STAFF-DRAFT',
+      'awaiting-payment',
+      { by: 'Sana', actor: 'admin' },
+      NOW,
+    );
+    expect(await reviewPage(pool, 'chai-co', 'BK-STAFF-DRAFT', NOW + 60)).toBeDefined();
   });
 });

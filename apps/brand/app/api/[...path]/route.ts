@@ -24,6 +24,11 @@ const MAX_UPLOAD = 64 * 1024 * 1024;
 const MAX_UPLOADS = 8;
 const uploading = new Set<string>();
 
+/** The signed-in session (its cookie's value): one upload at a time each, whatever other cookies
+ * come with it (P7.1). */
+const sessionOf = (req: NextRequest) =>
+  req.cookies.get('__Host-recall_brand')?.value ?? req.cookies.get('recall_brand')?.value ?? '';
+
 /** The request body passed on as it arrives; stopped if it runs past `declared` bytes or ends
  * short of it (a cut-off upload is never passed on as a whole file). */
 function cappedStream(req: NextRequest, declared: number) {
@@ -92,14 +97,13 @@ async function pass(req: NextRequest, path: string[]): Promise<Response> {
     return Response.json({ error: 'Not found' }, { status: 404 });
   if (upload) {
     // Not signed in: refused before a byte of the file is read (the API checks who it is).
-    if (!req.headers.get('cookie'))
-      return Response.json({ error: 'Please sign in' }, { status: 401 });
+    if (!sessionOf(req)) return Response.json({ error: 'Please sign in' }, { status: 401 });
     const declared = Number(req.headers.get('content-length') ?? NaN);
     if (!Number.isSafeInteger(declared) || declared < 0)
       return Response.json({ error: 'Send the file with its size' }, { status: 411 });
     if (declared > MAX_UPLOAD) return Response.json({ error: 'Too large' }, { status: 413 });
     headers.set('x-upload-bytes', String(declared));
-    if (uploading.has(req.headers.get('cookie') ?? ''))
+    if (uploading.has(sessionOf(req)))
       return Response.json(
         { error: 'Your last upload is still going: wait for it to finish' },
         { status: 429 },
@@ -114,7 +118,7 @@ async function pass(req: NextRequest, path: string[]): Promise<Response> {
   if (body === null) return Response.json({ error: 'Too large' }, { status: 413 });
   const sent = upload ? cappedStream(req, Number(headers.get('x-upload-bytes'))) : null;
   let r: Response;
-  const who = req.headers.get('cookie') ?? '';
+  const who = sessionOf(req);
   if (upload) uploading.add(who);
   try {
     r = await fetch(`${api}/portal/${path.join('/')}${query}`, {
