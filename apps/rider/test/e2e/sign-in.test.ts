@@ -144,6 +144,16 @@ it('a known rider signs in with a WhatsApp code, stays signed in, and signs out'
   // Still signed in after the app is opened again.
   await page.reload();
   await page.getByText('Ravi Kumar').waitFor();
+  // No signal when the app opens: still signed in, "Try again" (never a new code).
+  await page.route('**/rider/me', (r) => r.abort());
+  await page.reload();
+  await page
+    .getByRole('alert')
+    .getByText('No internet. Check your connection and try again.')
+    .waitFor();
+  await page.unroute('**/rider/me');
+  await page.getByRole('button', { name: 'Try again' }).click();
+  await page.getByText('Ravi Kumar').waitFor();
   await page.getByRole('button', { name: 'Sign out' }).click();
   await page.getByText('Earn while you ride.').waitFor();
   await page.reload();

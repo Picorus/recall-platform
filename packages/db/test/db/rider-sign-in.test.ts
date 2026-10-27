@@ -11,7 +11,7 @@ import {
   endRiderSession,
   riderSession,
 } from '../../src/rider-sign-in.js';
-import { createRider } from '../../src/riders.js';
+import { createRider, reviseRider } from '../../src/riders.js';
 import { freshDatabase } from './fresh-db.js';
 
 let db: Awaited<ReturnType<typeof freshDatabase>>;
@@ -138,7 +138,7 @@ describe('rider sign-in (P4.1)', () => {
     ).rejects.toThrow('no longer works');
   });
 
-  it('few codes per number in 15 minutes and per day; few per connection', async () => {
+  it('few codes per number from one connection, and per day; few per connection; a brake for all', async () => {
     const m = fakeMessages();
     const phone = '+919000033333';
     const ask = { phone, channel: 'whatsapp' as const, ip: '10.0.0.4', language: 'en' as const };
@@ -146,13 +146,17 @@ describe('rider sign-in (P4.1)', () => {
     await expect(askRiderCode(pool, m, ask, SECRET, NOW + 10)).rejects.toThrow(
       'try again in 15 minutes',
     );
-    // 15 minutes on, more; but no more than the day's.
+    // Someone else asking for his codes elsewhere does not stop his own.
+    await askRiderCode(pool, m, { ...ask, ip: '10.0.0.44' }, SECRET, NOW + 11);
+    // No more than the day's, from anywhere.
     let t = NOW + 900;
-    for (let i = R.codesPer15Min; i < R.codesPerDay; i++) {
-      await askRiderCode(pool, m, ask, SECRET, t);
-      t += 400;
+    for (let i = R.codesPer15Min + 1; i < R.codesPerDay; i++) {
+      await askRiderCode(pool, m, { ...ask, ip: `10.1.0.${i}` }, SECRET, t);
+      t += 60;
     }
-    await expect(askRiderCode(pool, m, ask, SECRET, t + 3600)).rejects.toThrow('tomorrow');
+    await expect(askRiderCode(pool, m, { ...ask, ip: '10.1.1.1' }, SECRET, t + 60)).rejects.toThrow(
+      'tomorrow',
+    );
     // One connection asking for many numbers.
     const ip = '10.9.9.9';
     for (let i = 0; i < R.codesPerAddressHour; i++)
@@ -166,7 +170,147 @@ describe('rider sign-in (P4.1)', () => {
     await expect(
       askRiderCode(pool, m, { ...ask, phone: '+919199999999', ip }, SECRET, NOW + 100),
     ).rejects.toThrow('this connection');
+    // A brake on everyone's codes together (message costs).
+    const all = await pool.query<{ n: string }>(
+      `SELECT count(*) AS n FROM rider_codes WHERE sent_at > to_timestamp($1) - interval '1 hour'`,
+      [NOW + 200],
+    );
+    await expect(
+      askRiderCode(pool, m, { ...ask, phone: '+919188888888', ip: '10.8.8.8' }, SECRET, NOW + 200, {
+        ...R,
+        codesPerHourAll: Number(all.rows[0]?.n),
+      }),
+    ).rejects.toThrow('busy');
   });
+
+  it('wrong codes for one number are capped for the day, across connections', async () => {
+    const m = fakeMessages();
+    const phone = '+919000066666';
+    const rules = { ...R, wrongPerNumberDay: 6 };
+    let ip = 0;
+    const wrongTwice = async (t: number) => {
+      ip += 1;
+      await askRiderCode(
+        pool,
+        m,
+        { phone, channel: 'sms', ip: `10.6.0.${ip}`, language: 'en' },
+        SECRET,
+        t,
+        rules,
+      );
+      const code = lastCode(m, phone);
+      const bad = code === '000000' ? '111111' : '000000';
+      for (let k = 0; k < 2; k++)
+        await checkRiderCode(
+          pool,
+          { phone, code: bad, ip: `10.6.0.${ip}` },
+          SECRET,
+          t + 1,
+          rules,
+        ).catch(() => {});
+      return code;
+    };
+    await wrongTwice(NOW);
+    await wrongTwice(NOW + 60);
+    const code = await wrongTwice(NOW + 120);
+    await expect(
+      checkRiderCode(pool, { phone, code, ip: '10.6.1.1' }, SECRET, NOW + 130, rules),
+    ).rejects.toThrow('wrong codes for this number today');
+  });
+
+  it('a session belongs to the rider who signed in: a number changed or given to someone else ends it', async () => {
+    const m = fakeMessages();
+    const phone = '+919000077777';
+    const a = await createRider(
+      pool,
+      {
+        details: { name: 'Anil Rao', phone, bikePlate: null, rides: '', apps: [] },
+        channel: 'admin',
+        by: 'Omar',
+        reason: 'walk-in',
+      },
+      NOW - 3600,
+    );
+    await askRiderCode(
+      pool,
+      m,
+      { phone, channel: 'whatsapp', ip: '10.7.0.1', language: 'en' },
+      SECRET,
+      NOW,
+    );
+    const s = await checkRiderCode(
+      pool,
+      { phone, code: lastCode(m, phone), ip: '10.7.0.1' },
+      SECRET,
+      NOW,
+    );
+    expect(s.riderId).toBe(a);
+    // His number changes (a new SIM): the old phone's session no longer opens his account.
+    await reviseRider(
+      pool,
+      a,
+      { name: 'Anil Rao', phone: '+919000077778', bikePlate: null, rides: '', apps: [] },
+      'Omar',
+      'new SIM',
+      NOW + 60,
+    );
+    expect(await riderSession(pool, s.token, NOW + 120)).toBeUndefined();
+    // The old number goes to a new rider: he signs in as himself.
+    const b = await createRider(
+      pool,
+      {
+        details: { name: 'Bala K', phone, bikePlate: null, rides: '', apps: [] },
+        channel: 'admin',
+        by: 'Omar',
+        reason: 'walk-in',
+      },
+      NOW + 200,
+    );
+    await askRiderCode(
+      pool,
+      m,
+      { phone, channel: 'whatsapp', ip: '10.7.0.2', language: 'en' },
+      SECRET,
+      NOW + 300,
+    );
+    const t = await checkRiderCode(
+      pool,
+      { phone, code: lastCode(m, phone), ip: '10.7.0.2' },
+      SECRET,
+      NOW + 300,
+    );
+    expect(t.riderId).toBe(b);
+    expect((await riderSession(pool, t.token, NOW + 301))?.riderId).toBe(b);
+  });
+
+  it('a code that failed to go never replaces one that did; a provider that never answers is a failure', async () => {
+    const phone = '+919000088888';
+    const ok = fakeMessages();
+    await askRiderCode(
+      pool,
+      ok,
+      { phone, channel: 'whatsapp', ip: '10.8.0.1', language: 'en' },
+      SECRET,
+      NOW,
+    );
+    const silent = { send: () => new Promise<never>(() => undefined) };
+    await expect(
+      askRiderCode(
+        pool,
+        silent,
+        { phone, channel: 'sms', ip: '10.8.0.1', language: 'en' },
+        SECRET,
+        NOW + 20,
+      ),
+    ).rejects.toThrow('could not be sent by SMS');
+    const s = await checkRiderCode(
+      pool,
+      { phone, code: lastCode(ok, phone), ip: '10.8.0.1' },
+      SECRET,
+      NOW + 30,
+    );
+    expect(s.token).toBeTruthy();
+  }, 20_000);
 
   it('a code that could not be sent says so; the next ask works', async () => {
     const phone = '+919000044444';

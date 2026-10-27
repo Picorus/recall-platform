@@ -41,6 +41,9 @@ CREATE UNIQUE INDEX rider_code_tries_one_ok ON rider_code_tries (code_id) WHERE 
 CREATE TABLE rider_sessions (
   token_hash text        PRIMARY KEY CHECK (token_hash ~ '^[0-9a-f]{64}$'),
   phone      text        NOT NULL CHECK (phone ~ '^\+91[6-9][0-9]{9}$'),
+  -- The rider the number belonged to when he signed in (none: a new number, signing up). Fixed: a
+  -- number given later to someone else never carries this session over to them.
+  rider_id   text        REFERENCES riders (rider_id),
   code_id    bigint      NOT NULL UNIQUE REFERENCES rider_codes (code_id),
   ip         text        NOT NULL CHECK (length(ip) BETWEEN 1 AND 64),
   started_at timestamptz NOT NULL
@@ -93,6 +96,11 @@ CREATE TRIGGER rider_session_ends_no_change BEFORE UPDATE OR DELETE ON rider_ses
 CREATE TRIGGER rider_session_ends_no_truncate BEFORE TRUNCATE ON rider_session_ends
   FOR EACH STATEMENT EXECUTE FUNCTION recall_append_only();
 GRANT SELECT, INSERT ON rider_session_ends TO recall_app;
+
+-- Rider sign-in limits become a setting (super admin, versioned).
+ALTER TABLE settings DROP CONSTRAINT settings_key_check;
+ALTER TABLE settings ADD CONSTRAINT settings_key_check CHECK (key IN
+  ('cities', 'fittingCentres', 'support', 'messages', 'payZone', 'loanBank', 'riderSignIn'));
 
 -- The audit log (0046) with riders' app sessions ended in it.
 CREATE OR REPLACE VIEW audit_log AS

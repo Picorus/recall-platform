@@ -7,13 +7,21 @@ export interface RiderSignInRules {
   readonly codeSeconds: number;
   /** Wrong tries before a code stops working (a new one must be asked for). */
   readonly triesPerCode: number;
-  /** Codes one number may ask for in 15 minutes, and in a day (India day). */
+  /**
+   * Codes one connection may ask for one number in 15 minutes (counted per connection, so a
+   * stranger asking for a rider's codes elsewhere does not stop his own).
+   */
   readonly codesPer15Min: number;
+  /** Codes one number may get in a day (India day), from anywhere. */
   readonly codesPerDay: number;
-  /** Codes one address (a phone's connection) may ask for in an hour, for any numbers. */
+  /** Wrong codes typed for one number in a day, from anywhere (slow guessing across connections). */
+  readonly wrongPerNumberDay: number;
+  /** Codes one connection may ask for in an hour, for any numbers. */
   readonly codesPerAddressHour: number;
-  /** Wrong codes one address may try in an hour, for any numbers. */
+  /** Wrong codes one connection may try in an hour, for any numbers. */
   readonly wrongPerAddressHour: number;
+  /** Codes sent in an hour for everyone together (a brake on message costs). */
+  readonly codesPerHourAll: number;
   /** A session ends by itself after this many days without use. */
   readonly idleDays: number;
 }
@@ -22,10 +30,27 @@ export const DEFAULT_RIDER_SIGN_IN: RiderSignInRules = {
   codeSeconds: 600,
   triesPerCode: 5,
   codesPer15Min: 3,
-  codesPerDay: 10,
+  codesPerDay: 20,
+  wrongPerNumberDay: 15,
   codesPerAddressHour: 30,
   wrongPerAddressHour: 50,
+  codesPerHourAll: 2000,
   idleDays: 90,
+};
+
+/** Each rule's sensible range (checked when a super admin changes them in Settings). */
+export const RIDER_SIGN_IN_RANGES: Readonly<
+  Record<keyof RiderSignInRules, readonly [number, number]>
+> = {
+  codeSeconds: [120, 1800],
+  triesPerCode: [1, 10],
+  codesPer15Min: [1, 10],
+  codesPerDay: [3, 100],
+  wrongPerNumberDay: [5, 100],
+  codesPerAddressHour: [5, 1000],
+  wrongPerAddressHour: [5, 1000],
+  codesPerHourAll: [10, 100_000],
+  idleDays: [1, 365],
 };
 
 export const RIDER_LANGUAGES = ['te', 'hi', 'en'] as const;

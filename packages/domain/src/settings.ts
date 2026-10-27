@@ -3,6 +3,11 @@
 // and roles are the Staff page's; keys to outside services live in the secret store, never here.
 import { INDIA_OFFSET_MINUTES } from './time.js';
 import { POC_PAY_ZONE, type PayZone } from './pay-zone.js';
+import {
+  DEFAULT_RIDER_SIGN_IN,
+  RIDER_SIGN_IN_RANGES,
+  type RiderSignInRules,
+} from './rider-sign-in.js';
 
 /** A city RECALL works in (an area belongs to one). */
 export interface City {
@@ -63,6 +68,8 @@ export interface Settings {
   readonly messages: MessageWordings;
   readonly payZone: PayZone;
   readonly loanBank: LoanBank;
+  /** P4.1: how rider sign-in codes are limited. */
+  readonly riderSignIn: RiderSignInRules;
 }
 
 export type SettingKey = keyof Settings;
@@ -74,6 +81,7 @@ export const SETTING_KEYS = [
   'messages',
   'payZone',
   'loanBank',
+  'riderSignIn',
 ] as const satisfies readonly SettingKey[];
 
 /** Placeholders each wording may use, and the ones its email text must have. */
@@ -106,6 +114,7 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   payZone: POC_PAY_ZONE,
   loanBank: { name: 'Dhanlaxmi Bank' },
+  riderSignIn: DEFAULT_RIDER_SIGN_IN,
 };
 
 /** Fills {placeholders} (unknown ones are left as written; checkSetting refuses them on save). */
@@ -280,6 +289,17 @@ export function checkSetting<K extends SettingKey>(key: K, value: unknown): Sett
         return payZone(value);
       case 'loanBank':
         return { name: oneLine(obj(value, 'Screen-loan bank').name, 'Bank name', 2, 80) };
+      case 'riderSignIn': {
+        const o = obj(value, 'Rider sign-in');
+        const out: Record<string, number> = {};
+        for (const [k, [lo, hi]] of Object.entries(RIDER_SIGN_IN_RANGES)) {
+          const n = o[k];
+          if (typeof n !== 'number' || !Number.isInteger(n) || n < lo || n > hi)
+            fail(`Rider sign-in, ${k}: a whole number ${lo} to ${hi}`);
+          out[k] = n as number;
+        }
+        return out as unknown as RiderSignInRules;
+      }
       default:
         return fail('Which setting?');
     }

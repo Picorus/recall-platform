@@ -10,6 +10,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ApiError, call, type Me } from './src/api';
 import { Code } from './src/screens/Code';
 import { Home } from './src/screens/Home';
+import { Offline } from './src/screens/Offline';
 import { SignIn, type CodeSent } from './src/screens/SignIn';
 import { stored } from './src/storage';
 import { FONT_FILES } from './src/fonts';
@@ -20,7 +21,9 @@ type Step =
   | { readonly at: 'loading' }
   | { readonly at: 'sign-in'; readonly phone: string }
   | { readonly at: 'code'; readonly sent: CodeSent }
-  | { readonly at: 'home'; readonly token: string; readonly me: Me };
+  | { readonly at: 'home'; readonly token: string; readonly me: Me }
+  /** Signed in, but the API could not be reached (weak signal): kept signed in, try again. */
+  | { readonly at: 'offline'; readonly token: string; readonly why: string };
 
 export default function App() {
   const [lang, setLang] = useState<RiderLanguage>('en');
@@ -33,9 +36,15 @@ export default function App() {
       const me = await call<Me>('/rider/me', { token });
       setStep({ at: 'home', token, me });
     } catch (e) {
-      // Signed out elsewhere (or the session ran out): sign in again. No connection: try again.
-      if (e instanceof ApiError && e.status === 401) await stored.setToken(null);
-      setStep({ at: 'sign-in', phone: '' });
+      // Signed out elsewhere (or the session ran out): sign in again.
+      if (e instanceof ApiError && e.status === 401) {
+        await stored.setToken(null);
+        setStep({ at: 'sign-in', phone: '' });
+        return;
+      }
+      // No connection, or the server is down: still signed in; try again (a new code would cost
+      // the rider one of his few codes).
+      setStep({ at: 'offline', token, why: e instanceof ApiError ? (e.why ?? '') : '' });
     }
   }, []);
 
@@ -99,9 +108,15 @@ export default function App() {
               setStep({ at: 'sign-in', phone: step.sent.shown.replace(/^\+91\s*/, '') })
             }
             onSignedIn={(token) => {
-              void stored.setToken(token).then(() => enter(token));
+              void stored
+                .setToken(token)
+                .catch(() => undefined)
+                .then(() => enter(token));
             }}
           />
+        )}
+        {(fontsReady || fontsFailed) && step.at === 'offline' && (
+          <Offline lang={lang} why={step.why} onRetry={() => void enter(step.token)} />
         )}
         {(fontsReady || fontsFailed) && step.at === 'home' && (
           <Home lang={lang} me={step.me} onSignOut={() => void signOut()} />

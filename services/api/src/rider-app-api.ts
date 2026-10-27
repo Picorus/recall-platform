@@ -12,6 +12,7 @@ import {
   endRiderSession,
   Refusal,
   riderSession,
+  setting,
   type RiderSession,
 } from '@recall/db';
 import {
@@ -39,7 +40,9 @@ export async function riderFor(
   now: number,
 ): Promise<RiderSession> {
   const m = /^Bearer ([A-Za-z0-9_-]{43})$/.exec(String(req.headers.authorization ?? ''));
-  const s = m?.[1] ? await riderSession(pool, m[1], now) : undefined;
+  const s = m?.[1]
+    ? await riderSession(pool, m[1], now, await setting(pool, 'riderSignIn'))
+    : undefined;
   if (!s) throw new HttpError(401, 'Please sign in again', { code: 'signed-out' });
   return s;
 }
@@ -76,10 +79,16 @@ export async function handleRiderApp(
       return await f();
     } catch (e) {
       if (e instanceof Refusal)
-        throw new HttpError(e.message.startsWith('Too many') ? 429 : 400, e.message, e.why);
+        throw new HttpError(
+          /^(Too many|Sign-in is busy)/.test(e.message) ? 429 : 400,
+          e.message,
+          e.why,
+        );
       throw e;
     }
   };
+  // The limits in force (a super admin's setting; P4.1).
+  const rules = await setting(pool, 'riderSignIn');
   const ip = () =>
     callerIp(req.headers['x-forwarded-for'], req.socket.remoteAddress, cfg.proxyHops);
 
@@ -103,6 +112,7 @@ export async function handleRiderApp(
         { phone, channel: channel as CodeChannel, ip: ip(), language },
         codeKey(cfg),
         now,
+        rules,
       ),
     );
     send(res, 200, { phone, shown: showMobile(phone), expiresAt: out.expiresAt });
@@ -117,7 +127,7 @@ export async function handleRiderApp(
     const code = typedCode(str(b, 'code', 20));
     if (!code) throw new HttpError(400, 'The code has 6 digits', { code: 'bad-code' });
     const s = await refused(() =>
-      checkRiderCode(pool, { phone, code, ip: ip() }, codeKey(cfg), now),
+      checkRiderCode(pool, { phone, code, ip: ip() }, codeKey(cfg), now, rules),
     );
     send(res, 200, { token: s.token, riderId: s.riderId });
     return true;
