@@ -27,6 +27,9 @@ describe('settings (P3.17)', () => {
       'twice',
     );
     expect(() => checkSetting('cities', [{ name: 'H\nyd' }])).toThrow('one line');
+    // Invisible characters that make a name look like another, or hide a line break.
+    for (const hidden of ['\u200b', '\u202e', '\u2028', '\ufeff'])
+      expect(() => checkSetting('cities', [{ name: `Hyd${hidden}erabad` }])).toThrow('hidden');
   });
 
   it('fitting centres: name, address, on or off; never removed, only switched off', () => {

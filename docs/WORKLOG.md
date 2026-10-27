@@ -2,6 +2,17 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 27 Oct 2026 · P3.17 · Settings
+- PR #64 (audit log) merged with all checks green.
+- **Settings store** (migration 0046, `packages/db/src/settings.ts`, rules in `packages/domain/src/settings.ts`): one row per saved version of one setting, with who and why; the newest is in force, the starting values until one is saved. Append-only, versions 1, 2, 3… with no gaps. A save from an old screen (someone saved meanwhile) is refused: reload. The audit log now has a "settings" part.
+- **Settings page** (everyone sees it; a super admin changes it): staff and roles (what each role may do; members on the Staff page); cities (never removed; a new area picks one); fitting centres with address, on or off (never removed; fitting slots open only at a centre that is on); support numbers (+91, WhatsApp or not), days and hours in India time, and whether support is open now; message wording for a support reply and "campaign report ready" (WhatsApp: the approved template's name; email: subject and text with {placeholders}, unknown ones and a missing {reply}/{link} refused); the rider pay zone (a circle or chosen areas); the screen-loan bank; which outside services are on (no keys shown).
+- Support replies and report emails now use the wording in force.
+- Tests: domain 8 (each setting's checks, never removing, hidden characters, India-time hours, wording); database 5 (versions with who and why, refusals, a stale save, two saves at once, the reply's wording, the audit log); API 1 (who sees and changes, 409 on a stale save, a city from the list) + config 1 (outside services, no key shown); browser 1 (a centre added, a wrong number refused then saved) and the fitting slot now picks its centre.
+- **Second review:** nothing serious. Fixed: a draft-only area could join the pay zone; the "Saved" message vanished on reload; invisible characters (zero-width, right-to-left) were let through. The page now says plainly that the pay zone is not sent to screens yet, the bank name is used from P4.2.6, and report wording is the email's subject and plain text (the report itself keeps its design).
+- The API sign-in test that failed under load: found the cause. 30 slow password checks took over 5 seconds when other test files ran at the same time. Its time limit is now 30 seconds; the code was fine.
+- Open: no fitting centre is set yet, so no fitting slot can be opened until Prateek (or a super admin) adds one with its address. Support numbers to be added when the lines exist. The pay zone reaches screens with the step that sends settings to screens.
+- Next: the admin portal steps (P3) are done. Next in the plan: P4, the rider app.
+
 ## 27 Oct 2026 · P3.16 · Audit log
 - PR #63 (reports, dashboard, support, cheaper checks) merged with all checks green, after the repository went public.
 - **One log of everything** (migration 0045, view `audit_log`): every record of who did what (staff and access, areas, prices, business modes, calendar holds, brands, bookings and their notes, ads and reviews, refunds, money paid back, partners, payout runs and holds, riders and their documents and checks, fittings, screen loans, screens, keys and certificates, player releases, support steps and replies) in one timeline with when, who, part of the business, what, about what and why. It is a view over records that are never edited or deleted, so the log cannot be edited either. No message bodies, phones, emails, bank or document numbers in it.

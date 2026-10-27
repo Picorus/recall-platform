@@ -81,7 +81,7 @@ describe('settings (P3.17)', () => {
         'after the POC',
         0,
       ),
-    ).rejects.toThrow('no area hyd-nowhere');
+    ).rejects.toThrow('no published area hyd-nowhere');
     await expect(saveSetting(pool, 'support', { days: [] }, PRATEEK, 'hours', 0)).rejects.toThrow(
       'Support numbers',
     );

@@ -35,6 +35,7 @@ function Section<K extends SettingKey>({
   title,
   record,
   canChange,
+  saved,
   onSaved,
   children,
 }: {
@@ -42,12 +43,13 @@ function Section<K extends SettingKey>({
   readonly title: string;
   readonly record: SettingRecord<K>;
   readonly canChange: boolean;
-  readonly onSaved: () => void;
+  /** What the last save here said (kept by the page: this section starts afresh after a save). */
+  readonly saved: string;
+  readonly onSaved: (message: string) => void;
   readonly children: (value: Settings[K], set: (v: Settings[K]) => void) => ReactNode;
 }) {
   const [draft, setDraft] = useState<Settings[K]>(record.value);
   const [error, setError] = useState('');
-  const [done, setDone] = useState('');
   const [busy, setBusy] = useState(false);
   const save = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -61,12 +63,10 @@ function Section<K extends SettingKey>({
     })
       .then((x) => {
         setError('');
-        setDone(`Saved as version ${x.version}.`);
         form.reset();
-        onSaved();
+        onSaved(`Saved as version ${x.version}.`);
       })
       .catch((err: unknown) => {
-        setDone('');
         setError(failed(err, 'Could not save.'));
       })
       .finally(() => setBusy(false));
@@ -108,7 +108,7 @@ function Section<K extends SettingKey>({
             {error}
           </p>
         )}
-        {done && <p role="status">{done}</p>}
+        {saved && !error && <p role="status">{saved}</p>}
       </form>
     </section>
   );
@@ -168,6 +168,7 @@ export default function SettingsPageView() {
   const me = useMember();
   const [page, setPage] = useState<SettingsPage | null>(null);
   const [error, setError] = useState('');
+  const [saved, setSaved] = useState<Partial<Record<SettingKey, string>>>({});
   const load = useCallback(() => {
     api<SettingsPage>('/settings')
       .then((p) => {
@@ -188,7 +189,11 @@ export default function SettingsPageView() {
     name,
     record: s?.[name] as SettingRecord<K>,
     canChange: can,
-    onSaved: load,
+    saved: saved[name] ?? '',
+    onSaved: (message: string) => {
+      setSaved((x) => ({ ...x, [name]: message }));
+      load();
+    },
   });
   return (
     <Shell member={me}>
@@ -338,16 +343,20 @@ export default function SettingsPageView() {
               <>
                 <p className="muted">
                   WhatsApp sends only templates the provider has approved: write the approved
-                  template&apos;s name here. Email wording is ours; words in {'{braces}'} are filled
-                  in when sent.
+                  template&apos;s name here (it must take the same values, in the same order). Email
+                  wording is ours; words in {'{braces}'} are filled in when sent.
                 </p>
                 {(
                   [
-                    ['supportReply', 'Support reply', 'Fills in: {reply} (needed), {subject}.'],
+                    [
+                      'supportReply',
+                      'Support reply',
+                      'Fills in: {reply} (needed), {subject}. WhatsApp: 1 value, the reply.',
+                    ],
                     [
                       'reportReady',
                       'Campaign report ready',
-                      'Fills in: {booking}, {period}, {summary}, {link} (needed).',
+                      'Fills in: {booking}, {period}, {summary}, {link} (needed). WhatsApp: 4 values: booking, period, first line of the summary, link. The email carries the report itself as designed; this wording is its subject and plain-text part.',
                     ],
                   ] as const
                 ).map(([k, title, hint]) => (
@@ -368,7 +377,8 @@ export default function SettingsPageView() {
               <>
                 <p className="muted">
                   Where a rider&apos;s moving hours count for pay. The POC: a circle round Hitech
-                  City. After it: the areas picked here.
+                  City. After it: the areas picked here. Not sent to the screens yet: until the step
+                  that sends settings to screens, each screen counts the POC circle.
                 </p>
                 <fieldset className="areas">
                   <legend className="rc-field__label">Kind</legend>
@@ -474,7 +484,7 @@ export default function SettingsPageView() {
               <>
                 <p className="muted">
                   The bank that lends riders the money for a screen. The loan is between the rider
-                  and the bank.
+                  and the bank. Used when screen loans are recorded (rider app, P4.2.6).
                 </p>
                 <Field label="Bank">
                   <input

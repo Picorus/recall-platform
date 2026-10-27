@@ -113,12 +113,13 @@ export async function saveSetting<K extends SettingKey>(
     if (key === 'payZone' && (next as Settings['payZone']).kind === 'areas') {
       const ids = (next as Extract<Settings['payZone'], { kind: 'areas' }>).areaIds;
       const known = await c.query<{ area_id: string }>(
-        'SELECT DISTINCT area_id FROM area_versions WHERE area_id = ANY($1)',
+        'SELECT DISTINCT area_id FROM area_versions WHERE area_id = ANY($1) AND NOT draft',
         [ids],
       );
       const have = new Set(known.rows.map((x) => x.area_id));
       const missing = ids.filter((i) => !have.has(i));
-      if (missing.length > 0) throw new Refusal(`Pay zone: no area ${missing.join(', ')}`);
+      if (missing.length > 0)
+        throw new Refusal(`Pay zone: no published area ${missing.join(', ')}`);
     }
     await c.query(
       `INSERT INTO settings (key, version, value, saved_by, reason)

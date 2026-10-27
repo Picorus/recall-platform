@@ -129,8 +129,10 @@ const text = (v: unknown, what: string, min: number, max: number): string => {
   if (typeof v !== 'string') return fail(`${what}: missing`);
   const t = v.trim();
   if (t.length < min || t.length > max) fail(`${what}: ${min} to ${max} letters`);
+  // Control characters, and the invisible ones that make text look like other text.
   // eslint-disable-next-line no-control-regex
-  if (/[\u0000-\u0008\u000b-\u001f\u007f]/.test(t)) fail(`${what}: has a hidden character`);
+  if (/[\u0000-\u0008\u000b-\u001f\u007f\u200b-\u200f\u2028-\u202e\u2066-\u2069\ufeff]/.test(t))
+    fail(`${what}: has a hidden character`);
   return t;
 };
 const oneLine = (v: unknown, what: string, min: number, max: number): string => {
