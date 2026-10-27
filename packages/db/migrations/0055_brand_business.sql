@@ -36,6 +36,12 @@ CREATE INDEX gst_lookups_asker ON gst_lookups (asker, at DESC);
 CREATE INDEX gst_lookups_gstin ON gst_lookups (gstin, at DESC);
 CREATE INDEX brand_tax_profiles_gstin ON brand_tax_profiles (gstin) WHERE gstin IS NOT NULL;
 
+-- Whether the portal offers the free week is a setting (super admin; off at first).
+ALTER TABLE settings DROP CONSTRAINT settings_key_check;
+ALTER TABLE settings ADD CONSTRAINT settings_key_check CHECK (key IN
+  ('cities', 'fittingCentres', 'support', 'messages', 'payZone', 'loanBank', 'riderSignIn',
+   'brandSignIn', 'freeWeek'));
+
 ALTER TABLE brand_tax_profiles
   ADD COLUMN source text NOT NULL DEFAULT 'staff' CHECK (source IN ('staff', 'gst-record', 'typed')),
   ADD COLUMN gst_lookup_id bigint REFERENCES gst_lookups (id),

@@ -137,6 +137,12 @@ describe('settings (P3.17)', () => {
     ).toThrow('triesPerCode');
   });
 
+  it('free week: off until a super admin turns it on (P5.2)', () => {
+    expect(D.freeWeek).toEqual({ on: false });
+    expect(checkSetting('freeWeek', { on: true })).toEqual({ on: true });
+    expect(() => checkSetting('freeWeek', { on: 'yes' })).toThrow('Free week: on or off');
+  });
+
   it('screen-loan bank: a name', () => {
     expect(checkSetting('loanBank', { name: 'Dhanlaxmi Bank' })).toEqual({
       name: 'Dhanlaxmi Bank',

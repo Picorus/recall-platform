@@ -77,6 +77,11 @@ export interface Settings {
   readonly riderSignIn: RiderSignInRules;
   /** P5.1: how brand portal sign-in codes are limited. */
   readonly brandSignIn: BrandSignInRules;
+  /**
+   * P5.2: whether new businesses are offered the free week on the brand portal (Prateek, 27 Oct
+   * 2026: off until a super admin turns it on). Its length and bike-hours are the price book's.
+   */
+  readonly freeWeek: { readonly on: boolean };
 }
 
 export type SettingKey = keyof Settings;
@@ -90,6 +95,7 @@ export const SETTING_KEYS = [
   'loanBank',
   'riderSignIn',
   'brandSignIn',
+  'freeWeek',
 ] as const satisfies readonly SettingKey[];
 
 /** Placeholders each wording may use, and the ones its email text must have. */
@@ -124,6 +130,7 @@ export const DEFAULT_SETTINGS: Settings = {
   loanBank: { name: 'Dhanlaxmi Bank' },
   riderSignIn: DEFAULT_RIDER_SIGN_IN,
   brandSignIn: DEFAULT_BRAND_SIGN_IN,
+  freeWeek: { on: false },
 };
 
 /** Fills {placeholders} (unknown ones are left as written; checkSetting refuses them on save). */
@@ -308,6 +315,11 @@ export function checkSetting<K extends SettingKey>(key: K, value: unknown): Sett
           out[k] = n as number;
         }
         return out as unknown as RiderSignInRules;
+      }
+      case 'freeWeek': {
+        const on = obj(value, 'Free week').on;
+        if (typeof on !== 'boolean') fail('Free week: on or off');
+        return { on: on as boolean };
       }
       case 'brandSignIn': {
         const o = obj(value, 'Brand sign-in');

@@ -5,7 +5,7 @@
 import { fakeGst, fakeMessages } from '@recall/adapters';
 import { PRICE_BOOK_V1 } from '@recall/domain';
 import { apiHandler } from '@recall/api';
-import { createAccount, savePriceBook, setPortalMember } from '@recall/db';
+import { createAccount, savePriceBook, saveSetting, setPortalMember } from '@recall/db';
 import { freshDatabase } from '@recall/db/test-db';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
@@ -79,6 +79,14 @@ beforeAll(async () => {
   browser = await chromium.launch();
   const now = Math.floor(Date.now() / 1000);
   await savePriceBook(db.pool, PRICE_BOOK_V1, 'prateek');
+  await saveSetting(
+    db.pool,
+    'freeWeek',
+    { on: true },
+    { id: 'prateek', role: 'super-admin' },
+    'offer it',
+    0,
+  );
   await createAccount(
     db.pool,
     {

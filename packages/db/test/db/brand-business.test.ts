@@ -16,6 +16,7 @@ import {
 } from '../../src/brand-business.js';
 import { portalAccounts } from '../../src/brand-sign-in.js';
 import { savePriceBook } from '../../src/bookings.js';
+import { saveSetting } from '../../src/settings.js';
 import { freshDatabase } from './fresh-db.js';
 
 let db: Awaited<ReturnType<typeof freshDatabase>>;
@@ -50,6 +51,17 @@ beforeAll(async () => {
   pool = db.pool;
   await savePriceBook(pool, PRICE_BOOK_V1, 'prateek');
 }, 60_000);
+
+/** The free week is off until a super admin turns it on (Prateek, 27 Oct 2026). */
+const freeWeek = (on: boolean, version: number) =>
+  saveSetting(
+    pool,
+    'freeWeek',
+    { on },
+    { id: 'prateek', role: 'super-admin' },
+    'offer it now',
+    version,
+  );
 afterAll(async () => db.drop());
 
 describe('your business (P5.2)', () => {
@@ -64,6 +76,9 @@ describe('your business (P5.2)', () => {
     });
     // Typed details are ignored when the record was read.
     const id = await setUpBusiness(pool, { ...base, legalName: 'Something Else' }, NOW + 60);
+    // Off at first: no free week offered.
+    expect((await businessPage(pool, 'chai-co', NOW + 60, ASHA))?.freeWeek).toBeNull();
+    await freeWeek(true, 0);
     expect(id).toBe('chai-co');
     expect(await portalAccounts(pool, ASHA)).toEqual([
       { brandId: 'chai-co', name: 'Chai Co', kind: 'brand', role: 'owner' },

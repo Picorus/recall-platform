@@ -118,6 +118,7 @@ export interface Settings {
   readonly loanBank: LoanBank;
   readonly riderSignIn: RiderSignInRules;
   readonly brandSignIn: BrandSignInRules;
+  readonly freeWeek: { readonly on: boolean };
 }
 export type SettingKey = keyof Settings;
 

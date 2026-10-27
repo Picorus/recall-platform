@@ -525,6 +525,26 @@ export default function SettingsPageView() {
             )}
           </Section>
 
+          <Section {...common('freeWeek')} title="Free week for new businesses">
+            {(v, set) => (
+              <>
+                <p className="muted">
+                  When on, the brand portal offers each new brand one free week (its days and
+                  bike-hours are in the price book). One per business, phone, GST number and person.
+                  Off: no free week is offered.
+                </p>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={v.on}
+                    onChange={(e) => set({ on: e.target.checked })}
+                  />{' '}
+                  Offer the free week on the brand portal
+                </label>
+              </>
+            )}
+          </Section>
+
           <Section {...common('brandSignIn')} title="Brand portal limits">
             {(v, set) => (
               <>

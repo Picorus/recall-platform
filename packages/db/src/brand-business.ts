@@ -25,6 +25,7 @@ import type { Pool, PoolClient } from 'pg';
 import { priceBooks } from './bookings.js';
 import { inTransaction } from './makeups.js';
 import { Refusal } from './refusal.js';
+import { setting } from './settings.js';
 
 type Q = Pick<PoolClient, 'query'>;
 
@@ -406,7 +407,9 @@ export async function businessPage(
     x.kind === 'brand' && x.phone
       ? freeWeekKeys({ phone: x.phone, gstin: x.gstin }, person)
       : undefined;
-  const book = priceBookAt(await priceBooks(c), isoAt(now));
+  const book = (await setting(c, 'freeWeek')).on
+    ? priceBookAt(await priceBooks(c), isoAt(now))
+    : undefined;
   if (keys && book && book.trialDays > 0 && book.trialBikeHours > 0) {
     const used = await c.query('SELECT 1 FROM trials_used WHERE identity = ANY($1)', [keys]);
     if (used.rowCount === 0) freeWeek = { days: book.trialDays, bikeHours: book.trialBikeHours };
