@@ -101,7 +101,7 @@ function Manage({
       else if (action === 'lost')
         await api(`/screens/${row.screenId}/lost`, {
           reason,
-          lostAt: Math.floor(Date.now() / 1000) - Number(f.get('hoursAgo') ?? 0) * 3600,
+          hoursAgo: Number(f.get('hoursAgo') ?? 0),
         });
       else await api(`/screens/${row.screenId}/service`, { kind: action, reason });
       onDone(
@@ -166,7 +166,13 @@ function Manage({
       )}
       <label className="rc-field">
         <span className="rc-field__label">Reason (logged)</span>
-        <input className="rc-input" name="reason" minLength={3} maxLength={200} required />
+        <input
+          className="rc-input"
+          name="reason"
+          minLength={action === 'lost' ? 5 : 3}
+          maxLength={200}
+          required
+        />
       </label>
       {error && (
         <p className="error" role="alert">

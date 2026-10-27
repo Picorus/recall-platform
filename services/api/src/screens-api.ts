@@ -4,8 +4,8 @@
 //   POST /screens/<id>/service            { kind: to-repair | repaired | retired, reason }
 //   POST /screens/<id>/unfit              { reason }
 //   POST /screens/<id>/swap               { newScreenId, reason }
-//   POST /screens/<id>/lost               { reason, lostAt? }  lost or stolen: nothing it signs from
-//                                         lostAt (default now) counts, its line closes (P7.1)
+//   POST /screens/<id>/lost               { reason, hoursAgo? }  lost or stolen: nothing it signs
+//                                         from then (default now) counts, its line closes (P7.1)
 //   POST /rollout/pause                   { pause: true | false, reason }
 //   POST /rollout/roll-back               { reason }
 import { isScreenId } from '@recall/domain';
@@ -110,9 +110,11 @@ export async function handleScreens(
       throw new HttpError(400, 'kind must be to-repair, repaired or retired');
     await refusedAs400(() => serviceScreen(pool, { screenId, kind, reason, by: who, now }));
   } else if (m[2] === 'lost') {
-    const lostAt = b.lostAt === undefined ? now : b.lostAt;
-    if (typeof lostAt !== 'number' || !Number.isInteger(lostAt))
-      throw new HttpError(400, 'lostAt must be a time in seconds');
+    // Hours before now, on the server's clock (a staff laptop's may be off).
+    const hoursAgo = b.hoursAgo === undefined ? 0 : b.hoursAgo;
+    if (typeof hoursAgo !== 'number' || !Number.isInteger(hoursAgo) || hoursAgo < 0)
+      throw new HttpError(400, 'hoursAgo must be a whole number of hours');
+    const lostAt = now - hoursAgo * 3600;
     const done = await refusedAs400(() =>
       reportScreenLost(pool, { screenId, lostAt, reason, by: who, now }),
     );

@@ -108,13 +108,14 @@ interface LineInfo {
   readonly priceBookVersion: number;
 }
 
-/** Every ad a booking has run: each set it chose (P7.1: a play of another ad never counts). */
+/** The ads a booking runs: its latest choice, fixed once it starts (P7.1: a play of another ad,
+ * one it chose earlier and replaced included, never counts). */
 async function bookingAds(c: Q, bookingId: string): Promise<string[]> {
-  const r = await c.query<{ ad_id: string }>(
-    `SELECT DISTINCT unnest(ad_ids) AS ad_id FROM booking_ad_sets WHERE booking_id = $1`,
+  const r = await c.query<{ ad_ids: string[] }>(
+    `SELECT ad_ids FROM booking_ad_sets WHERE booking_id = $1 ORDER BY version DESC LIMIT 1`,
     [bookingId],
   );
-  return r.rows.map((x) => x.ad_id);
+  return r.rows[0]?.ad_ids ?? [];
 }
 
 /** A booking line named by `lineId` exactly as `lineIdOf` writes it ("booking/area/day/hour"). */

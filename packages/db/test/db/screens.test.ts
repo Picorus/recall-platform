@@ -201,7 +201,7 @@ describe('screens: enrolment and fitting (P2.1)', () => {
     );
   });
 
-  it('a retired screen cannot open its line (P7.1)', async () => {
+  it('a retired screen cannot open its line once it had a week to send what it holds (P7.1)', async () => {
     const s = await enrolScreen(pool, ca, boxRequest('RK-RET-0001'), 'w', NOW);
     const ask = (at: number) =>
       screenMayConnect(
@@ -217,7 +217,12 @@ describe('screens: enrolment and fitting (P2.1)', () => {
       by: 'ops',
       now: NOW + 20,
     });
-    expect(await ask(NOW + 30)).toEqual({ ok: false, reason: 'the screen is retired' });
+    // A week to send what it still holds, then shut out.
+    expect(await ask(NOW + 30)).toMatchObject({ ok: true });
+    expect(await ask(NOW + 20 + 7 * 86_400)).toEqual({
+      ok: false,
+      reason: 'the screen is retired',
+    });
   });
 
   it('records cannot be changed', async () => {

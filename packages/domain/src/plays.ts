@@ -119,8 +119,8 @@ export interface LineForPlays {
   readonly endsAt: number;
   /** Plays promised (a line: bikes × plays per bike-hour) or owed (a make-up). */
   readonly plays: number;
-  /** Every ad its booking has run (each choice it made): a play of any other ad counts for no
-   * brand, whatever line it names (P7.1). */
+  /** The ads its booking runs (its latest choice): a play of any other ad counts for no brand,
+   * whatever line it names (P7.1). */
   readonly ads?: readonly string[];
 }
 

@@ -178,8 +178,11 @@ describe('rider sign-in (P4.1)', () => {
       [NOW + 200],
     );
     const busy = { ...R, codesPerHourAll: Number(all.rows[0]?.n) };
-    await expect(
-      askRiderCode(
+    // Past the brake: the same answer as ever, but nothing is sent to a number with no account (so
+    // the answer never tells whether a number has one), P7.1.
+    const sentBefore = m.sent.length;
+    expect(
+      await askRiderCode(
         pool,
         m,
         { ...ask, phone: '+919188888888', ip: '10.8.8.8' },
@@ -187,7 +190,8 @@ describe('rider sign-in (P4.1)', () => {
         NOW + 200,
         busy,
       ),
-    ).rejects.toThrow('busy');
+    ).toEqual({ expiresAt: NOW + 200 + R.codeSeconds });
+    expect(m.sent.length).toBe(sentBefore);
     // A rider we know is never held up by codes asked for numbers nobody has (P7.1).
     expect(
       await askRiderCode(
@@ -199,6 +203,7 @@ describe('rider sign-in (P4.1)', () => {
         busy,
       ),
     ).toEqual({ expiresAt: NOW + 2000 + R.codeSeconds });
+    expect(m.sent.at(-1)?.to).toBe(RAVI);
   });
 
   it('IPv6: each /64 has its own limit, and the whole /48 five times that (P7.1)', async () => {

@@ -163,10 +163,11 @@ describe('plays in the database (P1.5)', () => {
       `SELECT reason FROM plays WHERE screen_id = 'scr-m' ORDER BY seq`,
     );
     expect(kept.rows.map((x) => x.reason)).toEqual(['not one of its ads', null]);
-    // An ad from an earlier choice of the same booking still counts.
+    // Only its latest choice: an ad it chose earlier and replaced does not count either.
     await chooseAds(pool, 'BK-P1', ['ad-2']);
     await upload('scr-m', [signed('scr-m', 3), signed('scr-m', 4, { adId: 'ad-2' })]);
-    expect((await totals()).plays).toBe(before + 3);
+    expect((await totals()).plays).toBe(before + 2);
+    await chooseAds(pool, 'BK-P1', ['ad-1']); // back to what the other tests play
   });
 
   it('plays from before a key was given up that arrive after it was revoked never count (P7.1)', async () => {

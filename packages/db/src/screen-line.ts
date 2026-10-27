@@ -9,6 +9,9 @@ import { heardFrom } from './health.js';
 import type { Pool } from 'pg';
 import { inTransaction } from './makeups.js';
 
+/** Days a retired screen may still connect, to send what it holds (a screen keeps 7 days). */
+export const RETIRED_SENDS_DAYS = 7;
+
 export type LineVerdict =
   { readonly ok: true; readonly serial: string } | { readonly ok: false; readonly reason: string };
 
@@ -60,13 +63,16 @@ export async function screenMayConnect(
     [r.clientId],
   );
   if (!keys.rows[0]?.live) return { ok: false, reason: 'the screen was reported lost or stolen' };
-  // Retired for good (P3.4): nothing it sends is wanted any more (P7.1).
-  const service = await pool.query<{ kind: string }>(
-    `SELECT kind FROM screen_service_events WHERE screen_id = $1 AND at <= to_timestamp($2)
-      ORDER BY id DESC LIMIT 1`,
+  // Retired for good (P3.4): shut out once it has had a week to send what it still holds (a box
+  // retired with plays it never sent gets them in; its plays keep 7 days), P7.1.
+  const service = await pool.query<{ kind: string; at: string }>(
+    `SELECT kind, extract(epoch FROM at)::bigint AS at FROM screen_service_events
+      WHERE screen_id = $1 AND at <= to_timestamp($2) ORDER BY id DESC LIMIT 1`,
     [r.clientId, now],
   );
-  if (service.rows[0]?.kind === 'retired') return { ok: false, reason: 'the screen is retired' };
+  const last = service.rows[0];
+  if (last?.kind === 'retired' && now >= Number(last.at) + RETIRED_SENDS_DAYS * 86_400)
+    return { ok: false, reason: 'the screen is retired' };
   return { ok: true, serial: cert.serial };
 }
 

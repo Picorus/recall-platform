@@ -5,7 +5,7 @@ From the security review (P7.1, 28 Oct 2026). Four reviews: staff sign-in and ro
 ## A screen is lost or stolen
 
 1. Admin → Screens → find the screen → **Report lost or stolen**. Needs an Operations admin.
-2. Say how many hours ago it went missing (0 = now, at most 7 days back), and what happened.
+2. Say how many hours ago it went missing (0 = now, at most 7 days back), and what happened (at least 5 characters).
 3. One step does all of it, logged with who and why:
    - nothing it shows from that moment on counts, for any brand or rider;
    - its line to us closes at once (its certificate is revoked);
@@ -14,18 +14,18 @@ From the security review (P7.1, 28 Oct 2026). Four reviews: staff sign-in and ro
 
 It cannot be undone. A screen found again is enrolled as a new screen.
 
-A retired screen (Screens → Retire for good) can no longer connect either.
+A retired screen (Screens → Retire for good) gets 7 days to send in what it still holds, then can no longer connect.
 
 ## Limits that protect sign-in and uploads
 
 | What | Limit |
 |---|---|
-| Sign-in codes (brands, riders) | Per number or email, per connection, per day (Settings). An IPv6 /48 gets 5 times one connection's limit. The shared hourly brake counts only codes sent to numbers and emails with no account, so a flood can never stop real people signing in. |
+| Sign-in codes (brands, riders) | Per number or email, per connection, per day (Settings). An IPv6 /48 gets 5 times one connection's limit. The shared hourly brake counts only codes sent to numbers and emails with no account, so a flood can never stop real people signing in. Past it, a number or email with no account gets the usual answer but no code, so the answer never shows whether an account exists. |
 | Staff sign-in | 5 wrong tries per email and connection, then 15 minutes. 30 wrong tries per connection, 150 per IPv6 /48. 10 wrong two-step codes stop the account until a reset. |
 | Staff password checks | 4 at a time, 100 waiting; 2 places per connection, 20 per IPv6 /48. |
 | Brand ad uploads | 4 at a time, one per business. Any upload slower than 8 KB a second after 10 seconds is stopped. |
 | Screen messages at the gateway | 8 waiting per screen, 10,000 and 256 MB in all. Reports more than 5,000 numbers ahead of a gap are left for later. |
-| Plays | Count only for an ad the booking ran, inside its area and hour, signed by a key of that screen that was not given up. |
+| Plays | Count only for an ad the booking runs (its final choice), inside its area and hour, signed by a key of that screen that was not given up. |
 
 ## Before going live (P6 and the POC)
 

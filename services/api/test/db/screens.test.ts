@@ -134,10 +134,10 @@ describe('Screens page routes (P3.4)', () => {
     );
     const why = { reason: 'stolen with the bike' };
     expect((await post(`/screens/${SPARE}/lost`, viewer, why)).status).toBe(403);
-    expect((await post(`/screens/${SPARE}/lost`, ops, { ...why, lostAt: 'today' })).status).toBe(
+    expect((await post(`/screens/${SPARE}/lost`, ops, { ...why, hoursAgo: 'today' })).status).toBe(
       400,
     );
-    expect((await post(`/screens/${SPARE}/lost`, ops, { ...why, lostAt: NOW + 9999 })).status).toBe(
+    expect((await post(`/screens/${SPARE}/lost`, ops, { ...why, hoursAgo: 8 * 24 })).status).toBe(
       400,
     );
     const done = await post(`/screens/${SPARE}/lost`, ops, why);
