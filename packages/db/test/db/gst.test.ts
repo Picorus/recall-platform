@@ -11,6 +11,7 @@ import {
   setBrandTaxProfile,
 } from '../../src/gst.js';
 import { createAccount } from '../../src/brands.js';
+import { saveSetting } from '../../src/settings.js';
 import { accountTotals, post } from '../../src/ledger.js';
 import { settleDue } from '../../src/makeups.js';
 import { freshDatabase } from './fresh-db.js';
@@ -421,5 +422,66 @@ describe('GST and the books (P1.7.9)', () => {
     ]);
     const s = await gstSummary(pool, '2027-07');
     expect(s.gstinHeld.map((h) => h.why)).toEqual(['typed', 'shared', 'shared']);
+  });
+
+  it('a document keeps what it printed: RECALL details, the rate, the address; staff tick "checked" (P5.8)', async () => {
+    // Before RECALL's details are filled in: kept empty (never a valid tax invoice).
+    const before = await pool.query<{ supplier_name: string; gst_bp: number }>(
+      `SELECT supplier_name, gst_bp FROM gst_documents WHERE booking_id = 'BK-P5'`,
+    );
+    expect(before.rows[0]).toEqual({ supplier_name: '', gst_bp: 1_800 });
+    const company = {
+      legalName: 'Recall Media Private Limited',
+      gstin: '36AABCU9603R1ZO',
+      address: 'Plot 1, Madhapur, Hyderabad 500081, Telangana',
+    };
+    await saveSetting(pool, 'company', company, SUPER, 'registered', 0);
+    await book('BK-P6', 'brand-real', 14);
+    const doc = async (id: string) =>
+      (
+        await pool.query(
+          `SELECT supplier_name, supplier_gstin, supplier_state, gst_bp FROM gst_documents
+            WHERE booking_id = $1`,
+          [id],
+        )
+      ).rows[0];
+    const kept = {
+      supplier_name: company.legalName,
+      supplier_gstin: company.gstin,
+      supplier_state: '36',
+      gst_bp: 1_800,
+    };
+    expect(await doc('BK-P6')).toEqual(kept);
+    // RECALL moves: the old document still prints what it printed.
+    await saveSetting(
+      pool,
+      'company',
+      { ...company, address: 'Somewhere else, Hyderabad 500032' },
+      SUPER,
+      'moved',
+      1,
+    );
+    expect(await doc('BK-P6')).toEqual(kept);
+    expect((await doc('BK-P5'))?.supplier_name).toBe('');
+    // Staff saving a GST number without ticking "checked" keep it as typed: not printed.
+    await setBrandTaxProfile(
+      pool,
+      'brand-z',
+      { legalName: 'Zed Ltd', gstin: '27AAPFU0939F1ZV', stateCode: '27', gstinChecked: false },
+      'priya',
+    );
+    await setBrandTaxProfile(
+      pool,
+      'brand-y',
+      { legalName: 'Why Ltd', gstin: '27AAPFU0939F1ZV', stateCode: '27', gstinChecked: true },
+      'priya',
+    );
+    const src = await pool.query(
+      `SELECT brand_id, source FROM brand_tax_profiles WHERE brand_id IN ('brand-y', 'brand-z') ORDER BY brand_id`,
+    );
+    expect(src.rows).toEqual([
+      { brand_id: 'brand-y', source: 'staff' },
+      { brand_id: 'brand-z', source: 'typed' },
+    ]);
   });
 });

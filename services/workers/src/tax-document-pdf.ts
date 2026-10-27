@@ -1,6 +1,7 @@
 // P5.8: tax invoices and credit notes as a PDF (A4), one document a page: one to download, or all of
-// a year's in one file. RECALL's legal name, GSTIN and address come from the company setting; until
-// they are filled in, each page says plainly it is not a valid tax invoice yet. Helvetica has no
+// a year's in one file. Everything printed was kept with the document when it was issued (RECALL's
+// details, the rate, the brand's address), so a document prints the same every time. Issued before
+// RECALL's details were filled in, it says plainly it is not a valid tax invoice. Helvetica has no
 // rupee sign, so amounts read "Rs." (pdfSafe).
 import { themes } from '@recall/design';
 import {
@@ -9,7 +10,6 @@ import {
   formatRupees,
   paise,
   stateName,
-  type CompanyDetails,
   type TaxDocument,
 } from '@recall/domain';
 import { PDFDocument, rgb, StandardFonts, type PDFFont, type PDFPage } from 'pdf-lib';
@@ -35,14 +35,9 @@ const dayText = (d: string) =>
   });
 const rate = (bp: number) => `${bp / 100}%`;
 
-function drawOne(
-  page: PDFPage,
-  d: TaxDocument,
-  company: CompanyDetails,
-  supplierState: string,
-  font: PDFFont,
-  bold: PDFFont,
-) {
+function drawOne(page: PDFPage, d: TaxDocument, font: PDFFont, bold: PDFFont) {
+  const company = d.supplier;
+  const supplierState = d.supplierState;
   let y = A4[1] - M;
   const at = (t: string, x: number, size: number, f = font, color = hex(C.ink)) =>
     page.drawText(pdfSafe(t), { x, y, size, font: f, color });
@@ -72,13 +67,13 @@ function drawOne(
     });
     y -= 8;
     at(
-      "Not a valid tax invoice yet: RECALL's company details are not filled in.",
+      "Not a valid tax invoice: issued before RECALL's company details were filled in.",
       M + 10,
       10,
       bold,
     );
     y -= 14;
-    at('Download it again once they are: the same document, with them.', M + 10, 9);
+    at('Ask us on Help for a valid one if you need it.', M + 10, 9);
     y -= 36;
   }
 
@@ -106,6 +101,10 @@ function drawOne(
   y -= 14;
   at(d.gstin ? `GSTIN ${d.gstin}` : 'GSTIN: not given', colX, 10);
   y -= 13;
+  for (const line of wrap(d.recipientAddress, font, 9, A4[0] / 2 - M - 16)) {
+    at(line, colX, 9);
+    y -= 12;
+  }
   at(
     `Place of supply: ${stateName(d.placeOfSupply) ?? d.placeOfSupply} (${d.placeOfSupply})`,
     colX,
@@ -135,7 +134,9 @@ function drawOne(
   right(rs(d.taxablePaise), cols[2] ?? M, 10);
   y -= 13;
   at(
-    `${d.bikeHours.toLocaleString('en-IN')} bike-hours, ${dayText(d.firstDay)} to ${dayText(d.lastDay)}`,
+    d.kind === 'invoice'
+      ? `${d.bikeHours.toLocaleString('en-IN')} bike-hours, ${dayText(d.firstDay)} to ${dayText(d.lastDay)}`
+      : `Reduces invoice ${d.againstDoc ?? ''}: the campaign of ${dayText(d.firstDay)} to ${dayText(d.lastDay)}`,
     cols[0] ?? M,
     9,
     font,
@@ -193,11 +194,7 @@ function wrap(t: string, font: PDFFont, size: number, width: number): string[] {
 }
 
 /** The documents in one PDF, a page each, in the order given. */
-export async function renderTaxDocumentsPdf(
-  docs: readonly TaxDocument[],
-  company: CompanyDetails,
-  supplierState: string,
-): Promise<Uint8Array> {
+export async function renderTaxDocumentsPdf(docs: readonly TaxDocument[]): Promise<Uint8Array> {
   const pdf = await PDFDocument.create();
   const first = docs[0];
   pdf.setTitle(
@@ -210,7 +207,7 @@ export async function renderTaxDocumentsPdf(
   pdf.setModificationDate(when);
   const font = await pdf.embedFont(StandardFonts.Helvetica);
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
-  for (const d of docs) drawOne(pdf.addPage([...A4]), d, company, supplierState, font, bold);
+  for (const d of docs) drawOne(pdf.addPage([...A4]), d, font, bold);
   if (docs.length === 0) pdf.addPage([...A4]);
   return pdf.save();
 }

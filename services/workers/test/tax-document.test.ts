@@ -24,6 +24,13 @@ const INVOICE: TaxDocument = {
   igstPaise: 0,
   totalPaise: 5_664_000,
   gstBp: 1_800,
+  recipientAddress: '12 Road No. 36, Jubilee Hills, Hyderabad 500033',
+  supplier: {
+    legalName: 'Recall Media Private Limited',
+    gstin: '36AABCU9603R1ZO',
+    address: 'Plot 1, Madhapur, Hyderabad 500081, Telangana',
+  },
+  supplierState: '36',
   bikeHours: 160,
   firstDay: '2027-08-23',
   lastDay: '2027-08-29',
@@ -48,23 +55,18 @@ const CREDIT: TaxDocument = {
   sgstPaise: 9_000,
   totalPaise: 118_000,
 };
-const COMPANY = {
-  legalName: 'Recall Media Private Limited',
-  gstin: '36AABCU9603R1ZO',
-  address: 'Plot 1, Madhapur, Hyderabad 500081, Telangana',
-};
-
 describe('tax documents as a PDF (P5.8)', () => {
   it('a page each, every kind drawn, with or without the company details', async () => {
-    for (const company of [COMPANY, DEFAULT_SETTINGS.company]) {
-      const bytes = await renderTaxDocumentsPdf([INVOICE, OTHER_STATE, CREDIT], company, '36');
+    for (const supplier of [INVOICE.supplier, DEFAULT_SETTINGS.company]) {
+      const docs = [INVOICE, OTHER_STATE, CREDIT].map((d) => ({ ...d, supplier }));
+      const bytes = await renderTaxDocumentsPdf(docs);
       expect(Buffer.from(bytes).subarray(0, 5).toString()).toBe('%PDF-');
       expect((await PDFDocument.load(bytes)).getPageCount()).toBe(3);
     }
   });
   it('the same documents give the same file', async () => {
-    const a = await renderTaxDocumentsPdf([INVOICE], COMPANY, '36');
-    const b = await renderTaxDocumentsPdf([INVOICE], COMPANY, '36');
+    const a = await renderTaxDocumentsPdf([INVOICE]);
+    const b = await renderTaxDocumentsPdf([INVOICE]);
     expect(Buffer.from(a).equals(Buffer.from(b))).toBe(true);
   });
 });

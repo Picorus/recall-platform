@@ -30,6 +30,12 @@ interface Row {
   igst: string;
   total: string;
   bike_hours: string;
+  gst_bp: number | null;
+  recipient_address: string | null;
+  supplier_name: string | null;
+  supplier_gstin: string | null;
+  supplier_address: string | null;
+  supplier_state: string | null;
   first_day: string;
   last_day: string;
 }
@@ -37,7 +43,8 @@ interface Row {
 const SELECT = `SELECT d.doc_no, d.kind, d.issued_at, d.against_doc, d.booking_id, d.brand_id,
        d.legal_name, d.gstin, d.gstin_held IS NOT NULL AS held, d.place_of_supply, d.sac, d.taxable_paise AS taxable,
        d.cgst_paise AS cgst, d.sgst_paise AS sgst, d.igst_paise AS igst, d.total_paise AS total,
-       l.bike_hours, l.first_day::text, l.last_day::text
+       d.gst_bp, d.recipient_address, d.supplier_name, d.supplier_gstin, d.supplier_address,
+       d.supplier_state, l.bike_hours, l.first_day::text, l.last_day::text
   FROM gst_documents d
   JOIN LATERAL (SELECT sum(bikes) AS bike_hours, min(day) AS first_day, max(day) AS last_day
                   FROM booking_lines WHERE booking_id = d.booking_id) l ON true`;
@@ -46,6 +53,7 @@ async function shaped(c: Q, rows: readonly Row[]): Promise<TaxDocument[]> {
   const books = rows.length > 0 ? await priceBooks(c) : [];
   return rows.map((r) => {
     const at = Math.floor(r.issued_at.getTime() / 1000);
+    const book = priceBookAt(books, r.issued_at.toISOString());
     return {
       docNo: r.doc_no,
       kind: r.kind,
@@ -63,7 +71,15 @@ async function shaped(c: Q, rows: readonly Row[]): Promise<TaxDocument[]> {
       sgstPaise: Number(r.sgst),
       igstPaise: Number(r.igst),
       totalPaise: Number(r.total),
-      gstBp: priceBookAt(books, r.issued_at.toISOString())?.gstBp ?? 0,
+      // Documents from before P5.8 kept no rate or details: the price book of the day, and none.
+      gstBp: r.gst_bp ?? book?.gstBp ?? 0,
+      recipientAddress: r.recipient_address ?? '',
+      supplier: {
+        legalName: r.supplier_name ?? '',
+        gstin: r.supplier_gstin ?? '',
+        address: r.supplier_address ?? '',
+      },
+      supplierState: r.supplier_state ?? book?.taxes.supplierStateCode ?? '36',
       bikeHours: Number(r.bike_hours),
       firstDay: r.first_day,
       lastDay: r.last_day,

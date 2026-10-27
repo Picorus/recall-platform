@@ -202,6 +202,7 @@ export default function BrandsPage() {
           gstin: field(f, 'gstin'),
           stateCode: field(f, 'stateCode'),
           address: field(f, 'address'),
+          gstinChecked: f.get('gstinChecked') === 'on',
         }),
       'Tax details saved.',
     );
@@ -503,6 +504,16 @@ export default function BrandsPage() {
                   defaultValue={page.tax?.address ?? ''}
                   disabled={!mayTax(me)}
                 />
+              </label>
+              <label className="row">
+                <input
+                  type="checkbox"
+                  name="gstinChecked"
+                  defaultChecked={page.tax?.source === 'staff' && page.sameGstin.length === 0}
+                  disabled={!mayTax(me)}
+                />
+                I checked this GST number and legal name (GST certificate or the GST records). Not
+                ticked: no invoice carries it.
               </label>
               {page.tax && (
                 <span className="muted">

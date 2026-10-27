@@ -43,7 +43,6 @@
 import {
   brandDocument,
   brandDocuments,
-  priceBooks,
   campaignReportFor,
   askSalesForDeal,
   payFromPortal,
@@ -90,8 +89,6 @@ import {
   type BrandCodeChannel,
   reportPeriod,
   reportSummary,
-  priceBookAt,
-  isoAt,
   type TaxDocument,
 } from '@recall/domain';
 import { renderReportHtml, renderReportPdf, renderTaxDocumentsPdf } from '@recall/workers';
@@ -730,18 +727,11 @@ export async function handleBrandPortal(
     res.end(pdf);
     return true;
   }
-  /** Documents as a PDF download, with RECALL's details as they are now. */
+  /** Documents as a PDF download (each prints what was kept with it when issued). */
   const sendDocuments = async (docs: readonly TaxDocument[], name: string) => {
     if (!tryOnce(previews, `pdf:${me.address}`, now, 30))
       throw new HttpError(429, 'Too many downloads this hour: try again later');
-    const book = priceBookAt(await priceBooks(pool), isoAt(now));
-    const pdf = Buffer.from(
-      await renderTaxDocumentsPdf(
-        docs,
-        await setting(pool, 'company'),
-        book?.taxes.supplierStateCode ?? '36',
-      ),
-    );
+    const pdf = Buffer.from(await renderTaxDocumentsPdf(docs));
     res.writeHead(200, {
       'content-type': 'application/pdf',
       'content-length': pdf.length,
@@ -775,6 +765,12 @@ export async function handleBrandPortal(
     const y = await brandDocuments(pool, a.brandId, fy, now);
     if (y.documents.length === 0)
       throw new HttpError(404, 'No invoices that year', { code: 'no-document' });
+    if (y.truncated)
+      throw new HttpError(
+        413,
+        'More than 500 that year: download them one by one, or ask us on Help',
+        { code: 'too-many' },
+      );
     // Oldest first, as an accountant files them.
     await sendDocuments([...y.documents].reverse(), `RECALL-invoices-${fy}`);
     return true;

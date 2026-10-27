@@ -95,8 +95,19 @@ export interface TaxDocument {
   readonly sgstPaise: number;
   readonly igstPaise: number;
   readonly totalPaise: number;
-  /** The GST rate in force when it was issued (basis points). */
+  /** The GST rate the tax was worked out at (the booking's price book; a credit note: its
+   * invoice's), in basis points. */
   readonly gstBp: number;
+  /** The brand's address on its tax details when issued ("" when none). */
+  readonly recipientAddress: string;
+  /** RECALL's details and state as they were when issued (empty before registration: then it is
+   * never a valid tax invoice). */
+  readonly supplier: {
+    readonly legalName: string;
+    readonly gstin: string;
+    readonly address: string;
+  };
+  readonly supplierState: string;
   /** What was sold: the booking's bike-hours and India days ("YYYY-MM-DD"). */
   readonly bikeHours: number;
   readonly firstDay: string;
