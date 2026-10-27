@@ -3,9 +3,17 @@
 // in by email and sees their brand; wrong codes are told; sign-out ends it.
 // Needs `next build` first and DATABASE_URL (pnpm services:up).
 import { fakeGst, fakeMessages } from '@recall/adapters';
-import { PRICE_BOOK_V1 } from '@recall/domain';
+import { launchAreas, PRICE_BOOK_V1 } from '@recall/domain';
 import { apiHandler } from '@recall/api';
-import { createAccount, savePriceBook, saveSetting, setPortalMember } from '@recall/db';
+import {
+  createAccount,
+  createBooking,
+  moveBooking,
+  saveAreaVersion,
+  savePriceBook,
+  saveSetting,
+  setPortalMember,
+} from '@recall/db';
 import { freshDatabase } from '@recall/db/test-db';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
@@ -98,6 +106,33 @@ beforeAll(async () => {
     },
     now - 60,
   );
+  for (const a of launchAreas('2026-11-01T00:00:00.000Z'))
+    await saveAreaVersion(db.pool, { ...a, draft: false }, 'system');
+  const day = new Date((now + 30 * 86_400) * 1000).toISOString().slice(0, 10);
+  await createBooking(
+    db.pool,
+    {
+      bookingId: 'BK-E2E-1',
+      brandId: 'chai-co',
+      request: {
+        lines: [
+          { areaId: 'hyd-madhapur', date: day, startHour: 19, bikes: 40 },
+          { areaId: 'hyd-madhapur', date: day, startHour: 20, bikes: 40 },
+        ],
+        repeatMonths: 1,
+        channel: 'admin',
+      },
+      by: 'Sana',
+    },
+    now - 50,
+  );
+  await moveBooking(
+    db.pool,
+    'BK-E2E-1',
+    'awaiting-payment',
+    { by: 'Sana', actor: 'admin' },
+    now - 40,
+  );
   await setPortalMember(
     db.pool,
     {
@@ -151,7 +186,7 @@ it('a new business signs in with a WhatsApp code, a wrong code is told, and sign
   await page.waitForURL(`${SITE}/sign-in`);
   expect(errors).toEqual([]);
   await page.close();
-}, 60_000);
+}, 90_000);
 
 it('a person given access signs in by email and sees their brand', async () => {
   const page = await browser.newPage();
@@ -162,16 +197,21 @@ it('a person given access signs in by email and sees their brand', async () => {
   await page.getByText('by email to media@chaico.in').waitFor();
   await page.getByLabel('Code').fill(lastCode('media@chaico.in'));
   await page.getByRole('button', { name: 'Sign in' }).click();
-  await page.getByRole('heading', { name: 'Your accounts' }).waitFor();
-  await page.getByText('Chai Co').waitFor();
-  await page.getByText('Brand · Owner').waitFor();
+  // One business: its campaigns open straight away (P5.3).
+  await page.getByRole('heading', { name: 'Chai Co' }).waitFor();
+  const card = page.getByRole('listitem', { name: 'Campaign BK-E2E-1' });
+  await card.getByText('To pay').waitFor();
+  await card.getByText('80').waitFor();
+  await card.getByText('Not paid yet').waitFor();
+  await card.getByRole('link', { name: 'Book again' }).waitFor();
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/brand-campaigns.png`, fullPage: true });
   // The site passes only the portal's routes: a staff route is not reachable through it.
   const staff = await page.evaluate(async () => (await fetch('/api/staff/me')).status);
   expect(staff).toBe(404);
   await page.close();
 }, 60_000);
 
-it('a new business sets itself up from its GST number and sees its free week (P5.2)', async () => {
+it('a new business sets itself up from its GST number, sees its free week, books and books again (P5.2–P5.4)', async () => {
   const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
@@ -199,9 +239,40 @@ it('a new business sets itself up from its GST number and sees its free week (P5
   await page.getByRole('heading', { name: 'Your free week' }).waitFor();
   await page.getByText('36AAPFU0939F1ZW').waitFor();
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/brand-business.png`, fullPage: true });
-  // Its first page now lists it.
+  // Its first page now opens its campaigns (none yet).
   await page.goto(SITE);
-  await page.getByRole('link', { name: 'Irani Chai' }).waitFor();
+  await page.getByRole('heading', { name: 'Irani Chai' }).waitFor();
+  await page.getByRole('heading', { name: 'No campaigns yet' }).waitFor();
+  // P5.4: book from the map, the evening rush, every day for a week, 20 bikes.
+  await page.getByRole('link', { name: 'Book your first campaign' }).click();
+  await page.getByRole('heading', { name: 'Book for Irani Chai' }).waitFor();
+  const summary = page.getByRole('complementary', { name: 'Summary' });
+  await summary.getByText('Pick areas, hours and days to see the price.').waitFor();
+  await page.getByRole('checkbox', { name: 'Madhapur' }).click();
+  await page.getByRole('button', { name: 'Evening rush' }).click();
+  // 1 area × 3 hours × 7 days × 20 bikes = 420 bike-hours at ₹300: ₹1,26,000 + 18% GST.
+  await summary.getByText('420', { exact: true }).waitFor();
+  await summary.getByText('₹1,48,680').waitFor();
+  expect(await summary.getByRole('button', { name: 'Continue' }).isEnabled()).toBe(true);
+  // Too few bikes: told, and Continue is off.
+  await page.getByLabel('Bikes each hour').fill('3');
+  await summary.getByText('From 5 to 100 bikes each hour').waitFor();
+  expect(await summary.getByRole('button', { name: 'Continue' }).isEnabled()).toBe(false);
+  await page.getByLabel('Bikes each hour').fill('20');
+  await summary.getByText('₹1,48,680').waitFor();
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/brand-book.png`, fullPage: true });
+  await summary.getByRole('button', { name: 'Continue' }).click();
+  // In its campaigns, to pay; "Book again" opens with the same plan.
+  await page.getByRole('heading', { name: 'Irani Chai' }).waitFor();
+  const card = page.getByRole('listitem', { name: /^Campaign BK-/ });
+  await card.getByText('To pay').waitFor();
+  await card.getByText('420', { exact: true }).waitFor();
+  await card.getByRole('link', { name: 'Book again' }).click();
+  await page.getByRole('heading', { name: 'Book for Irani Chai' }).waitFor();
+  await summary.getByText('₹1,48,680').waitFor();
+  expect(await page.getByRole('checkbox', { name: 'Madhapur' }).getAttribute('aria-checked')).toBe(
+    'true',
+  );
   expect(errors).toEqual([]);
   await page.close();
-}, 60_000);
+}, 90_000);

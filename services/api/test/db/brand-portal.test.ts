@@ -4,7 +4,8 @@
 // Sales gives and removes portal access on a brand's page.
 import { freshDatabase } from '@recall/db/test-db';
 import { fakeGst, fakeMessages } from '@recall/adapters';
-import { createAccount } from '@recall/db';
+import { createAccount, saveAreaVersion, savePriceBook } from '@recall/db';
+import { launchAreas, PRICE_BOOK_V1 } from '@recall/domain';
 import { randomBytes } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -45,6 +46,9 @@ beforeAll(async () => {
   );
   await new Promise<void>((ok) => server.listen(0, '127.0.0.1', ok));
   url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  await savePriceBook(pool, PRICE_BOOK_V1, 'prateek');
+  for (const x of launchAreas('2026-11-01T00:00:00.000Z'))
+    await saveAreaVersion(pool, { ...x, draft: false }, 'system');
   await createAccount(
     pool,
     {
@@ -266,5 +270,48 @@ describe('brand portal sign-in routes (P5.1)', () => {
     expect(
       (await call('/portal/business', { name: 'x' }, { origin: PORTAL, cookie: t.session })).status,
     ).toBe(400);
+  });
+
+  it('book: the form, a live price, the booking saved, then in its campaigns; book again (P5.3–P5.4)', async () => {
+    // The owner of Irani Chai from the test above.
+    const s = await signIn('+919848077777', 'whatsapp');
+    const c = { origin: PORTAL, cookie: s.session };
+    const form = await call('/portal/book-form?brand=irani-chai', undefined, { cookie: s.session });
+    expect(form.status).toBe(200);
+    expect(form.body.form).toMatchObject({
+      earliestStart: '2027-09-08',
+      minBikes: 5,
+      maxBikes: 100,
+    });
+    expect(form.body.plan).toBeNull();
+    const plan = {
+      areaIds: ['hyd-madhapur'],
+      hours: [19, 20],
+      weekdays: [5, 6],
+      startDate: '2027-09-08',
+      weeks: 2,
+      bikes: 20,
+      repeatMonths: 1,
+    };
+    expect(await call('/portal/quote?brand=irani-chai', { plan }, c)).toMatchObject({
+      status: 200,
+      body: { price: { bikeHours: 160, totalPaise: 5_664_000 }, problems: [] },
+    });
+    expect(
+      (await call('/portal/quote?brand=irani-chai', { plan: { ...plan, hours: 'x' } }, c)).status,
+    ).toBe(400);
+    const made = await call('/portal/bookings?brand=irani-chai', { plan }, c);
+    expect(made.status).toBe(200);
+    const id = String(made.body.bookingId);
+    const list = await call('/portal/campaigns?brand=irani-chai', undefined, { cookie: s.session });
+    expect(list.body.campaigns).toMatchObject([{ bookingId: id, stage: 'to-pay', bikeHours: 160 }]);
+    const again = await call(`/portal/book-form?brand=irani-chai&again=${id}`, undefined, {
+      cookie: s.session,
+    });
+    expect(again.body.plan).toEqual(plan);
+    // Not theirs: the same as not there.
+    for (const path of ['/portal/campaigns?brand=chai-co', '/portal/book-form?brand=chai-co'])
+      expect((await call(path, undefined, { cookie: s.session })).status).toBe(404);
+    expect((await call('/portal/bookings?brand=chai-co', { plan }, c)).status).toBe(404);
   });
 });

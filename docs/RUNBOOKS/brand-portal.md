@@ -38,6 +38,16 @@ API's `/portal/...` routes and nothing else: a page on the portal can never reac
   certificate, then close the wrong account or correct its tax details. Tax details a business typed
   (no GST record) show "not checked": check them before the first invoice.
 
+## Campaigns and booking (P5.3–P5.4)
+
+- After sign-in, a person with one business lands on its campaigns: Scheduled (and To pay), Running,
+  Done. "Book" (or "Book again" on a campaign) opens the booking page.
+- Booking: tap areas on the map, pick hours (or a ready-made pick), days, start date, weeks, bikes,
+  and optionally a monthly repeat. The summary prices it live with the same rules as admin bookings.
+  Continue saves it as "To pay"; it holds no bikes until it is paid (P5.6).
+- Limits (most bikes each hour, most weeks, bookings a person may make a day) are in Settings →
+  Brand portal limits; the minimum, lead days, bands and offers are in the price book.
+
 ## Tests
 
 - `pnpm --filter @recall/brand test`: the sign-in page's checks.

@@ -83,3 +83,75 @@ export type GstAnswer =
       readonly address: string;
     }
   | { readonly status: 'type-it' };
+
+/** P5.3: one campaign on the portal. */
+export interface Campaign {
+  readonly bookingId: string;
+  readonly stage: 'to-pay' | 'scheduled' | 'running' | 'done' | 'cancelled';
+  readonly note: string | null;
+  readonly trial: boolean;
+  readonly areas: readonly string[];
+  readonly firstDay: string;
+  readonly lastDay: string;
+  readonly days: number;
+  readonly bikeHours: number;
+  readonly playsPromised: number;
+  readonly totalPaise: number;
+}
+
+export interface Campaigns {
+  readonly at: number;
+  readonly account: Account;
+  readonly campaigns: readonly Campaign[];
+}
+
+/** P5.4: what a brand picks. */
+export interface Plan {
+  readonly areaIds: readonly string[];
+  readonly hours: readonly number[];
+  readonly weekdays: readonly number[];
+  readonly startDate: string;
+  readonly weeks: number;
+  readonly bikes: number;
+  readonly repeatMonths: number;
+}
+
+export interface BookForm {
+  readonly areas: readonly {
+    areaId: string;
+    name: string;
+    ring: readonly (readonly [number, number])[];
+    centre: readonly [number, number];
+  }[];
+  readonly hours: readonly {
+    hour: number;
+    label: string;
+    band: string;
+    paisePerBikeHour: number;
+  }[];
+  readonly picks: readonly { key: string; label: string; hours: readonly number[] }[];
+  readonly earliestStart: string;
+  readonly minBikes: number;
+  readonly maxBikes: number;
+  readonly maxWeeks: number;
+  readonly repeatOffersBp: Readonly<Record<string, number>>;
+  readonly minBookingPaise: number;
+  readonly adsDueDays: number;
+}
+
+export interface PlanPrice {
+  readonly price: {
+    lines: number;
+    days: number;
+    bikeHours: number;
+    plays: number;
+    listPaise: number;
+    discountPaise: number;
+    subtotalPaise: number;
+    gstPaise: number;
+    totalPaise: number;
+    firstDay: string;
+    lastDay: string;
+  } | null;
+  readonly problems: readonly string[];
+}

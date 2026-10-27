@@ -12,7 +12,19 @@
 //   POST /portal/business   { gstin|null, name, kind, businessType, invoiceEmail, phone,
 //                             legalName?, stateCode?, address? }   sets it up; the person owns it
 //   GET  /portal/business?brand=<id>        its details and the free week, for its people only
+// P5.3:
+//   GET  /portal/campaigns?brand=<id>       its campaigns: Scheduled, Running, Done (To pay, Cancelled)
+// P5.4:
+//   GET  /portal/book-form?brand=<id>[&again=<booking>]  areas, hours, picks, limits (and the plan
+//                                           of an earlier booking, for "Book again")
+//   POST /portal/quote?brand=<id>    { plan }  the live price and what stops it
+//   POST /portal/bookings?brand=<id> { plan }  saves it as the business's booking (to pay next)
 import {
+  bookForm,
+  bookFromPortal,
+  planFrom,
+  portalQuote,
+  portalCampaigns,
   businessPage,
   lookUpGst,
   setUpBusiness,
@@ -31,6 +43,7 @@ import {
   isBusinessType,
   typedGstin,
   emailAddress,
+  type PortalPlan,
   indiaMobile,
   showMobile,
   typedCode,
@@ -41,6 +54,65 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Pool } from 'pg';
 import { cookies, HttpError, jsonBody, send, str } from './http.js';
 import { callerIp, type StaffApiConfig } from './staff-api.js';
+
+/** Price checks each person made this hour (the live summary asks on every change). */
+const quotes = new Map<string, { readonly hour: number; n: number }>();
+
+/** One more for this key this hour, or false when it is out of them. */
+function tryOnce(
+  m: Map<string, { readonly hour: number; n: number }>,
+  key: string,
+  now: number,
+  max: number,
+) {
+  const hour = Math.floor(now / 3600);
+  const mine = m.get(key);
+  if (mine?.hour === hour && mine.n >= max) return false;
+  if (m.size > 10_000) m.clear();
+  m.set(key, mine?.hour === hour ? { hour, n: mine.n + 1 } : { hour, n: 1 });
+  return true;
+}
+
+/** Who did something on the portal, as bookings keep it (the column holds 120 characters). */
+const portalBy = (address: string) => `portal:${address}`.slice(0, 120);
+
+/** A booking plan from a request body, checked for shape (the rules check the rest). */
+function planOf(b: Record<string, unknown>): PortalPlan {
+  const p = b.plan;
+  if (typeof p !== 'object' || p === null || Array.isArray(p))
+    throw new HttpError(400, 'Send a plan');
+  const x = p as Record<string, unknown>;
+  const ints = (k: string, max: number) => {
+    const v = x[k];
+    if (!Array.isArray(v) || v.length > max || !v.every((n) => Number.isInteger(n)))
+      throw new HttpError(400, `${k}: a list of whole numbers`);
+    return v as number[];
+  };
+  const ids = x.areaIds;
+  if (
+    !Array.isArray(ids) ||
+    ids.length > 100 ||
+    !ids.every((v) => typeof v === 'string' && /^[a-z0-9-]{1,64}$/.test(v))
+  )
+    throw new HttpError(400, 'areaIds: area ids');
+  const int = (k: string) => {
+    const v = x[k];
+    if (!Number.isSafeInteger(v)) throw new HttpError(400, `${k}: a whole number`);
+    return v as number;
+  };
+  const startDate = x.startDate;
+  if (typeof startDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(startDate))
+    throw new HttpError(400, 'startDate: YYYY-MM-DD');
+  return {
+    areaIds: ids as string[],
+    hours: ints('hours', 30),
+    weekdays: ints('weekdays', 7),
+    startDate,
+    weeks: int('weeks'),
+    bikes: int('bikes'),
+    repeatMonths: int('repeatMonths'),
+  };
+}
 
 /** The cookie lasts at most this long; the session itself ends sooner when unused (Settings). */
 const COOKIE_DAYS = 90;
@@ -241,11 +313,47 @@ export async function handleBrandPortal(
     send(res, 200, { brandId });
     return true;
   }
-  if (path === '/portal/business' && method === 'GET') {
+  /** The account asked for (?brand=), if this person may act for it; otherwise a 404 (not theirs
+   * and not there look the same). */
+  const account = async () => {
     const brandId = new URL(req.url ?? '/', 'http://x').searchParams.get('brand') ?? '';
-    const mine = (await portalAccounts(pool, me.address)).some((a) => a.brandId === brandId);
-    // Not theirs and not there look the same.
-    const page = mine ? await businessPage(pool, brandId, now, me.address) : undefined;
+    const a = (await portalAccounts(pool, me.address)).find((x) => x.brandId === brandId);
+    if (!a) throw new HttpError(404, 'No such business', { code: 'no-business' });
+    return a;
+  };
+  if (path === '/portal/book-form' && method === 'GET') {
+    const a = await account();
+    const again = new URL(req.url ?? '/', 'http://x').searchParams.get('again');
+    const plan = again ? await planFrom(pool, a.brandId, again, now, rules) : undefined;
+    send(res, 200, { account: a, form: await bookForm(pool, now, rules), plan: plan ?? null });
+    return true;
+  }
+  if (path === '/portal/quote' && method === 'POST') {
+    await account();
+    // A live price on every change: a few hundred an hour each is plenty.
+    if (!tryOnce(quotes, me.address, now, 600))
+      throw new HttpError(429, 'Too many price checks: wait a minute');
+    const plan = planOf(await jsonBody(req));
+    send(res, 200, await refused(() => portalQuote(pool, plan, now, rules)));
+    return true;
+  }
+  if (path === '/portal/bookings' && method === 'POST') {
+    const a = await account();
+    const plan = planOf(await jsonBody(req));
+    const bookingId = await refused(() =>
+      bookFromPortal(pool, { brandId: a.brandId, plan, by: portalBy(me.address) }, now, rules),
+    );
+    send(res, 200, { bookingId });
+    return true;
+  }
+  if (path === '/portal/campaigns' && method === 'GET') {
+    const a = await account();
+    send(res, 200, { at: now, account: a, campaigns: await portalCampaigns(pool, a.brandId, now) });
+    return true;
+  }
+  if (path === '/portal/business' && method === 'GET') {
+    const a = await account();
+    const page = await businessPage(pool, a.brandId, now, me.address);
     if (!page) throw new HttpError(404, 'No such business', { code: 'no-business' });
     send(res, 200, page);
     return true;

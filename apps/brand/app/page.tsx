@@ -1,13 +1,20 @@
 'use client';
 // The portal's first page after sign-in. A new person sets up their business next (P5.2); someone
-// RECALL's team gave access sees the brands and agencies they act for. Campaigns come in P5.3.
-// P5.2: a link to set up a business, and to each one's details.
+// RECALL's team gave access sees the brands and agencies they act for, each opening its campaigns
+// (P5.3); with only one, it opens straight away. P5.2: a link to set up a business.
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useEffect } from 'react';
 import { Shell, useMe } from '../lib/session';
 
 export default function Home() {
   const me = useMe();
-  if (!me)
+  const router = useRouter();
+  const only = me?.accounts.length === 1 ? me.accounts[0]?.brandId : undefined;
+  useEffect(() => {
+    if (only) router.replace(`/campaigns?brand=${encodeURIComponent(only)}`);
+  }, [only, router]);
+  if (!me || only)
     return (
       <main className="narrow">
         <p className="muted">Loading…</p>
@@ -36,7 +43,7 @@ export default function Home() {
           <ul className="plain">
             {me.accounts.map((a) => (
               <li key={a.brandId}>
-                <Link href={`/business?brand=${encodeURIComponent(a.brandId)}`}>
+                <Link href={`/campaigns?brand=${encodeURIComponent(a.brandId)}`}>
                   <b>{a.name}</b>
                 </Link>{' '}
                 <span className="muted">
