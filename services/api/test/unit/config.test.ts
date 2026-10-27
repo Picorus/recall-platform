@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   inboundFrom,
   paymentsFrom,
+  readConfig,
   payoutsFrom,
   reportsFrom,
   riderChecksFrom,
@@ -62,5 +63,26 @@ describe('payments settings (P3.8.2)', () => {
     expect(() => inboundFrom({ API_HOST: '0.0.0.0' }, false)).toThrow('laptop only');
     expect(() => inboundFrom({ SUPPORT_INBOUND_PROVIDER: 'fake' }, true)).toThrow('laptop only');
     expect(() => inboundFrom({ SUPPORT_INBOUND_PROVIDER: 'gupshup' }, false)).toThrow('P6');
+  });
+});
+
+describe('outside services for the Settings page (P3.17)', () => {
+  it('a laptop lists every service as a stand-in, with no key shown', () => {
+    const cfg = readConfig({
+      DATABASE_URL: 'postgres://x',
+      PAYMENTS_WEBHOOK_SECRET: 's'.repeat(40),
+    });
+    expect(cfg.connections?.map((c) => c.service)).toEqual([
+      'Brand payments',
+      'Rider checks (KYC, e-sign, bank)',
+      'Rider payouts',
+      'Maps, WhatsApp and email out',
+      'Messages coming in',
+      'Ad file store',
+    ]);
+    expect(cfg.connections?.every((c) => c.state === 'stand-in' && c.provider === 'fake')).toBe(
+      true,
+    );
+    expect(JSON.stringify(cfg.connections)).not.toContain('s'.repeat(40));
   });
 });

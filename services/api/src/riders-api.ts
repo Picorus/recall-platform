@@ -41,6 +41,7 @@ import {
   riderPage,
   stepRider,
   uploadRiderDocument,
+  setting,
 } from '@recall/db';
 import {
   can,
@@ -366,12 +367,16 @@ async function slots(
   const b = await jsonBody(req);
   const startsAt = indiaTime(str(b, 'startsAt', 16));
   if (startsAt === null) throw new HttpError(400, 'When does it start? (India time)');
+  // A fitting centre from the list in Settings that is on (P3.17).
+  const centre = str(b, 'centre', 80);
+  if (!(await setting(pool, 'fittingCentres')).some((c) => c.on && c.name === centre))
+    throw new HttpError(400, 'Centre: pick one that is on in Settings (Fitting centres)');
   const num = (k: string) => (typeof b[k] === 'number' ? (b[k] as number) : NaN);
   const slotId = await refusedAs400(() =>
     openFittingSlot(
       pool,
       {
-        centre: str(b, 'centre', 80),
+        centre,
         startsAt,
         minutes: num('minutes'),
         bikes: num('bikes'),

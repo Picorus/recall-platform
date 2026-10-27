@@ -62,6 +62,7 @@ import { handleReportsDesk } from './reports-desk-api.js';
 import { handleDashboard } from './dashboard-api.js';
 import { handleSupport } from './support-api.js';
 import { handleAudit } from './audit-api.js';
+import { handleSettings } from './settings-api.js';
 import {
   decoyHash,
   hashPassword,
@@ -109,6 +110,17 @@ export interface StaffApiConfig {
     readonly messages: MessagesAdapter;
     readonly portalUrl: string;
   };
+  /**
+   * Which outside services are on (P3.17), for the Settings page: "stand-in" is the fake on a
+   * laptop. Keys stay in the secret store; only the provider's name is shown.
+   */
+  readonly connections?: readonly Connection[];
+}
+
+export interface Connection {
+  readonly service: string;
+  readonly state: 'on' | 'stand-in' | 'off';
+  readonly provider: string;
 }
 
 const cookieName = (cfg: StaffApiConfig) =>
@@ -492,6 +504,7 @@ export function apiHandler(
       if (await handleDashboard(pool, cfg, req, res, nowMs)) return;
       if (await handleSupport(pool, cfg, req, res, nowMs)) return;
       if (await handleAudit(pool, cfg, req, res, nowMs)) return;
+      if (await handleSettings(pool, cfg, req, res, nowMs)) return;
       throw new HttpError(404, 'Not found');
     })().catch((e: unknown) => {
       if (e instanceof HttpError) return send(res, e.status, { error: e.message });

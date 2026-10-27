@@ -22,7 +22,7 @@ import {
   type LatLng,
   type StaffAccess,
 } from '@recall/domain';
-import { areaHistory, areaRecords, saveAreaVersion } from '@recall/db';
+import { areaHistory, areaRecords, saveAreaVersion, setting } from '@recall/db';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Pool } from 'pg';
 import { HttpError, jsonBody, send, str } from './http.js';
@@ -142,6 +142,10 @@ export async function handleAreas(
   if (path === '/areas') {
     if (!can(me.access, { superAdmin: true }))
       throw new HttpError(403, 'Only a super admin adds areas');
+    // A city from the list in Settings (P3.17).
+    const city = str(b, 'city', 80).trim();
+    if (!(await setting(pool, 'cities')).some((c) => c.name === city))
+      throw new HttpError(400, `City: ${city || 'none'} is not in Settings (Cities)`);
     let area: AreaVersion;
     try {
       const areaId = str(b, 'areaId', 60);
@@ -152,7 +156,7 @@ export async function handleAreas(
         {
           areaId,
           name: str(b, 'name', 80).trim(),
-          city: str(b, 'city', 80).trim(),
+          city,
           ring: readRing(b.ring),
           edgeMeters: readEdge(b.edgeMeters ?? DEFAULT_EDGE_METERS),
           validFrom: start,

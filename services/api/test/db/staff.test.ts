@@ -377,7 +377,7 @@ describe('staff sign-in', () => {
     expect(r.status).toBe(429);
     expect((await signIn('meena@recall.in', adminSecret)).status).toBe(200);
     now += R.lockMs;
-  });
+  }, 30_000); // 30 slow password checks: over 5 s when other test files run at once
 
   it('the same code at once from two tries: one session only', async () => {
     tick();
@@ -387,7 +387,7 @@ describe('staff sign-in', () => {
       call('POST', '/staff/sign-in', body),
     ]);
     expect(both.map((r) => r.status).sort()).toEqual([200, 401]);
-  });
+  }, 30_000);
 
   it('a read-only member cannot change staff', async () => {
     superCookie = (await signIn('prateek@recall.in', superSecret)).cookie ?? '';

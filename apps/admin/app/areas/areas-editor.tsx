@@ -72,6 +72,14 @@ export default function AreasEditor({ styleUrl }: { readonly styleUrl: string })
   useEffect(() => {
     if (me) load();
   }, [me, load]);
+  // A new area's city is one from Settings (P3.17).
+  const [cities, setCities] = useState<readonly string[]>(['Hyderabad']);
+  useEffect(() => {
+    if (me)
+      api<{ settings: { cities: { value: { name: string }[] } } }>('/settings')
+        .then((x) => setCities(x.settings.cities.value.map((c) => c.name)))
+        .catch(() => undefined);
+  }, [me]);
 
   const current = useMemo(() => page?.areas.find((a) => a.latest.areaId === open), [page, open]);
   // Corners show (and can be dragged) only for someone who may save the change.
@@ -357,7 +365,13 @@ export default function AreasEditor({ styleUrl }: { readonly styleUrl: string })
                 </label>
                 <label className="rc-field">
                   <span className="rc-field__label">City</span>
-                  <input className="rc-input" name="city" defaultValue="Hyderabad" required />
+                  <select className="rc-input" name="city" required>
+                    {cities.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
                 </label>
               </>
             )}
