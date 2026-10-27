@@ -20,7 +20,19 @@ export async function freshDatabase(): Promise<{ pool: pg.Pool; drop: () => Prom
   const pool = new pg.Pool({ connectionString: testUrl.toString(), max: 8 });
   // Dropping the database at the end cuts any connection still open: expected, not a failure.
   pool.on('error', () => {});
-  await migrate(pool);
+  // The app's role is one for the whole server, not per database: on a server where no test has
+  // made it yet, files starting at once would both try to (CI). The first migrates alone, under a
+  // lock on the shared database; once the role is there, the rest migrate side by side.
+  const first = await admin.connect();
+  try {
+    await first.query("SELECT pg_advisory_lock(hashtext('recall-test-first-migration'))");
+    const role = await first.query("SELECT 1 FROM pg_roles WHERE rolname = 'recall_app'");
+    if (role.rows.length === 0) await migrate(pool);
+    await first.query("SELECT pg_advisory_unlock(hashtext('recall-test-first-migration'))");
+    if (role.rows.length > 0) await migrate(pool);
+  } finally {
+    first.release();
+  }
   return {
     pool,
     drop: async () => {
