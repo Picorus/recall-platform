@@ -33,6 +33,10 @@ const ALLOWED = [
   // the rider app's words: the camera line in the agreement ("This screen counts people. It records
   // nothing."), in three languages; no numbers (P4.2)
   'apps/rider/src/i18n.ts',
+  // the brand portal's words: the report rule a brand agrees to ("an estimate of people who saw it
+  // (approximate, never billed)") and an ad tip ("people see it for a few seconds"); no numbers (P5.5-6)
+  'packages/domain/src/booking-terms.ts',
+  'apps/brand/app/ads/page.tsx',
 ];
 /** Lines allowed elsewhere: loading the people settings with the price book. */
 const ALLOWED_LINES = [

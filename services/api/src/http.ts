@@ -114,7 +114,7 @@ export async function withUpload(
   req: IncomingMessage,
   /** Each kind has its own slots (slow phone uploads never hold up ads; riders' own uploads from
    * the app never hold up staff's). */
-  kind: 'ads' | 'documents' | 'rider-documents' | 'rider-problems',
+  kind: 'ads' | 'documents' | 'rider-documents' | 'rider-problems' | 'brand-ads' | 'brand-logos',
   max: number,
   use: (data: Buffer) => Promise<void>,
 ): Promise<void> {

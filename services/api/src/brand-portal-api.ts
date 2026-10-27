@@ -19,7 +19,33 @@
 //                                           of an earlier booking, for "Book again")
 //   POST /portal/quote?brand=<id>    { plan }  the live price and what stops it
 //   POST /portal/bookings?brand=<id> { plan }  saves it as the business's booking (to pay next)
+// P5.5, your ads (a brand's own; an agency adds them on each brand's account):
+//   GET  /portal/ads?brand=<id>                     its ads with their automatic checks and review
+//   POST /portal/ads/upload?brand=<id>&name=<name>  the file as the body (checked as staff uploads are)
+//   GET  /portal/ads/file?brand=<id>&ad=<id>        the file itself, to see it
+//   GET  /portal/booking-ads?brand=<id>&booking=<id>          the ads a booking runs, its deadline
+//   POST /portal/booking-ads?brand=<id>&booking=<id> { adIds } choose 2 to 5 of them
+//   POST /portal/logo?brand=<id>                    its logo as the body (a picture, up to 2 MB)
+//   GET  /portal/logo?brand=<id>                    its logo
+//   POST /portal/ads/template-preview?brand=<id> { template }        the ready-made ad, as a PNG
+//   POST /portal/ads/template?brand=<id>         { template, name }  kept as one of its ads
+// P5.6, review and pay:
+//   GET  /portal/review?brand=<id>&booking=<id>   the booking line by line, GST, total, the rules
+//   POST /portal/pay?brand=<id>&booking=<id> { agree: true, termsVersion }  the payment link
+//   POST /portal/deal?brand=<id>&booking=<id>   a 6- or 12-month deal: the sales team calls
 import {
+  askSalesForDeal,
+  payFromPortal,
+  reviewPage,
+  brandLogo,
+  setBrandLogo,
+  MAX_LOGO_BYTES,
+  adById,
+  bookingAds,
+  brandAds,
+  setBookingAds,
+  uploadAd,
+  type Ad,
   bookForm,
   bookFromPortal,
   planFrom,
@@ -43,6 +69,9 @@ import {
   isBusinessType,
   typedGstin,
   emailAddress,
+  MAX_AD_UPLOAD_BYTES,
+  templateProblems,
+  type AdTemplate,
   type PortalPlan,
   indiaMobile,
   showMobile,
@@ -52,8 +81,56 @@ import {
 import { createHmac } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Pool } from 'pg';
-import { cookies, HttpError, jsonBody, send, str } from './http.js';
+import { cookies, HttpError, jsonBody, send, str, withUpload } from './http.js';
+import { renderAd } from './ad-render.js';
 import { callerIp, type StaffApiConfig } from './staff-api.js';
+
+/** Template previews each person drew this hour (each takes the server a moment). */
+const previews = new Map<string, { readonly hour: number; n: number }>();
+
+/** A ready-made ad from a request body, checked for shape (templateProblems checks the rest). */
+function templateOf(b: Record<string, unknown>): AdTemplate {
+  const t = b.template;
+  if (typeof t !== 'object' || t === null || Array.isArray(t))
+    throw new HttpError(400, 'Send a template');
+  const x = t as Record<string, unknown>;
+  const text = (k: string, max: number) => {
+    const v = x[k] ?? '';
+    if (typeof v !== 'string' || v.length > max) throw new HttpError(400, `${k}: text`);
+    return v;
+  };
+  const out = {
+    headline: text('headline', 60),
+    offer: text('offer', 80),
+    code: text('code', 32).trim().toUpperCase(),
+    qr: text('qr', 300).trim(),
+    colour: text('colour', 7),
+    theme: text('theme', 10) as AdTemplate['theme'],
+    layout: Number(x.layout ?? 0),
+  };
+  const problems = templateProblems(out);
+  if (problems.length > 0) throw new HttpError(400, problems.join('. '), { code: 'bad-template' });
+  return out;
+}
+
+/** Uploads each person tried this hour (refused ones too: a refused file still costs to send). */
+const uploadsTried = new Map<string, { readonly hour: number; n: number }>();
+/** People with an upload going now: one at a time each, so nobody holds every slot. */
+const uploadingNow = new Set<string>();
+
+/** One upload for this person: counted, one at a time; `use` gets the slot. */
+async function oneUpload(address: string, now: number, use: () => Promise<void>) {
+  if (!tryOnce(uploadsTried, address, now, 60))
+    throw new HttpError(429, 'Too many uploads this hour: try again later');
+  if (uploadingNow.has(address))
+    throw new HttpError(429, 'Your last upload is still going: wait for it to finish');
+  uploadingNow.add(address);
+  try {
+    await use();
+  } finally {
+    uploadingNow.delete(address);
+  }
+}
 
 /** People whose booking is being saved now. */
 const saving = new Set<string>();
@@ -359,6 +436,241 @@ export async function handleBrandPortal(
       saving.delete(me.address);
     }
     send(res, 200, { bookingId });
+    return true;
+  }
+  // P5.5: ads. What a brand sees of an ad: never staff's names or notes.
+  const adShown = (x: Ad) => ({
+    adId: x.adId,
+    name: x.name,
+    kind: x.kind,
+    width: x.width,
+    height: x.height,
+    durationMs: x.durationMs,
+    checks: x.checks,
+    outcome: x.outcome,
+    review: x.review ? { decision: x.review.decision, reason: x.review.reason } : null,
+    uploadedAt: x.uploadedAt,
+  });
+  const brandOnly = async () => {
+    const a = await account();
+    if (a.kind !== 'brand')
+      throw new HttpError(400, 'Ads belong to a brand: open the brand you book for', {
+        code: 'not-a-brand',
+      });
+    return a;
+  };
+  /** The booking asked for (?booking=), if it is this business's; otherwise a 404. */
+  const ownBooking = async (brandId: string) => {
+    const id = new URL(req.url ?? '/', 'http://x').searchParams.get('booking') ?? '';
+    const r = await pool.query<{ ads_due_at: Date; first_hour_at: Date }>(
+      'SELECT ads_due_at, first_hour_at FROM bookings WHERE booking_id = $1 AND brand_id = $2',
+      [id, brandId],
+    );
+    const b = r.rows[0];
+    if (!b) throw new HttpError(404, 'No such campaign', { code: 'no-booking' });
+    return {
+      bookingId: id,
+      adsDueAt: Math.floor(b.ads_due_at.getTime() / 1000),
+      firstHourAt: Math.floor(b.first_hour_at.getTime() / 1000),
+    };
+  };
+  if (path === '/portal/ads' && method === 'GET') {
+    const a = await brandOnly();
+    send(res, 200, { ads: (await brandAds(pool, a.brandId)).map(adShown) });
+    return true;
+  }
+  if (path === '/portal/ads/upload' && method === 'POST') {
+    const a = await brandOnly();
+    const store = cfg.files;
+    if (!store) throw new HttpError(503, 'Uploads are not set up yet: send your ads to us');
+    const by = portalBy(me.address);
+    const today = await pool.query<{ n: string }>(
+      `SELECT count(*) AS n FROM ads WHERE uploaded_by = $1
+         AND uploaded_at > to_timestamp($2) - interval '1 day'`,
+      [by, now],
+    );
+    if (Number(today.rows[0]?.n ?? 0) >= rules.adUploadsPerDay)
+      throw new HttpError(429, 'Too many ads uploaded today: try again tomorrow, or call us');
+    const name = new URL(req.url ?? '/', 'http://x').searchParams.get('name') ?? '';
+    await oneUpload(me.address, now, () =>
+      withUpload(req, 'brand-ads', MAX_AD_UPLOAD_BYTES, async (data) => {
+        const ad = await refused(() =>
+          uploadAd(pool, store, { brandId: a.brandId, name, data, by }, now),
+        );
+        send(res, 200, { ad: adShown(ad) });
+      }),
+    );
+    return true;
+  }
+  if (path === '/portal/ads/file' && method === 'GET') {
+    const a = await brandOnly();
+    const store = cfg.files;
+    const id = new URL(req.url ?? '/', 'http://x').searchParams.get('ad') ?? '';
+    const ad = /^AD-[0-9A-F]{10}$/.test(id) ? await adById(pool, id) : undefined;
+    // Not theirs and not there look the same.
+    const f = ad && ad.brandId === a.brandId && store ? await store.get(ad.fileKey) : null;
+    if (!f) throw new HttpError(404, 'No such ad');
+    res.writeHead(200, {
+      'content-type': f.contentType,
+      'content-length': f.data.length,
+      'cache-control': 'private, max-age=600',
+      'x-content-type-options': 'nosniff',
+      'content-security-policy': 'sandbox',
+    });
+    res.end(Buffer.from(f.data));
+    return true;
+  }
+  if (path === '/portal/logo' && method === 'POST') {
+    const a = await brandOnly();
+    const store = cfg.files;
+    if (!store) throw new HttpError(503, 'Uploads are not set up yet: send your logo to us');
+    if (!tryOnce(previews, `logo:${me.address}`, now, 30))
+      throw new HttpError(429, 'Too many logos this hour: try again later');
+    await oneUpload(me.address, now, () =>
+      withUpload(req, 'brand-logos', MAX_LOGO_BYTES, async (data) => {
+        const l = await refused(() =>
+          setBrandLogo(pool, store, { brandId: a.brandId, data, by: portalBy(me.address) }, now),
+        );
+        send(res, 200, { logo: { width: l.width, height: l.height } });
+      }),
+    );
+    return true;
+  }
+  /** The brand's logo with its bytes, or null. */
+  const logoOf = async (brandId: string) => {
+    const l = await brandLogo(pool, brandId);
+    const f = l && cfg.files ? await cfg.files.get(l.fileKey) : null;
+    return l && f ? { ...l, data: f.data } : null;
+  };
+  if (path === '/portal/logo' && method === 'GET') {
+    const a = await brandOnly();
+    const l = await logoOf(a.brandId);
+    if (!l) throw new HttpError(404, 'No logo yet', { code: 'no-logo' });
+    res.writeHead(200, {
+      'content-type': l.contentType,
+      'content-length': l.data.length,
+      'cache-control': 'private, no-cache',
+      'x-content-type-options': 'nosniff',
+      'content-security-policy': 'sandbox',
+    });
+    res.end(Buffer.from(l.data));
+    return true;
+  }
+  if (path === '/portal/ads/template-preview' && method === 'POST') {
+    const a = await brandOnly();
+    const t = templateOf(await jsonBody(req));
+    if (!tryOnce(previews, me.address, now, 300))
+      throw new HttpError(429, 'Too many previews this hour: wait a little');
+    const png = renderAd(t, await logoOf(a.brandId));
+    res.writeHead(200, {
+      'content-type': 'image/png',
+      'content-length': png.length,
+      'cache-control': 'no-store',
+      'x-content-type-options': 'nosniff',
+    });
+    res.end(Buffer.from(png));
+    return true;
+  }
+  if (path === '/portal/ads/template' && method === 'POST') {
+    const a = await brandOnly();
+    const store = cfg.files;
+    if (!store) throw new HttpError(503, 'Uploads are not set up yet: ask us on Help');
+    const body = await jsonBody(req);
+    const t = templateOf(body);
+    if (!tryOnce(previews, me.address, now, 300))
+      throw new HttpError(429, 'Too many ads drawn this hour: wait a little');
+    const by = portalBy(me.address);
+    const today = await pool.query<{ n: string }>(
+      `SELECT count(*) AS n FROM ads WHERE uploaded_by = $1
+         AND uploaded_at > to_timestamp($2) - interval '1 day'`,
+      [by, now],
+    );
+    if (Number(today.rows[0]?.n ?? 0) >= rules.adUploadsPerDay)
+      throw new HttpError(429, 'Too many ads made today: try again tomorrow, or call us');
+    const name =
+      typeof body.name === 'string' && body.name.trim() !== ''
+        ? body.name.trim().slice(0, 80)
+        : t.headline.trim();
+    const png = renderAd(t, await logoOf(a.brandId));
+    const ad = await refused(() =>
+      uploadAd(pool, store, { brandId: a.brandId, name, data: png, by }, now),
+    );
+    send(res, 200, { ad: adShown(ad) });
+    return true;
+  }
+  if (path === '/portal/review' && method === 'GET') {
+    const a = await account();
+    const id = new URL(req.url ?? '/', 'http://x').searchParams.get('booking') ?? '';
+    const page = await refused(() => reviewPage(pool, a.brandId, id, now));
+    if (!page) throw new HttpError(404, 'No such campaign', { code: 'no-booking' });
+    send(res, 200, page);
+    return true;
+  }
+  if (path === '/portal/pay' && method === 'POST') {
+    const a = await account();
+    const payments = cfg.payments;
+    if (!payments)
+      throw new HttpError(503, 'Payments are not set up yet: ask us on Help', {
+        code: 'not-set-up',
+      });
+    const id = new URL(req.url ?? '/', 'http://x').searchParams.get('booking') ?? '';
+    const b = await jsonBody(req);
+    if (b.agree !== true)
+      throw new HttpError(400, 'Tick the box to agree to the rules', { code: 'not-agreed' });
+    if (!Number.isSafeInteger(b.termsVersion))
+      throw new HttpError(400, 'termsVersion: a whole number');
+    const link = await refused(async () => {
+      try {
+        return await payFromPortal(
+          pool,
+          payments,
+          {
+            brandId: a.brandId,
+            bookingId: id,
+            by: portalBy(me.address),
+            ip: ip(),
+            termsVersion: b.termsVersion as number,
+          },
+          now,
+        );
+      } catch (e) {
+        // Not theirs or not there: a 404 as everywhere; already paid or changed: a conflict.
+        if (e instanceof Refusal && e.why?.code === 'no-booking')
+          throw new HttpError(404, e.message, e.why);
+        if (e instanceof Refusal && (e.why?.code === 'paid' || e.why?.code === 'changed'))
+          throw new HttpError(409, e.message, e.why);
+        throw e;
+      }
+    });
+    send(res, 200, link);
+    return true;
+  }
+  if (path === '/portal/deal' && method === 'POST') {
+    const a = await account();
+    const id = new URL(req.url ?? '/', 'http://x').searchParams.get('booking') ?? '';
+    const threadId = await refused(() =>
+      askSalesForDeal(pool, { brandId: a.brandId, bookingId: id, contact: me.address }, now),
+    );
+    send(res, 200, { threadId });
+    return true;
+  }
+  if (path === '/portal/booking-ads' && method === 'GET') {
+    const a = await brandOnly();
+    const b = await ownBooking(a.brandId);
+    send(res, 200, { ...b, ads: (await bookingAds(pool, b.bookingId)).map(adShown) });
+    return true;
+  }
+  if (path === '/portal/booking-ads' && method === 'POST') {
+    const a = await brandOnly();
+    const b = await ownBooking(a.brandId);
+    const body = await jsonBody(req);
+    const ids = body.adIds;
+    if (!Array.isArray(ids) || ids.length > 20 || !ids.every((x) => typeof x === 'string'))
+      throw new HttpError(400, 'adIds: a list of ad ids');
+    const version = await refused(() =>
+      setBookingAds(pool, b.bookingId, ids as string[], portalBy(me.address), now),
+    );
+    send(res, 200, { version });
     return true;
   }
   if (path === '/portal/campaigns' && method === 'GET') {

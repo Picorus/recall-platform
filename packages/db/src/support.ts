@@ -588,3 +588,47 @@ export async function threadFromRiderApp(
   });
   return threadId;
 }
+
+/**
+ * P5.6: a conversation started from the brand portal (a 6- or 12-month deal for the sales team),
+ * with the person's number or email as its contact. Inside the caller's transaction.
+ */
+export async function threadFromBrandPortal(
+  c: PoolClient,
+  r: {
+    readonly brandId: string;
+    readonly contact: string;
+    readonly subject: string;
+    readonly text: string;
+    readonly at: number;
+  },
+): Promise<string> {
+  await lockThreads(c, r.contact);
+  const threadId = newThreadId();
+  await c.query(
+    `INSERT INTO support_threads (thread_id, channel, contact, party_kind, party_id, subject,
+       created_by, created_at) VALUES ($1, $2, $3, 'brand', $4, $5, 'brand portal', to_timestamp($6))`,
+    [
+      threadId,
+      r.contact.includes('@') ? 'email' : 'whatsapp',
+      r.contact,
+      r.brandId,
+      words(r.subject, 'What it is about', 200),
+      r.at,
+    ],
+  );
+  await addStep(c, threadId, {
+    state: 'open',
+    owner: null,
+    reason: 'sent from the brand portal',
+    by: 'brand portal',
+    at: r.at,
+  });
+  await addMessage(c, threadId, {
+    direction: 'in',
+    body: words(r.text, 'What it is about', 10_000),
+    by: r.contact,
+    at: r.at,
+  });
+  return threadId;
+}
