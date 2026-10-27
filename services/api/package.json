@@ -13,7 +13,8 @@
     "test:db": "vitest run test/db",
     "start": "tsx src/run.ts",
     "first-admin": "tsx src/first-admin.ts",
-    "reset-staff": "tsx src/reset-staff.ts"
+    "reset-staff": "tsx src/reset-staff.ts",
+    "readiness": "tsx src/cli-readiness.ts"
   },
   "dependencies": {
     "@expo-google-fonts/anek-latin": "0.4.2",

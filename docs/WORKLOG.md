@@ -2,6 +2,15 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 28 Oct 2026 · P7.5 · POC readiness
+- **The list** (`docs/POC_READINESS.md`): every quality bar of the plan with its evidence (done, or waiting on an account or hardware), the release rules, and the go-live list of 15 items with who does each.
+- **The automatic check** (`packages/db/src/readiness.ts`, `pnpm --filter @recall/api readiness`): reads the live system and says ready or not yet, with what to do, for company details, prices, areas, business mode, staff (two super admins, an admin for every area), fitting centres, support numbers, 200 screens ready, 200 riders approved and each outside service connected. Exits 1 while anything is not ready. Changes nothing. On the laptop: 18 of 18 not yet, as expected.
+- **A property test** for the plan's bar "never more than 240 plays per bike-hour": random play times judged one by one, at most 240 accepted in an hour.
+- Tests: db 2 (a new system: nothing ready, each with what to do; items turn ready as each is set); domain 1 property test.
+- Still needed from outside the code (on the list): an outside security audit; the lawyer's DPDP and permits check; the accountant's OK; staging on AWS; the sample screen's 72-hour test; the 2-week road test; a ₹1 dry run on the real system.
+- P7 is done as far as code can go; what is left needs accounts, hardware or people.
+- Next: P6, as each account opens; meanwhile, whatever Prateek asks for.
+
 ## 28 Oct 2026 · P7.4 · Backups, restore and one-step rollback
 - **Backup tool** (`packages/db/src/backup.ts`, `pnpm --filter @recall/db backup`): the whole database to one file (pg_dump's own format) with its SHA-256 beside it.
 - **Restore** into a new database only: refused when the file does not match its SHA-256, or when the database exists already (a restore never writes over one). TimescaleDB's steps for the time-split tables (plays, minute summaries, screen health).

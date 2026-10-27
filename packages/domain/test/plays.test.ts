@@ -91,6 +91,21 @@ describe("the cloud's checks (P1.5.2)", () => {
     expect(verdict(play(), ctx({ neighbours: [HOUR + 600 - 15, HOUR + 615] }))).toBe('inside');
   });
 
+  it('property: one screen never has more than 240 plays accepted in an hour (P7.3)', () => {
+    fc.assert(
+      fc.property(fc.array(fc.integer({ min: 0, max: 3599 }), { maxLength: 600 }), (starts) => {
+        // Judged one by one as uploads arrive, each against the plays already accepted.
+        const taken: number[] = [];
+        for (const t of starts) {
+          const near = taken.filter((x) => Math.abs(x - (HOUR + t)) < RULES.spotSeconds);
+          const r = judgePlay(play({ startAt: HOUR + t }), ctx({ neighbours: near }));
+          if (!r.refused) taken.push(HOUR + t);
+        }
+        expect(taken.length).toBeLessThanOrEqual(3600 / RULES.spotSeconds);
+      }),
+    );
+  });
+
   it('the cloud decides where the play was, whatever the screen thought', () => {
     // The screen says inside Madhapur, but the position is in Kondapur.
     expect(verdict(play({ latE6: 17_467_000, lngE6: 78_357_000 }))).toBe("outside the line's area");
