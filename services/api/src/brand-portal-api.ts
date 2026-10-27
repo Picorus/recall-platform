@@ -32,7 +32,9 @@
 // P5.6, review and pay:
 //   GET  /portal/review?brand=<id>&booking=<id>   the booking line by line, GST, total, the rules
 //   POST /portal/pay?brand=<id>&booking=<id> { agree: true, termsVersion }  the payment link
+//   POST /portal/deal?brand=<id>&booking=<id>   a 6- or 12-month deal: the sales team calls
 import {
+  askSalesForDeal,
   payFromPortal,
   reviewPage,
   brandLogo,
@@ -617,21 +619,39 @@ export async function handleBrandPortal(
       throw new HttpError(400, 'Tick the box to agree to the rules', { code: 'not-agreed' });
     if (!Number.isSafeInteger(b.termsVersion))
       throw new HttpError(400, 'termsVersion: a whole number');
-    const link = await refused(() =>
-      payFromPortal(
-        pool,
-        payments,
-        {
-          brandId: a.brandId,
-          bookingId: id,
-          by: portalBy(me.address),
-          ip: ip(),
-          termsVersion: b.termsVersion as number,
-        },
-        now,
-      ),
-    );
+    const link = await refused(async () => {
+      try {
+        return await payFromPortal(
+          pool,
+          payments,
+          {
+            brandId: a.brandId,
+            bookingId: id,
+            by: portalBy(me.address),
+            ip: ip(),
+            termsVersion: b.termsVersion as number,
+          },
+          now,
+        );
+      } catch (e) {
+        // Not theirs or not there: a 404 as everywhere; already paid or changed: a conflict.
+        if (e instanceof Refusal && e.why?.code === 'no-booking')
+          throw new HttpError(404, e.message, e.why);
+        if (e instanceof Refusal && (e.why?.code === 'paid' || e.why?.code === 'changed'))
+          throw new HttpError(409, e.message, e.why);
+        throw e;
+      }
+    });
     send(res, 200, link);
+    return true;
+  }
+  if (path === '/portal/deal' && method === 'POST') {
+    const a = await account();
+    const id = new URL(req.url ?? '/', 'http://x').searchParams.get('booking') ?? '';
+    const threadId = await refused(() =>
+      askSalesForDeal(pool, { brandId: a.brandId, bookingId: id, contact: me.address }, now),
+    );
+    send(res, 200, { threadId });
     return true;
   }
   if (path === '/portal/booking-ads' && method === 'GET') {

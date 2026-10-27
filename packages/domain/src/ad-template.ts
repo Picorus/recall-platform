@@ -30,13 +30,33 @@ export interface AdTemplate {
 }
 
 /** Characters the drawing draws right: Latin, Latin-1, ₹, typographic quotes and dashes, Telugu
- * (with its joiners). Hindi is not drawn correctly by the renderer yet (its letters do not join):
+ * (and the joiners Telugu words use). Hindi is not drawn correctly by the renderer yet (its letters do not join):
  * brands upload a Hindi ad as a file. */
-const DRAWABLE = /^[ -~ -ÿ₹–—‘-”…ఀ-౿‌‍]*$/;
+/** Whether every character is one the drawing draws right (checked one by one: Telugu has signs
+ * that join the letter before them). */
+function drawable(text: string): boolean {
+  return [...text].every((ch) => {
+    const c = ch.codePointAt(0) ?? 0;
+    return (
+      (c >= 0x20 && c <= 0x7e) ||
+      (c >= 0xa0 && c <= 0xff) ||
+      c === 0x20b9 ||
+      c === 0x2013 ||
+      c === 0x2014 ||
+      (c >= 0x2018 && c <= 0x201d) ||
+      c === 0x2026 ||
+      (c >= 0x0c00 && c <= 0x0c7f) ||
+      c === 0x200c ||
+      c === 0x200d
+    );
+  });
+}
 
 /** The Anek font for a line: Telugu's own (it also has Latin letters and digits), else Latin. */
 export const familyOf = (text: string): string =>
-  /[ఀ-౿]/.test(text) ? 'Anek Telugu' : 'Anek Latin';
+  [...text].some((ch) => (ch.codePointAt(0) ?? 0) >= 0x0c00 && (ch.codePointAt(0) ?? 0) <= 0x0c7f)
+    ? 'Anek Telugu'
+    : 'Anek Latin';
 
 const MIDNIGHT = '#0E121B';
 const PAPER = '#F4F4EF';
@@ -69,7 +89,7 @@ export function templateProblems(t: AdTemplate): string[] {
   if (/[\u0000-\u001f\u007f<>&]/.test(`${t.headline}${t.offer}`))
     out.push('Headline and offer: letters, digits and punctuation only (no < > &)');
   // Only what the drawing draws right (English, Telugu, ₹): nothing silently missing or broken.
-  else if (!DRAWABLE.test(`${t.headline}${t.offer}`))
+  else if (!drawable(`${t.headline}${t.offer}`))
     out.push(
       'Headline and offer: English or Telugu letters, digits and punctuation (for Hindi or emoji, upload your own ad)',
     );

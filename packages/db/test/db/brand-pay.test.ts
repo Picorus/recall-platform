@@ -8,7 +8,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { saveAreaVersion } from '../../src/areas.js';
 import { bookFromPortal } from '../../src/brand-booking.js';
 import { portalCampaigns } from '../../src/brand-campaigns.js';
-import { payFromPortal, reviewPage } from '../../src/brand-pay.js';
+import { askSalesForDeal, payFromPortal, reviewPage } from '../../src/brand-pay.js';
 import { applyLinkStatus } from '../../src/booking-desk.js';
 import { createAccount } from '../../src/brands.js';
 import { savePriceBook } from '../../src/bookings.js';
@@ -141,10 +141,10 @@ describe('review and pay (P5.6)', () => {
     expect(inv.rows).toEqual([{ kind: 'invoice', legal_name: 'Chai Co Pvt Ltd' }]);
     await expect(
       payFromPortal(pool, payments, { ...who, brandId: 'chai-co', bookingId: id }, NOW + 200),
-    ).rejects.toThrow('paid already');
+    ).rejects.toThrow('This campaign is paid');
   });
 
-  it('a draft that now starts inside the lead days is refused, not paid', async () => {
+  it('refused before anything is kept: too soon now; a monthly deal goes to sales', async () => {
     const id = await bookFromPortal(
       pool,
       { brandId: 'chai-co', plan: { ...plan, weekdays: [4] }, by: who.by },
@@ -158,5 +158,75 @@ describe('review and pay (P5.6)', () => {
         NOW + 5 * 86_400,
       ),
     ).rejects.toThrow('It now starts in less than 15 days');
+    expect((await reviewPage(pool, 'chai-co', id, NOW + 5 * 86_400))?.blocked).toMatch(
+      /^It now starts/,
+    );
+    expect(
+      (await pool.query('SELECT 1 FROM booking_terms WHERE booking_id = $1', [id])).rowCount,
+    ).toBe(0);
+    const deal = await bookFromPortal(
+      pool,
+      { brandId: 'chai-co', plan: { ...plan, weekdays: [3], repeatMonths: 6 }, by: who.by },
+      NOW,
+    );
+    expect((await reviewPage(pool, 'chai-co', deal, NOW))?.blocked).toBe(
+      'A 6-month deal is set up with our sales team: they will call you',
+    );
+    await expect(
+      payFromPortal(pool, payments, { ...who, brandId: 'chai-co', bookingId: deal }, NOW),
+    ).rejects.toThrow('sales team');
+    const thread = await askSalesForDeal(
+      pool,
+      { brandId: 'chai-co', bookingId: deal, contact: '+919848011111' },
+      NOW,
+    );
+    expect(
+      await askSalesForDeal(
+        pool,
+        { brandId: 'chai-co', bookingId: deal, contact: '+919848011111' },
+        NOW,
+      ),
+    ).toBe(thread);
+    const t = await pool.query<{ subject: string; party_id: string }>(
+      'SELECT subject, party_id FROM support_threads WHERE thread_id = $1',
+      [thread],
+    );
+    expect(t.rows).toEqual([{ subject: `6-month deal: booking ${deal}`, party_id: 'chai-co' }]);
+    await expect(
+      askSalesForDeal(pool, { brandId: 'chai-co', bookingId: id, contact: '+919848011111' }, NOW),
+    ).rejects.toThrow('Only a 6- or 12-month deal');
+  });
+
+  it('prices changed since it was booked: told, not paid; a link that ran out: told', async () => {
+    const id = await bookFromPortal(
+      pool,
+      { brandId: 'chai-co', plan: { ...plan, weekdays: [2] }, by: who.by },
+      NOW,
+    );
+    const link = await payFromPortal(
+      pool,
+      payments,
+      { ...who, brandId: 'chai-co', bookingId: id },
+      NOW,
+    );
+    expect((await reviewPage(pool, 'chai-co', id, link.expiresAt + 60))?.blocked).toBe(
+      'Its payment link ran out: book again',
+    );
+    const old = await bookFromPortal(
+      pool,
+      { brandId: 'chai-co', plan: { ...plan, weekdays: [1] }, by: who.by },
+      NOW,
+    );
+    await savePriceBook(
+      pool,
+      { ...PRICE_BOOK_V1, version: 2, validFrom: '2027-08-23T05:00:00.000Z' },
+      'prateek',
+    );
+    expect((await reviewPage(pool, 'chai-co', old, NOW + 3600))?.blocked).toBe(
+      'Prices changed since you booked: book again for the new prices',
+    );
+    await expect(
+      payFromPortal(pool, payments, { ...who, brandId: 'chai-co', bookingId: old }, NOW + 3600),
+    ).rejects.toThrow('Prices changed');
   });
 });

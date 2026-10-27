@@ -1,12 +1,14 @@
 -- P5.6: a brand agrees to the five plain rules (the promise, the edge, make-ups, late ads, the
--- report) with one tick box before it pays: which version, who, when and from where. Once per
--- booking. Append-only (hard rule 3).
+-- report) with one tick box before it pays: which version, who, when and from where. Kept once a
+-- payment link is made (never for a payment refused before it), once per booking and version.
+-- Append-only (hard rule 3).
 CREATE TABLE booking_terms (
-  booking_id    text        PRIMARY KEY REFERENCES bookings (booking_id),
+  booking_id    text        NOT NULL REFERENCES bookings (booking_id),
   terms_version integer     NOT NULL CHECK (terms_version >= 1),
   accepted_by   text        NOT NULL CHECK (length(accepted_by) BETWEEN 1 AND 254),
   ip            text        NOT NULL CHECK (length(ip) BETWEEN 1 AND 64),
-  at            timestamptz NOT NULL
+  at            timestamptz NOT NULL,
+  PRIMARY KEY (booking_id, terms_version)
 );
 CREATE TRIGGER booking_terms_no_change BEFORE UPDATE OR DELETE ON booking_terms
   FOR EACH ROW EXECUTE FUNCTION recall_append_only();
@@ -140,7 +142,7 @@ UNION ALL SELECT set_at, set_by, 'brands', 'business type set', brand_id, busine
 UNION ALL SELECT set_at, set_by, 'ads', 'brand logo set', brand_id, width || ' × ' || height,
                  'brand_logos:' || brand_id || ':' || set_at FROM brand_logos
 UNION ALL SELECT at, accepted_by, 'bookings', 'rules agreed', booking_id, 'version ' || terms_version,
-                 'booking_terms:' || booking_id FROM booking_terms
+                 'booking_terms:' || booking_id || ':' || terms_version FROM booking_terms
 ) x;
 
 GRANT SELECT ON audit_log TO recall_app;

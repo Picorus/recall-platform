@@ -33,6 +33,8 @@ interface Review {
   readonly adsDueAt: number;
   readonly terms: readonly { key: string; title: string; text: string }[];
   readonly termsVersion: number;
+  readonly gstBp: number;
+  readonly blocked: string | null;
 }
 
 const hourText = (h: number) => {
@@ -58,6 +60,7 @@ export default function PayPage() {
   const [agree, setAgree] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [asked, setAsked] = useState(false);
 
   useEffect(() => {
     const p = new URLSearchParams(window.location.search);
@@ -81,10 +84,16 @@ export default function PayPage() {
         `/pay?brand=${encodeURIComponent(q.brand)}&booking=${encodeURIComponent(q.booking)}`,
         { agree, termsVersion: r.termsVersion },
       );
-      // To the payment provider's page (UPI, card or net banking).
+      // To the payment provider's page (UPI, card or net banking); never anything but https.
+      if (!/^https:\/\//.test(link.url))
+        throw new Error('The payment page is not ready. Try again.');
       window.location.assign(link.url);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Could not reach the server. Try again.');
+      setError(
+        e instanceof ApiError || e instanceof Error
+          ? e.message
+          : 'Could not reach the server. Try again.',
+      );
       setBusy(false);
     }
   };
@@ -96,7 +105,9 @@ export default function PayPage() {
       </main>
     );
   const back = `/campaigns?brand=${encodeURIComponent(q.brand)}`;
-  const payable = r && (r.state === 'draft' || r.state === 'awaiting-payment') && !r.trial;
+  const payable =
+    r && (r.state === 'draft' || r.state === 'awaiting-payment') && !r.trial && !r.blocked;
+  const pct = (bp: number) => `${(bp / 100).toFixed(bp % 100 === 0 ? 0 : 1)}%`;
   return (
     <Shell me={me}>
       <div className="row" style={{ justifyContent: 'space-between' }}>
@@ -166,14 +177,14 @@ export default function PayPage() {
               )}
               {r.gst.igst > 0 ? (
                 <>
-                  <dt>IGST 18%</dt>
+                  <dt>IGST {pct(r.gstBp)}</dt>
                   <dd>{rupees(r.gst.igst)}</dd>
                 </>
               ) : (
                 <>
-                  <dt>CGST 9%</dt>
+                  <dt>CGST {pct(r.gstBp / 2)}</dt>
                   <dd>{rupees(r.gst.cgst)}</dd>
-                  <dt>SGST 9%</dt>
+                  <dt>SGST {pct(r.gstBp / 2)}</dt>
                   <dd>{rupees(r.gst.sgst)}</dd>
                 </>
               )}
@@ -198,8 +209,50 @@ export default function PayPage() {
                   {dayText(indiaDay(r.adsDueAt))}.
                 </p>
               </>
+            ) : r.repeatMonths > 1 && r.state === 'draft' ? (
+              <>
+                <p>
+                  A {r.repeatMonths}-month deal is set up with our sales team: they call you, agree
+                  the dates and how you pay.
+                </p>
+                {asked ? (
+                  <p className="ok" role="status">
+                    Thank you: our sales team will call you soon.
+                  </p>
+                ) : (
+                  <button
+                    type="button"
+                    className="rc-button rc-button--primary"
+                    disabled={busy}
+                    onClick={() => {
+                      setBusy(true);
+                      api(
+                        `/deal?brand=${encodeURIComponent(q.brand)}&booking=${encodeURIComponent(q.booking)}`,
+                        {},
+                      )
+                        .then(() => setAsked(true))
+                        .catch((e: unknown) =>
+                          setError(e instanceof ApiError ? e.message : 'Try again.'),
+                        )
+                        .finally(() => setBusy(false));
+                    }}
+                  >
+                    Ask our sales team to call me
+                  </button>
+                )}
+              </>
+            ) : r.blocked ? (
+              <>
+                <p className="error">{r.blocked}</p>
+                <Link
+                  className="rc-button rc-button--secondary"
+                  href={`/book?brand=${encodeURIComponent(q.brand)}&again=${encodeURIComponent(r.bookingId)}`}
+                >
+                  Book again
+                </Link>
+              </>
             ) : (
-              <p>{r.trial ? 'Your free week: nothing to pay.' : 'This campaign is paid.'}</p>
+              <p>This campaign is paid.</p>
             )}
           </aside>
         </div>

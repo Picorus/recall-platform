@@ -17,7 +17,9 @@ import {
 import type { Pool } from 'pg';
 import { bookingState, CapacityError, priceBooks, StepRace } from './bookings.js';
 import { sendForPayment, type SentLink } from './booking-desk.js';
+import { inTransaction } from './makeups.js';
 import { Refusal } from './refusal.js';
+import { threadFromBrandPortal } from './support.js';
 
 type Q = Pick<Pool, 'query'>;
 const secs = (d: Date) => Math.floor(d.getTime() / 1000);
@@ -53,6 +55,69 @@ export interface ReviewPage {
   readonly termsVersion: number;
   /** When this business agreed to the rules for this booking, if it has. */
   readonly agreedAt: number | null;
+  /** GST in basis points (1800 = 18%), as invoiced. */
+  readonly gstBp: number;
+  /** Why it cannot be paid here now, in words for the brand; null when it can (or is paid). */
+  readonly blocked: string | null;
+}
+
+interface Payable {
+  readonly trial: boolean;
+  readonly repeat_months: number;
+  readonly channel: string;
+  readonly first_hour_at: Date;
+  readonly price_book_version: number;
+}
+
+/**
+ * Why a booking cannot be paid on the portal now, or null. The same checks the payment makes, so
+ * the page never offers a payment that will be refused.
+ */
+async function whyNotPayable(
+  c: Q,
+  bookingId: string,
+  x: Payable,
+  state: BookingState | undefined,
+  now: number,
+): Promise<{ readonly why: string; readonly code: string } | null> {
+  if (x.trial) return { why: 'A free week needs no payment', code: 'trial' };
+  if (state === 'cancelled')
+    return { why: 'This campaign was cancelled: book again', code: 'cancelled' };
+  if (state !== 'draft' && state !== 'awaiting-payment')
+    return { why: 'This campaign is paid', code: 'paid' };
+  // 6- and 12-month deals are taken forward by the sales team (Prateek, 27 Oct 2026).
+  if (x.repeat_months > 1)
+    return {
+      why: `A ${x.repeat_months}-month deal is set up with our sales team: they will call you`,
+      code: 'repeat-deal',
+    };
+  const book = priceBookAt(await priceBooks(c), isoAt(now));
+  if (!book) return { why: 'Booking is not open yet: call us', code: 'no-price-book' };
+  if (state === 'draft') {
+    if (x.price_book_version !== book.version)
+      return {
+        why: 'Prices changed since you booked: book again for the new prices',
+        code: 'prices-changed',
+      };
+    if (x.channel === 'portal' && secs(x.first_hour_at) < now + book.portalLeadDays * 86_400)
+      return {
+        why: `It now starts in less than ${book.portalLeadDays} days: book it again with a later start, or call us`,
+        code: 'too-soon',
+      };
+  } else {
+    // Waiting on a link: one that ran out cannot be paid (the booking is being let go).
+    const live = await c.query(
+      `SELECT 1 FROM payment_links l
+        WHERE l.booking_id = $1 AND l.expires_at > to_timestamp($2)
+          AND NOT EXISTS (SELECT 1 FROM payment_link_events e WHERE e.link_id = l.link_id
+                           AND e.state IN ('paid', 'expired', 'cancelled'))`,
+      [bookingId, now],
+    );
+    const any = await c.query('SELECT 1 FROM payment_links WHERE booking_id = $1', [bookingId]);
+    if ((live.rowCount ?? 0) === 0 && (any.rowCount ?? 0) > 0)
+      return { why: 'Its payment link ran out: book again', code: 'link-ran-out' };
+  }
+  return null;
 }
 
 /** A booking of this business, line by line, with its money and the rules; undefined if not its. */
@@ -72,9 +137,10 @@ export async function reviewPage(
     first_hour_at: Date;
     ads_due_at: Date;
     price_book_version: number;
+    channel: string;
   }>(
     `SELECT trial, repeat_months, discount_paise, subtotal_paise, gst_paise, total_paise,
-            first_hour_at, ads_due_at, price_book_version
+            first_hour_at, ads_due_at, price_book_version, channel
        FROM bookings WHERE booking_id = $1 AND brand_id = $2`,
     [bookingId, brandId],
   );
@@ -134,13 +200,18 @@ export async function reviewPage(
     [brandId],
   );
   const gstPaise = Number(x.gst_paise);
-  const agreed = await c.query<{ at: Date }>('SELECT at FROM booking_terms WHERE booking_id = $1', [
-    bookingId,
-  ]);
+  const agreed = await c.query<{ at: Date }>(
+    'SELECT max(at) AS at FROM booking_terms WHERE booking_id = $1 HAVING count(*) > 0',
+    [bookingId],
+  );
+  // GST split by the price book in force now, as the invoice made on payment takes it.
+  const current = priceBookAt(books, isoAt(now)) ?? book;
+  const state = (await bookingState(c, bookingId)) ?? undefined;
+  const blocked = await whyNotPayable(c, bookingId, x, state, now);
   const listPaise = lines.rows.reduce((n, l) => n + Number(l.paise), 0);
   return {
     bookingId,
-    state: (await bookingState(c, bookingId)) ?? 'draft',
+    state: state ?? 'draft',
     trial: x.trial,
     repeatMonths: x.repeat_months,
     lines: [...rows.values()].map((r) => ({
@@ -159,9 +230,11 @@ export async function reviewPage(
     subtotalPaise: Number(x.subtotal_paise),
     gst: splitGst(
       gstPaise,
-      book.taxes.supplierStateCode,
-      tax.rows[0]?.state_code ?? book.taxes.supplierStateCode,
+      current.taxes.supplierStateCode,
+      tax.rows[0]?.state_code ?? current.taxes.supplierStateCode,
     ),
+    gstBp: book.gstBp,
+    blocked: blocked && blocked.code !== 'paid' ? blocked.why : null,
     gstPaise,
     totalPaise: Number(x.total_paise),
     firstHourAt: secs(x.first_hour_at),
@@ -173,9 +246,10 @@ export async function reviewPage(
 }
 
 /**
- * The brand agrees to the rules and pays: the agreement is kept (once per booking), then the
- * payment link is made (or the live one given again). Refused when the booking is not this
- * business's, is not waiting to be paid, or can no longer start (the portal's lead days).
+ * The brand agrees to the rules and pays: every check first, then the payment link is made (or the
+ * live one given again), then the agreement is kept. Refused when the booking is not this
+ * business's, is not waiting to be paid, is a monthly deal, has old prices, can no longer start
+ * (the portal's lead days) or its link ran out.
  */
 export async function payFromPortal(
   pool: Pool,
@@ -189,50 +263,83 @@ export async function payFromPortal(
   },
   now: number,
 ): Promise<SentLink> {
-  const b = await pool.query<{ first_hour_at: Date; channel: string; trial: boolean }>(
-    'SELECT first_hour_at, channel, trial FROM bookings WHERE booking_id = $1 AND brand_id = $2',
+  const b = await pool.query<Payable>(
+    `SELECT first_hour_at, channel, trial, repeat_months, price_book_version
+       FROM bookings WHERE booking_id = $1 AND brand_id = $2`,
     [p.bookingId, p.brandId],
   );
   const x = b.rows[0];
   if (!x) throw new Refusal('No such campaign', { code: 'no-booking' });
-  if (x.trial) throw new Refusal('A free week needs no payment');
   if (p.termsVersion !== TERMS_VERSION)
     throw new Refusal('The rules have changed: read them again and tick the box', {
       code: 'terms-changed',
     });
-  const state = await bookingState(pool, p.bookingId);
-  if (state !== 'draft' && state !== 'awaiting-payment')
-    throw new Refusal(
-      state === 'cancelled'
-        ? 'This campaign was cancelled: book again'
-        : 'This campaign is paid already',
-    );
-  // A draft booked on the portal must still start the lead days ahead when it is paid.
-  const book = priceBookAt(await priceBooks(pool), isoAt(now));
-  if (
-    state === 'draft' &&
-    x.channel === 'portal' &&
-    book &&
-    secs(x.first_hour_at) < now + book.portalLeadDays * 86_400
-  )
-    throw new Refusal(
-      `It now starts in less than ${book.portalLeadDays} days: book it again with a later start, or call us`,
-      { code: 'too-soon' },
-    );
-  await pool.query(
-    `INSERT INTO booking_terms (booking_id, terms_version, accepted_by, ip, at)
-     VALUES ($1, $2, $3, $4, to_timestamp($5)) ON CONFLICT (booking_id) DO NOTHING`,
-    [p.bookingId, p.termsVersion, p.by.slice(0, 254), p.ip.slice(0, 64), now],
+  // Every check first: nothing is kept for a payment that is refused.
+  const blocked = await whyNotPayable(
+    pool,
+    p.bookingId,
+    x,
+    await bookingState(pool, p.bookingId),
+    now,
   );
+  if (blocked) throw new Refusal(blocked.why, { code: blocked.code });
   try {
-    return await sendForPayment(pool, payments, p.bookingId, p.by, now);
+    const link = await sendForPayment(pool, payments, p.bookingId, p.by, now);
+    // The agreement, kept once the payment is on its way (once per booking and rules version).
+    await pool.query(
+      `INSERT INTO booking_terms (booking_id, terms_version, accepted_by, ip, at)
+       VALUES ($1, $2, $3, $4, to_timestamp($5)) ON CONFLICT (booking_id, terms_version) DO NOTHING`,
+      [p.bookingId, p.termsVersion, p.by.slice(0, 254), p.ip.slice(0, 64), now],
+    );
+    return link;
   } catch (e) {
     // Hours sold to someone else since it was booked (a draft holds none): told plainly.
     if (e instanceof CapacityError)
       throw new Refusal('Some of these hours were sold meanwhile: book again with other hours', {
         code: 'sold-out',
       });
-    if (e instanceof StepRace) throw new Refusal('This campaign just changed: open it again');
+    if (e instanceof StepRace)
+      throw new Refusal('This campaign just changed: open it again', { code: 'changed' });
     throw e;
   }
 }
+
+/**
+ * P5.6: a 6- or 12-month deal goes to the sales team (Prateek, 27 Oct 2026): a support conversation
+ * with the booking's numbers, once per booking. Returns its conversation id.
+ */
+export async function askSalesForDeal(
+  pool: Pool,
+  d: { readonly brandId: string; readonly bookingId: string; readonly contact: string },
+  now: number,
+): Promise<string> {
+  const page = await reviewPage(pool, d.brandId, d.bookingId, now);
+  if (!page) throw new Refusal('No such campaign', { code: 'no-booking' });
+  if (page.repeatMonths <= 1)
+    throw new Refusal('Only a 6- or 12-month deal goes to our sales team');
+  return inTransaction(pool, async (c) => {
+    await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`deal:${d.bookingId}`]);
+    const subject = `${page.repeatMonths}-month deal: booking ${d.bookingId}`;
+    const before = await c.query<{ thread_id: string }>(
+      `SELECT thread_id FROM support_threads WHERE party_kind = 'brand' AND party_id = $1
+          AND subject = $2 LIMIT 1`,
+      [d.brandId, subject],
+    );
+    if (before.rows[0]) return before.rows[0].thread_id;
+    const days = [...new Set(page.lines.map((l) => l.day))];
+    return threadFromBrandPortal(c, {
+      brandId: d.brandId,
+      contact: d.contact,
+      subject,
+      text: `Please call about a ${page.repeatMonths}-month deal. Booking ${d.bookingId}: ${page.bikeHours} bike-hours over ${days.length} days, ${page.lines
+        .map((l) => l.area)
+        .filter((a, i, all) => all.indexOf(a) === i)
+        .join(
+          ', ',
+        )}; ${rupeesText(page.totalPaise)} with GST after the ${page.repeatMonths}-month discount.`,
+      at: now,
+    });
+  });
+}
+
+const rupeesText = (p: number) => `₹${Math.round(p / 100).toLocaleString('en-IN')}`;

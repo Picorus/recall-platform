@@ -285,7 +285,8 @@ export default function BookPage() {
               ))}
             </div>
             <p className="muted">
-              The same days again each month. The discount is on Peak and Normal hours.
+              The same days again each month. The discount is on Peak and Normal hours. A 6- or
+              12-month deal is set up with our sales team: they call you after you continue.
             </p>
           </section>
         </div>
