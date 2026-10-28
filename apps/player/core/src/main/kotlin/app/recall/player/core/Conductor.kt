@@ -8,6 +8,7 @@
 // started (`started`) and reported no problem, the screen was not covered at any moment of it (blank or
 // test pattern, P2.12), an ad was shown (not the slate), and no spot at or after
 // that time was counted before (a clock moved back never yields the same spot twice, review P2.5.1).
+// A blank spot (outside our zone, P2.5) is never handed on: not a play, not a make-up, not reported.
 package app.recall.player.core
 
 import java.util.concurrent.CountDownLatch
@@ -208,6 +209,7 @@ class Conductor(
 
     /** `ran`: the spot ran to its end (false: playback stopped part-way). */
     private fun finish(s: Showing, ran: Boolean) {
+        if (s.spot.blank) return
         val whole = s.fromStart && ran && mono() >= s.endMono - rules.wholeWithinMs
         val problem = s.report.problem
             ?: runCatching { covered(s.startMono) }.getOrElse { "cover unknown" }

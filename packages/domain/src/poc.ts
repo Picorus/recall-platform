@@ -18,6 +18,7 @@ import {
   type SpotChoice,
   type SpotRules,
 } from './scheduler.js';
+import { inOurZone, outsideOurZone, type ScreenSpot } from './our-zone.js';
 import { indiaHourStart } from './screen-plan.js';
 import { businessDayOf } from './time.js';
 import type { Entry, Posting } from './ledger.js';
@@ -382,10 +383,10 @@ export function pocSpotAt(
 }
 
 /**
- * What a screen shows in spot `index` of the hour holding `t` while a POC month's plan covers `t`
- * (Prateek, 29 Oct 2026): inside the POC zone, the rotation; outside it, only RECALL's own ads (no
- * brand rotation and no area booking plans). Undefined when the plan does not cover `t` (the POC's
- * nights, or another month): the usual plans then.
+ * What a screen shows in spot `index` of the hour holding `t` while a POC month's plan covers `t`:
+ * inside the POC zone, the rotation; outside it, nothing (blank, P2.5: our-zone.ts; never an area
+ * booking plan). Undefined when the plan does not cover `t` (the POC's nights, or another month):
+ * the usual plans then.
  */
 export function pocScreenSpotAt(
   plan: PocPlan,
@@ -394,9 +395,9 @@ export function pocScreenSpotAt(
   index: number,
   inZone: boolean,
   rules: SpotRules = DEFAULT_SPOT_RULES,
-): SpotChoice | undefined {
+): ScreenSpot | undefined {
   if (!pocPlanCovers(plan, t)) return undefined;
-  if (!inZone) return { kind: 'recall', ad: nth(plan.recallAds, index) ?? '' };
+  if (!inOurZone({ kind: 'outside' }, inZone)) return outsideOurZone(plan.recallAds, index);
   return pocSpotAt(plan, screenId, indiaHourOf(t), index, rules);
 }
 

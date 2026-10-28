@@ -197,7 +197,7 @@ Each bike carries a 28-inch P2.5 LED screen driven by a small Android controller
 2. **P2.2 Kiosk mode.** The player is the device owner: starts on power-up, cannot be closed, a watchdog restarts it within 5 seconds if it crashes.
 3. **P2.3 Connection.** MQTT over TLS; reconnects by itself; clock set from network and GPS time; store-and-forward up to 7 days.
 4. **P2.4 Ad storage.** Downloads ads ahead, checks each file's fingerprint, keeps them until the booking ends, clears old files when space runs low. Never streams.
-5. **P2.5 Playback.** Plays 15-second videos and still images without gaps, rotates the brand's 2 to 5 ads, keeps the 200-brand / 40-RECALL pattern each hour.
+5. **P2.5 Playback.** Plays 15-second videos and still images without gaps, rotates the brand's 2 to 5 ads, keeps the 200-brand / 40-RECALL pattern each hour. Outside our zone the screen is blank (a black frame, no play; Prateek, 28 Oct 2026): during the POC outside 15 km of Hitech City, in regular business outside every area that is on. Inside an area with no booking: RECALL's own ads.
 6. **P2.6 Local scheduler.** Knows its area from GPS (P1.2), follows the cloud's assignment, falls back to its own pick from the hour plan when offline (P1.4.3).
 7. **P2.7 Signed play log.** Every play is written to local storage and signed with a key held in the box's secure store.
 8. **P2.8 GPS service.** Reads, cleans and smooths positions; runs the moving-hour stopwatch and 10-minute stop rule.
@@ -442,6 +442,7 @@ A new engineer should be able to read four files and start work the same day. Th
 
 | Date | Version | Change |
 | --- | --- | --- |
+| 29 Oct 2026 | 1.14 | Prateek: the screen is blank outside our zone (P2.5): outside the POC's circle during the POC, outside every area in regular business. |
 | 29 Oct 2026 | 1.13 | Prateek: rider pay zone by business mode (P1.7.5): the POC's 15 km circle while it runs; in regular business only inside areas that are on. |
 | 29 Oct 2026 | 1.12 | Prateek: the POC is scheduled from its switch-on to its 1st and ends only by a super admin's switch (planned 3 months, alerts, an early-end check); P7.8 is proved by tests, not a demo. |
 | 29 Oct 2026 | 1.11 | Prateek: the POC package (P7.8): 40 brands × ₹2.5 L a month, 5 plays each per bike-hour on all 200 bikes, nothing promised; the rider's 25% is after the agency and aggregator cuts. |

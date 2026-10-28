@@ -2,6 +2,15 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 29 Oct 2026 · P2.5 · Blank screen outside our zone
+- Prateek's rule (28 Oct): outside our zone the screen is fully blank — during the POC outside the 15 km circle, in regular business outside every area that is on. No plays and no rider hours there. Inside an area with no booking: RECALL's own ads. Replaces "RECALL ads outside the POC zone".
+- One place for the rule on each side: `OurZone.kt` (screen) and `packages/domain/src/our-zone.ts` (cloud), each with one switch to go back to RECALL's ads.
+- Screen: the local scheduler answers `blankAt` (POC month: its zone, judged by the nearest GPS fix or the latest of the last two minutes; else the tracker's area, with its 15 s hold; an edge zone is ours). Playout gives a blank spot (no file, nothing planned); the conductor never hands it on (not a play, not reported, not "not counted"); the Android screen shows a black layer for it.
+- Cloud: `pocScreenSpotAt` gives `{kind: 'blank'}` outside the POC zone.
+- Tests: Kotlin 147 (regular: outside blank, entering Madhapur its plan exactly after the 15 s hold; POC outside the circle blank, a GPS gap keeps the last fix's answer; conductor: blank spots never handed on); domain 436 (our-zone, POC outside blank).
+- Open: the Android app module was not built here (no Android SDK in this sandbox); CI builds it. Without a trusted time the screen still shows RECALL's ads, uncounted. A box with no GPS yet is blank until it is placed in an area.
+- **Next: P2.4.2** — the cloud sends each screen its ad files.
+
 ## 29 Oct 2026 · P1.7.5 · Rider pay zone by business mode
 - Prateek's rule (28 Oct): during the POC, moving hours count within 15 km of Hitech City; in regular business only inside an area that is on (not its edge zone); outside every area nothing. Inside an area with no booking: ₹25 an hour only; with a booking playing: ₹25 an hour + his 25% share.
 - Settings: `payZone` split into `pocZone` (the circle) and `regularZone` (new kind "all areas that are on", or listed areas as an exception), both versioned. Migration `0063_pay_zones.sql` copies the newest circle and the newest area list from the old setting (saved by "migration"), keeps the old rows as history and refuses new `payZone` rows. Staff Settings page has a section for each, with an "All areas that are on" choice.

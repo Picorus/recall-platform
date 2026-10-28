@@ -32,7 +32,8 @@ class LocalSchedulerTest {
     fun `in an area with a plan and no assignment, the screen's own pick, the same the cloud expects`() {
         val s = LocalScheduler(dir, me)
         assertTrue(s.onPlans(plansText))
-        assertNull(s.at(h18), "outside every area: RECALL's own ads")
+        assertNull(s.at(h18), "outside every area: no plan")
+        assertTrue(s.blankAt(h18), "outside every area: blank (P2.5)")
         at(s, madhapur)
         val (plan, carry) = assertNotNull(s.at(h18 + 60_000))
         assertEquals("hyd-madhapur", plan.areaId)
@@ -42,6 +43,44 @@ class LocalSchedulerTest {
         assertEquals(h18 / 1000 + 3600, assertNotNull(s.at(h18 + 3_600_000)).first.startsAt)
         // No plan for that hour: none.
         assertNull(s.at(h18 + 2 * 3_600_000))
+    }
+
+    @Test
+    fun `outside every area the screen is blank, entering an area it plays that area's plan after the 15 s hold`() {
+        val s = LocalScheduler(dir, me)
+        assertTrue(s.onAreas(areasText))
+        assertTrue(s.onPlans(plansText))
+        val playout = Playout(s, { ad -> File("/ads/$ad") })
+        var tracker = TrackerState()
+        val t0 = h18 / 1000 + 60
+        // 20 s standing 550 m south of Madhapur (outside its edge zone), then riding north into it.
+        val lats = (0 until 90).map { i -> if (i < 20) 17.435 else minOf(17.447, 17.435 + (i - 19) * 0.00035) }
+        var firstInside: Int? = null
+        var firstPlan: Int? = null
+        lats.forEachIndexed { i, lat ->
+            val t = t0 + i
+            val (next, second) = Tracker.step(tracker, t, GpsFix(t, lat, 78.39, 5.0), s.areas())
+            tracker = next
+            s.onSecond(second)
+            val raw = second.position?.let { Areas.locate(it, s.areas()) }
+            if (firstInside == null && raw is Place.Inside) firstInside = i
+            val spot = playout.spotAt(t * 1000)
+            if (s.at(t * 1000) == null) {
+                assertTrue(s.blankAt(t * 1000), "second $i: outside every area: blank")
+                assertTrue(spot.blank && spot.file == null && spot.planned == null, "second $i")
+            } else if (firstPlan == null) {
+                firstPlan = i
+            }
+            if (firstPlan != null) {
+                assertTrue(!spot.blank, "second $i: in the area")
+                assertEquals("hyd-madhapur", spot.areaId)
+                assertEquals(Spots.spotAt(assertNotNull(s.at(t * 1000)).first, assertNotNull(s.at(t * 1000)).second, assertNotNull(spot.index)), spot.planned)
+            }
+        }
+        val inside = assertNotNull(firstInside)
+        val plan = assertNotNull(firstPlan, "the area's plan plays once the bike is in")
+        // The tracker's hold: the new area must be seen 15 seconds (this one and 14 more) first.
+        assertEquals(inside + 14, plan)
     }
 
     @Test

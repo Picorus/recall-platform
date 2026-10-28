@@ -305,11 +305,11 @@ describe('every hour shared (P7.8.2)', () => {
     expect(() => pocSpotAt(p, 'S', HOUR, -1)).toThrow(/count from 0/);
   });
 
-  it('outside the POC zone in a POC hour: RECALL spots only, every one of the 240', () => {
+  it('outside the POC zone in a POC hour: blank, every one of the 240 (P2.5)', () => {
     const p = plan(40);
     const t = HOUR + 100;
     const out = Array.from({ length: 240 }, (_, i) => pocScreenSpotAt(p, 'SCR-1', t, i, false));
-    expect(out.every((x) => x?.kind === 'recall')).toBe(true);
+    expect(out.every((x) => x?.kind === 'blank')).toBe(true);
     const inside = Array.from({ length: 240 }, (_, i) => pocScreenSpotAt(p, 'SCR-1', t, i, true));
     expect(inside).toEqual(hourOn(p, 'SCR-1'));
     // At night the POC plan does not cover the hour: the usual plans.

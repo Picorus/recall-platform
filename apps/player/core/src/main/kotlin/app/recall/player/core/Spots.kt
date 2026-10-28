@@ -55,15 +55,20 @@ data class HourPlan(
 /** What the bike carries in this area-hour: its line, and what fills its RECALL spots (null: RECALL's). */
 data class Carry(val lineId: String?, val spotId: String?)
 
-/** What a spot shows: a brand's ad, a make-up or aggregator ad, or RECALL's own. */
+/** What a spot shows: a brand's ad, a make-up or aggregator ad, RECALL's own, or nothing (blank). */
 data class SpotChoice(
-    /** "brand", "make-up", "aggregator" or "recall". */
+    /** "brand", "make-up", "aggregator", "recall" or "blank" (outside our zone, P2.5). */
     val kind: String,
     /** The booking line (brand), the make-up or aggregator id; null for RECALL's own. */
     val id: String?,
     /** The ad; "" when the plan has none to give. */
     val ad: String,
-)
+) {
+    companion object {
+        /** Outside our zone (OurZone): a black frame, no file. */
+        val BLANK = SpotChoice("blank", null, "")
+    }
+}
 
 object Spots {
     private fun <T> nth(xs: List<T>, i: Int): T? = xs.getOrNull(i % maxOf(1, xs.size))

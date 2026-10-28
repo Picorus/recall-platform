@@ -6,7 +6,7 @@
 //    the bike carries that area's booking. In an area's edge zone only if it was inside that area
 //    earlier this hour (so GPS wobbling along a border never switches the brand); a bike that just
 //    stays near an area carries nothing (edge plays count only up to a share of a line, P1.5.3, and
-//    the cloud only assigns bikes inside). Outside every area: no plan, RECALL's own ads.
+//    the cloud only assigns bikes inside). Outside every area: the screen is blank (OurZone, P2.5).
 //  - In an area-hour with the cloud's assignment, the bike carries that (the newest for that
 //    area-hour, kept: a bike coming back carries the same again). Without one, or for a part of it
 //    the plan the box holds does not know, the screen's own pick (P1.4.3).
@@ -215,11 +215,23 @@ class LocalScheduler(
         s.plans.values.filter { it.areaId == areaId && utcMs >= it.startsAt * 1000 && utcMs < (it.startsAt + HOUR) * 1000 }
             .maxByOrNull { it.startsAt }
 
-    /** The plan and what this bike carries at `utcMs`; null outside every area or without a plan. */
+    /**
+     * Outside our zone at `utcMs` (P2.5, OurZone): under a POC month outside its zone, otherwise outside
+     * every area. The screen is blank then.
+     */
+    override fun blankAt(utcMs: Long): Boolean {
+        val s = state
+        val t = Math.floorDiv(utcMs, 1000L)
+        val poc = s.poc.plans.firstOrNull { PocPlans.covers(it, t) }
+        return OurZone.blank(poc?.let { inPocZone(it.zone, t) }, place)
+    }
+
+    /** The plan and what this bike carries at `utcMs`; null outside our zone, outside every area or without a plan. */
     override fun at(utcMs: Long): Pair<HourPlan, Carry>? {
         val s = state
-        // P7.8: in a POC month's business hours the POC decides: inside its zone the rotation, outside it
-        // RECALL's own ads only.
+        if (blankAt(utcMs)) return null
+        // P7.8: in a POC month's business hours the POC decides: inside its zone the rotation (outside it
+        // the screen is blank, above; with OurZone flipped, RECALL's own ads only).
         pocAt(s, utcMs)?.let { return it }
         val (areaId, edge) = when (val p = place) {
             is Place.Inside -> p.areaId to false
@@ -240,26 +252,36 @@ class LocalScheduler(
         return plan to Carry(if (line != null) own.lineId else given.lineId, if (spot != null) own.spotId else given.spotId)
     }
 
+    /**
+     * Inside a POC month's zone at second `t`. A circle is judged by the nearest good fix, else the
+     * latest one of the last couple of minutes (GPS often drops out under a flyover); with none, outside.
+     */
+    private fun inPocZone(zone: PocZone, t: Long): Boolean = when (val z = zone) {
+        is PocZone.Circle -> {
+            val fix = where(t).takeIf { it.accuracyM != Where.NO_FIX_ACCURACY_M }
+                ?: seen.headMap(t, true).descendingMap().values.firstOrNull { it.accuracyM != Where.NO_FIX_ACCURACY_M }
+            fix?.let { Geo.distanceMeters(z.centre, LatLng(it.latE6 / 1e6, it.lngE6 / 1e6)) <= z.radiusM } ?: false
+        }
+        is PocZone.Areas -> when (val p = place) {
+            is Place.Inside -> p.areaId in z.areaIds
+            is Place.Edge -> z.withEdge && p.areaId in z.areaIds
+            Place.Outside -> false
+        }
+        is PocZone.AllAreas -> when (place) {
+            is Place.Inside -> true
+            is Place.Edge -> z.withEdge
+            Place.Outside -> false
+        }
+    }
+
     /** The POC hour at `utcMs` when a POC month plays then (outside its zone: RECALL's ads only); else null. */
     private fun pocAt(s: State, utcMs: Long): Pair<HourPlan, Carry>? {
         val t = Math.floorDiv(utcMs, 1000L)
         val plan = s.poc.plans.firstOrNull { PocPlans.covers(it, t) } ?: return null
-        val inZone = when (val z = plan.zone) {
-            is PocZone.Circle -> where(t).takeIf { it.accuracyM != Where.NO_FIX_ACCURACY_M }
-                ?.let { Geo.distanceMeters(z.centre, LatLng(it.latE6 / 1e6, it.lngE6 / 1e6)) <= z.radiusM } ?: false
-            is PocZone.Areas -> when (val p = place) {
-                is Place.Inside -> p.areaId in z.areaIds
-                is Place.Edge -> z.withEdge && p.areaId in z.areaIds
-                Place.Outside -> false
-            }
-            is PocZone.AllAreas -> when (place) {
-                is Place.Inside -> true
-                is Place.Edge -> z.withEdge
-                Place.Outside -> false
-            }
-        }
+        val inZone = inPocZone(plan.zone, t)
         val hour = PocPlans.hourOf(t)
-        // Outside the POC zone in a POC hour (Prateek, 29 Oct 2026): only RECALL's own ads, no area plans.
+        // Outside the POC zone in a POC hour the screen is blank (blankAt); with OurZone flipped, only
+        // RECALL's own ads, never an area plan (Prateek, 29 Oct 2026).
         if (!inZone) return HourPlan("poc-outside", hour, emptyList(), emptyList(), plan.recallAds) to Carry(null, null)
         return HourPlan("poc", hour, emptyList(), emptyList(), plan.recallAds, poc = PocCarry(plan, screenId)) to Carry(null, null)
     }
