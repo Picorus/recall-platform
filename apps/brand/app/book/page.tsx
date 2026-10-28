@@ -5,8 +5,7 @@
 // prices it as it changes (bike-hours, plays promised, price, GST, total) and says what stops it
 // (under the minimum, too soon, hours sold). "Book again" opens with an earlier booking's plan.
 import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { pathOf, projector } from '../../lib/area-map';
+import { useEffect, useRef, useState } from 'react';
 import {
   api,
   ApiError,
@@ -16,6 +15,8 @@ import {
   type PlanPrice,
 } from '../../lib/api';
 import { daysText, rupees } from '../../lib/format';
+import { Icon } from '../../lib/icons';
+import { areaPhoto } from '../../lib/photos';
 import { Shell, useMe } from '../../lib/session';
 
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -80,18 +81,6 @@ export default function BookPage() {
     return () => clearTimeout(t);
   }, [plan, brand]);
 
-  const at = useMemo(
-    () =>
-      form
-        ? projector(
-            form.areas.map((a) => a.ring),
-            640,
-            420,
-          )
-        : undefined,
-    [form],
-  );
-
   const book = async () => {
     if (!plan) return;
     setBusy(true);
@@ -114,7 +103,7 @@ export default function BookPage() {
     }
   };
 
-  if (!me || !form || !plan || !at)
+  if (!me || !form || !plan)
     return (
       <main className="narrow">
         <p className={error ? 'error' : 'muted'}>{error || 'Loading…'}</p>
@@ -124,40 +113,46 @@ export default function BookPage() {
   const ok = price?.price !== null && price !== undefined && price.problems.length === 0;
   return (
     <Shell me={me}>
-      <h1>Book{account ? ` for ${account.name}` : ''}</h1>
+      <header className="page-head">
+        <p className="eyebrow">New campaign</p>
+        <h1>Book{account ? ` for ${account.name}` : ''}</h1>
+      </header>
       <div className="book">
         <div className="stack">
-          <section className="rc-card stack" aria-label="Areas">
-            <h2>1 · Areas</h2>
+          <section className="rc-card stack step" aria-label="Areas">
+            <h2>
+              <span className="step__n">1</span>Areas
+            </h2>
             <p className="muted">Tap the areas where your ads should play.</p>
-            <svg viewBox="0 0 640 420" className="area-map" role="group" aria-label="Map of areas">
+            <div className="area-cards" role="group" aria-label="Areas to pick">
               {form.areas.map((a) => {
                 const on = plan.areaIds.includes(a.areaId);
-                const [cx, cy] = at(a.centre);
+                const flip = () => set({ areaIds: toggle(plan.areaIds, a.areaId) });
                 return (
-                  <g
+                  <div
                     key={a.areaId}
                     role="checkbox"
                     aria-checked={on}
                     aria-label={a.name}
                     tabIndex={0}
-                    onClick={() => set({ areaIds: toggle(plan.areaIds, a.areaId) })}
+                    className={on ? 'area-card on' : 'area-card'}
+                    onClick={flip}
                     onKeyDown={(e) => {
                       if (e.key === ' ' || e.key === 'Enter') {
                         e.preventDefault();
-                        set({ areaIds: toggle(plan.areaIds, a.areaId) });
+                        flip();
                       }
                     }}
-                    className={on ? 'area on' : 'area'}
                   >
-                    <path d={pathOf(a.ring, at)} />
-                    <text x={cx} y={cy} textAnchor="middle">
-                      {a.name}
-                    </text>
-                  </g>
+                    <img src={areaPhoto(a.name)} alt="" loading="lazy" />
+                    <span className="area-card__tick" aria-hidden="true">
+                      <Icon name="check" size={16} />
+                    </span>
+                    <span className="area-card__name">{a.name}</span>
+                  </div>
                 );
               })}
-            </svg>
+            </div>
             <p>
               {plan.areaIds.length === 0
                 ? 'No area picked yet.'
@@ -168,8 +163,10 @@ export default function BookPage() {
             </p>
           </section>
 
-          <section className="rc-card stack" aria-label="Hours">
-            <h2>2 · Hours</h2>
+          <section className="rc-card stack step" aria-label="Hours">
+            <h2>
+              <span className="step__n">2</span>Hours
+            </h2>
             <div className="row" role="group" aria-label="Ready-made picks">
               {form.picks.map((p) => {
                 const on = p.hours.every((h) => plan.hours.includes(h));
@@ -197,19 +194,25 @@ export default function BookPage() {
                 <button
                   key={h.hour}
                   type="button"
-                  className="rc-chip"
+                  className={`hour hour--${h.band.toLowerCase()}`}
                   aria-pressed={plan.hours.includes(h.hour)}
                   onClick={() => set({ hours: toggle(plan.hours, h.hour) })}
                 >
-                  {h.label} · {h.band} {rupees(h.paisePerBikeHour)}
+                  <b>{h.label}</b>
+                  <span>
+                    <span className="sep">{' · '}</span>
+                    {h.band} {rupees(h.paisePerBikeHour)}
+                  </span>
                 </button>
               ))}
             </div>
             <p className="muted">Prices are per bike for one hour, before GST.</p>
           </section>
 
-          <section className="rc-card stack" aria-label="Days">
-            <h2>3 · Days and bikes</h2>
+          <section className="rc-card stack step" aria-label="Days">
+            <h2>
+              <span className="step__n">3</span>Days and bikes
+            </h2>
             <div className="row" role="group" aria-label="Days of the week">
               {WEEKDAYS.map((d, i) => (
                 <button
@@ -265,8 +268,10 @@ export default function BookPage() {
             </div>
           </section>
 
-          <section className="rc-card stack" aria-label="Repeat">
-            <h2>4 · Repeat every month (optional)</h2>
+          <section className="rc-card stack step" aria-label="Repeat">
+            <h2>
+              <span className="step__n">4</span>Repeat every month <small>(optional)</small>
+            </h2>
             <div className="row" role="radiogroup" aria-label="Repeat">
               {[1, ...Object.keys(form.repeatOffersBp).map(Number)].map((m) => (
                 <button
@@ -291,33 +296,40 @@ export default function BookPage() {
           </section>
         </div>
 
-        <aside className="rc-card stack summary" aria-label="Summary" aria-live="polite">
+        <aside
+          id="summary"
+          className="rc-card stack summary"
+          aria-label="Summary"
+          aria-live="polite"
+        >
           <h2>Summary</h2>
           {price?.price ? (
-            <dl className="facts">
-              <dt>Dates</dt>
-              <dd>{daysText(price.price.firstDay, price.price.lastDay)}</dd>
-              <dt>Days</dt>
-              <dd>{price.price.days}</dd>
-              <dt>Bike-hours</dt>
-              <dd>{price.price.bikeHours.toLocaleString('en-IN')}</dd>
-              <dt>Plays promised</dt>
-              <dd>{price.price.plays.toLocaleString('en-IN')}</dd>
-              <dt>Price</dt>
-              <dd>{rupees(price.price.listPaise)}</dd>
-              {price.price.discountPaise > 0 && (
-                <>
-                  <dt>Repeat discount</dt>
-                  <dd>−{rupees(price.price.discountPaise)}</dd>
-                </>
-              )}
-              <dt>GST</dt>
-              <dd>{rupees(price.price.gstPaise)}</dd>
-              <dt>Total</dt>
-              <dd>
-                <b>{rupees(price.price.totalPaise)}</b>
-              </dd>
-            </dl>
+            <>
+              <div className="summary__total">
+                <span>Total with GST</span>
+                <b className="rc-num">{rupees(price.price.totalPaise)}</b>
+              </div>
+              <dl className="facts summary__facts rc-num">
+                <dt>Dates</dt>
+                <dd>{daysText(price.price.firstDay, price.price.lastDay)}</dd>
+                <dt>Days</dt>
+                <dd>{price.price.days}</dd>
+                <dt>Bike-hours</dt>
+                <dd>{price.price.bikeHours.toLocaleString('en-IN')}</dd>
+                <dt>Plays promised</dt>
+                <dd>{price.price.plays.toLocaleString('en-IN')}</dd>
+                <dt>Price</dt>
+                <dd>{rupees(price.price.listPaise)}</dd>
+                {price.price.discountPaise > 0 && (
+                  <>
+                    <dt>Repeat discount</dt>
+                    <dd>−{rupees(price.price.discountPaise)}</dd>
+                  </>
+                )}
+                <dt>GST</dt>
+                <dd>{rupees(price.price.gstPaise)}</dd>
+              </dl>
+            </>
           ) : (
             <p className="muted">Pick areas, hours and days to see the price.</p>
           )}
@@ -337,8 +349,9 @@ export default function BookPage() {
           )}
           <button
             type="button"
-            className="rc-button rc-button--primary"
+            className="rc-button rc-button--primary rc-button--large rc-button--block"
             disabled={!ok || busy}
+            aria-busy={busy}
             onClick={() => void book()}
           >
             {busy ? 'Saving…' : 'Continue'}
@@ -348,6 +361,22 @@ export default function BookPage() {
             the start.
           </p>
         </aside>
+      </div>
+      {/* On a phone the summary is at the end of the page: the total stays in sight at the bottom. */}
+      <div className="book-bar">
+        <span className="rc-num">
+          {price?.price ? (
+            <>
+              <small>Total with GST</small>
+              <b>{rupees(price.price.totalPaise)}</b>
+            </>
+          ) : (
+            <small>Pick areas and hours to see the price</small>
+          )}
+        </span>
+        <a className="rc-button rc-button--strong rc-button--small" href="#summary">
+          Review
+        </a>
       </div>
     </Shell>
   );

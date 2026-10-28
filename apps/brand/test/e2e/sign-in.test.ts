@@ -274,6 +274,8 @@ it('a new business signs in with a WhatsApp code, a wrong code is told, and sign
   // Signed in: the sign-in page sends you in.
   await page.goto(`${SITE}/sign-in`);
   await page.waitForURL(`${SITE}/`);
+  // Sign out sits in the account menu (P7.7.2), opened from the name in the top bar.
+  await page.getByLabel('Your account').click();
   await page.getByRole('button', { name: 'Sign out' }).click();
   await page.waitForURL(`${SITE}/sign-in`);
   await page.goto(SITE);

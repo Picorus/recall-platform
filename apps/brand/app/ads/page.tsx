@@ -130,7 +130,9 @@ export default function AdsPage() {
     <Shell me={me}>
       <div className="row" style={{ justifyContent: 'space-between' }}>
         <h1>Your ads</h1>
-        <Link href={`/campaigns?brand=${encodeURIComponent(q.brand)}`}>Back to campaigns</Link>
+        <Link className="back-link" href={`/campaigns?brand=${encodeURIComponent(q.brand)}`}>
+          Back to campaigns
+        </Link>
       </div>
       {booking && (
         <p>

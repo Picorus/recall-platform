@@ -1,9 +1,11 @@
 'use client';
 // P5.1: sign in with a mobile number (a code on WhatsApp, or by SMS) or an email address (a code by
 // email; agencies mostly). Two steps on one page: where to send the code, then the code.
+import lockup from '@recall/design/logo/recall-lockup-horizontal-light.svg';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, type FormEvent } from 'react';
 import { api, ApiError, type Me } from '../../lib/api';
+import { heroPhoto } from '../../lib/photos';
 import {
   backTo,
   looksLikeCode,
@@ -95,9 +97,10 @@ export default function SignIn() {
   };
 
   return (
-    <main className="narrow">
-      <div className="rc-card stack">
-        <h1 className="brand">RECALL</h1>
+    <main className="signin">
+      <div className="signin__form stack">
+        <img className="signin__logo" src={lockup.src} alt="RECALL" width={150} height={18} />
+        <h1 className="display">Sign in</h1>
         <p className="muted">
           Moving screens on bikes across Hyderabad. Sign in to book, pay, add your ads and get your
           report.
@@ -111,10 +114,9 @@ export default function SignIn() {
               void ask(way === 'phone' ? 'whatsapp' : 'email');
             }}
           >
-            <div className="row" role="group" aria-label="Sign in with">
+            <div className="rc-segmented" role="group" aria-label="Sign in with">
               <button
                 type="button"
-                className="rc-chip"
                 aria-pressed={way === 'phone'}
                 onClick={() => switchTo('phone')}
               >
@@ -122,7 +124,6 @@ export default function SignIn() {
               </button>
               <button
                 type="button"
-                className="rc-chip"
                 aria-pressed={way === 'email'}
                 onClick={() => switchTo('email')}
               >
@@ -157,7 +158,12 @@ export default function SignIn() {
                 {error}
               </p>
             )}
-            <button className="rc-button rc-button--primary" disabled={busy} type="submit">
+            <button
+              className="rc-button rc-button--primary rc-button--large"
+              disabled={busy}
+              aria-busy={busy}
+              type="submit"
+            >
               {way === 'phone' ? 'Send code on WhatsApp' : 'Send code by email'}
             </button>
             {way === 'phone' && (
@@ -206,7 +212,11 @@ export default function SignIn() {
                 {error}
               </p>
             )}
-            <button className="rc-button rc-button--primary" disabled={busy} type="submit">
+            <button
+              className="rc-button rc-button--primary rc-button--large"
+              disabled={busy}
+              type="submit"
+            >
               {busy ? 'Signing in…' : 'Sign in'}
             </button>
             <div className="row">
@@ -231,10 +241,24 @@ export default function SignIn() {
             </div>
           </form>
         )}
-        <p className="muted">
+        <p className="muted signin__fine">
           By signing in you agree to RECALL&apos;s terms. We never ask for your code on a call.
         </p>
       </div>
+      <aside className="signin__photo" aria-hidden="true">
+        <img src={heroPhoto} alt="" />
+        <div className="signin__words">
+          <p className="display">
+            Your brand,
+            <br />
+            <em>on the streets tonight.</em>
+          </p>
+          <p>
+            Every bike plays your ad again and again as it rides. You pay only for the bike-hours
+            you book.
+          </p>
+        </div>
+      </aside>
     </main>
   );
 }

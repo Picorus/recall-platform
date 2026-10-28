@@ -71,7 +71,9 @@ export default function TeamPage() {
     <Shell me={me}>
       <div className="row" style={{ justifyContent: 'space-between' }}>
         <h1>Team</h1>
-        <Link href={`/campaigns?brand=${encodeURIComponent(brand)}`}>Back to campaigns</Link>
+        <Link className="back-link" href={`/campaigns?brand=${encodeURIComponent(brand)}`}>
+          Back to campaigns
+        </Link>
       </div>
       {error && (
         <p className="error" role="alert">

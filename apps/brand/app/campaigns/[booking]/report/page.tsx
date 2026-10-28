@@ -7,6 +7,8 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { api, ApiError, type Report } from '../../../../lib/api';
+import { Icon } from '../../../../lib/icons';
+import { areaPhoto } from '../../../../lib/photos';
 import { Shell, useMe } from '../../../../lib/session';
 
 export default function ReportPage() {
@@ -85,10 +87,10 @@ export default function ReportPage() {
   const q = report ? `brand=${encodeURIComponent(report.account.brandId)}` : '';
   return (
     <Shell me={me}>
-      <div className="row" style={{ justifyContent: 'space-between' }}>
-        <h1>Campaign report</h1>
-        <Link href={report ? `/campaigns?${q}` : '/'}>Back to campaigns</Link>
-      </div>
+      <Link className="back-link" href={report ? `/campaigns?${q}` : '/'}>
+        <Icon name="back" size={16} />
+        Back to campaigns
+      </Link>
       {error && (
         <p className="error" role="alert">
           {error}
@@ -96,10 +98,17 @@ export default function ReportPage() {
       )}
       {report && (
         <>
-          <p>
-            <b>{report.account.name}</b> · <span className="mono">{report.bookingId}</span>
-            {report.period && ` · ${report.period}`}
-          </p>
+          <section className="report-cover">
+            <img src={areaPhoto('Hitech City')} alt="" />
+            <div className="report-cover__words">
+              <p className="eyebrow">{report.account.name}</p>
+              <h1 className="display">Campaign report</h1>
+              <p>
+                {report.period && `${report.period} · `}
+                <span className="mono">{report.bookingId}</span>
+              </p>
+            </div>
+          </section>
           <div className="row">
             {pdf ? (
               <a className="rc-button rc-button--primary" href={pdf.url} download={fileName}>
@@ -111,6 +120,7 @@ export default function ReportPage() {
               </span>
             )}
             <button type="button" className="rc-button rc-button--secondary" onClick={share}>
+              <Icon name="share" size={16} />
               Share on WhatsApp
             </button>
             <Link
