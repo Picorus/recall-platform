@@ -1,4 +1,8 @@
-import { groupMobile as domainGroup } from '@recall/domain';
+import {
+  codeFromTyped,
+  groupMobile as domainGroup,
+  regroupMobile as domainRegroup,
+} from '@recall/domain';
 import { describe, expect, it } from 'vitest';
 import {
   backTo,
@@ -7,6 +11,7 @@ import {
   looksLikeCode,
   looksLikeEmail,
   looksLikeMobile,
+  regroupMobile,
   timeLeft,
 } from '../../lib/sign-in';
 
@@ -51,6 +56,14 @@ describe('brand sign-in page checks (P5.1)', () => {
     expect(codeAsTyped(' 123 456 ')).toBe('123456');
     expect(codeAsTyped('123456 ')).toBe('123456');
     expect(codeAsTyped('1234567')).toBe('123456');
+    for (const t of ['482 915', 'Valid 10 min: 482915', '48', '1234567', ' 123-456 ', 'ab'])
+      expect(codeAsTyped(t), t).toBe(codeFromTyped(t));
+    for (const [t, was] of [
+      ['9848012345', '98480 12345'],
+      ['98480 1234', '98480 12345'],
+      ['+91 9848012345', '+91 98480 12345'],
+    ] as const)
+      expect(regroupMobile(t, was), t).toBe(domainRegroup(t, was));
   });
 
   it('time left on a code', () => {

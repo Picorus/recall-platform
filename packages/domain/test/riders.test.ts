@@ -52,6 +52,8 @@ describe('riders (P3.11.1)', () => {
     expect(plateOf('ts 09 ea 1234')).toBe('TS09EA1234');
     // Payout details pasted with stray spaces (checkDestination checks the rest).
     expect(upiIdOf(' ravi @okaxis ')).toBe('ravi@okaxis');
+    // A space inside the name stays (refused later), never joined into someone else's id.
+    expect(upiIdOf('ravi kumar@okaxis')).toBe('ravi kumar@okaxis');
     expect(ifscOf(' sbin 0001234 ')).toBe('SBIN0001234');
     expect(ifscOf('SBIN-0001234')).toBe('SBIN0001234');
     expect(accountNumberOf(' 1234 5678-9012 ')).toBe('123456789012');

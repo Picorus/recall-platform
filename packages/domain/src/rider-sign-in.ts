@@ -130,6 +130,34 @@ export function groupMobile(typed: string): string {
   return [lead, num].filter((x) => x !== '').join(' ');
 }
 
+/**
+ * groupMobile as the box is edited: a backspace just after a group's space takes the digit before
+ * it (else the space would come straight back and the key would seem dead). `before` is the box's
+ * value before this edit.
+ */
+export function regroupMobile(typed: string, before = ''): string {
+  const digits = (t: string) => t.replace(/\D/g, '');
+  if (typed.length < before.length && digits(typed) === digits(before)) {
+    let i = 0;
+    while (i < typed.length && typed[i] === before[i]) i++;
+    const k = digits(before.slice(0, i)).length;
+    if (k > 0) {
+      const d = digits(before);
+      typed = `${/^\s*\+/.test(before) ? '+' : ''}${d.slice(0, k - 1)}${d.slice(k)}`;
+    }
+  }
+  return groupMobile(typed);
+}
+
+/**
+ * A 6-digit code from what was typed or pasted: "482 915", " 482915 ", or a whole message
+ * ("Valid 10 min: 482915") → "482915". While it is still being typed: its digits, at most 6.
+ */
+export function codeFromTyped(typed: string): string {
+  const whole = /(?<!\d)\d(?:[ -]?\d){5}(?![ -]?\d)/.exec(typed);
+  return (whole?.[0] ?? typed).replace(/\D/g, '').slice(0, 6);
+}
+
 /** The SMS that carries a sign-in code, in the rider's language. */
 export function riderCodeSms(language: RiderLanguage, code: string, minutes = 10): string {
   switch (language) {

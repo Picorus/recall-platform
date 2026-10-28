@@ -4,7 +4,15 @@
 // notes and the timeline. An Operations admin acts; Support adds notes.
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { api, ApiError } from '../../lib/api';
-import { dayOfIndia, clock, groupMobile, noSpaces, rupees, tidyBox } from '../../lib/format';
+import {
+  dayOfIndia,
+  clock,
+  groupMobile,
+  noSpaces,
+  regroupMobile,
+  rupees,
+  tidyBox,
+} from '../../lib/format';
 import {
   APPS,
   DOCUMENT_NAMES,
@@ -344,7 +352,7 @@ export default function RiderPanel({
               type="tel"
               defaultValue={/^\+91\d{10}$/.test(r.phone) ? groupMobile(r.phone) : r.phone}
               maxLength={20}
-              onChange={tidyBox(groupMobile)}
+              onChange={tidyBox(regroupMobile)}
               required
             />
           </label>

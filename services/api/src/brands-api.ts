@@ -131,7 +131,7 @@ export async function handleBrands(
         {
           legalName,
           ...(gstin ? { gstin } : {}),
-          stateCode: str(b, 'stateCode', 4).trim(),
+          stateCode: str(b, 'stateCode', 8).replace(/\s/g, ''),
           address: typeof b.address === 'string' ? b.address.trim().slice(0, 300) : '',
           // P5.8: a GST number goes on invoices only once a person ticked that they checked it.
           gstinChecked: b.gstinChecked === true,

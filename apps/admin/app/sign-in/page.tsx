@@ -33,7 +33,16 @@ export default function SignIn() {
         <h1 className="brand">RECALL admin</h1>
         <label className="rc-field">
           <span className="rc-field__label">Email</span>
-          <input className="rc-input" name="email" type="email" autoComplete="username" required />
+          <input
+            className="rc-input"
+            name="email"
+            type="text"
+            inputMode="email"
+            autoCapitalize="none"
+            spellCheck={false}
+            autoComplete="username"
+            required
+          />
         </label>
         <label className="rc-field">
           <span className="rc-field__label">Password</span>

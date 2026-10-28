@@ -1,6 +1,6 @@
 // P4.1: type the 6-digit code that came on WhatsApp or SMS. A new code can be asked for after 30
 // seconds; the number can be changed.
-import { typedCode, type RiderLanguage } from '@recall/domain';
+import { codeFromTyped, typedCode, type RiderLanguage } from '@recall/domain';
 import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { ApiError, call } from '../api';
@@ -74,7 +74,7 @@ export function Code({
       <Field
         label={say(lang, 'code')}
         value={code}
-        onChangeText={(t) => setCode(t.replace(/\D/g, '').slice(0, 6))}
+        onChangeText={(t) => setCode(codeFromTyped(t))}
         // Big digits that stand apart ("4 8 2 9 1 5"); the code itself stays "482915".
         style={[s.input, s.code]}
         keyboardType="number-pad"

@@ -4,7 +4,7 @@
 // move his steps; Support looks and adds notes.
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { api, ApiError, type Member } from '../../lib/api';
-import { dayOfIndia, groupMobile, tidyBox } from '../../lib/format';
+import { dayOfIndia, regroupMobile, tidyBox } from '../../lib/format';
 import {
   APPS,
   phoneText,
@@ -151,7 +151,7 @@ export default function RidersPage() {
               name="phone"
               type="tel"
               maxLength={20}
-              onChange={tidyBox(groupMobile)}
+              onChange={tidyBox(regroupMobile)}
               required
             />
           </label>

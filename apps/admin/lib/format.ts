@@ -25,16 +25,43 @@ export function groupMobile(typed: string): string {
   return [lead, num].filter((x) => x !== '').join(' ');
 }
 
-/** A 6-digit code as typed or pasted ("123 456", " 123456 "): its digits, at most 6. */
-export const sixDigits = (text: string): string => text.replace(/\D/g, '').slice(0, 6);
+/** The same as regroupMobile in @recall/domain (a test checks they agree). */
+export function regroupMobile(typed: string, before = ''): string {
+  const digits = (t: string) => t.replace(/\D/g, '');
+  if (typed.length < before.length && digits(typed) === digits(before)) {
+    let i = 0;
+    while (i < typed.length && typed[i] === before[i]) i++;
+    const k = digits(before.slice(0, i)).length;
+    if (k > 0) {
+      const d = digits(before);
+      typed = `${/^\s*\+/.test(before) ? '+' : ''}${d.slice(0, k - 1)}${d.slice(k)}`;
+    }
+  }
+  return groupMobile(typed);
+}
+
+/** The same as codeFromTyped in @recall/domain (a test checks they agree): "482 915" or a pasted
+ * message ("Valid 10 min: 482915") → "482915"; while typing, its digits, at most 6. */
+export function sixDigits(typed: string): string {
+  const whole = /(?<!\d)\d(?:[ -]?\d){5}(?![ -]?\d)/.exec(typed);
+  return (whole?.[0] ?? typed).replace(/\D/g, '').slice(0, 6);
+}
 
 /** For a box not tied to state that takes a code or id: `tidy` runs as it is typed or pasted. */
 export const tidyBox =
-  (tidy: (text: string) => string) =>
-  (e: { readonly currentTarget: { value: string } }): void => {
+  (tidy: (text: string, before: string) => string) =>
+  (e: {
+    readonly currentTarget: {
+      value: string;
+      readonly defaultValue: string;
+      readonly dataset: Record<string, string | undefined>;
+    };
+  }): void => {
     const box = e.currentTarget;
-    const v = tidy(box.value);
+    // What the box held before this edit (for regroupMobile's backspace).
+    const v = tidy(box.value, box.dataset.was ?? box.defaultValue);
     if (v !== box.value) box.value = v;
+    box.dataset.was = v;
   };
 
 /** "₹1,35,000" or "₹225.50" from whole paise (never a float on the way). */

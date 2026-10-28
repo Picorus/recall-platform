@@ -40,8 +40,27 @@ export function looksLikeCode(typed: string): boolean {
   return /^\d{6}$/.test(typed.replace(/\s/g, ''));
 }
 
-/** The code box as it is typed or pasted ("123 456", " 123456 "): its digits, at most 6. */
-export const codeAsTyped = (typed: string): string => typed.replace(/\D/g, '').slice(0, 6);
+/** The same as codeFromTyped in @recall/domain (a test checks they agree): "482 915" or a pasted
+ * message ("Valid 10 min: 482915") → "482915"; while typing, its digits, at most 6. */
+export function codeAsTyped(typed: string): string {
+  const whole = /(?<!\d)\d(?:[ -]?\d){5}(?![ -]?\d)/.exec(typed);
+  return (whole?.[0] ?? typed).replace(/\D/g, '').slice(0, 6);
+}
+
+/** The same as regroupMobile in @recall/domain (a test checks they agree). */
+export function regroupMobile(typed: string, before = ''): string {
+  const digits = (t: string) => t.replace(/\D/g, '');
+  if (typed.length < before.length && digits(typed) === digits(before)) {
+    let i = 0;
+    while (i < typed.length && typed[i] === before[i]) i++;
+    const k = digits(before.slice(0, i)).length;
+    if (k > 0) {
+      const d = digits(before);
+      typed = `${/^\s*\+/.test(before) ? '+' : ''}${d.slice(0, k - 1)}${d.slice(k)}`;
+    }
+  }
+  return groupMobile(typed);
+}
 
 /** "4:05" left of a code's life, from seconds; "0:00" once it has run out. */
 export function timeLeft(seconds: number): string {

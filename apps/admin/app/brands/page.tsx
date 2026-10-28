@@ -8,7 +8,15 @@ import { Info } from '@recall/web-ui';
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { api, ApiError, type Member } from '../../lib/api';
 import { idFromName, matches, phoneText, STEP_NAMES, type AccountRow } from '../../lib/brands';
-import { clock, dayOfIndia, groupMobile, noSpaces, rupees, tidyBox } from '../../lib/format';
+import {
+  clock,
+  dayOfIndia,
+  groupMobile,
+  noSpaces,
+  regroupMobile,
+  rupees,
+  tidyBox,
+} from '../../lib/format';
 import { Shell, useMember } from '../../lib/session';
 import BookingPanel from './booking-panel';
 import NewBooking from './new-booking';
@@ -442,7 +450,7 @@ export default function BrandsPage() {
                   name="phone"
                   type="tel"
                   defaultValue={groupMobile(page.contact?.phone ?? '')}
-                  onChange={tidyBox(groupMobile)}
+                  onChange={tidyBox(regroupMobile)}
                   disabled={!isSales(me)}
                 />
               </label>
@@ -451,7 +459,10 @@ export default function BrandsPage() {
                 <input
                   className="rc-input"
                   name="email"
-                  type="email"
+                  type="text"
+                  inputMode="email"
+                  autoCapitalize="none"
+                  spellCheck={false}
                   defaultValue={page.contact?.email ?? ''}
                   disabled={!isSales(me)}
                 />

@@ -87,7 +87,9 @@ export interface RiderDetails {
 
 /** An Indian mobile number in one form: "+91" and 10 digits starting 6–9; null if it is not one. */
 export function phoneOf(raw: string): string | null {
-  const digits = raw.replace(/[\s()-]/g, '').replace(/^(\+91|0091|91(?=\d{10}$)|0(?=\d{10}$))/, '');
+  const digits = raw
+    .replace(/[\s().-]/g, '')
+    .replace(/^(\+91|0091|91(?=\d{10}$)|0(?=\d{10}$))/, '');
   return /^[6-9]\d{9}$/.test(digits) ? `+91${digits}` : null;
 }
 
@@ -99,7 +101,7 @@ export function plateOf(raw: string): string | null {
 }
 
 /** A UPI id as typed, without stray spaces ("ravi @okaxis " → "ravi@okaxis"). */
-export const upiIdOf = (raw: string): string => raw.replace(/\s/g, '');
+export const upiIdOf = (raw: string): string => raw.trim().replace(/\s*@\s*/, '@');
 
 /** An IFSC as typed, in capitals without spaces or dashes ("sbin 0001234" → "SBIN0001234"). */
 export const ifscOf = (raw: string): string => raw.replace(/[\s-]/g, '').toUpperCase();

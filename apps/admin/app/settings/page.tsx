@@ -7,7 +7,7 @@ import { Info } from '@recall/web-ui';
 import Link from 'next/link';
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { api, ApiError } from '../../lib/api';
-import { clock, dayOfIndia, groupMobile, noSpaces } from '../../lib/format';
+import { clock, dayOfIndia, groupMobile, noSpaces, regroupMobile } from '../../lib/format';
 import { Shell, useMember } from '../../lib/session';
 import {
   DAY_NAMES,
@@ -750,7 +750,9 @@ function PhoneRow({
           className="rc-input mono"
           type="tel"
           value={groupMobile(phone.phone)}
-          onChange={(e) => onChange({ ...phone, phone: groupMobile(e.target.value) })}
+          onChange={(e) =>
+            onChange({ ...phone, phone: regroupMobile(e.target.value, groupMobile(phone.phone)) })
+          }
         />
       </Field>
       <label>

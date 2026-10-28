@@ -386,8 +386,9 @@ function BankStep({
         <Field
           label={say(lang, 'vpa')}
           value={vpa}
-          // UPI ids, account numbers and IFSCs never have a space (pasted from WhatsApp often do).
-          onChangeText={(t) => setVpa(t.replace(/\s/g, ''))}
+          // Spaces beside the "@" go; one inside the name stays, so the server refuses it (never
+          // joined into someone else's UPI id).
+          onChangeText={(t) => setVpa(t.replace(/\s*@\s*/, '@'))}
           autoCapitalize="none"
           maxLength={100}
           placeholder="name@okaxis"

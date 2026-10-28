@@ -7,6 +7,7 @@ Newest first. Each entry: date · step id · what changed · tests · open issue
 - **Easy to read**: 6-digit code boxes in all three apps show big, spaced digits (`.rc-input--code`; rider `s.code`); mobile boxes show "98480 00001" as typed. Rider money and dates use Instrument Sans with even-width digits (Night Signal rule), not Plex Mono.
 - **Rider app in a computer's browser**: a phone-sized column over a night street instead of stretching; on phones nothing changes. Checked at Pixel 7 size (412 × 915, 2.6×) in Chromium; no Android emulator here.
 - Tests: domain (grouping property test, UPI/IFSC/account, typed screen ids property test, emails, settings), admin and brand unit, DB and API tests now type with leading, inner and trailing spaces; rider 5, brand 5 and staff 17 browser journeys pass; `pnpm -s check` 24/24.
+- Second review (security, money, bank): nothing blocking; fixed all it found. Email boxes were `type="email"`, so the browser refused "ravi @ x.in" before our reading ran (now text boxes with the email keyboard). Amounts: a space between digits counts as a comma, so "1500 50" is refused instead of read as ₹1,50,050. UPI: a space inside the name is kept (refused) instead of joined into another person's id. A pasted message ("Valid 10 min: 482915") gives its 6-digit code, not "104829". Backspace just after a phone number's space takes the digit before it. State codes trimmed on the server; "." allowed in phones everywhere.
 - Open: Prateek to confirm the email rule above.
 - Next: P6 as accounts open.
 

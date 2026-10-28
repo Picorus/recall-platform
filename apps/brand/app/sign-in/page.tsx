@@ -10,7 +10,7 @@ import { heroPhoto } from '../../lib/photos';
 import {
   backTo,
   codeAsTyped,
-  groupMobile,
+  regroupMobile,
   looksLikeCode,
   looksLikeEmail,
   looksLikeMobile,
@@ -151,9 +151,10 @@ export default function SignIn() {
                 name="address"
                 value={typed}
                 // A number shows grouped as typed ("98480 12345"); what is sent is read again.
-                onChange={(e) =>
-                  setTyped(way === 'phone' ? groupMobile(e.target.value) : e.target.value)
-                }
+                onChange={(e) => {
+                  const now = e.target.value;
+                  setTyped((was) => (way === 'phone' ? regroupMobile(now, was) : now));
+                }}
                 {...(way === 'phone'
                   ? {
                       type: 'tel',
@@ -161,7 +162,14 @@ export default function SignIn() {
                       autoComplete: 'tel',
                       placeholder: '98480 12345',
                     }
-                  : { type: 'email', autoComplete: 'email', placeholder: 'you@agency.in' })}
+                  : {
+                      type: 'text',
+                      inputMode: 'email',
+                      autoCapitalize: 'none',
+                      spellCheck: false,
+                      autoComplete: 'email',
+                      placeholder: 'you@agency.in',
+                    })}
                 required
               />
               {way === 'email' && (

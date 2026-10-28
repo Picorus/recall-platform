@@ -6,7 +6,7 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, type FormEvent } from 'react';
 import { api, ApiError, type BusinessForm, type GstAnswer } from '../../../lib/api';
-import { groupMobile } from '../../../lib/sign-in';
+import { regroupMobile } from '../../../lib/sign-in';
 import { Shell, useMe } from '../../../lib/session';
 
 const message = (e: unknown) =>
@@ -223,7 +223,10 @@ export default function NewBusiness() {
               <input
                 className="rc-input"
                 name="invoiceEmail"
-                type="email"
+                type="text"
+                inputMode="email"
+                autoCapitalize="none"
+                spellCheck={false}
                 defaultValue={signedInWithEmail ? me.address : ''}
                 required
               />
@@ -237,8 +240,10 @@ export default function NewBusiness() {
                 defaultValue={signedInWithEmail ? '' : me.shown}
                 onChange={(e) => {
                   // Shown grouped as typed ("98480 12345"); the API reads it again.
-                  const grouped = groupMobile(e.currentTarget.value);
-                  if (grouped !== e.currentTarget.value) e.currentTarget.value = grouped;
+                  const box = e.currentTarget;
+                  const grouped = regroupMobile(box.value, box.dataset.was ?? box.defaultValue);
+                  if (grouped !== box.value) box.value = grouped;
+                  box.dataset.was = grouped;
                 }}
                 required
               />

@@ -29,9 +29,14 @@ export interface Book {
 /** "300", "₹1,500.50", "₹ 1 500" → paise; anything else is a problem in words. */
 export function readRupees(text: string): number | { problem: string } {
   // Plain digits, Indian grouping (1,50,000) or Western grouping (150,000); never a stray comma.
-  // Spaces anywhere are dropped first.
+  // A space between digits counts as a comma ("1 500" = "1,500"), so the grouping must still be
+  // right: "1500 50" or "15 00" are refused, never read as another amount.
   const m = /^₹?(\d+|\d{1,2}(?:,\d{2})*,\d{3}|\d{1,3}(?:,\d{3})+)(?:\.(\d{1,2}))?$/.exec(
-    text.replace(/\s/g, ''),
+    text
+      .trim()
+      .replace(/^₹\s+/, '₹')
+      .replace(/\s*([,.])\s*/g, '$1')
+      .replace(/(?<=\d)\s+(?=\d)/g, ','),
   );
   if (!m) return { problem: `"${text}" is not an amount in rupees` };
   const whole = Number((m[1] ?? '').replaceAll(',', ''));
