@@ -126,6 +126,7 @@ const asked = new Map<string, { readonly hour: number; n: number }>();
 
 /** "Where am I" looks each rider made this hour (each may ask the maps provider: at most 240). */
 const whereLooks = new Map<string, { readonly hour: number; n: number }>();
+const rangeLooks = new Map<string, { readonly hour: number; n: number }>();
 
 /** Screen codes each rider tried this hour (a QR is only an id: at most 20 tries). */
 const fitTries = new Map<string, { readonly hour: number; n: number }>();
@@ -361,6 +362,9 @@ export async function handleRiderApp(
     return true;
   }
   if (path === '/rider/earnings/range' && method === 'GET') {
+    // Each look reads up to 92 days of minutes: plenty for a person, not for a loop.
+    if (!tryOnce(rangeLooks, riderId, now, 120))
+      throw new HttpError(429, 'Too many looks: wait a while', { code: 'too-many-tries' });
     const q = new URLSearchParams((req.url ?? '').split('?')[1] ?? '');
     const from = q.get('from') ?? '';
     const to = q.get('to') ?? '';

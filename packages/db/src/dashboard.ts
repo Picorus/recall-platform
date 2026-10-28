@@ -2,6 +2,7 @@
 // only. Bike-hours sold, bike-hours the screens were out and moving, how full that screen time was,
 // money received and revenue earned, and refunds. Billing is by bike-hours only (hard rule 7).
 import type { PoolClient } from 'pg';
+import { todayOf } from '@recall/domain';
 import { indiaMonth } from './money.js';
 
 type Q = Pick<PoolClient, 'query'>;
@@ -116,7 +117,7 @@ export async function businessDashboard(
 // P7.7.7: the dashboard's charts. Today hour by hour (08:00–02:00 India time) and the last days,
 // by business day: a day runs 02:00 to 02:00 India time, so 23:00–02:00 belongs to the day it
 // started (hard rule 5). Read only. Plays are the screens' own signed plays as stored (hard rule
-// 1), brand ads and make-ups only; whether each counts for a booking is decided elsewhere.
+// 1), brand ads and make-ups that counted (not those refused, e.g. outside the area).
 
 const IST_S = 330 * 60;
 /** The first hour of the business day and how many hours it has (08:00 to 02:00). */
@@ -153,10 +154,6 @@ export interface BusinessTrends {
   readonly days: readonly DayTrend[];
 }
 
-/** The business day ("YYYY-MM-DD") of a UTC time; 02:00–08:00 (no ads) falls on the new date. */
-const trendDay = (t: number): string =>
-  new Date((t + IST_S - 2 * 3600) * 1000).toISOString().slice(0, 10);
-
 /** UTC seconds of hh:00 India time on a date. */
 const indiaAt = (day: string, hour: number) =>
   Date.parse(`${day}T00:00:00Z`) / 1000 - IST_S + hour * 3600;
@@ -169,7 +166,8 @@ const DAY_SQL = (col: string) =>
 
 export async function businessTrends(c: Q, now: number, days = 30): Promise<BusinessTrends> {
   const n = Math.max(1, Math.min(90, Math.floor(days)));
-  const day = trendDay(now);
+  // Today as everywhere else (todayOf): 02:00–08:00 still belongs to the day that just ended.
+  const day = todayOf(now);
   const start = indiaAt(day, FIRST_HOUR);
   const first = dayBefore(day, n - 1);
   const from = indiaAt(first, 2);
@@ -179,7 +177,7 @@ export async function businessTrends(c: Q, now: number, days = 30): Promise<Busi
       `SELECT floor((extract(epoch FROM start_at) - $1) / 3600)::int AS h, count(*) AS n
          FROM plays
         WHERE start_at >= to_timestamp($1) AND start_at < to_timestamp($2)
-          AND slot IN ('brand', 'make-up')
+          AND slot IN ('brand', 'make-up') AND counts <> 'no'
         GROUP BY 1`,
       [start, start + HOURS * 3600],
     ),
@@ -195,7 +193,7 @@ export async function businessTrends(c: Q, now: number, days = 30): Promise<Busi
       `SELECT ${DAY_SQL('start_at')}::text AS day, count(*) AS n
          FROM plays
         WHERE start_at >= to_timestamp($1) AND start_at < to_timestamp($2)
-          AND slot IN ('brand', 'make-up')
+          AND slot IN ('brand', 'make-up') AND counts <> 'no'
         GROUP BY 1`,
       [from, until],
     ),

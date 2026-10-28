@@ -192,6 +192,8 @@ export interface Report {
   /** P7.7.7, for the charts: plays promised and delivered, by day and by India hour. */
   readonly promised?: number;
   readonly delivered?: number;
+  /** Plays still missing after make-ups (extras on one line never cover another). */
+  readonly missing?: number;
   readonly days?: readonly (ReportRow & { readonly date: string })[];
   readonly hours?: readonly (ReportRow & { readonly hour: number })[];
 }

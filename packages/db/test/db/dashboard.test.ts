@@ -141,7 +141,7 @@ describe('the business dashboard (P3.14.2)', () => {
 });
 
 /** A play stored as the screen sent it, at an India time ("2027-08-25T19:10"). */
-async function play(screen: string, seq: number, india: string, slot = 'brand') {
+async function play(screen: string, seq: number, india: string, slot = 'brand', counted = true) {
   const at = Date.parse(`${india}:00+05:30`) / 1000;
   await pool.query(
     `INSERT INTO screen_reports (screen_id, seq, kind, made_at, body)
@@ -152,8 +152,16 @@ async function play(screen: string, seq: number, india: string, slot = 'brand') 
     `INSERT INTO plays (screen_id, seq, start_at, key_id, slot, ref, ad_id, length_s, lat_e6,
        lng_e6, accuracy_m, screen_place, cloud_place, counts, line_id, reason, people)
      VALUES ($1, $2, to_timestamp($3), 'k1', $4, 'x', 'ad-1', 15, 17448000, 78395000, 8, 'x', 'x',
-       'no', NULL, 'test', 0)`,
-    [screen, seq, at, slot],
+       $5, $6, $7, 0)`,
+    [
+      screen,
+      seq,
+      at,
+      slot,
+      counted ? 'inside' : 'no',
+      counted ? 'L1' : null,
+      counted ? null : 'outside',
+    ],
   );
 }
 
@@ -166,6 +174,7 @@ describe('the dashboard charts (P7.7.7)', () => {
     await play('SCR-D1', 10_001, '2027-08-25T19:10');
     await play('SCR-D1', 10_002, '2027-08-25T19:40');
     await play('SCR-D1', 10_003, '2027-08-25T19:50', 'recall'); // our own ad: not a brand play
+    await play('SCR-D1', 10_006, '2027-08-25T19:55', 'brand', false); // refused: never charted
     await play('SCR-D1', 10_004, '2027-08-26T01:30'); // 1:30am: still the 25th (hard rule 5)
     await play('SCR-D1', 10_005, '2027-08-26T09:00'); // the next day
   });

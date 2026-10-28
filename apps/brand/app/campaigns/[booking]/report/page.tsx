@@ -166,7 +166,7 @@ function ReportCharts({ report }: { report: Report }) {
   if (days.length === 0 || report.promised === undefined || report.delivered === undefined)
     return null;
   const bikeHours = days.reduce((t, d) => t + d.bikeHours, 0);
-  const full = report.delivered >= report.promised;
+  const full = report.missing === 0;
   return (
     <section className="stack" aria-label="Plays delivered">
       <div className="rc-chart-card stack">

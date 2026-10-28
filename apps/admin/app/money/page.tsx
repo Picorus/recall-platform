@@ -327,7 +327,7 @@ function MoneyInChart({ m }: { m: MoneyMonth }) {
         summary={
           total === 0
             ? 'Nothing received this month'
-            : `${rupees(total)} from ${m.payments.length} ${m.payments.length === 1 ? 'payment' : 'payments'}, with GST${
+            : `${rupees(total)} from ${m.paymentsTruncated ? 'the latest ' : ''}${m.payments.length} ${m.payments.length === 1 ? 'payment' : 'payments'}, with GST${
                 best ? ` · most on ${dayLabel(best.day)} (${rupees(best.value)})` : ''
               }`
         }

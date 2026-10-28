@@ -82,6 +82,9 @@ export function RangeCard({
   // His business day now (between 02:00 and 08:00, the day that just ended): the phone's clock
   // first, then the server's (a phone's clock can be off; quick picks follow the server).
   const [today, setToday] = useState(() => todayOf(Math.floor(Date.now() / 1000)));
+  // Read inside load, so learning the server's day does not ask for the same days again.
+  const todayNow = useRef(today);
+  todayNow.current = today;
   const [range, setRange] = useState<DayRange>(() => presetRange('thisWeek', today));
   // The quick pick in force (undefined: his own dates), so it moves with the server's day.
   const [chosenPreset, setChosenPreset] = useState<Preset | undefined>('thisWeek');
@@ -105,7 +108,7 @@ export function RangeCard({
         token,
       });
       if (mine !== asked.current) return;
-      if (p.today && p.today !== today) {
+      if (p.today && p.today !== todayNow.current) {
         setToday(p.today);
         // A quick pick means the server's days ("this week" there): ask again for those.
         if (chosenPreset) {
@@ -121,8 +124,13 @@ export function RangeCard({
     } catch (e) {
       if (mine !== asked.current) return;
       // The phone is a day ahead of the server: step back a day and ask again.
-      if (e instanceof ApiError && e.why === 'range-future' && chosenPreset && today === range.to) {
-        const back = addDays(today, -1);
+      if (
+        e instanceof ApiError &&
+        e.why === 'range-future' &&
+        chosenPreset &&
+        todayNow.current === range.to
+      ) {
+        const back = addDays(todayNow.current, -1);
         setToday(back);
         setRange(presetRange(chosenPreset, back));
         return;
@@ -133,7 +141,7 @@ export function RangeCard({
           e instanceof ApiError && e.why ? sayError(lang, e.why, e.n) : say(lang, 'err.other'),
         );
     }
-  }, [token, lang, range, today, chosenPreset]);
+  }, [token, lang, range, chosenPreset]);
   useEffect(() => {
     void load();
   }, [load]);

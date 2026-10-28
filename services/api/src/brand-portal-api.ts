@@ -755,6 +755,8 @@ export async function handleBrandPortal(
       // P7.7.7: for the page's charts (bike-hours booked; plays the screens signed).
       promised: report.promised,
       delivered: report.delivered,
+      // Extra plays on one line never make up for another (what is still missing decides).
+      missing: report.missing,
       days: reportDays(report),
       hours: reportHours(report),
     });
