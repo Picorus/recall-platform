@@ -4,7 +4,7 @@
 // an agency, the brands it handles. A Sales admin opens and changes accounts, contacts and notes; a
 // Sales or Finance admin sets tax details. Sales, Finance and Support look. P5.1: Sales gives or
 // removes a person's access to the brand portal for the account (a number or an email).
-import { Info } from '@recall/web-ui';
+import { Fold, foldHint, Info, latestOf } from '@recall/web-ui';
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { api, ApiError, type Member } from '../../lib/api';
 import { idFromName, matches, phoneText, STEP_NAMES, type AccountRow } from '../../lib/brands';
@@ -752,21 +752,40 @@ export default function BrandsPage() {
                 </button>
               </form>
             )}
-            <ul className="plain">
-              {page.notes.map((n, i) => (
-                <li key={i}>
-                  {n.note}
-                  <div className="muted">
-                    {n.by}, {when(n.at)}
-                  </div>
-                </li>
-              ))}
-            </ul>
+            {page.notes.length === 0 ? (
+              <p className="muted">No notes yet.</p>
+            ) : (
+              <Fold
+                title="Notes"
+                hint={foldHint(
+                  page.notes.length,
+                  ['note', 'notes'],
+                  latestOf(page.notes.map((n) => n.at)),
+                )}
+              >
+                <ul className="plain" aria-label="Notes">
+                  {page.notes.map((n, i) => (
+                    <li key={i}>
+                      {n.note}
+                      <div className="muted">
+                        {n.by}, {when(n.at)}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </Fold>
+            )}
           </section>
 
-          <section className="rc-card stack">
-            <h3 style={{ margin: 0 }}>History</h3>
-            <ul className="plain">
+          <Fold
+            title="History"
+            hint={`${foldHint(
+              page.history.length,
+              ['change', 'changes'],
+              latestOf(page.history.map((h) => h.at)),
+            )} · who changed the account, and why`}
+          >
+            <ul className="plain" aria-label="History">
               {page.history.map((h) => (
                 <li key={h.version}>
                   Version {h.version}: {h.name}
@@ -779,7 +798,7 @@ export default function BrandsPage() {
                 </li>
               ))}
             </ul>
-          </section>
+          </Fold>
         </section>
       )}
     </Shell>

@@ -3,13 +3,15 @@
 // zone and the screen-loan bank; who has which role (changed on the Staff page); which outside
 // services are on. Every member sees them; a super admin changes one at a time, with why. Each save
 // is a new version (nothing overwritten) and shows in the audit log.
-import { Info } from '@recall/web-ui';
+import { Fold, Info } from '@recall/web-ui';
 import Link from 'next/link';
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { api, ApiError } from '../../lib/api';
 import { clock, dayOfIndia, groupMobile, noSpaces, regroupMobile } from '../../lib/format';
 import { Shell, useMember } from '../../lib/session';
 import {
+  MODE_NAMES,
+  type BusinessSwitch,
   DAY_NAMES,
   BRAND_SIGN_IN_LABELS,
   RIDER_SIGN_IN_LABELS,
@@ -167,6 +169,130 @@ function WordingFields({
   );
 }
 
+/**
+ * The business switch (P7.7.7): the whole business runs as the POC or as regular business. It
+ * changes how riders are paid and how the calendar limits bookings. A super admin flips it, says
+ * why, and it counts from a day ahead (the POC from a 1st), so nothing already earned changes.
+ */
+function BusinessSwitchCard({ b, onSaved }: { b: BusinessSwitch; onSaved: () => void }) {
+  const to = b.mode === 'poc' ? 'regular' : 'poc';
+  const from = to === 'poc' ? b.pocFrom : b.regularFrom;
+  const [asking, setAsking] = useState(false);
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const save = async (e: FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setError('');
+    try {
+      await api('/settings/business', { mode: to, reason });
+      setAsking(false);
+      setReason('');
+      onSaved();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not reach the server. Try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <section className="rc-card stack" aria-label="POC or regular business">
+      <div className="row" style={{ justifyContent: 'space-between' }}>
+        <h2>POC or regular business</h2>
+        <span className={`rc-chip ${b.mode === 'poc' ? 'rc-chip--info' : 'rc-chip--go'}`}>
+          Now: {MODE_NAMES[b.mode]}
+        </span>
+      </div>
+      {b.next && (
+        <p className="ok" role="status">
+          Switching to {MODE_NAMES[b.next.mode]} from {dayOfIndia(b.next.from)}, 8 am.
+        </p>
+      )}
+      <Info label="What the switch changes">
+        In the POC, riders get the POC base pay (₹2,000 / ₹4,000 / ₹6,000 in months 1, 2 and 3) and
+        the founding bonus, and every bike runs (the calendar limits an area-hour only where a super
+        admin set a limit). In regular business, riders earn ₹25 a moving hour and their share of
+        sales, and the calendar uses the supply forecast. Bookings, plays and invoices work the same
+        in both. The POC is switched on from the 1st of a month, off from the start of the day; it
+        runs once.
+      </Info>
+      {b.canSwitch && !b.next && !asking && (
+        <button
+          type="button"
+          className="rc-button rc-button--strong"
+          onClick={() => setAsking(true)}
+        >
+          Switch to {MODE_NAMES[to]} from {dayOfIndia(from)}
+        </button>
+      )}
+      {asking && (
+        <form className="stack" onSubmit={(e) => void save(e)} aria-label="Switch the business">
+          <p>
+            The whole business moves to <b>{MODE_NAMES[to]}</b> from <b>{dayOfIndia(from)}, 8 am</b>
+            . Riders&apos; pay from that day follows it.
+          </p>
+          <label className="rc-field">
+            <span className="rc-field__label">Why (kept with the switch)</span>
+            <input
+              className="rc-input"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              minLength={5}
+              maxLength={300}
+              required
+            />
+          </label>
+          {error && (
+            <p className="error" role="alert">
+              {error}
+            </p>
+          )}
+          <div className="row">
+            <button
+              type="submit"
+              className="rc-button rc-button--primary"
+              disabled={busy || reason.trim().length < 5}
+              aria-busy={busy}
+            >
+              Yes, switch to {MODE_NAMES[to]}
+            </button>
+            <button
+              type="button"
+              className="rc-button rc-button--quiet"
+              onClick={() => setAsking(false)}
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
+      {!b.canSwitch && (
+        <p className="muted">
+          {b.pocEnded
+            ? 'The POC has ended: the business stays on regular business.'
+            : 'Only a super admin switches the business.'}
+        </p>
+      )}
+      {b.history.length > 0 && (
+        <Fold
+          title="Every switch"
+          hint={`${b.history.length} ${b.history.length === 1 ? 'switch' : 'switches'}`}
+        >
+          <ul className="plain">
+            {b.history.map((h) => (
+              <li key={h.from}>
+                <b>{MODE_NAMES[h.mode]}</b> from {dayOfIndia(h.from)} · by {h.setBy} on{' '}
+                {dayOfIndia(h.setAt)}, {clock(h.setAt)} · {h.reason}
+              </li>
+            ))}
+          </ul>
+        </Fold>
+      )}
+    </section>
+  );
+}
+
 export default function SettingsPageView() {
   const me = useMember();
   const [page, setPage] = useState<SettingsPage | null>(null);
@@ -214,6 +340,7 @@ export default function SettingsPageView() {
       )}
       {page && s && (
         <div className="stack">
+          {page.business && <BusinessSwitchCard b={page.business} onSaved={load} />}
           <section className="rc-card stack" aria-label="Staff and roles">
             <h2>Staff and roles</h2>
             <p className="muted">

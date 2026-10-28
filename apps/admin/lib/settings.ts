@@ -165,6 +165,34 @@ export interface SettingsPage {
   readonly roles: readonly string[];
   readonly staffAreas: readonly string[];
   readonly connections: readonly Connection[];
+  /** The business switch (P7.7.7): POC or regular business. */
+  readonly business: BusinessSwitch;
 }
+
+export type BusinessMode = 'poc' | 'regular';
+
+export interface BusinessSwitch {
+  readonly mode: BusinessMode;
+  /** A switch made that starts on a later day, or null. */
+  readonly next: { readonly mode: BusinessMode; readonly from: number } | null;
+  /** This person may switch now (a super admin, and the POC has not ended). */
+  readonly canSwitch: boolean;
+  readonly pocEnded: boolean;
+  /** From when a switch made now would count: the POC from a 1st, regular from today 8 am. */
+  readonly pocFrom: number;
+  readonly regularFrom: number;
+  readonly history: readonly {
+    readonly mode: BusinessMode;
+    readonly from: number;
+    readonly setBy: string;
+    readonly reason: string;
+    readonly setAt: number;
+  }[];
+}
+
+export const MODE_NAMES: Record<BusinessMode, string> = {
+  poc: 'POC',
+  regular: 'Regular business',
+};
 
 export const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;

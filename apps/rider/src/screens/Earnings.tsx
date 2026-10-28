@@ -1,6 +1,8 @@
 // P4.5 Earnings: a month at a time (this month first; up to 12 back): what he earned and from what
 // (₹25 a moving hour, the POC base, his share of sales as of the last pay update, bonuses), each
 // week and day, the POC's progress to the founding bonus, and his monthly statement to save.
+// Above it, the days he picks (Range.tsx): today, yesterday, this or last week, this month or his own
+// dates, with screen-on beside moving hours and a chart by day.
 import { formatRupees, paise, type RiderLanguage } from '@recall/domain';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Linking, Pressable, View } from 'react-native';
@@ -8,6 +10,7 @@ import { API_URL, ApiError, call } from '../api';
 import { say, sayError } from '../i18n';
 import { color, touch } from '../theme';
 import { Alert, Label, LinkButton, MainButton, Muted, Screen, Title, Words, s } from '../ui';
+import { RangeCard } from './Range';
 import { hoursText } from './Today';
 
 interface Period {
@@ -122,6 +125,10 @@ export function Earnings({
   return (
     <Screen>
       <Title>{say(lang, 'earningsTitle')}</Title>
+      <RangeCard lang={lang} token={token} onSignOut={onSignOut} />
+      <View style={{ marginTop: 8 }}>
+        <Label>{say(lang, 'monthsTitle')}</Label>
+      </View>
       {error !== '' && <Alert>{error}</Alert>}
       {!p && error === '' && <Muted>{say(lang, 'loading')}</Muted>}
       {p && (

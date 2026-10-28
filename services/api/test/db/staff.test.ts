@@ -213,7 +213,7 @@ describe('staff sign-in', () => {
     const code = totpCode(superSecret, step());
     // Stray spaces in the email and the code are fine (the password, spaces and all, is as set).
     const first = await call('POST', '/staff/sign-in', {
-      email: ' Prateek @recall.in ',
+      email: ' Prateek@recall.in ',
       password: PW,
       code: `  ${code.slice(0, 3)} ${code.slice(3)}  `,
     });

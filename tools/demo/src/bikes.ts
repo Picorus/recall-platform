@@ -143,6 +143,13 @@ export async function startBikes(
         });
         moving[i] = 0;
       }
+      // Every 2 minutes, the box's hello (a real one says hello on each connection). The database
+      // stamps uploads with its own clock, not the demo's shifted one; the hello carries the demo
+      // time, so "last heard" stays right on the fleet map and the rider's Today page.
+      if ((t + i) % 120 === 0)
+        sends.push(
+          recordHello(pool, s.screenId, '1.4.0-demo', t * 1000, 140).catch(() => undefined),
+        );
       // Every 30 seconds (each screen at its own moment): where it is, and what it holds.
       if ((t + i) % SEND_EVERY === 0) {
         s.seq += 1;

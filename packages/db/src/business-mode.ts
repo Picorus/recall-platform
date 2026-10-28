@@ -38,6 +38,36 @@ export async function canSwitch(c: Pick<PoolClient, 'query'>): Promise<boolean> 
   return (await isDemoCopy(c)) || pocEndedAt(await businessModes(c)) === undefined;
 }
 
+/** Every switch with who made it, why and when (oldest first), for the staff portal. */
+export async function businessModeHistory(c: Pick<PoolClient, 'query'>): Promise<
+  {
+    readonly mode: BusinessMode;
+    readonly from: number;
+    readonly setBy: string;
+    readonly reason: string;
+    readonly setAt: number;
+  }[]
+> {
+  const r = await c.query<{
+    mode: BusinessMode;
+    from: string;
+    set_by: string;
+    reason: string;
+    set_at: string;
+  }>(
+    `SELECT mode, extract(epoch FROM from_at)::bigint AS from, set_by, reason,
+            extract(epoch FROM set_at)::bigint AS set_at
+       FROM business_modes ORDER BY from_at`,
+  );
+  return r.rows.map((x) => ({
+    mode: x.mode,
+    from: Number(x.from),
+    setBy: x.set_by,
+    reason: x.reason,
+    setAt: Number(x.set_at),
+  }));
+}
+
 /** Every switch, oldest first. */
 export async function businessModes(c: Pick<PoolClient, 'query'>): Promise<ModeChange[]> {
   const r = await c.query<{ mode: BusinessMode; from: string }>(

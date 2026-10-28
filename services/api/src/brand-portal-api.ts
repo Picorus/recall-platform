@@ -14,6 +14,7 @@
 //   GET  /portal/business?brand=<id>        its details and the free week, for its people only
 // P5.3:
 //   GET  /portal/campaigns?brand=<id>       its campaigns: Scheduled, Running, Done (To pay, Cancelled)
+//                                           (P7.7.7: and its paid bike-hours by month, for a chart)
 // P5.4:
 //   GET  /portal/book-form?brand=<id>[&again=<booking>]  areas, hours, picks, limits (and the plan
 //                                           of an earlier booking, for "Book again")
@@ -35,6 +36,7 @@
 //   POST /portal/deal?brand=<id>&booking=<id>   a 6- or 12-month deal: the sales team calls
 // P5.7, the final report (the link in the "Done" message has no brand: the report says whose it is):
 //   GET  /portal/report?booking=<id>        the report as a page, its summary, the business
+//                                           (P7.7.7: and its plays by day and by hour, for charts)
 //   GET  /portal/report/pdf?booking=<id>    its PDF, to keep or share
 // P5.9, help and team:
 //   GET  /portal/help?brand=<id>    answers, our numbers and hours, the ad rules, its questions
@@ -58,6 +60,7 @@ import {
   brandDocuments,
   priceBooks,
   campaignReportFor,
+  campaignMonths,
   askSalesForDeal,
   payFromPortal,
   NOT_STAFF_DRAFT,
@@ -103,6 +106,8 @@ import {
   typedCode,
   type BrandCodeChannel,
   reportPeriod,
+  reportDays,
+  reportHours,
   reportSummary,
   type TaxDocument,
   adRulesText,
@@ -747,6 +752,13 @@ export async function handleBrandPortal(
       period: reportPeriod(report),
       summary: reportSummary(report),
       html: renderReportHtml(report),
+      // P7.7.7: for the page's charts (bike-hours booked; plays the screens signed).
+      promised: report.promised,
+      delivered: report.delivered,
+      // Extra plays on one line never make up for another (what is still missing decides).
+      missing: report.missing,
+      days: reportDays(report),
+      hours: reportHours(report),
     });
     return true;
   }
@@ -931,7 +943,11 @@ export async function handleBrandPortal(
   }
   if (path === '/portal/campaigns' && method === 'GET') {
     const a = await account();
-    send(res, 200, { at: now, account: a, campaigns: await portalCampaigns(pool, a.brandId, now) });
+    const [campaigns, months] = await Promise.all([
+      portalCampaigns(pool, a.brandId, now),
+      campaignMonths(pool, a.brandId),
+    ]);
+    send(res, 200, { at: now, account: a, campaigns, months });
     return true;
   }
   if (path === '/portal/business' && method === 'GET') {

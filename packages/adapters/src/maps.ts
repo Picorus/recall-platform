@@ -1,9 +1,24 @@
 // P1.9.1: street names for the final report's "busiest streets" (hard rule 4: behind an adapter with
 // a working fake). The real one (Google Maps, Mapbox, Ola Maps or MapmyIndia) comes with P3.
+// P4.4: the rider app's "where am I" map also asks for the roads around a point, to draw its base
+// map; the real provider's roads come with the maps account (P6).
+
+/** A road near a point: simplified, as [lat, lng] points; `main` for the bigger roads. */
+export interface RoadLine {
+  readonly main: boolean;
+  readonly points: readonly (readonly [lat: number, lng: number])[];
+}
 
 export interface MapsAdapter {
   /** The street at a point, or undefined when none is known there. */
   streetAt(lat: number, lng: number): Promise<string | undefined>;
+  /**
+   * The roads within about `metres` of a point, simplified, for a small base map (optional: without
+   * it the rider's map shows his route and position on a plain ground).
+   */
+  roadsNear?(lat: number, lng: number, metres: number): Promise<readonly RoadLine[]>;
+  /** Credit the road data needs wherever it is shown (e.g. "© OpenStreetMap contributors"). */
+  readonly credit?: string;
 }
 
 /** Well-known Hyderabad roads, as points along them, for the fake. */
@@ -35,11 +50,52 @@ const metres = (lat1: number, lng1: number, lat2: number, lng2: number) => {
   return Math.hypot(dx, dy);
 };
 
-/** A working fake: the nearest well-known road within 1.2 km, and a count of the look-ups made. */
+/** The fake's streets: every 250 m, north–south and east–west (as the simulator's first map). */
+const GRID_M = 250;
+/** Every fourth one is a main road. */
+const MAIN_EVERY = 4;
+
+/**
+ * A working fake: the nearest well-known road within 1.2 km, a made-up street grid (every 250 m,
+ * every fourth street a main road) for the base map, and a count of the look-ups made.
+ */
 export function fakeMaps(): MapsAdapter & { readonly calls: () => number } {
   let calls = 0;
   return {
     calls: () => calls,
+    roadsNear(lat, lng, metres) {
+      calls += 1;
+      const r = Math.max(0, Math.min(metres, 5_000));
+      const mLat = 111_320;
+      const mLng = 111_320 * Math.cos((lat * Math.PI) / 180);
+      const lines: RoadLine[] = [];
+      // Streets on a fixed grid (the same streets whichever point is asked about).
+      const rows = Math.floor((lat * mLat - r) / GRID_M);
+      const rowsTo = Math.ceil((lat * mLat + r) / GRID_M);
+      for (let i = rows; i <= rowsTo; i++) {
+        const y = (i * GRID_M) / mLat;
+        lines.push({
+          main: i % MAIN_EVERY === 0,
+          points: [
+            [y, lng - r / mLng],
+            [y, lng + r / mLng],
+          ],
+        });
+      }
+      const cols = Math.floor((lng * mLng - r) / GRID_M);
+      const colsTo = Math.ceil((lng * mLng + r) / GRID_M);
+      for (let j = cols; j <= colsTo; j++) {
+        const x = (j * GRID_M) / mLng;
+        lines.push({
+          main: j % MAIN_EVERY === 0,
+          points: [
+            [lat - r / mLat, x],
+            [lat + r / mLat, x],
+          ],
+        });
+      }
+      return Promise.resolve(lines);
+    },
     streetAt(lat, lng) {
       calls += 1;
       let best: { name: string; d: number } | undefined;

@@ -112,7 +112,7 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     riderOrigins,
     brandOrigins,
     ...(gst ? { gst } : {}),
-    ...(reports ? { messages: reports.messages } : {}),
+    ...(reports ? { messages: reports.messages, maps: reports.maps } : {}),
     databaseUrl: need('DATABASE_URL'),
     host: env.API_HOST || '127.0.0.1',
     port: Number(env.API_PORT || 8080),

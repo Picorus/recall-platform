@@ -5,6 +5,7 @@
 import 'maplibre-gl/dist/maplibre-gl.css';
 import type * as maplibregl from 'maplibre-gl';
 import type { GeoJSONSource } from 'maplibre-gl';
+import { Fold, foldHint, latestOf } from '@recall/web-ui';
 import { mapColours, newMap } from '../../lib/map';
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { api, ApiError, type Member } from '../../lib/api';
@@ -241,31 +242,47 @@ function Panel({
             </form>
           )}
 
-          <h3>Commands</h3>
-          {d.commands.length === 0 ? (
-            <p className="muted">None sent.</p>
-          ) : (
+          <Fold
+            title="Commands sent"
+            hint={foldHint(
+              d.commands.length,
+              ['command', 'commands'],
+              latestOf(d.commands.map((c) => Math.floor(c.made / 1000))),
+            )}
+          >
+            {d.commands.length === 0 ? (
+              <p className="muted">None sent.</p>
+            ) : (
+              <ul className="plain">
+                {d.commands.map((c) => (
+                  <li key={c.id}>
+                    {dayOfIndia(Math.floor(c.made / 1000))} {clock(Math.floor(c.made / 1000))} ·{' '}
+                    {COMMAND_NAMES[c.command] ?? c.command}
+                    {c.value !== null ? ` ${c.value}` : ''} · <strong>{c.state}</strong> · {c.by}:{' '}
+                    {c.reason}
+                    {c.note && c.command !== 'send-logs' ? ` (${c.note})` : ''}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Fold>
+          <Fold
+            title="Fittings"
+            hint={foldHint(
+              d.fittings.length,
+              ['fitting', 'fittings'],
+              latestOf(d.fittings.map((f) => f.from)),
+            )}
+          >
             <ul className="plain">
-              {d.commands.map((c) => (
-                <li key={c.id}>
-                  {dayOfIndia(Math.floor(c.made / 1000))} {clock(Math.floor(c.made / 1000))} ·{' '}
-                  {COMMAND_NAMES[c.command] ?? c.command}
-                  {c.value !== null ? ` ${c.value}` : ''} · <strong>{c.state}</strong> · {c.by}:{' '}
-                  {c.reason}
-                  {c.note && c.command !== 'send-logs' ? ` (${c.note})` : ''}
+              {d.fittings.map((f) => (
+                <li key={f.from}>
+                  {dayOfIndia(f.from)} ·{' '}
+                  {f.bike ? `on ${f.bike} (${f.riderId ?? ''})` : 'taken off'} · {f.reason}
                 </li>
               ))}
             </ul>
-          )}
-          <h3>Fittings</h3>
-          <ul className="plain">
-            {d.fittings.map((f) => (
-              <li key={f.from}>
-                {dayOfIndia(f.from)} · {f.bike ? `on ${f.bike} (${f.riderId ?? ''})` : 'taken off'}{' '}
-                · {f.reason}
-              </li>
-            ))}
-          </ul>
+          </Fold>
         </>
       )}
     </aside>

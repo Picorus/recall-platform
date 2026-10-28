@@ -7,7 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { saveAreaVersion } from '../../src/areas.js';
 import { paymentMessage, sendForPayment } from '../../src/booking-desk.js';
 import { createBooking, savePriceBook } from '../../src/bookings.js';
-import { businessDashboard } from '../../src/dashboard.js';
+import { businessDashboard, businessTrends } from '../../src/dashboard.js';
 import { post } from '../../src/ledger.js';
 import { freshDatabase } from './fresh-db.js';
 
@@ -137,5 +137,79 @@ describe('the business dashboard (P3.14.2)', () => {
     expect(months[0]).toMatchObject({ soldBikeHours: 0, fillBp: null, refundsBp: null });
     await expect(businessDashboard(pool, '2027-13', NOW)).rejects.toThrow('YYYY-MM');
     expect(await businessDashboard(pool, '2027-09', NOW, 99)).toHaveLength(24);
+  });
+});
+
+/** A play stored as the screen sent it, at an India time ("2027-08-25T19:10"). */
+async function play(screen: string, seq: number, india: string, slot = 'brand', counted = true) {
+  const at = Date.parse(`${india}:00+05:30`) / 1000;
+  await pool.query(
+    `INSERT INTO screen_reports (screen_id, seq, kind, made_at, body)
+     VALUES ($1, $2, 'play', to_timestamp($3), '{}'::jsonb)`,
+    [screen, seq, at],
+  );
+  await pool.query(
+    `INSERT INTO plays (screen_id, seq, start_at, key_id, slot, ref, ad_id, length_s, lat_e6,
+       lng_e6, accuracy_m, screen_place, cloud_place, counts, line_id, reason, people)
+     VALUES ($1, $2, to_timestamp($3), 'k1', $4, 'x', 'ad-1', 15, 17448000, 78395000, 8, 'x', 'x',
+       $5, $6, $7, 0)`,
+    [
+      screen,
+      seq,
+      at,
+      slot,
+      counted ? 'inside' : 'no',
+      counted ? 'L1' : null,
+      counted ? null : 'outside',
+    ],
+  );
+}
+
+describe('the dashboard charts (P7.7.7)', () => {
+  beforeAll(async () => {
+    await pool.query(
+      `INSERT INTO screen_keys (screen_id, key_id, public_key, added_by)
+       VALUES ('SCR-D1', 'k1', 'AAAA', 'test')`,
+    );
+    await play('SCR-D1', 10_001, '2027-08-25T19:10');
+    await play('SCR-D1', 10_002, '2027-08-25T19:40');
+    await play('SCR-D1', 10_003, '2027-08-25T19:50', 'recall'); // our own ad: not a brand play
+    await play('SCR-D1', 10_006, '2027-08-25T19:55', 'brand', false); // refused: never charted
+    await play('SCR-D1', 10_004, '2027-08-26T01:30'); // 1:30am: still the 25th (hard rule 5)
+    await play('SCR-D1', 10_005, '2027-08-26T09:00'); // the next day
+  });
+
+  it('today hour by hour, 8am to 2am India time: brand plays and screens on', async () => {
+    const now = Date.parse('2027-08-26T01:45:00+05:30') / 1000;
+    const t = await businessTrends(pool, now, 3);
+    expect(t.day).toBe('2027-08-25');
+    expect(t.hours.map((h) => h.hour)).toEqual(Array.from({ length: 18 }, (_, i) => 8 + i));
+    expect(t.hours[0]?.at).toBe(Date.parse('2027-08-25T08:00:00+05:30') / 1000);
+    const at = (hour: number) => t.hours.find((h) => h.hour === hour);
+    expect(at(19)).toMatchObject({ plays: 2, screens: 2 });
+    expect(at(25)).toMatchObject({ plays: 1, screens: 0 });
+    expect(at(9)).toMatchObject({ plays: 0, screens: 0 });
+    expect(at(10)).toMatchObject({ plays: 0, screens: 2 });
+    expect(at(20)).toMatchObject({ screens: 0 });
+    expect(t.hours.reduce((n, h) => n + h.plays, 0)).toBe(3);
+  });
+
+  it('the last days by business day, oldest first, with empty days as 0', async () => {
+    const now = Date.parse('2027-08-26T01:45:00+05:30') / 1000;
+    const t = await businessTrends(pool, now, 3);
+    expect(t.days).toEqual([
+      // Paid on the 23rd at 10:01 India time, with GST.
+      { day: '2027-08-23', plays: 0, screenBikeHours: 0, moneyInPaise: 2_124_000, revenuePaise: 0 },
+      { day: '2027-08-24', plays: 0, screenBikeHours: 0, moneyInPaise: 0, revenuePaise: 0 },
+      { day: '2027-08-25', plays: 3, screenBikeHours: 20, moneyInPaise: 0, revenuePaise: 0 },
+    ]);
+    // Revenue earned on the 27th; the next morning's play is the 26th's.
+    const later = await businessTrends(pool, Date.parse('2027-08-27T12:00:00+05:30') / 1000, 2);
+    expect(later.days).toEqual([
+      { day: '2027-08-26', plays: 1, screenBikeHours: 0, moneyInPaise: 0, revenuePaise: 0 },
+      { day: '2027-08-27', plays: 0, screenBikeHours: 0, moneyInPaise: 0, revenuePaise: 1_200_000 },
+    ]);
+    expect((await businessTrends(pool, now, 500)).days).toHaveLength(90);
+    expect((await businessTrends(pool, now, 0)).days).toHaveLength(1);
   });
 });

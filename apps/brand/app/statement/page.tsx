@@ -2,7 +2,7 @@
 // P5.10 Statement: an agency's month with RECALL: its share (cut) on each booking our team gave one,
 // the GST it charges on it, the TDS held back, what we paid and its invoices, opening and closing.
 // Its share never shows on a brand's invoice.
-import { Info } from '@recall/web-ui';
+import { Fold, foldHint, Info, latestOf } from '@recall/web-ui';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { api, ApiError, type Statement } from '../../lib/api';
@@ -128,32 +128,51 @@ export default function StatementPage() {
           </section>
           {page.payments.length > 0 && (
             <section className="stack" aria-label="Paid to you">
-              <h2>Paid to you</h2>
-              <ul className="plain">
-                {page.payments.map((p) => (
-                  <li key={`${p.at}-${p.reference}`} className="row">
-                    <span className="muted">{dateOf(p.at)}</span>
-                    <b>{rupees(p.amountPaise)}</b>
-                    <span className="mono">{p.reference}</span>
-                  </li>
-                ))}
-              </ul>
+              <Fold
+                title="Paid to you"
+                hint={`${rupees(page.payments.reduce((n, p) => n + p.amountPaise, 0))} · ${foldHint(
+                  page.payments.length,
+                  ['payment', 'payments'],
+                  latestOf(page.payments.map((p) => p.at)),
+                )}`}
+              >
+                <ul className="plain">
+                  {page.payments.map((p) => (
+                    <li key={`${p.at}-${p.reference}`} className="row">
+                      <span className="muted">{dateOf(p.at)}</span>
+                      <b>{rupees(p.amountPaise)}</b>
+                      <span className="mono">{p.reference}</span>
+                    </li>
+                  ))}
+                </ul>
+              </Fold>
             </section>
           )}
           {page.invoices.length > 0 && (
             <section className="stack" aria-label="Your invoices to us">
-              <h2>Your invoices to us</h2>
-              <ul className="plain">
-                {page.invoices.map((i) => (
-                  <li key={i.invoiceNo} className="row">
-                    <span className="mono">{i.invoiceNo}</span>
-                    <span className="muted">{i.invoiceDate}</span>
-                    <span>
-                      {rupees(i.taxablePaise)} + GST {rupees(i.gstPaise)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
+              <Fold
+                title="Your invoices to us"
+                hint={foldHint(
+                  page.invoices.length,
+                  ['invoice', 'invoices'],
+                  [...page.invoices]
+                    .map((i) => i.invoiceDate)
+                    .sort()
+                    .at(-1),
+                )}
+              >
+                <ul className="plain">
+                  {page.invoices.map((i) => (
+                    <li key={i.invoiceNo} className="row">
+                      <span className="mono">{i.invoiceNo}</span>
+                      <span className="muted">{i.invoiceDate}</span>
+                      <span>
+                        {rupees(i.taxablePaise)} + GST {rupees(i.gstPaise)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </Fold>
             </section>
           )}
           <Info label="How you are paid">

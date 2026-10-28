@@ -1,0 +1,377 @@
+/* RECALL small charts (P7.7.7): BarChart, LineChart, Sparkline and Meter from @recall/web-ui.
+   Only design tokens, so light and dark both work. One accent per chart (--data), a light wash for
+   a second amount (--data-soft), hairline gridlines (--line), axis words in --ink-subtle. Bars at
+   most 24px wide with a 4px rounded end; lines 2px; dots 8px with a 2px surface ring. */
+
+.rc-chart {
+  margin: 0;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+.rc-chart__head {
+  display: grid;
+  gap: 2px;
+}
+.rc-chart__title {
+  font: 600 15px/22px var(--font-body);
+  color: var(--ink);
+}
+.rc-chart__sum {
+  font: 400 13px/18px var(--font-body);
+  color: var(--ink-muted);
+}
+.rc-chart__empty {
+  margin: 0;
+  padding: 24px 0;
+  font: 400 14px/20px var(--font-body);
+  color: var(--ink-subtle);
+}
+.rc-chart__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font: 400 12.5px/18px var(--font-body);
+  color: var(--ink-muted);
+}
+.rc-chart__legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.rc-chart__key {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: var(--data);
+}
+.rc-chart__key--target {
+  background: var(--data-soft);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+/* The plot, with a gutter on the left for the axis numbers and a band below for the labels. */
+.rc-chart__frame {
+  --rc-chart-gutter: 44px;
+  position: relative;
+  padding-left: var(--rc-chart-gutter);
+  min-width: 0;
+}
+.rc-chart__plot {
+  position: relative;
+  height: var(--rc-chart-h, 160px);
+  margin-top: 8px;
+}
+.rc-chart__grid {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 0;
+  border-top: 1px solid var(--line);
+  pointer-events: none;
+}
+.rc-chart__grid--zero {
+  border-top-color: var(--line-strong);
+  opacity: 0.55;
+}
+.rc-chart__ytick {
+  position: absolute;
+  left: calc(-1 * var(--rc-chart-gutter));
+  width: calc(var(--rc-chart-gutter) - 8px);
+  transform: translateY(50%);
+  text-align: right;
+  font: 400 11.5px/14px var(--font-body);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-subtle);
+  white-space: nowrap;
+  pointer-events: none;
+}
+.rc-chart__cols,
+.rc-chart__x {
+  display: grid;
+  grid-template-columns: repeat(var(--rc-chart-n, 1), minmax(0, 1fr));
+}
+.rc-chart__cols {
+  position: absolute;
+  inset: 0;
+}
+.rc-chart__col {
+  position: relative;
+  min-width: 0;
+}
+/* The hover band: a soft column behind the hovered slot. */
+.rc-chart__col::before {
+  content: '';
+  position: absolute;
+  inset: 0 1px;
+  border-radius: 6px;
+  background: var(--surface-2);
+  opacity: 0;
+  transition: opacity var(--duration-quick);
+}
+.rc-chart__col:hover::before {
+  opacity: 0.7;
+}
+.rc-chart__bar {
+  position: absolute;
+  left: 50%;
+  width: calc(100% - 2px);
+  max-width: 24px;
+  transform: translateX(-50%);
+  border-radius: 4px 4px 0 0;
+  background: var(--data);
+  transition: filter var(--duration-quick);
+}
+.rc-chart__bar.is-neg {
+  border-radius: 0 0 4px 4px;
+}
+.rc-chart__bar--target {
+  background: var(--data-soft);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.rc-chart__col:hover .rc-chart__bar:not(.rc-chart__bar--target) {
+  filter: brightness(1.12) saturate(1.05);
+}
+
+/* The line: the SVG stretches to the plot; the stroke stays 2px whatever the stretch. */
+.rc-chart__svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.rc-chart__line {
+  fill: none;
+  stroke: var(--data);
+  stroke-width: 2px;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+.rc-chart__area {
+  fill: var(--data);
+  fill-opacity: 0.1;
+  stroke: none;
+}
+.rc-chart__col--line::before {
+  /* a crosshair, not a band */
+  inset: 0 auto 0 50%;
+  width: 1px;
+  border-radius: 0;
+  background: var(--line-strong);
+}
+.rc-chart__col--line:hover::before {
+  opacity: 0.6;
+}
+.rc-chart__dot {
+  position: absolute;
+  left: 50%;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--data);
+  box-shadow: 0 0 0 2px var(--surface-1);
+  transform: translate(-50%, 50%);
+  opacity: 0;
+  transition: opacity var(--duration-quick);
+}
+.rc-chart__col--line:hover .rc-chart__dot,
+.rc-chart__col--line.is-last .rc-chart__dot {
+  opacity: 1;
+}
+
+/* The value on hover: value first and strong, the when after. */
+.rc-chart__tip {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  z-index: 2;
+  display: grid;
+  gap: 1px;
+  min-width: max-content;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xs);
+  background: var(--surface-1);
+  box-shadow: var(--shadow-lift);
+  transform: translate(-50%, 4px);
+  font: 400 12px/16px var(--font-body);
+  color: var(--ink-muted);
+  text-align: left;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity var(--duration-quick),
+    transform var(--duration-quick) var(--ease-out);
+}
+.rc-chart__tip b {
+  font: 600 14px/18px var(--font-body);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+.rc-chart__col.is-start .rc-chart__tip {
+  left: 0;
+  transform: translate(0, 4px);
+}
+.rc-chart__col.is-end .rc-chart__tip {
+  left: auto;
+  right: 0;
+  transform: translate(0, 4px);
+}
+.rc-chart__col:hover .rc-chart__tip {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+.rc-chart__col.is-start:hover .rc-chart__tip,
+.rc-chart__col.is-end:hover .rc-chart__tip {
+  transform: translate(0, 0);
+}
+
+.rc-chart__x {
+  margin-top: 6px;
+  font: 400 11.5px/14px var(--font-body);
+  color: var(--ink-subtle);
+}
+.rc-chart__x span {
+  overflow: visible;
+  white-space: nowrap;
+  text-align: center;
+  display: flex;
+  justify-content: center;
+}
+
+/* The table view, for screen readers only. */
+.rc-chart__table {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Sparkline: a tiny trend in a tile or a row. */
+.rc-spark {
+  position: relative;
+  display: inline-block;
+  width: 96px;
+  height: 28px;
+  vertical-align: middle;
+}
+.rc-spark svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.rc-spark__line {
+  fill: none;
+  stroke: var(--data);
+  stroke-width: 1.75px;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+.rc-spark__area {
+  fill: var(--data);
+  fill-opacity: 0.1;
+}
+.rc-spark__dot {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--data);
+  box-shadow: 0 0 0 2px var(--surface-1);
+  transform: translate(-50%, -50%);
+}
+
+/* Meter: how far along, on a lighter step of the same colour. */
+.rc-meter {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.rc-meter__words {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font: 400 13px/18px var(--font-body);
+  color: var(--ink-muted);
+}
+.rc-meter__words b {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+.rc-meter__track {
+  height: 8px;
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: var(--data-soft);
+}
+.rc-meter__track > span {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-pill);
+  background: var(--data);
+  transition: width var(--duration-slow) var(--ease-out);
+}
+.rc-meter--go {
+  background: var(--go-soft);
+}
+.rc-meter--go > span {
+  background: var(--go);
+}
+.rc-meter--stop {
+  background: var(--stop-soft);
+}
+.rc-meter--stop > span {
+  background: var(--stop);
+}
+
+/* Two or three charts side by side on a wide screen, one under another on a phone. */
+.rc-chart-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  gap: var(--space-3);
+}
+.rc-chart-card {
+  min-width: 0;
+  padding: 18px 20px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+  box-shadow: var(--shadow-rest);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rc-chart__col::before,
+  .rc-chart__tip,
+  .rc-chart__dot,
+  .rc-chart__bar,
+  .rc-meter__track > span {
+    transition: none;
+  }
+}
+@media (forced-colors: active) {
+  .rc-chart__bar,
+  .rc-chart__dot,
+  .rc-meter__track > span,
+  .rc-chart__key {
+    background: CanvasText;
+  }
+  .rc-chart__bar--target,
+  .rc-chart__key--target {
+    background: Canvas;
+    box-shadow: inset 0 0 0 1px CanvasText;
+  }
+  .rc-chart__line,
+  .rc-spark__line {
+    stroke: CanvasText;
+  }
+}

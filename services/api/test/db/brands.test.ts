@@ -124,7 +124,7 @@ describe('Brands page routes (P3.8.1)', () => {
       (
         await post('/brands/chai-co/contact', sana, {
           phone: '98765 43210 ',
-          email: ' Ops @Chai.in',
+          email: ' Ops@Chai.in',
         })
       ).status,
     ).toBe(200);

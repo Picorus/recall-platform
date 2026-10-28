@@ -84,10 +84,8 @@ export const DEFAULT_SIGN_IN_RULES: SignInRules = {
 
 /** Emails are compared in lower case, without spaces around them or next to "@" and ".". */
 export function normalEmail(s: string): string {
-  return s
-    .trim()
-    .replace(/\s*([@.])\s*/g, '$1')
-    .toLowerCase();
+  // Only the ends: a space inside an email is refused by isEmail (Prateek, 28 Oct).
+  return s.trim().toLowerCase();
 }
 
 export function isEmail(s: string): boolean {

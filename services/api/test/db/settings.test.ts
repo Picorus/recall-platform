@@ -123,4 +123,51 @@ describe('settings routes (P3.17)', () => {
     });
     expect((await post(boss, '/areas', area('Bengaluru'))).status).toBe(200);
   });
+
+  it('the business switch (P7.7.7): a super admin flips POC or regular, with why, from a day ahead', async () => {
+    const boss = await member('meena@recall.in', { role: 'super-admin', areas: [] });
+    const sana = await member('ravi@recall.in', { role: 'admin', areas: ['sales'] });
+    const get = async (cookie: string) =>
+      (await (await fetch(`${url}/settings`, { headers: { cookie } })).json()) as {
+        business: Record<string, unknown> & { history: unknown[] };
+      };
+    const post = async (cookie: string, body: unknown, origin = 'https://admin.test') => {
+      const r = await fetch(`${url}/settings/business`, {
+        method: 'POST',
+        headers: { cookie, origin, 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      return { status: r.status, body: (await r.json()) as Record<string, unknown> };
+    };
+    // Mon 23 Aug 2027, 10:00 India time: regular business; the POC would start on 1 Sep.
+    const sep1 = Date.parse('2027-09-01T08:00:00+05:30') / 1000;
+    expect((await get(boss)).business).toMatchObject({
+      mode: 'regular',
+      next: null,
+      canSwitch: true,
+      pocFrom: sep1,
+      history: [],
+    });
+    expect((await get(sana)).business).toMatchObject({ canSwitch: false });
+    // Only a super admin, from the admin site, saying why.
+    expect((await post(sana, { mode: 'poc', reason: 'POC starts' })).status).toBe(403);
+    expect(
+      (await post(boss, { mode: 'poc', reason: 'POC starts' }, 'https://evil.test')).status,
+    ).toBe(403);
+    expect((await post(boss, { mode: 'poc', reason: 'go' })).body).toEqual({
+      error: 'Say why (a few words)',
+    });
+    expect((await post(boss, { mode: 'trial', reason: 'POC starts' })).status).toBe(400);
+    expect((await post(boss, { mode: 'poc', reason: 'POC starts with 200 bikes' })).body).toEqual({
+      mode: 'poc',
+      from: sep1,
+    });
+    const after = (await get(boss)).business;
+    expect(after).toMatchObject({ mode: 'regular', next: { mode: 'poc', from: sep1 } });
+    expect(after.history).toMatchObject([
+      { mode: 'poc', from: sep1, setBy: expect.any(String), reason: 'POC starts with 200 bikes' },
+    ]);
+    // One switch at a time: a second is refused in plain words.
+    expect((await post(boss, { mode: 'regular', reason: 'changed my mind' })).status).toBe(400);
+  });
 });

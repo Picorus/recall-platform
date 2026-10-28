@@ -30,7 +30,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { chromium, type Browser } from 'playwright';
+import { chromium, type Browser, type Page } from 'playwright';
 import { dayName } from '../../lib/format.js';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 
@@ -116,6 +116,13 @@ afterAll(async () => {
 });
 
 const step = () => Math.floor(clock() / 30_000);
+/** Opens a fold (P7.7.7: long records sit behind one press) by the start of its title. */
+const unfold = (scope: Pick<Page, 'locator'>, title: string) =>
+  scope
+    .locator('summary')
+    .filter({ hasText: new RegExp(`^${title.replace(/[()]/g, '\\$&')}`) })
+    .first()
+    .click();
 /** The super admin's two-step secret, from the first test. */
 const SECRET = { value: '' };
 
@@ -272,6 +279,7 @@ it('the fleet map: bikes in the list, one bike in its panel, a command sent and 
   await page.getByLabel('Reason (logged)').fill('rider asked');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await page.getByText(/^Sent\./).waitFor();
+  await unfold(page, 'Commands sent');
   await page.getByText(/Blank the screen · waiting · Prateek/).waitFor();
   // A picture for the record when asked (SCREENSHOT_DIR), e.g. to show the page in review.
   if (process.env.SCREENSHOT_DIR) {
@@ -349,6 +357,7 @@ it('the Areas page: check a shape, save a new version with a reason, see it in t
     .getByRole('row', { name: /Madhapur/ })
     .getByRole('button', { name: 'Open' })
     .click();
+  await unfold(page, 'Madhapur: versions');
   await page.getByRole('row', { name: /^2 .*250 m.*narrower edge on the flyover/ }).waitFor();
   expect(errors).toEqual([]);
 }, 120_000);
@@ -389,6 +398,7 @@ it('the Prices page: start with the plan’s prices, check and save a change, se
   await page.getByLabel('Reason (kept with the version)').fill('evening demand');
   await page.getByRole('button', { name: 'Save' }).click();
   await page.getByText('Version 2 saved').waitFor();
+  await unfold(page, 'Versions');
   await page.getByText(/Version 2 \(in force\)/).waitFor();
   await page.getByText(/evening demand/).waitFor();
   expect(errors).toEqual([]);
@@ -492,6 +502,7 @@ it('the Brands page: add an agency and a brand it handles, a contact, a note, po
   await page.getByLabel('Add a note').fill('Wants evenings in Madhapur');
   await page.getByRole('button', { name: 'Add note' }).click();
   await page.getByText('Note added.').waitFor();
+  await unfold(page, 'Notes');
   await page.getByText('Wants evenings in Madhapur').waitFor();
   await page.getByRole('row', { name: /Dosa Co.*Adwise Media.*\+91 98765 43210/ }).waitFor();
   // P5.1: their marketing lead may sign in to the brand portal.
@@ -548,6 +559,7 @@ it('booking for a brand: a draft from its page, the payment link, paid, the time
   payments.pay(link?.linkId ?? '');
   await panel.getByRole('button', { name: 'Check payment' }).click();
   await panel.getByText('Paid.', { exact: true }).waitFor();
+  await unfold(panel, 'Timeline and notes');
   await panel
     .getByRole('list', { name: 'Timeline' })
     .getByText(/^Payment received/)
@@ -613,6 +625,7 @@ it('booking for a brand: a draft from its page, the payment link, paid, the time
   await late.getByLabel(`Why approve ${bookingId} on short notice`).fill('Brand sent files late');
   await late.getByRole('button', { name: `Approve ${bookingId}` }).click();
   await page.getByText(`${bookingId}: approved on short notice; ready to run.`).waitFor();
+  await unfold(page.getByRole('region', { name: 'Latest decisions' }), 'Latest decisions');
   await page
     .getByRole('region', { name: 'Latest decisions' })
     .getByText(/Logo card · .* · Approved by/)
@@ -778,6 +791,7 @@ it('the Riders page: a walk-in rider added, his documents checked, approved, a n
   const note = panel.getByRole('form', { name: 'Rider note' });
   await note.getByLabel('Add a note').fill('Fitting booked for Monday');
   await note.getByRole('button', { name: 'Add note' }).click();
+  await unfold(panel, 'Timeline and notes');
   await panel
     .getByRole('list', { name: 'Timeline' })
     .getByText('Note: Fitting booked for Monday')
@@ -850,6 +864,7 @@ it('the Payouts page: the Monday run approved, a line held and released, then pa
   await run.getByText(/^Sent: 1 paid,/).waitFor();
   await run.getByRole('heading').getByText('Done').waitFor();
   await lines.getByText('Paid', { exact: true }).waitFor();
+  await unfold(page, 'All runs');
   await page
     .getByRole('table', { name: 'Payout runs' })
     .getByText('₹1,500 of ₹1,500 paid')
@@ -905,6 +920,9 @@ it('the Money page: where money stands, the payment and its tax invoice, the acc
   await page.getByRole('link', { name: 'Money' }).click();
   // The booking paid in the earlier test: held for its campaign, one payment, one invoice.
   await page.getByRole('region', { name: 'Where money stands now' }).waitFor();
+  await page.getByText(/^Money received, day by day/).waitFor();
+  await unfold(page, 'Payments received');
+  await unfold(page, 'Invoices and credit notes');
   const pays = page.getByRole('table', { name: 'Payments' });
   await pays.getByText('Paid', { exact: true }).waitFor();
   await expect.poll(() => pays.getByRole('row').count()).toBe(2);
@@ -1081,9 +1099,13 @@ it('the Dashboard: this month so far and month by month', async () => {
   await page.getByText('Prateek · Super admin').waitFor();
   await page.getByRole('link', { name: 'Dashboard' }).click();
   await page.getByRole('region', { name: 'This month' }).getByText('Bike-hours sold').waitFor();
+  // P7.7.7: the charts, each with its numbers for screen readers; the table folds away.
+  await page.getByText('Brand ads played, hour by hour').waitFor();
+  await page.getByText('Bike-hours sold each month').waitFor();
+  await unfold(page, 'Month by month, in numbers');
   await expect
     .poll(() => page.getByRole('table', { name: 'Month by month' }).getByRole('row').count())
-    .toBe(7);
+    .toBe(13);
   if (process.env.SCREENSHOT_DIR) {
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.screenshot({ path: `${process.env.SCREENSHOT_DIR}/dashboard.png`, fullPage: true });
@@ -1122,6 +1144,8 @@ it('the Support page: a WhatsApp message from a rider, answered, noted and done'
   await row.getByText(/^waiting \d+ min$/).waitFor();
   await row.getByRole('button', { name: 'Open' }).click();
   const conv = page.getByRole('region', { name: /^Conversation SUP-/ });
+  await conv.getByText('My screen is not turning on').first().waitFor();
+  await unfold(conv, 'Whole conversation');
   await conv
     .getByRole('list', { name: 'History' })
     .getByText('My screen is not turning on')

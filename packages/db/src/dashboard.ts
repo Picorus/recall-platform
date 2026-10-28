@@ -2,6 +2,7 @@
 // only. Bike-hours sold, bike-hours the screens were out and moving, how full that screen time was,
 // money received and revenue earned, and refunds. Billing is by bike-hours only (hard rule 7).
 import type { PoolClient } from 'pg';
+import { todayOf } from '@recall/domain';
 import { indiaMonth } from './money.js';
 
 type Q = Pick<PoolClient, 'query'>;
@@ -111,4 +112,134 @@ export async function businessDashboard(
   const out: MonthNumbers[] = [];
   for (const month of months) out.push(await monthNumbers(c, month, now));
   return out;
+}
+
+// P7.7.7: the dashboard's charts. Today hour by hour (08:00–02:00 India time) and the last days,
+// by business day: a day runs 02:00 to 02:00 India time, so 23:00–02:00 belongs to the day it
+// started (hard rule 5). Read only. Plays are the screens' own signed plays as stored (hard rule
+// 1), brand ads and make-ups that counted (not those refused, e.g. outside the area).
+
+const IST_S = 330 * 60;
+/** The first hour of the business day and how many hours it has (08:00 to 02:00). */
+const FIRST_HOUR = 8;
+const HOURS = 18;
+
+export interface HourTrend {
+  /** India hour the hour starts at: 8 … 23, then 24 and 25 for midnight and 1am. */
+  readonly hour: number;
+  /** Its start, UTC seconds. */
+  readonly at: number;
+  /** Brand ads (and make-ups) the screens played in the hour. */
+  readonly plays: number;
+  /** Different screens that were on in the hour. */
+  readonly screens: number;
+}
+
+export interface DayTrend {
+  /** The business day, "YYYY-MM-DD". */
+  readonly day: string;
+  readonly plays: number;
+  /** Bike-hours the screens were on (whole hours, rounded down). */
+  readonly screenBikeHours: number;
+  /** Money brands paid, GST included, and revenue earned as plays were delivered. */
+  readonly moneyInPaise: number;
+  readonly revenuePaise: number;
+}
+
+export interface BusinessTrends {
+  /** Today's business day. */
+  readonly day: string;
+  readonly hours: readonly HourTrend[];
+  /** The last `days` business days, oldest first, today last; days with nothing are 0. */
+  readonly days: readonly DayTrend[];
+}
+
+/** UTC seconds of hh:00 India time on a date. */
+const indiaAt = (day: string, hour: number) =>
+  Date.parse(`${day}T00:00:00Z`) / 1000 - IST_S + hour * 3600;
+
+const dayBefore = (day: string, n: number) =>
+  new Date(Date.parse(`${day}T00:00:00Z`) - n * 86_400_000).toISOString().slice(0, 10);
+
+const DAY_SQL = (col: string) =>
+  `((${col} AT TIME ZONE 'Asia/Kolkata') - interval '2 hours')::date`;
+
+export async function businessTrends(c: Q, now: number, days = 30): Promise<BusinessTrends> {
+  const n = Math.max(1, Math.min(90, Math.floor(days)));
+  // Today as everywhere else (todayOf): 02:00–08:00 still belongs to the day that just ended.
+  const day = todayOf(now);
+  const start = indiaAt(day, FIRST_HOUR);
+  const first = dayBefore(day, n - 1);
+  const from = indiaAt(first, 2);
+  const until = indiaAt(day, 26);
+  const [plays, screens, playDays, screenDays, money] = await Promise.all([
+    c.query<{ h: number; n: string }>(
+      `SELECT floor((extract(epoch FROM start_at) - $1) / 3600)::int AS h, count(*) AS n
+         FROM plays
+        WHERE start_at >= to_timestamp($1) AND start_at < to_timestamp($2)
+          AND slot IN ('brand', 'make-up') AND counts <> 'no'
+        GROUP BY 1`,
+      [start, start + HOURS * 3600],
+    ),
+    c.query<{ h: number; n: string }>(
+      `SELECT floor((extract(epoch FROM minute) - $1) / 3600)::int AS h,
+              count(DISTINCT screen_id) AS n
+         FROM minute_summaries
+        WHERE minute >= to_timestamp($1) AND minute < to_timestamp($2) AND clock_s > 0
+        GROUP BY 1`,
+      [start, start + HOURS * 3600],
+    ),
+    c.query<{ day: string; n: string }>(
+      `SELECT ${DAY_SQL('start_at')}::text AS day, count(*) AS n
+         FROM plays
+        WHERE start_at >= to_timestamp($1) AND start_at < to_timestamp($2)
+          AND slot IN ('brand', 'make-up') AND counts <> 'no'
+        GROUP BY 1`,
+      [from, until],
+    ),
+    c.query<{ day: string; clock: string }>(
+      `SELECT ${DAY_SQL('minute')}::text AS day, sum(clock_s) AS clock
+         FROM minute_summaries
+        WHERE minute >= to_timestamp($1) AND minute < to_timestamp($2)
+        GROUP BY 1`,
+      [from, until],
+    ),
+    c.query<{ day: string; money_in: string; revenue: string }>(
+      `SELECT ${DAY_SQL('e.at')}::text AS day,
+              coalesce(sum(p.debit) FILTER (WHERE e.kind = 'booking-paid'
+                                              AND p.account = 'payment-clearing'), 0) AS money_in,
+              coalesce(sum(p.credit - p.debit) FILTER (WHERE p.account = 'revenue'), 0) AS revenue
+         FROM ledger_entries e JOIN ledger_postings p USING (entry_id)
+        WHERE e.at >= to_timestamp($1) AND e.at < to_timestamp($2)
+        GROUP BY 1`,
+      [from, until],
+    ),
+  ]);
+  const byHour = (rows: readonly { h: number; n: string }[]) =>
+    new Map(rows.map((r) => [Number(r.h), Number(r.n)]));
+  const playsAt = byHour(plays.rows);
+  const screensAt = byHour(screens.rows);
+  const playsOn = new Map(playDays.rows.map((r) => [r.day, Number(r.n)]));
+  const clockOn = new Map(screenDays.rows.map((r) => [r.day, Number(r.clock)]));
+  const moneyOn = new Map(money.rows.map((r) => [r.day, r]));
+  return {
+    day,
+    hours: Array.from({ length: HOURS }, (_, i) => ({
+      hour: FIRST_HOUR + i,
+      at: start + i * 3600,
+      plays: playsAt.get(i) ?? 0,
+      screens: screensAt.get(i) ?? 0,
+    })),
+    days: Array.from({ length: n }, (_, i) => {
+      const d = dayBefore(day, n - 1 - i);
+      const m = moneyOn.get(d);
+      return {
+        day: d,
+        plays: playsOn.get(d) ?? 0,
+        screenBikeHours: Math.floor((clockOn.get(d) ?? 0) / 3600),
+        moneyInPaise: Number(m?.money_in ?? 0),
+        revenuePaise: Number(m?.revenue ?? 0),
+      };
+    }),
+  };
 }

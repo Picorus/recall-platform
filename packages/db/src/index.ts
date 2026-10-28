@@ -65,3 +65,4 @@ export * from './rider-payouts.js';
 export * from './rider-care.js';
 export * from './rider-alerts.js';
 export * from './rider-profile.js';
+export * from './rider-where.js';

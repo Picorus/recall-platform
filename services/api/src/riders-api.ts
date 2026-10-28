@@ -2,7 +2,8 @@
 // their steps and looks at their documents; Operations and Support admins add notes.
 //   GET  /riders?status=&q=                          riders, newest first
 //   POST /riders                                     { name, phone, bikePlate, rides, apps, reason }
-//   GET  /riders/<id>                                one rider's page (documents with preview links)
+//   GET  /riders/<id>                                one rider's page (documents with preview links;
+//                                                    P7.7.7: his last 14 days' counted hours and pay)
 //   POST /riders/<id>/details                        { name, phone, bikePlate, rides, apps, reason }
 //   POST /riders/<id>/step                           { to, reason }
 //   POST /riders/<id>/documents?kind=photo|rc|insurance   the file as the body (at most 10 MB)
@@ -44,6 +45,7 @@ import {
   stepRider,
   uploadRiderDocument,
   setting,
+  riderDays,
 } from '@recall/db';
 import {
   can,
@@ -59,6 +61,7 @@ import {
   type RiderDetails,
   type RiderStatus,
   type StaffAccess,
+  todayOf,
 } from '@recall/domain';
 import type { PayoutDestination } from '@recall/adapters';
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -68,6 +71,24 @@ import { staffFor, type StaffApiConfig } from './staff-api.js';
 
 /** "+91 ••••••2345": enough to recognise on a call, not to find or call him. */
 const maskPhone = (p: string) => `+91 ••••••${p.slice(-4)}`;
+
+/** Days in the staff page's earnings chart (P7.7.7). */
+const RECENT_DAYS = 14;
+
+/**
+ * His last 14 business days, today last: counted moving hours and what they earned, by the same
+ * rules as his Earnings page (read from the 1st of the first day's month, as the monthly cap needs).
+ */
+async function recentDays(pool: Pool, riderId: string, now: number) {
+  const today = todayOf(now);
+  const start = new Date(Date.parse(`${today}T00:00:00Z`) - (RECENT_DAYS - 1) * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+  const { days } = await riderDays(pool, riderId, `${start.slice(0, 7)}-01`, today, now);
+  return days
+    .filter((d) => d.day >= start)
+    .map(({ day, countedSeconds, earnedPaise }) => ({ day, countedSeconds, earnedPaise }));
+}
 
 async function riderExists(pool: Pool, riderId: string): Promise<boolean> {
   const r = await pool.query('SELECT 1 FROM riders WHERE rider_id = $1', [riderId]);
@@ -159,10 +180,11 @@ export async function handleRiders(
     const page = await riderPage(pool, riderId, now);
     if (!page) throw new HttpError(404, `No rider ${riderId}`);
     const store = cfg.files;
-    const [fitting, money, leaving] = await Promise.all([
+    const [fitting, money, leaving, recent] = await Promise.all([
       riderFitting(pool, riderId, now),
       riderMoney(pool, riderId),
       leavingChecklist(pool, riderId, page.screenId),
+      recentDays(pool, riderId, now),
     ]);
     // P4.3: the fitting check of his screen (the box's parts and the technician's answer).
     const fitted = await fittedScreen(pool, riderId, now);
@@ -175,6 +197,7 @@ export async function handleRiders(
       fitting: fitting.booking,
       fittingCheck,
       money,
+      recent,
       leaving,
       // A check's link works for whoever holds it: only for those who send it to him.
       checks: page.checks.map((c) => ({ ...c, link: reviewer ? c.link : null })),

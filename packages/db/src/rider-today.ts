@@ -2,16 +2,20 @@
 // or off), its battery and signal; his counted moving hours today and this week, from the screens
 // he rode while he rode them (as his pay counts them); and what that earned before TDS, by his pay
 // rules (packages/domain/src/rider-today.ts). Read only: the pay run stays the one that pays.
+// Beside the moving hours, how long his screen was on and reporting ("Screen on": never paid, shown
+// so he sees the app is live for more hours than pay counts). P4.5: the same for days he picks.
 import {
   daysBetween,
   earningsByDay,
   dailyTotals,
+  checkDayRange,
   DEFAULT_RIDER_PAY_RULES,
   DEFAULT_TODAY_RULES,
   isoAt,
   modeAt,
   pocFirstMonth,
   priceBookAt,
+  screenOnByDay,
   signalBars,
   todayOf,
   toIndiaTime,
@@ -40,6 +44,11 @@ export interface RiderTodayDay {
   readonly earnedPaise: number;
 }
 
+/** A day with how long his screen was on and reporting (business hours; never paid). */
+export interface RiderTodayDayOn extends RiderTodayDay {
+  readonly screenOnSeconds: number;
+}
+
 export interface RiderToday {
   readonly at: number;
   /** His screen now, or null when none is on his bike. */
@@ -52,11 +61,12 @@ export interface RiderToday {
     readonly signalBars: number | null;
   } | null;
   readonly mode: 'poc' | 'regular';
-  readonly today: RiderTodayDay;
+  readonly today: RiderTodayDayOn;
   /** Monday to today, each day and the total. */
   readonly week: {
     readonly days: readonly RiderTodayDay[];
     readonly countedSeconds: number;
+    readonly screenOnSeconds: number;
     readonly earnedPaise: number;
   };
   /** Pay rules in force, for the words the app shows. */
@@ -65,7 +75,7 @@ export interface RiderToday {
 }
 
 /** His stretches on screens (rider pay follows the screen) overlapping [from, to). */
-async function stretchesOf(pool: Q, riderId: string, from: number, to: number) {
+export async function stretchesOf(pool: Q, riderId: string, from: number, to: number) {
   const r = await pool.query<{ screen_id: string; a: string; b: string | null }>(
     `SELECT screen_id, extract(epoch FROM from_at)::bigint AS a,
             extract(epoch FROM next_at)::bigint AS b
@@ -86,7 +96,7 @@ async function stretchesOf(pool: Q, riderId: string, from: number, to: number) {
   }));
 }
 
-export interface RiderDayFull extends RiderTodayDay {
+export interface RiderDayFull extends RiderTodayDayOn {
   readonly held: boolean;
   readonly mode: 'poc' | 'regular';
 }
@@ -122,6 +132,7 @@ export async function riderDays(
     for (const m of await minutesOf(pool, s.screenId, Math.max(from, s.from), Math.min(to, s.to)))
       if (m.minute >= s.from && m.minute < s.to) minutes.push(m);
   const totals = dailyTotals(minutes);
+  const on = screenOnByDay(minutes);
   const pocFirst = pocFirstMonth(changes);
   const base = daysBetween(first, last).map((day) => ({
     day,
@@ -133,7 +144,11 @@ export async function riderDays(
   }));
   const earned = earningsByDay(base, rulesOf, pocFirst);
   return {
-    days: base.map((d) => ({ ...d, earnedPaise: earned.get(d.day) ?? 0 })),
+    days: base.map((d) => ({
+      ...d,
+      screenOnSeconds: on.get(d.day) ?? 0,
+      earnedPaise: earned.get(d.day) ?? 0,
+    })),
     rules: rulesOf(last.slice(0, 7)) ?? DEFAULT_RIDER_PAY_RULES,
     pocFirst,
   };
@@ -151,9 +166,13 @@ export async function riderToday(pool: Q, riderId: string, now: number): Promise
     today,
     now,
   );
-  const perDay = all
-    .filter((d) => d.day >= monday)
-    .map(({ day, countedSeconds, earnedPaise }) => ({ day, countedSeconds, earnedPaise }));
+  const week = all.filter((d) => d.day >= monday);
+  const perDay = week.map(({ day, countedSeconds, earnedPaise }) => ({
+    day,
+    countedSeconds,
+    earnedPaise,
+  }));
+  const last = week.at(-1);
 
   // His screen now: the one on his bike.
   const fitted = await pool.query<{ screen_id: string }>(
@@ -188,7 +207,14 @@ export async function riderToday(pool: Q, riderId: string, now: number): Promise
     };
   }
 
-  const todayRow = perDay.at(-1) ?? { day: today, countedSeconds: 0, earnedPaise: 0 };
+  const todayRow: RiderTodayDayOn = last
+    ? {
+        day: last.day,
+        countedSeconds: last.countedSeconds,
+        screenOnSeconds: last.screenOnSeconds,
+        earnedPaise: last.earnedPaise,
+      }
+    : { day: today, countedSeconds: 0, screenOnSeconds: 0, earnedPaise: 0 };
   return {
     at: now,
     screen,
@@ -197,8 +223,64 @@ export async function riderToday(pool: Q, riderId: string, now: number): Promise
     week: {
       days: perDay,
       countedSeconds: perDay.reduce((n, d) => n + d.countedSeconds, 0),
+      screenOnSeconds: week.reduce((n, d) => n + d.screenOnSeconds, 0),
       earnedPaise: perDay.reduce((n, d) => n + d.earnedPaise, 0),
     },
+    perMovingHourPaise: rules.perMovingHourPaise,
+    monthlyCapHours: rules.monthlyCapHours,
+  };
+}
+
+export interface RiderRange {
+  readonly at: number;
+  /** His business day now, by the server's clock (the app's quick picks follow it). */
+  readonly today: string;
+  readonly from: string;
+  readonly to: string;
+  /** Every business day from `from` to `to`, in order. */
+  readonly days: readonly RiderTodayDayOn[];
+  readonly countedSeconds: number;
+  readonly screenOnSeconds: number;
+  /** Moving-hour pay and the POC base for these days, before tax (the sales share is monthly). */
+  readonly earnedPaise: number;
+  readonly perMovingHourPaise: number;
+  readonly monthlyCapHours: number;
+}
+
+/**
+ * P4.5: the days a rider picks (at most 92, none after today; checked here again), each with his
+ * screen-on and counted moving hours and what they earned, exactly as Today and the month's page
+ * work them out: from the 1st of the first month, so the monthly cap falls where the pay run puts it.
+ */
+export async function riderRange(
+  pool: Q,
+  riderId: string,
+  from: string,
+  to: string,
+  now: number,
+): Promise<RiderRange> {
+  const ok = checkDayRange(from, to, todayOf(now));
+  if (!ok.ok) throw new RangeError(`Bad range ${from}..${to}: ${ok.why}`);
+  const { days: all, rules } = await riderDays(pool, riderId, `${from.slice(0, 7)}-01`, to, now);
+  const days = all
+    .filter((d) => d.day >= from)
+    .map(({ day, countedSeconds, screenOnSeconds, earnedPaise }) => ({
+      day,
+      countedSeconds,
+      screenOnSeconds,
+      earnedPaise,
+    }));
+  const sum = (k: 'countedSeconds' | 'screenOnSeconds' | 'earnedPaise') =>
+    days.reduce((n, d) => n + d[k], 0);
+  return {
+    at: now,
+    today: todayOf(now),
+    from,
+    to,
+    days,
+    countedSeconds: sum('countedSeconds'),
+    screenOnSeconds: sum('screenOnSeconds'),
+    earnedPaise: sum('earnedPaise'),
     perMovingHourPaise: rules.perMovingHourPaise,
     monthlyCapHours: rules.monthlyCapHours,
   };

@@ -11,7 +11,6 @@ import {
   fakeGst,
   fakeInbound,
   fakeKyc,
-  fakeMaps,
   fakeMessages,
   fakePayments,
   fakePayouts,
@@ -43,6 +42,7 @@ import pg from 'pg';
 import { startBikes } from './bikes.js';
 import { codeVersion, needsBuild, noteBuild, readBuilds } from './builds.js';
 import { startDesk } from './desk.js';
+import { demoMaps } from './road-map.js';
 import { seedDemo } from './seed.js';
 
 const ROOT = join(import.meta.dirname, '../../..');
@@ -129,7 +129,8 @@ const payments = fakePayments({
   clock: () => Math.floor(clock() / 1000),
 });
 const push = fakePush();
-const maps = fakeMaps();
+// Maps: the real west Hyderabad roads for the rider's map (P4.4), the plain fake's street names.
+const maps = demoMaps();
 
 // 3. The made-up business.
 const now = Math.floor(clock() / 1000);
@@ -161,6 +162,7 @@ const cfg: StaffApiConfig = {
   payouts: fakePayouts(),
   inbound: fakeInbound(),
   reports: { maps, messages, portalUrl: urls.brand },
+  maps,
   messages,
   push,
   gst: fakeGst(),

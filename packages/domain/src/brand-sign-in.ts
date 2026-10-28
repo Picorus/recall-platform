@@ -92,10 +92,9 @@ export type BrandCodeChannel = 'whatsapp' | 'sms' | 'email';
  * could stand for a dot or a dash and reach someone else.
  */
 export function emailAddress(typed: string): string | null {
-  const e = typed
-    .trim()
-    .replace(/\s*([@.])\s*/g, '$1')
-    .toLowerCase();
+  // Spaces at the ends (autofill) go; a space inside is refused (Prateek, 28 Oct): it could stand
+  // for a dot and reach someone else's address.
+  const e = typed.trim().toLowerCase();
   return e.length <= 254 && /^[^@\s]{1,64}@[^@\s]{1,190}\.[a-z]{2,24}$/.test(e) ? e : null;
 }
 

@@ -152,6 +152,8 @@ export interface RiderPage {
   /** P4.3: the latest fitting check of his screen, or null. */
   readonly fittingCheck: FittingCheck | null;
   readonly money: RiderMoney;
+  /** P7.7.7: his last 14 business days, today last: counted moving seconds and what they earned. */
+  readonly recent?: readonly { day: string; countedSeconds: number; earnedPaise: number }[];
   readonly leaving: readonly { item: string; done: boolean; detail: string }[];
   readonly timeline: readonly { at: number; by: string; text: string }[];
 }

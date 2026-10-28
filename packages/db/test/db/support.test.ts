@@ -178,7 +178,7 @@ describe('support (P3.15)', () => {
       pool,
       {
         channel: 'email',
-        contact: ' Ops @Chai.in ',
+        contact: ' Ops@Chai.in ',
         subject: 'Invoice copy',
         note: 'Wants a copy',
       },

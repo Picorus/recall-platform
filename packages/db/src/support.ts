@@ -205,7 +205,7 @@ export async function openThread(
   by: { readonly id: string; readonly name: string },
   now: number,
 ): Promise<string> {
-  // Typed any way ("98480 12345", "Ops @Brand.in "): in the one form threads are kept in.
+  // Typed any way ("98480 12345", " Ops@Brand.in "): in the one form threads are kept in.
   const contact = t.contact.includes('@')
     ? (emailAddress(t.contact) ?? t.contact.trim())
     : (phoneOf(t.contact) ?? t.contact.trim());

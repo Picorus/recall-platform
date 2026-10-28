@@ -4,6 +4,7 @@ import {
   accessProblem,
   can,
   DEFAULT_SIGN_IN_RULES as R,
+  isEmail,
   lockedUntil,
   moneyRole,
   normalEmail,
@@ -96,8 +97,9 @@ describe('sign-in rules', () => {
 });
 
 describe('emails as typed', () => {
-  it('drops spaces around an email and next to "@" and "."; keeps one inside a name', () => {
-    expect(normalEmail(' Prateek @ Recall .in ')).toBe('prateek@recall.in');
+  it('drops spaces only at the ends; any space inside is refused', () => {
+    expect(normalEmail(' Prateek@Recall.in ')).toBe('prateek@recall.in');
+    expect(isEmail(normalEmail('prateek @recall.in'))).toBe(false);
     expect(normalEmail('meena@recall.in')).toBe('meena@recall.in');
     // Refused later (isEmail): a space inside a name could stand for a dot.
     expect(normalEmail('ravi kumar@recall.in')).toBe('ravi kumar@recall.in');

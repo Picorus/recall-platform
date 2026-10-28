@@ -1,7 +1,7 @@
 'use client';
 // P5.9 Help: plain answers to what brands ask most, our numbers (call or WhatsApp) and hours, the
 // ad rules, and a question to our team (the reply comes by WhatsApp or email).
-import { Fold } from '@recall/web-ui';
+import { Fold, foldHint, latestOf } from '@recall/web-ui';
 import Link from 'next/link';
 import { useEffect, useState, type FormEvent } from 'react';
 import { api, ApiError, type Help } from '../../lib/api';
@@ -122,16 +122,30 @@ export default function HelpPage() {
             </form>
             {page.questions.length > 0 && (
               <section className="stack" aria-label="Your questions">
-                <h2>Your questions</h2>
-                <ul className="plain">
-                  {page.questions.map((x) => (
-                    <li key={`${x.at}-${x.subject}`} className="row">
-                      <span className="muted">{dateOf(x.at)}</span>
-                      <span>{x.subject}</span>
-                      <span className={x.state === 'done' ? 'muted' : 'ok'}>{STATE[x.state]}</span>
-                    </li>
-                  ))}
-                </ul>
+                <Fold
+                  title="Your questions"
+                  hint={`${foldHint(
+                    page.questions.length,
+                    ['question', 'questions'],
+                    latestOf(page.questions.map((x) => x.at)),
+                  )}${
+                    page.questions.some((x) => x.state !== 'done')
+                      ? ` · ${page.questions.filter((x) => x.state !== 'done').length} still open`
+                      : ''
+                  }`}
+                >
+                  <ul className="plain">
+                    {page.questions.map((x) => (
+                      <li key={`${x.at}-${x.subject}`} className="row">
+                        <span className="muted">{dateOf(x.at)}</span>
+                        <span>{x.subject}</span>
+                        <span className={x.state === 'done' ? 'muted' : 'ok'}>
+                          {STATE[x.state]}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </Fold>
               </section>
             )}
           </div>

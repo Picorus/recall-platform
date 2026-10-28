@@ -211,7 +211,18 @@ beforeAll(async () => {
     from: now - 5 * 86_400,
     until: now - 5 * 86_400 + 3600,
     builtAt: now - 3 * 86_400,
-    lines: [],
+    lines: [19, 20].map((hour) => ({
+      lineId: `BK-E2E-DONE/hyd-madhapur/${ranOn}/${hour}`,
+      areaId: 'hyd-madhapur',
+      areaName: 'Madhapur',
+      date: ranOn,
+      startHour: hour,
+      bikes: 40,
+      promised: 1_500,
+      delivered: hour === 19 ? 1_400 : 1_330,
+      madeUp: 60,
+      missing: hour === 19 ? 40 : 110,
+    })),
     promised: 3_000,
     delivered: 2_850,
     deliveredBp: 9_500,
@@ -311,7 +322,11 @@ it('a person given access signs in by email and sees their brand', async () => {
   await ask.getByLabel('Your question').fill('Can our campaign start next week?');
   await ask.getByRole('button', { name: 'Send to our team' }).click();
   await page.getByText('Sent. Our team answers on email').waitFor();
-  await page.getByRole('region', { name: 'Your questions' }).getByText('Start sooner').waitFor();
+  // P7.7.7: earlier questions sit behind one press.
+  const asked = page.getByRole('region', { name: 'Your questions' });
+  await asked.getByText(/1 question, latest/).waitFor();
+  await asked.locator('summary').click();
+  await asked.getByText('Start sooner').waitFor();
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/brand-help.png`, fullPage: true });
   await page.getByRole('link', { name: 'Team' }).click();
   const add = page.getByRole('form', { name: 'Add a person' });
@@ -345,6 +360,14 @@ it('the report link from the "Done" message: sign in, then the report; PDF and b
   const report = page.frameLocator('iframe[title="Report BK-E2E-DONE"]');
   await report.getByText('Hitech City Road').waitFor();
   await report.getByText('9,000–13,000 (approximate)', { exact: false }).first().waitFor();
+  // P7.7.7: plays delivered of promised, by day and by hour, above the report.
+  await page.getByRole('meter', { name: 'Plays delivered on 80 bike-hours booked' }).waitFor();
+  await page.getByText('2,850 of 3,000 promised').waitFor();
+  // One day: no day-by-day chart (one bar is not a chart); its hours are.
+  expect(await page.getByText('Plays, day by day').count()).toBe(0);
+  await page
+    .getByRole('img', { name: /^Plays by hour of the day\..*Highest 1,460 at 7pm/ })
+    .waitFor();
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/brand-report.png`, fullPage: true });
   const [download] = await Promise.all([
     page.waitForEvent('download'),
