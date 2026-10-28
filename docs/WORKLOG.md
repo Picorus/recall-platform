@@ -2,6 +2,12 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 29 Oct 2026 · P7.6 · The demo runs as main business
+- Prateek: the demo shows the main business, not the POC. The seed no longer switches the POC on (the switch stays in Settings, off): riders earn ₹25 a moving hour + their share of sales, worked out from what the simulator's bikes ride and play. Checked: a rider's 7 h 32 min today shows ₹188.40; his month 52 h × ₹25 + ₹1,201 share.
+- The first 60 riders get a week of usual riding hours (lunch and evening) outside campaigns, so their past days show the ₹25 hours they rode, not only campaign hours.
+- Open: what the 25% share is taken on (see DECISIONS / Prateek); the POC as 40 brands sharing every hour on all 200 bikes at a fixed monthly fee is not built yet (plan sent to Prateek).
+- Next: Prateek's answers, then the POC package.
+
 ## 28 Oct 2026 · P7.7.7 · Pill buttons, emails without spaces, calmer portals with graphs
 - **Emails** (Prateek: "refuse spaces for emails"): only the ends are trimmed; any space inside is refused.
 - **Buttons** (Prateek: "curve them, keep them smaller; the WhatsApp button is very big"): pills a size smaller in both portals (40 px; small 32, large 48) with a soft lift and glow; rider main button 48 px pill with a volt glow; the WhatsApp button carries a chat icon.
