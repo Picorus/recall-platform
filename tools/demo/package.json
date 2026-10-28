@@ -1,0 +1,28 @@
+{
+  "name": "@recall/demo",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The live demo: every app on made-up data, with stand-ins for every outside service and fake bikes riding (for showing RECALL).",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run --passWithNoTests test/unit",
+    "start": "tsx src/demo.ts",
+    "tour": "tsx src/tour.ts"
+  },
+  "dependencies": {
+    "@recall/adapters": "workspace:*",
+    "@recall/api": "workspace:*",
+    "@recall/db": "workspace:*",
+    "@recall/domain": "workspace:*",
+    "@recall/gateway": "workspace:*",
+    "@recall/simulator": "workspace:*",
+    "pg": "8.23.1"
+  },
+  "devDependencies": {
+    "@types/pg": "8.23.1",
+    "tsx": "4.23.15",
+    "playwright": "1.56.1",
+    "vitest": "5.0.5"
+  }
+}

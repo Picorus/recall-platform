@@ -15,7 +15,8 @@
     "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test",
     "services:up": "docker compose -f infra/docker-compose.yml up -d --wait",
     "services:check": "sh infra/check-services.sh",
-    "services:down": "docker compose -f infra/docker-compose.yml down"
+    "services:down": "docker compose -f infra/docker-compose.yml down",
+    "demo": "pnpm services:up && pnpm --filter @recall/demo start"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

@@ -8,6 +8,7 @@ export default tseslint.config(
       '**/node_modules/',
       '**/dist/',
       '**/dist-e2e/',
+      '**/dist-demo/',
       '**/.expo/',
       '**/build/',
       '**/.turbo/',
