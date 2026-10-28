@@ -64,7 +64,7 @@ describe('the setting (P7.8.1)', () => {
       maxBrands: 40,
       feePaise: 25_000_000,
       maxBikes: 200,
-      maxMonths: 3,
+      pocMonths: 3,
     });
     expect(playsPerBrand(DEFAULT_POC_RULES)).toBe(5);
     expect(DEFAULT_SETTINGS.poc).toEqual(DEFAULT_POC_RULES);
@@ -78,7 +78,7 @@ describe('the setting (P7.8.1)', () => {
     expect(() => checkSetting('poc', { ...DEFAULT_POC_RULES, maxBrands: 201 })).toThrow(/1 to 200/);
     expect(() => checkSetting('poc', { ...DEFAULT_POC_RULES, feePaise: 2.5 })).toThrow(/fee/);
     expect(() => checkSetting('poc', { ...DEFAULT_POC_RULES, maxBikes: -1 })).toThrow(/bikes/);
-    expect(() => checkSetting('poc', { ...DEFAULT_POC_RULES, maxMonths: 13 })).toThrow(/months/);
+    expect(() => checkSetting('poc', { ...DEFAULT_POC_RULES, pocMonths: 13 })).toThrow(/months/);
     expect(() => checkPocRules(null)).toThrow(/not filled in/);
   });
 });

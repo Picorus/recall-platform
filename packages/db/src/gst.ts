@@ -141,7 +141,9 @@ export async function issueGstDocument(
   d: {
     readonly kind: 'invoice' | 'credit-note';
     readonly sourceEntry: string;
-    readonly bookingId: string;
+    /** What it is for: a booking, or (P7.8) a POC month "poc/<brand>/<YYYY-MM>" (invoices only). */
+    readonly bookingId?: string;
+    readonly pocRef?: string;
     readonly taxable: number;
     readonly gst: number;
     readonly at: number;
@@ -154,12 +156,18 @@ export async function issueGstDocument(
   if (before.rows[0]) return before.rows[0].doc_no;
   // One number at a time, so the series has no gaps and no repeats.
   await c.query("SELECT pg_advisory_xact_lock(hashtext('gst-documents'))");
-  const b = await c.query<{ brand_id: string }>(
-    'SELECT brand_id FROM bookings WHERE booking_id = $1',
-    [d.bookingId],
+  if ((d.bookingId === undefined) === (d.pocRef === undefined))
+    throw new Error('A tax document is for a booking or for a POC month');
+  if (d.pocRef !== undefined && d.kind !== 'invoice')
+    throw new Error('A POC month is never refunded: no credit note');
+  const b = await c.query<{ brand_id: string; gst_bp: number | null }>(
+    d.pocRef !== undefined
+      ? 'SELECT brand_id, gst_bp FROM poc_months WHERE ref = $1'
+      : 'SELECT brand_id, NULL::integer AS gst_bp FROM bookings WHERE booking_id = $1',
+    [d.pocRef ?? d.bookingId],
   );
   const brandId = b.rows[0]?.brand_id;
-  if (brandId === undefined) throw new Error(`No booking ${d.bookingId}`);
+  if (brandId === undefined) throw new Error(`No booking ${d.pocRef ?? d.bookingId ?? ''}`);
   const book = priceBookAt(await priceBooks(c), isoAt(d.at));
   if (!book) throw new Error('No price book in force');
   const supplier = book.taxes.supplierStateCode;
@@ -205,7 +213,7 @@ export async function issueGstDocument(
         WHERE b.booking_id = $1`,
       [d.bookingId],
     );
-    gstBp = rb.rows[0]?.book.gstBp ?? book.gstBp;
+    gstBp = b.rows[0]?.gst_bp ?? rb.rows[0]?.book.gstBp ?? book.gstBp;
     // A GST number is printed only when it is safe (Prateek, 27 Oct 2026): set by staff, or read
     // from the GST records and on no other account. Typed by the brand, or on two accounts, it is
     // held back (an invoice under someone else's number would give them a tax claim on it).
@@ -282,16 +290,16 @@ export async function issueGstDocument(
     `INSERT INTO gst_documents (doc_no, kind, fy, n, source_entry, booking_id, brand_id, against_doc,
        legal_name, gstin, place_of_supply, taxable_paise, cgst_paise, sgst_paise, igst_paise,
        total_paise, issued_at, sac, gstin_held, gstin_held_why, supplier_name, supplier_gstin,
-       supplier_address, supplier_state, gst_bp, recipient_address)
+       supplier_address, supplier_state, gst_bp, recipient_address, poc_ref)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, to_timestamp($17),
-             $18, $19, $20, $21, $22, $23, $24, $25, $26)`,
+             $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)`,
     [
       docNo,
       d.kind,
       fy,
       n,
       d.sourceEntry,
-      d.bookingId,
+      d.bookingId ?? null,
       brandId,
       against,
       recipient.legal_name,
@@ -312,6 +320,7 @@ export async function issueGstDocument(
       supplier,
       gstBp,
       recipient.address.slice(0, 500),
+      d.pocRef ?? null,
     ],
   );
   return docNo;
@@ -495,7 +504,8 @@ export async function accountantExport(
     total: string;
   }>(
     `SELECT doc_no, kind, to_char(issued_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD') AS issued,
-            against_doc, booking_id, legal_name, gstin, place_of_supply, sac,
+            against_doc, coalesce(booking_id, poc_ref) AS booking_id, legal_name, gstin,
+            place_of_supply, sac,
             taxable_paise AS taxable, cgst_paise AS cgst, sgst_paise AS sgst, igst_paise AS igst,
             total_paise AS total
        FROM gst_documents WHERE issued_at >= to_timestamp($1) AND issued_at < to_timestamp($2)

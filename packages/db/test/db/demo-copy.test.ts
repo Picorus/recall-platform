@@ -26,7 +26,9 @@ describe('a demo copy for investors', () => {
     await markDemoCopy(pool, 'prateek');
     expect(await isDemoCopy(pool)).toBe(true);
     await setBusinessMode(pool, 'poc', SUPER, 'demo: POC on', day('2027-08-01'));
-    await setBusinessMode(pool, 'regular', SUPER, 'demo: POC off', day('2027-08-10'));
+    await setBusinessMode(pool, 'regular', SUPER, 'demo: POC off', day('2027-08-10'), {
+      early: true,
+    });
     await setBusinessMode(pool, 'poc', SUPER, 'demo: POC on again', day('2027-08-20'));
     expect((await businessModes(pool)).map((c) => c.mode)).toEqual(['poc', 'regular', 'poc']);
     expect(await canSwitch(pool)).toBe(true);

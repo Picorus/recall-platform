@@ -34,15 +34,18 @@ export interface PocRules {
   readonly feePaise: number;
   /** Most bikes with a screen fitted while the POC is on. */
   readonly maxBikes: number;
-  /** Longest commitment a brand makes, in months (sales aims for all of them). */
-  readonly maxMonths: number;
+  /**
+   * How long the POC runs, in whole months from its start (Prateek, 28 Oct 2026: 3; it ends by itself
+   * at 08:00 India time on the 1st of the month after). Also the longest commitment a brand makes.
+   */
+  readonly pocMonths: number;
 }
 
 export const DEFAULT_POC_RULES: PocRules = {
   maxBrands: 40,
   feePaise: 25_000_000,
   maxBikes: 200,
-  maxMonths: 3,
+  pocMonths: 3,
 };
 
 /** Checks a POC setting as typed or sent; throws why not (in plain words). */
@@ -61,7 +64,7 @@ export function checkPocRules(v: unknown, spots: SpotRules = DEFAULT_SPOT_RULES)
     // ₹1,000 to ₹1 crore a month, in paise.
     feePaise: whole('feePaise', 100_000, 1_000_000_000, 'fee a month in paise'),
     maxBikes: whole('maxBikes', 1, 20_000, 'most bikes'),
-    maxMonths: whole('maxMonths', 1, 12, 'longest commitment in months'),
+    pocMonths: whole('pocMonths', 1, 12, 'months the POC runs'),
   };
 }
 

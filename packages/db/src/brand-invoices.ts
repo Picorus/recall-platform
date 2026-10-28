@@ -18,6 +18,7 @@ interface Row {
   issued_at: Date;
   against_doc: string | null;
   booking_id: string;
+  poc_ref: string | null;
   brand_id: string;
   legal_name: string;
   gstin: string | null;
@@ -40,11 +41,17 @@ interface Row {
   last_day: string;
 }
 
-const SELECT = `SELECT d.doc_no, d.kind, d.issued_at, d.against_doc, d.booking_id, d.brand_id,
+const SELECT = `SELECT d.doc_no, d.kind, d.issued_at, d.against_doc,
+       coalesce(d.booking_id, d.poc_ref) AS booking_id, d.poc_ref, d.brand_id,
        d.legal_name, d.gstin, d.gstin_held IS NOT NULL AS held, d.place_of_supply, d.sac, d.taxable_paise AS taxable,
        d.cgst_paise AS cgst, d.sgst_paise AS sgst, d.igst_paise AS igst, d.total_paise AS total,
        d.gst_bp, d.recipient_address, d.supplier_name, d.supplier_gstin, d.supplier_address,
-       d.supplier_state, l.bike_hours, l.first_day::text, l.last_day::text
+       d.supplier_state, coalesce(l.bike_hours, 0) AS bike_hours,
+       -- P7.8: a POC month runs from its 1st to its last day.
+       coalesce(l.first_day, to_date(right(d.poc_ref, 7), 'YYYY-MM'))::text AS first_day,
+       coalesce(l.last_day,
+                (to_date(right(d.poc_ref, 7), 'YYYY-MM') + interval '1 month' - interval '1 day')::date
+       )::text AS last_day
   FROM gst_documents d
   JOIN LATERAL (SELECT sum(bikes) AS bike_hours, min(day) AS first_day, max(day) AS last_day
                   FROM booking_lines WHERE booking_id = d.booking_id) l ON true`;
@@ -83,6 +90,7 @@ async function shaped(c: Q, rows: readonly Row[]): Promise<TaxDocument[]> {
       bikeHours: Number(r.bike_hours),
       firstDay: r.first_day,
       lastDay: r.last_day,
+      ...(r.poc_ref ? { pocMonth: r.poc_ref.slice(-7) } : {}),
     };
   });
 }

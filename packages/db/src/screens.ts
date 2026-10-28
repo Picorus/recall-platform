@@ -14,6 +14,7 @@ import {
 import type { Pool, PoolClient } from 'pg';
 import { inTransaction } from './makeups.js';
 import { Refusal } from './refusal.js';
+import { checkPocBikeRoom } from './poc.js';
 import { assignScreenIn } from './rider-pay.js';
 
 /** How long a screen's certificate lasts; it is renewed over the secure line before then (P2.3). */
@@ -246,6 +247,8 @@ async function fitIn(
     if (current)
       throw new Refusal(`${screenId} is on ${current.bike}: take it off that bike first`);
     await lastChange(c, screenId, now);
+    // P7.8: while the POC is on, at most the setting's bikes (200) carry a screen.
+    await checkPocBikeRoom(c, now);
     // The rider (P3.11): on his record, approved (or riding, or paused), and this is his bike. The
     // rider's lock after the fittings lock: the same order as his steps take them.
     await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`rider:${riderId}`]);

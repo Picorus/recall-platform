@@ -15,6 +15,7 @@ import { bookingState, CapacityError, moveBooking, priceBooks, StepRace } from '
 import { advanceIfReady } from './ads.js';
 import { postEntry } from './ledger.js';
 import { inTransaction } from './makeups.js';
+import { applyPocLinkStatus, expirePocLinks } from './poc.js';
 import { Refusal } from './refusal.js';
 
 type Q = Pick<Pool, 'query'>;
@@ -231,7 +232,8 @@ export async function applyLinkStatus(
     [linkId],
   );
   const link = r.rows[0];
-  if (!link) return 'unknown';
+  // P7.8: a link for a POC month, not a booking.
+  if (!link) return (await applyPocLinkStatus(pool, linkId, status, now)) ?? 'unknown';
   const bookingId = link.booking_id;
   const l = { linkId, bookingId, brandId: link.brand_id };
   if (status.state === 'created') return 'waiting';
@@ -463,6 +465,8 @@ export async function expireUnpaid(
         log(`payments: could not cancel ${x.booking_id}: ${(e as Error).message}`);
     }
   }
+  // P7.8: POC months' links that ran out (an unpaid month simply never plays).
+  await expirePocLinks(pool, payments, now, log);
   return cancelled;
 }
 

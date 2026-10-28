@@ -1,11 +1,15 @@
 // The business switch in the database: POC or regular business (Prateek, 24 Oct 2026).
 import {
+  DEFAULT_POC_RULES,
   modeAt,
+  pocDaysEarly,
   pocEndedAt,
+  pocPhase,
   pocStartsFrom,
   switchCountsFrom,
   type BusinessMode,
   type ModeChange,
+  type PocPhase,
 } from '@recall/domain';
 import type { Pool, PoolClient } from 'pg';
 import { inTransaction } from './makeups.js';
@@ -30,12 +34,27 @@ export async function markDemoCopy(pool: Pool, by: string): Promise<void> {
   });
 }
 
+/** How many months the POC is planned to run (the POC package setting; alerts and the guard). */
+export async function pocMonthsSetting(c: Pick<PoolClient, 'query'>): Promise<number> {
+  const r = await c.query<{ value: { pocMonths?: number } }>(
+    "SELECT value FROM settings WHERE key = 'poc' ORDER BY version DESC LIMIT 1",
+  );
+  return r.rows[0]?.value.pocMonths ?? DEFAULT_POC_RULES.pocMonths;
+}
+
 /**
- * Whether the switch can still be used: until the POC has ended (always in a demo copy). The
- * portal shows it to the super admin only, and after the POC as a record (view only).
+ * Whether the switch can still be used: until the POC has ended (always in a demo copy). The portal shows it to the super admin only, and after the POC as a record (view only).
  */
-export async function canSwitch(c: Pick<PoolClient, 'query'>): Promise<boolean> {
-  return (await isDemoCopy(c)) || pocEndedAt(await businessModes(c)) === undefined;
+export async function canSwitch(
+  c: Pick<PoolClient, 'query'>,
+  now: number = Math.floor(Date.now() / 1000),
+): Promise<boolean> {
+  return (await isDemoCopy(c)) || (await pocPhaseAt(c, now)).phase !== 'ended';
+}
+
+/** Where the POC stands at `now`: none, scheduled (switched on, not started), running or ended. */
+export async function pocPhaseAt(c: Pick<PoolClient, 'query'>, now: number): Promise<PocPhase> {
+  return pocPhase(await businessModes(c), await pocMonthsSetting(c), now);
 }
 
 /** Every switch with who made it, why and when (oldest first), for the staff portal. */
@@ -76,6 +95,13 @@ export async function businessModes(c: Pick<PoolClient, 'query'>): Promise<ModeC
   return r.rows.map((x) => ({ mode: x.mode, from: Number(x.from) }));
 }
 
+/** A switch back that would end the POC before its planned end, sent without `early` (P7.8). */
+export class EarlyEnd extends Error {
+  constructor(readonly days: number) {
+    super(`This ends the POC ${days} day${days === 1 ? '' : 's'} early: confirm to go ahead`);
+  }
+}
+
 /**
  * A super admin flips the business to POC or regular business; returns from when it counts. The
  * POC is switched on from the 1st of a month (today if it is the 1st, else the next 1st), so its
@@ -88,6 +114,8 @@ export async function setBusinessMode(
   by: { readonly id: string; readonly role: string },
   reason: string,
   now: number = Math.floor(Date.now() / 1000),
+  /** P7.8: the super admin confirmed ending the POC before its planned end. */
+  opts: { readonly early?: boolean } = {},
 ): Promise<number> {
   if (by.role !== 'super-admin') throw new Error('Only a super admin can switch the business');
   if (mode !== 'poc' && mode !== 'regular') throw new RangeError('Mode must be poc or regular');
@@ -105,6 +133,12 @@ export async function setBusinessMode(
     if (modeAt(changes, from) === mode) throw new Error(`The business is already on ${mode}`);
     // The POC happens once (Prateek, 24 Oct 2026): once it has ended, only regular business is left
     // (in a demo copy for investors, it can be flipped freely).
+    const phase = pocPhase(changes, await pocMonthsSetting(c), now);
+    // P7.8 (Prateek, 28 Oct 2026): the POC ends by hand, on the morning of the 1st after its months;
+    // a switch counting from before that (its 00:00–02:00 tail counts from the day before) needs
+    // `early`.
+    const early = mode === 'regular' ? pocDaysEarly(phase, from) : 0;
+    if (early > 0 && !opts.early) throw new EarlyEnd(early);
     if (pocEndedAt(changes) !== undefined && !(await isDemoCopy(c)))
       throw new Error('The POC has ended: the business stays on regular business');
     await c.query(

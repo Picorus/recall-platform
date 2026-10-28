@@ -3,6 +3,7 @@ import { createPublicKey, verify } from 'node:crypto';
 import {
   DEFAULT_PLAY_RULES,
   isoAt,
+  isPocRef,
   judgePlay,
   lineIdOf,
   lineStartsAt,
@@ -22,6 +23,7 @@ import {
 } from '@recall/domain';
 import type { Pool, PoolClient } from 'pg';
 import { priceBooks } from './bookings.js';
+import { pocJudge } from './poc.js';
 
 type Q = Pick<PoolClient, 'query'>;
 
@@ -238,6 +240,8 @@ export async function judgePlays(
   );
   const taken = near.rows.map((r) => Number(r.t));
   const lines = new Map<string, LineInfo | undefined>();
+  // P7.8: plays naming a POC month ("poc/<brand>/<YYYY-MM>"), at most 5 a brand a bike-hour.
+  const poc = pocJudge(c, screenId);
   for (const { seq, play } of [...plays].sort((a, b) => a.seq - b.seq)) {
     const rules = rulesOf(books, { time: play.startAt });
     // A revoked key still covers plays from before the moment it was given up (counted only if
@@ -264,10 +268,15 @@ export async function judgePlays(
         neighbours: taken.filter((t) => Math.abs(t - play.startAt) < rules.spotSeconds),
         areas,
         line: info && COUNTING.includes(info.state) ? info.line : undefined,
+        ...(isPocRef(play.ref) && signature === 'ok'
+          ? { poc: await poc.context(play.ref, play.startAt) }
+          : {}),
       },
       rules,
     );
     out.set(seq, j);
+    if (!j.refused && j.count.counts !== 'no' && isPocRef(play.ref))
+      poc.counted(play.ref, play.startAt);
     if (!j.refused) taken.push(play.startAt);
   }
   return out;
