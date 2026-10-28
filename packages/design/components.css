@@ -185,6 +185,8 @@ button.rc-chip[aria-pressed='true']::before {
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
   background: var(--surface-1);
+  /* The value shrinks to fit its tile (₹4,35,066 in a narrow column), never past it. */
+  container-type: inline-size;
 }
 .rc-stat__label {
   /* label (11px in tiles) */
@@ -197,6 +199,7 @@ button.rc-chip[aria-pressed='true']::before {
 .rc-stat__value {
   margin: 0;
   font: 800 40px/1 var(--font-display);
+  font-size: clamp(20px, 15cqi, 40px);
   font-stretch: 110%;
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;

@@ -56,8 +56,9 @@ export function playsFor(
 ): { screen: DemoScreen; startAt: number; make: (a: AreaVersion) => Numbered }[] {
   const out: { screen: DemoScreen; startAt: number; make: (a: AreaVersion) => Numbered }[] = [];
   for (let i = 0; i < 240; i++) {
-    // About 205 of 240 spots shown (traffic, a stop with the screen off).
-    if ((i * 7 + x.screen.screenId.charCodeAt(5)) % 41 < 6) continue;
+    // About 228 of 240 spots shown (a stop with the screen off, now and then): above the 200 a
+    // bike-hour promises, the rest free.
+    if ((i * 7 + x.screen.screenId.charCodeAt(5)) % 41 < 2) continue;
     const startAt = x.startsAt + i * 15;
     out.push({
       screen: x.screen,

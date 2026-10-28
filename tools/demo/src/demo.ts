@@ -133,7 +133,9 @@ const maps = fakeMaps();
 // 3. The made-up business.
 const now = Math.floor(clock() / 1000);
 const t0 = Date.now();
-log(`building a fresh demo with ${bikes} bikes (about a minute)…`);
+log(
+  `building a fresh demo with ${bikes} bikes (${bikes > 500 ? 'several minutes' : 'about a minute'})…`,
+);
 const seeded = await seedDemo(pool, files, secretKey, now, {
   riders: bikes,
   log: (l) => log(`  ${l}`),

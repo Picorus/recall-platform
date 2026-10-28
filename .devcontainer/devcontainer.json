@@ -1,0 +1,33 @@
+// The RECALL demo in a browser (GitHub Codespaces): Code → Codespaces → Create codespace on main.
+// Everything installs and builds by itself; then the demo starts and the demo desk opens.
+// See docs/DEMO.md.
+{
+  "name": "RECALL demo",
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:1-22-bookworm",
+  "features": {
+    // The database, broker and file store run in their own containers (infra/docker-compose.yml).
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  },
+  // 200 bikes, two websites, the API and the database together: 4 cores, 8 GB.
+  "hostRequirements": { "cpus": 4, "memory": "8gb", "storage": "32gb" },
+  "forwardPorts": [4000, 3001, 3000, 8081],
+  "portsAttributes": {
+    "4000": { "label": "Demo desk (start here)", "onAutoForward": "openBrowser" },
+    "3001": { "label": "Staff portal", "onAutoForward": "silent" },
+    "3000": { "label": "Brand portal", "onAutoForward": "silent" },
+    "8081": { "label": "Rider app", "onAutoForward": "silent" },
+    "8080": { "label": "API (inside only)", "onAutoForward": "ignore" },
+    "5432": { "onAutoForward": "ignore" },
+    "6379": { "onAutoForward": "ignore" },
+    "1883": { "onAutoForward": "ignore" },
+    "18083": { "onAutoForward": "ignore" },
+    "8333": { "onAutoForward": "ignore" }
+  },
+  // Once, when the codespace is made: the tools, then the two websites built.
+  "postCreateCommand": "corepack enable && pnpm install --frozen-lockfile && pnpm --filter @recall/admin build && pnpm --filter @recall/brand build",
+  // Every time it is opened: the demo starts (a fresh one each time) in the terminal below.
+  "postAttachCommand": "pnpm demo",
+  "customizations": {
+    "codespaces": { "openFiles": ["docs/DEMO.md"] }
+  }
+}

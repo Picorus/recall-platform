@@ -32,6 +32,7 @@ import {
   settleDue,
   uploadAd,
   accountPrint,
+  preparePayoutRun,
   answerPanel,
   startFittingFromApp,
   stepRider,
@@ -592,6 +593,18 @@ export async function seedDemo(
   await buildDueReports(pool, fakeMaps(), now).catch((e: unknown) => log(`reports: ${String(e)}`));
   const month = new Date((now + 19_800) * 1000).toISOString().slice(0, 7);
   await accrueRiderPay(pool, month, now).catch((e: unknown) => log(`rider pay: ${String(e)}`));
+
+  // Last Monday's rider payout run, prepared and waiting for finance to approve and send.
+  const india = new Date((now + 19_800) * 1000);
+  const back = (india.getUTCDay() + 6) % 7;
+  const monday = new Date(
+    Date.UTC(india.getUTCFullYear(), india.getUTCMonth(), india.getUTCDate() - back),
+  )
+    .toISOString()
+    .slice(0, 10);
+  await preparePayoutRun(pool, monday, now, 'Meena (finance)').catch((e: unknown) =>
+    log(`payout run: ${String(e)}`),
+  );
 
   // A few conversations on the support desk.
   const omar = { id: staffIds['ops@recall.demo'] ?? 'demo', name: 'Omar (operations)' };
