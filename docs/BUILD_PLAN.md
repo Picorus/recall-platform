@@ -331,13 +331,13 @@ A premium redesign of all three apps on the same colours, from the approved desi
 
 ### P7.8 The POC package (Prateek, 29 Oct 2026)
 
-While the business switch is on POC (Settings, super admin; it runs 3 months, then Prateek switches back to regular business on the 1st of month 4):
+While the business switch is on POC (Settings, super admin). Prateek, 28 Oct 2026: he switches POC on in the second half of a month (e.g. 15 July); it is **scheduled** until 08:00 on the next 1st (1 August) and POC brands, their month-1 fees and the screens' plans are all set up meanwhile. It is planned to run 3 months (a setting, `pocMonths`), with alerts to super admins (scheduled, starts today, 7 days before the planned end, months over); it never ends by itself: he switches back to regular business by hand on the morning of the 1st of month 4 (1 November). A switch back counting from before the planned end needs an "are you sure?" (`early: true`).
 
-1. **P7.8.1 POC brands and money.** Up to 40 brands (a setting) on a POC package: a fixed fee a month (₹2.5 L + GST, a setting) paid **before** each month, through the payment provider like a booking; the GST invoice is made when it is paid. Sales records each brand's commitment (1 to 3 months; the aim is all 3) and its 2 to 5 approved ads. A month not paid before it starts does not play. Up to 200 bikes (a setting) can be fitted while the POC is on. The money is a double-entry ledger in paise like every booking (no make-ups, no refunds: nothing is promised).
-2. **P7.8.2 Every hour shared.** On every bike, every business hour, anywhere in the POC zone: 200 brand plays = 5 for each POC brand of the month (in turn, evenly spread), and 40 RECALL spots (one after every five brand plays) that also fill gaps (fewer than 40 brands: their slots go to RECALL's ads). The screen builds the hour from the plan it is sent (P1.4.1) and keeps playing the same rotation with no network. Each play is signed and counted as today (hard rule 1), for the brand's POC month; at most 5 per brand per bike-hour count.
-3. **P7.8.3 What each brand sees.** No promise, the numbers: plays, different bikes, hours, busiest streets, people (an estimate, never billed), by day and by month, in the brand portal and as a monthly report; the staff portal shows every POC brand's plays and payments side by side.
+1. **P7.8.1 POC brands and money.** Up to 40 brands (a setting) on a POC package: a fixed fee a month (₹2.5 L + GST, a setting) paid **before** each month, through the payment provider like a booking; the GST invoice is made when it is paid. Sales records each brand's commitment (1 to 3 months; the aim is all 3) and its 2 to 5 approved ads. A month not paid before it starts does not play. Up to 200 bikes (a setting) can be fitted while the POC is on. The money is a double-entry ledger in paise like every booking (no make-ups, no refunds: nothing is promised); a month is earned day by day as it runs.
+2. **P7.8.2 Every hour shared.** On every bike, every business hour, anywhere in the POC zone: 200 brand plays = 5 for each POC brand of the month (in turn, evenly spread), and 40 RECALL spots (one after every five brand plays) that also fill gaps (fewer than 40 brands: their slots go to RECALL's ads). The screen builds the hour from the plan it is sent (down/poc) and keeps playing the same rotation with no network. Each play is signed and counted as today (hard rule 1), for the brand's POC month; at most 5 per brand per bike-hour count.
+3. **P7.8.3 What each brand sees.** No promise, the numbers: plays, different bikes, hours, busiest streets, people (an estimate, never billed), by day and by month, in the brand portal; the staff portal shows every POC brand's plays and payments side by side.
 4. **P7.8.4 Riders.** Already built: the POC base (₹2,000 / ₹4,000 / ₹6,000) and the founding bonus (150-hour rule); no share of sales in the POC.
-5. **P7.8.5 Proof.** The simulator and the demo can run the POC (`pnpm demo -- --poc`), with 40 brands and 200 bikes, and show every brand getting its share.
+5. **P7.8.5 Proof.** Tests at every layer, not a demo (Prateek, 29 Oct 2026: the demo stays regular business): the rotation (every brand ≤ 5 a bike-hour, 200 + 40 = 240, even spread; property tests, shared with the screen's Kotlin code), the money (the days of a month add up to its fee; the ledger balances), counting (never twice, the 6th refused), payments, limits, the switch (scheduled, the early-end guard, the POC once), access rules over HTTP, and the staff and brand POC pages in a browser.
 
 ## External services to plug in later
 
@@ -421,7 +421,7 @@ Phases overlap on purpose: each starts once the part it depends on is stable, no
 | P7 | Hardening, load test, security audit, POC readiness | Code done (P7.1–P7.5); the outside audit, staging and the 2-week road test need accounts, bikes and people | Jun – Jul 2027 |
 | P5 | Brand portal for self-serve | Done (real payments, GST lookups and messages wait for the outside accounts, P6) | Jul – Oct 2027 |
 | P7.7 | Design 2.0: premium look for the three apps | Done (the rider map home waits for the maps account, P6) | Oct 2026 |
-| P7.8 | The POC package: 40 brands share every hour on every bike for a fixed monthly fee | In progress | Oct 2026 |
+| P7.8 | The POC package: 40 brands share every hour on every bike for a fixed monthly fee | Done (agency cuts on a POC package and the ad-file sender to screens still open) | Oct 2026 |
 
 ## Records for a human takeover
 
@@ -442,6 +442,7 @@ A new engineer should be able to read four files and start work the same day. Th
 
 | Date | Version | Change |
 | --- | --- | --- |
+| 29 Oct 2026 | 1.12 | Prateek: the POC is scheduled from its switch-on to its 1st and ends only by a super admin's switch (planned 3 months, alerts, an early-end check); P7.8 is proved by tests, not a demo. |
 | 29 Oct 2026 | 1.11 | Prateek: the POC package (P7.8): 40 brands × ₹2.5 L a month, 5 plays each per bike-hour on all 200 bikes, nothing promised; the rider's 25% is after the agency and aggregator cuts. |
 | 28 Oct 2026 | 1.10 | Prateek: approved Design 2.0 (P7.7), a premium redesign of the three apps on the same colours, in five steps. |
 | 22 Oct 2026 | 1.9 | Prateek: forecast only after the POC (a price-book setting, POC mode first); 6/12-month deals: no discount on Lite hours, hours spread about equally over the months (±20%, a setting), discount on the bill; aggregator ads are free. |

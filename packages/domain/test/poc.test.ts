@@ -344,10 +344,8 @@ describe('counting a POC play (P7.8.2)', () => {
   it('counts when on, paid, its ad, in the zone, in its month, under 5 this bike-hour', () => {
     expect(pocPlayProblem(play, near, out, ctx())).toBeUndefined();
     expect(pocPlayProblem(play, near, out, ctx({ on: false }))).toBe('the POC was not on');
-    const unpaid = ctx();
-    expect(
-      pocPlayProblem(play, near, out, { ...unpaid, month: { ...unpaid.month!, paid: false } }),
-    ).toBe('POC month not paid');
+    const month = { ref, paid: false, ads: ['ad-1-1'], startsAt: p.startsAt, endsAt: p.endsAt };
+    expect(pocPlayProblem(play, near, out, ctx({ month }))).toBe('POC month not paid');
     expect(pocPlayProblem({ ...play, adId: 'other' }, near, out, ctx())).toBe('not one of its ads');
     expect(pocPlayProblem(play, far, out, ctx())).toBe('outside the POC zone');
     expect(pocPlayProblem(play, near, out, ctx({ countedThisHour: 5 }))).toBe(

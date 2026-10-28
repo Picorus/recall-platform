@@ -169,26 +169,48 @@ function WordingFields({
   );
 }
 
+/** Whole days from `now` to `t` (at least 0). */
+const daysTo = (now: number, t: number) => Math.max(0, Math.ceil((t - now) / 86_400));
+
 /**
  * The business switch (P7.7.7): the whole business runs as the POC or as regular business. It
  * changes how riders are paid and how the calendar limits bookings. A super admin flips it, says
  * why, and it counts from a day ahead (the POC from a 1st), so nothing already earned changes.
+ * P7.8 (Prateek, 28 Oct 2026): switched on, the POC is scheduled until its 1st (POC brands, their
+ * fees and plans are set up meanwhile); it is planned to run its months (a setting) and ends only by
+ * a super admin's switch back; one that would end it early asks first.
  */
-function BusinessSwitchCard({ b, onSaved }: { b: BusinessSwitch; onSaved: () => void }) {
+function BusinessSwitchCard({
+  b,
+  now,
+  onSaved,
+}: {
+  b: BusinessSwitch;
+  now: number;
+  onSaved: () => void;
+}) {
   const to = b.mode === 'poc' ? 'regular' : 'poc';
   const from = to === 'poc' ? b.pocFrom : b.regularFrom;
   const [asking, setAsking] = useState(false);
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  /** Days the switch back would cut off the POC's planned months (asked before it is sent). */
+  const p = b.poc;
+  const early =
+    to === 'regular' && p.phase === 'running' && from < p.plannedEnd
+      ? Math.max(1, Math.ceil((p.plannedEnd - from) / 86_400))
+      : 0;
+  const [sure, setSure] = useState(false);
   const save = async (e: FormEvent) => {
     e.preventDefault();
     setBusy(true);
     setError('');
     try {
-      await api('/settings/business', { mode: to, reason });
+      await api('/settings/business', { mode: to, reason, ...(early > 0 ? { early: sure } : {}) });
       setAsking(false);
       setReason('');
+      setSure(false);
       onSaved();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not reach the server. Try again.');
@@ -204,6 +226,43 @@ function BusinessSwitchCard({ b, onSaved }: { b: BusinessSwitch; onSaved: () => 
           Now: {MODE_NAMES[b.mode]}
         </span>
       </div>
+      {b.alerts.map((a) => (
+        <p
+          key={a.kind}
+          className={`banner${a.kind === 'months-over' ? ' banner--warn' : ''}`}
+          role="status"
+        >
+          {a.text}
+        </p>
+      ))}
+      {p.phase !== 'none' && (
+        <dl className="facts" aria-label="The POC">
+          <div>
+            <dt>{p.phase === 'scheduled' ? 'Starts' : 'Started'}</dt>
+            <dd>
+              {dayOfIndia(p.startsAt)}, 8 am
+              {p.phase === 'scheduled' && ` (in ${daysTo(now, p.startsAt)} days)`}
+            </dd>
+          </div>
+          <div>
+            <dt>Planned</dt>
+            <dd>
+              {b.pocMonths} months, ends {dayOfIndia(p.plannedEnd - 86_400)}; switch to regular
+              business on the morning of {dayOfIndia(p.plannedEnd)}
+              {p.phase === 'running' &&
+                (now < p.plannedEnd
+                  ? ` (${daysTo(now, p.plannedEnd)} days to go)`
+                  : ' (its months are over)')}
+            </dd>
+          </div>
+          {p.endedAt !== null && (
+            <div>
+              <dt>Ended</dt>
+              <dd>{dayOfIndia(p.endedAt)}, 8 am</dd>
+            </div>
+          )}
+        </dl>
+      )}
       {b.next && (
         <p className="ok" role="status">
           Switching to {MODE_NAMES[b.next.mode]} from {dayOfIndia(b.next.from)}, 8 am.
@@ -211,11 +270,12 @@ function BusinessSwitchCard({ b, onSaved }: { b: BusinessSwitch; onSaved: () => 
       )}
       <Info label="What the switch changes">
         In the POC, riders get the POC base pay (₹2,000 / ₹4,000 / ₹6,000 in months 1, 2 and 3) and
-        the founding bonus, and every bike runs (the calendar limits an area-hour only where a super
-        admin set a limit). In regular business, riders earn ₹25 a moving hour and their share of
-        sales, and the calendar uses the supply forecast. Bookings, plays and invoices work the same
-        in both. The POC is switched on from the 1st of a month, off from the start of the day; it
-        runs once.
+        the founding bonus, every bike plays the POC brands in turn, and up to the POC&apos;s bikes
+        can be fitted. In regular business, riders earn ₹25 a moving hour and their share of sales,
+        and the calendar uses the supply forecast. The POC is switched on from the 1st of a month
+        (scheduled until then: POC brands, their fees and plans are set up meanwhile) and switched
+        back by hand from the start of the day: on the morning of the 1st after its months. It runs
+        once.
       </Info>
       {b.canSwitch && !b.next && !asking && (
         <button
@@ -232,6 +292,12 @@ function BusinessSwitchCard({ b, onSaved }: { b: BusinessSwitch; onSaved: () => 
             The whole business moves to <b>{MODE_NAMES[to]}</b> from <b>{dayOfIndia(from)}, 8 am</b>
             . Riders&apos; pay from that day follows it.
           </p>
+          {early > 0 && (
+            <label className="banner banner--warn">
+              <input type="checkbox" checked={sure} onChange={(e) => setSure(e.target.checked)} />{' '}
+              This ends the POC {early} {early === 1 ? 'day' : 'days'} early — are you sure?
+            </label>
+          )}
           <label className="rc-field">
             <span className="rc-field__label">Why (kept with the switch)</span>
             <input
@@ -252,7 +318,7 @@ function BusinessSwitchCard({ b, onSaved }: { b: BusinessSwitch; onSaved: () => 
             <button
               type="submit"
               className="rc-button rc-button--primary"
-              disabled={busy || reason.trim().length < 5}
+              disabled={busy || reason.trim().length < 5 || (early > 0 && !sure)}
               aria-busy={busy}
             >
               Yes, switch to {MODE_NAMES[to]}
@@ -340,7 +406,7 @@ export default function SettingsPageView() {
       )}
       {page && s && (
         <div className="stack">
-          {page.business && <BusinessSwitchCard b={page.business} onSaved={load} />}
+          {page.business && <BusinessSwitchCard b={page.business} now={page.at} onSaved={load} />}
           <section className="rc-card stack" aria-label="Staff and roles">
             <h2>Staff and roles</h2>
             <p className="muted">
@@ -679,6 +745,63 @@ export default function SettingsPageView() {
                   />{' '}
                   Offer the free week on the brand portal
                 </label>
+              </>
+            )}
+          </Section>
+
+          <Section {...common('poc')} title="POC package">
+            {(v, set) => (
+              <>
+                <Info label="About this setting">
+                  While the business is on POC: the most brands in a month (each gets the
+                  hour&apos;s 200 brand plays shared out: 40 brands, 5 each), the fixed fee a month
+                  before GST, the most bikes with a screen, and the months the POC is planned to run
+                  (its alerts and the early-end check; also a brand&apos;s longest commitment). A
+                  month already added keeps the fee it was added at.
+                </Info>
+                <div className="cal-bar">
+                  <Field label="Most brands in a month">
+                    <input
+                      className="rc-input"
+                      type="number"
+                      min={1}
+                      max={200}
+                      value={v.maxBrands}
+                      onChange={(e) => set({ ...v, maxBrands: Number(e.target.value) })}
+                    />
+                  </Field>
+                  <Field label="Fee a month, ₹ before GST">
+                    <input
+                      className="rc-input"
+                      type="number"
+                      min={1000}
+                      step={1}
+                      value={v.feePaise / 100}
+                      onChange={(e) =>
+                        set({ ...v, feePaise: Math.round(Number(e.target.value) * 100) })
+                      }
+                    />
+                  </Field>
+                  <Field label="Most bikes">
+                    <input
+                      className="rc-input"
+                      type="number"
+                      min={1}
+                      value={v.maxBikes}
+                      onChange={(e) => set({ ...v, maxBikes: Number(e.target.value) })}
+                    />
+                  </Field>
+                  <Field label="Months the POC runs">
+                    <input
+                      className="rc-input"
+                      type="number"
+                      min={1}
+                      max={12}
+                      value={v.pocMonths}
+                      onChange={(e) => set({ ...v, pocMonths: Number(e.target.value) })}
+                    />
+                  </Field>
+                </div>
               </>
             )}
           </Section>

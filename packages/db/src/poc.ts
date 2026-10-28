@@ -906,7 +906,12 @@ export interface PocDesk {
 export async function pocDesk(c: Q, now: number): Promise<PocDesk> {
   const rules = await pocRules(c);
   const changes = await businessModes(c);
-  const month = businessMonthAt(now) ?? calendarMonth(now);
+  const first = changes.find((x) => x.mode === 'poc');
+  // Scheduled: the POC's first month (the one being set up); else the business month now.
+  const month =
+    first && first.from > now
+      ? calendarMonth(first.from)
+      : (businessMonthAt(now) ?? calendarMonth(now));
   const b = await c.query<{
     brand_id: string;
     first_month: string;
@@ -946,7 +951,6 @@ export async function pocDesk(c: Q, now: number): Promise<PocDesk> {
     playsByRef(c, refs, w.startsAt, w.endsAt),
     playsByRef(c, refs, dayStart, dayStart + 18 * 3600),
   ]);
-  const first = changes.find((x) => x.mode === 'poc');
   return {
     at: now,
     on: modeAt(changes, now) === 'poc',

@@ -23,6 +23,9 @@ const ALLOWED = [
   'packages/db/src/reports.ts',
   // P7.8.3: a POC brand's month as a report (people as a range, never billed)
   'packages/db/src/poc-report.ts',
+  'apps/admin/app/poc/page.tsx',
+  'apps/admin/lib/poc.ts',
+  'apps/brand/app/poc/page.tsx',
   'services/workers/src/report-html.ts',
   'services/workers/src/report-pdf.ts',
   // the box's signed play record carries the count (P2.7), and the shared cases for it

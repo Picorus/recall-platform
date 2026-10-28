@@ -3,10 +3,22 @@
 // in by email and sees their brand; wrong codes are told; sign-out ends it.
 // Needs `next build` first and DATABASE_URL (pnpm services:up).
 import { fakeFileStore, fakeGst, fakeMessages, fakePayments } from '@recall/adapters';
-import { launchAreas, PRICE_BOOK_V1, type CampaignReport } from '@recall/domain';
+import {
+  launchAreas,
+  playBytes,
+  PRICE_BOOK_V1,
+  type CampaignReport,
+  type Numbered,
+  type PlayReport,
+} from '@recall/domain';
 import { apiHandler } from '@recall/api';
 import {
+  addPocBrand,
+  addScreenKey,
   applyLinkStatus,
+  sendPocForPayment,
+  setBusinessMode,
+  storeUpload,
   createAccount,
   createBooking,
   moveBooking,
@@ -17,7 +29,7 @@ import {
 } from '@recall/db';
 import { freshDatabase } from '@recall/db/test-db';
 import { spawn, type ChildProcess } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
+import { generateKeyPairSync, randomBytes, sign } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { chromium, type Browser } from 'playwright';
@@ -546,6 +558,166 @@ it('a new business sets itself up from its GST number, sees its free week, books
   expect(await page.getByRole('checkbox', { name: 'Madhapur' }).getAttribute('aria-checked')).toBe(
     'true',
   );
+  expect(errors).toEqual([]);
+  await page.close();
+}, 90_000);
+
+it('a POC brand: its months, a Pay button for the next, and its numbers by day (P7.8)', async () => {
+  const pool = db.pool;
+  const india = (t: number) => new Date((t + 19_800) * 1000).toISOString();
+  const now = Math.floor(Date.now() / 1000);
+  const ym = (t: number) => india(t).slice(0, 7);
+  const monthStart = (m: string) => Date.parse(`${m}-01T08:00:00+05:30`) / 1000;
+  // The POC switched on mid-month two months back: it began on the 1st of last month.
+  const last = ym(monthStart(ym(now)) - 86_400);
+  const before = ym(monthStart(last) - 86_400);
+  const on = Date.parse(`${before}-15T11:00:00+05:30`) / 1000;
+  await setBusinessMode(pool, 'poc', { id: 'prateek', role: 'super-admin' }, 'POC on', on);
+  await createAccount(
+    pool,
+    {
+      brandId: 'poc-chai',
+      kind: 'brand',
+      details: { name: 'POC Chai', agencyId: null, referredBy: null, active: true },
+      by: 'Sana',
+      reason: 'POC brand',
+    },
+    on,
+  );
+  const ads: string[] = [];
+  for (const k of [1, 2]) {
+    const adId = `AD-00000000F${k}`;
+    await pool.query(
+      `INSERT INTO ads (ad_id, brand_id, name, file_key, bytes, kind, checks, outcome, uploaded_by, uploaded_at)
+       VALUES ($1, 'poc-chai', $2, $3, 1000, 'png', '[]', 'pass', 'Sana', now())`,
+      [adId, `Chai ad ${k}`, String(k).repeat(64)],
+    );
+    await pool.query(
+      `INSERT INTO ad_reviews (ad_id, decision, checklist, reviewed_by, reviewed_at)
+       VALUES ($1, 'approved', '{}', 'Prateek', now())`,
+      [adId],
+    );
+    ads.push(adId);
+  }
+  await addPocBrand(
+    pool,
+    { brandId: 'poc-chai', firstMonth: last, months: 3, adIds: ads, reason: 'signed for 3 months' },
+    'Sana',
+    on + 60,
+  );
+  // Last month and this month paid before they started.
+  for (const [i, m] of [last, ym(now)].entries()) {
+    const link = await sendPocForPayment(pool, payments, `poc/poc-chai/${m}`, 'Sana', on + 120 + i);
+    await applyLinkStatus(
+      pool,
+      link.linkId,
+      {
+        state: 'paid',
+        paymentId: `pay_poc_${i}`,
+        paidAt: on + 200 + i,
+        amountPaise: link.amountPaise,
+      },
+      on + 200 + i,
+    );
+  }
+  // A screen's signed plays near Hitech City on two recent evenings (plays older than 7 days when
+  // they arrive are kept but never count).
+  const key = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+  const screen = 'SCR-0000E2E1';
+  await addScreenKey(
+    pool,
+    screen,
+    'k1',
+    key.publicKey.export({ format: 'der', type: 'spki' }).toString('base64'),
+    'fitter',
+  );
+  let seq = 0;
+  const plays: Numbered[] = [];
+  const evenings = [3, 2].map((back) => india(now - back * 86_400).slice(0, 10));
+  const shown = ym(Date.parse(`${evenings[1] ?? ''}T12:00:00Z`) / 1000);
+  for (const date of evenings)
+    for (let i = 0; i < 5; i++) {
+      seq += 1;
+      const body: Omit<PlayReport, 'sig'> = {
+        kind: 'play',
+        keyId: 'k1',
+        slot: 'brand',
+        ref: `poc/poc-chai/${date.slice(0, 7)}`,
+        adId: ads[i % 2] ?? '',
+        startAt: Date.parse(`${date}T19:00:00+05:30`) / 1000 + i * 720,
+        lengthS: 15,
+        latE6: 17_455_000,
+        lngE6: 78_385_000,
+        accuracyM: 6,
+        place: 'outside',
+        people: 6,
+      };
+      const sig = sign('sha256', Buffer.from(playBytes(screen, seq, body)), {
+        key: key.privateKey,
+        dsaEncoding: 'der',
+      }).toString('base64');
+      plays.push({ seq, at: body.startAt + 15, report: { ...body, sig } });
+    }
+  await storeUpload(pool, screen, plays, 1, now);
+  await setPortalMember(
+    pool,
+    {
+      brandId: 'poc-chai',
+      address: '+919800000077',
+      role: 'owner',
+      active: true,
+      reason: 'owner',
+      by: 'Sana',
+    },
+    now - 60,
+  );
+
+  const page = await browser.newPage();
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto(`${SITE}/sign-in`);
+  await page.getByLabel('Mobile number').fill('98000 00077');
+  await page.getByRole('button', { name: 'Send code on WhatsApp' }).click();
+  await page.getByText('We sent a 6-digit code on WhatsApp').waitFor();
+  await page.getByLabel('Code').fill(lastCode('+919800000077'));
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.getByRole('heading', { name: 'POC Chai' }).waitFor();
+  await page.getByRole('link', { name: 'POC' }).click();
+  await page.getByRole('heading', { name: 'Your POC package' }).waitFor();
+  const months = page.getByRole('region', { name: 'Your months' });
+  await expect.poll(() => months.getByText('Paid', { exact: true }).count()).toBe(2);
+  await months.getByRole('button', { name: 'Pay' }).waitFor();
+  // The month of the last evening in numbers: its plays, one bike; people only as an estimate.
+  await page
+    .getByRole('button', {
+      name: new RegExp(
+        `^${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][Number(shown.slice(5)) - 1]}`,
+      ),
+    })
+    .click();
+  const numbers = page.getByRole('region', { name: / in numbers$/ });
+  await numbers.getByText('Different bikes').waitFor();
+  const expected = 5 * evenings.filter((d) => d.startsWith(shown)).length;
+  await expect
+    .poll(() => numbers.locator('.rc-stat__value').first().innerText())
+    .toBe(String(expected));
+  await numbers.getByText('an estimate, never billed').waitFor();
+  await numbers.getByText('Plays by day').waitFor();
+  // Paying next month makes its link (the button then goes to the payment page).
+  const next = await page.evaluate(
+    async (m) => {
+      const r = await fetch(`/api/poc/pay?brand=poc-chai&month=${m}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: '{}',
+      });
+      return { status: r.status, body: (await r.json()) as { url?: string } };
+    },
+    ym(monthStart(ym(now)) + 32 * 86_400),
+  );
+  expect(next.status).toBe(200);
+  expect(next.body.url).toMatch(/^https:\/\//);
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/brand-poc.png`, fullPage: true });
   expect(errors).toEqual([]);
   await page.close();
 }, 90_000);

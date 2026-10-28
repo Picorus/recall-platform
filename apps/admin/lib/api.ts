@@ -42,4 +42,6 @@ export interface Member {
   readonly role: Role;
   readonly areas: readonly Area[];
   readonly active: boolean;
+  /** P7.8: what super admins are told about the POC (scheduled, starts, ends soon, months over). */
+  readonly alerts?: readonly { readonly kind: string; readonly text: string }[];
 }
