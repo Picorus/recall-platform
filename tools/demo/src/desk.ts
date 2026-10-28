@@ -37,16 +37,21 @@ const codeOf = (m: Message): string => {
   return /\b(\d{6})\b/.exec(`${params} ${text}`)?.[1] ?? '';
 };
 
+// The faces of Design 2.0 (P7.7): Instrument Sans for words, IBM Plex Mono for codes.
+const FONTS =
+  'https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400..700&family=IBM+Plex+Mono:wght@500&display=swap';
+
 const PAGE_STYLE = `
-  :root { --bg:#0b1020; --card:#141b33; --ink:#eef1fb; --muted:#9aa4c4; --accent:#ffb020; --line:#26304f; }
-  * { box-sizing:border-box; } body { margin:0; font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif; background:var(--bg); color:var(--ink); }
-  main { max-width:960px; margin:0 auto; padding:24px 16px 48px; } h1 { margin:0 0 4px; font-size:28px; }
-  h2 { font-size:18px; margin:0 0 12px; } p.muted, .muted { color:var(--muted); }
+  :root { --bg:#0a0e17; --card:#121723; --ink:#f4f5f0; --muted:#b9beb8; --accent:#c8f54a; --line:rgba(255,255,255,.08); }
+  * { box-sizing:border-box; } body { margin:0; font:16px/1.55 "Instrument Sans",system-ui,-apple-system,"Segoe UI",sans-serif; background:var(--bg); color:var(--ink); -webkit-font-smoothing:antialiased; }
+  main { max-width:960px; margin:0 auto; padding:28px 20px 48px; } h1 { margin:0 0 4px; font-size:30px; font-weight:600; letter-spacing:-.02em; }
+  h2 { font-size:17px; font-weight:600; margin:0 0 12px; } p.muted, .muted { color:var(--muted); }
   .grid { display:grid; gap:16px; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); margin:20px 0; }
-  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; }
-  a.btn, button { display:inline-block; background:var(--accent); color:#1a1300; font-weight:700; border:0; border-radius:8px; padding:10px 14px; text-decoration:none; cursor:pointer; font-size:15px; }
-  code, .mono { font-family:ui-monospace,Menlo,monospace; } .big { font-size:34px; letter-spacing:4px; font-weight:800; color:var(--accent); }
-  table { width:100%; border-collapse:collapse; } td,th { text-align:left; padding:6px 4px; border-bottom:1px solid var(--line); font-size:14px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:18px; }
+  a.btn, button { display:inline-block; background:var(--accent); color:#0a0e17; font-weight:600; border:0; border-radius:10px; padding:11px 16px; text-decoration:none; cursor:pointer; font-size:15px; transition:transform .11s; }
+  a.btn:active, button:active { transform:scale(.97); }
+  code, .mono { font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace; } .big { font-size:36px; letter-spacing:4px; font-weight:600; color:var(--accent); }
+  table { width:100%; border-collapse:collapse; } td,th { text-align:left; padding:7px 4px; border-bottom:1px solid var(--line); font-size:14px; }
 `;
 
 function deskPage(d: DeskInfo, nowMs: number): string {
@@ -58,7 +63,7 @@ function deskPage(d: DeskInfo, nowMs: number): string {
     .slice(0, 8);
   const s = d.stats();
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta http-equiv="refresh" content="10"><title>RECALL demo desk</title><style>${PAGE_STYLE}</style></head><body><main>
+<meta http-equiv="refresh" content="10"><title>RECALL demo desk</title><link rel="stylesheet" href="${FONTS}"><style>${PAGE_STYLE}</style></head><body><main>
 <h1>RECALL demo desk</h1>
 <p class="muted">Everything here is made up: no real money moves and no real message is sent. This page refreshes every 10 seconds.</p>
 <div class="grid">
@@ -100,7 +105,7 @@ function payPage(
   linkId: string,
   l: { amountPaise: number; description?: string } | undefined,
 ): string {
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Pay (demo)</title><style>${PAGE_STYLE}</style></head><body><main>
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Pay (demo)</title><link rel="stylesheet" href="${FONTS}"><style>${PAGE_STYLE}</style></head><body><main>
 <div class="card" style="max-width:420px;margin:40px auto"><h1>Payment</h1>
 <p class="muted">A stand-in for the real payment page (cards, UPI, net banking). No money moves.</p>
 ${

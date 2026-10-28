@@ -2,6 +2,14 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 28 Oct 2026 · P7.7.5 · Design 2.0, polish and proof
+- Every guide screenshot (`docs/guides/img`, 32 pictures) retaken from the demo in the new design by `pnpm --filter @recall/demo tour`, which also proves every page of the three apps opens.
+- The guides describe the new way around: the brand portal's top bar and account menu, the staff portal's side menu and Ctrl K.
+- The demo desk in Night Signal colours and Instrument Sans (it was still the old amber).
+- Checked at phone and laptop size: brand sign-in, campaigns and booking (two pictures a row and a total bar on phones), the rider app in English, Telugu and Hindi, the staff menu (a scrolling row on phones).
+- Design 2.0 (P7.7) is done. Open: the rider map home waits for the maps account (P6); real photos of our bikes can replace the drawn pictures when we have them.
+- Next: P6 as accounts open.
+
 ## 28 Oct 2026 · P7.7.4 · Design 2.0, the staff portal
 - **Side menu** grouped by job (Today and Dashboard; Sales; Fleet; Work; Money; Admin), each page with its icon, the open page marked; the same role rules as before (one list, `MENU` in `lib/session.tsx`). On a phone it becomes a row you scroll.
 - **Jump box**: Ctrl K (⌘K on a Mac) or "Jump to…" opens a search of every page you can see; arrows to move, Enter to go, Esc to close.

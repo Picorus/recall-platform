@@ -36,7 +36,7 @@ The brand's campaigns, in three tabs: **Scheduled**, **Running** and **Done**. E
 
 The buttons:
 - **Book again** copies the campaign into a new booking.
-- **Book**, **Invoices**, **Team**, **Help** and **Business details** at the top open the other pages.
+- The bar at the top has **Campaigns**, **Invoices**, **Team** and **Help**, the volt **Book** button, and the business's name. Click the name for **Business details**, switching to another business, and **Sign out**.
 
 ### Book
 ![Book](img/brand-book.png)
