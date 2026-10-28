@@ -14,6 +14,7 @@ import type pg from 'pg';
 import { saveAreaVersion } from '../../src/areas.js';
 import { canSwitch, markDemoCopy, setBusinessMode } from '../../src/business-mode.js';
 import { createBooking, moveBooking, savePriceBook } from '../../src/bookings.js';
+import { giveCut } from '../../src/cuts.js';
 import { accountTotals, trialBalance } from '../../src/ledger.js';
 import { addScreenKey } from '../../src/plays.js';
 import {
@@ -352,6 +353,33 @@ describe('rider pay after the POC (P1.7.5)', () => {
       paidSeconds: 260 * 3600,
       hourly: 650_000,
     });
+  });
+
+  it('the 25% is on what RECALL keeps: after the agency and aggregator cuts (Prateek, 29 Oct)', async () => {
+    // An agency (10%) and an aggregator (2%) cut on the ₹1,500 line: his ₹300 sold becomes ₹264,
+    // 25% = ₹66 (was ₹75). September is final, so the change is reported, never posted.
+    const boss = { id: 'prateek', role: 'super-admin' };
+    const now = end + 50 * 3600;
+    await giveCut(
+      pool,
+      { bookingId: 'BK-R1', kind: 'agency', partnerId: 'adwise', gstBp: 1_800 },
+      boss,
+      'agency deal',
+      now,
+    );
+    await giveCut(
+      pool,
+      { bookingId: 'BK-R1', kind: 'aggregator', partnerId: 'swiggy', gstBp: 1_800 },
+      boss,
+      'referred by Swiggy',
+      now,
+    );
+    const r = await accrueRiderPay(pool, SEP, now);
+    expect(r.pay.find((p) => p.riderId === 'R-FFF')).toMatchObject({
+      soldPaise: 26_400,
+      sold: 6_600,
+    });
+    expect(r.late).toContainEqual({ riderId: 'R-FFF', grossChange: -900 });
   });
 
   it('the whole ledger balances', async () => {
