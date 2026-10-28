@@ -1,35 +1,110 @@
 /*
- * RECALL components (Night Signal). Plain CSS on the design tokens, so the brand portal, admin portal
- * and the RECALL design system all share it. Load tokens.css first, then this file.
+ * RECALL components (Night Signal, Design 2.0). Plain CSS on the design tokens, so the brand portal,
+ * admin portal and the RECALL design system all share it. Load tokens.css first, then this file.
  * Classes start with rc-. Text sizes follow the brand book's type styles (named in the comments).
+ * Motion: quick to answer (press 110ms), slow to settle (320–560ms); none when reduce motion is on.
  */
 
-/* ---------- Button: 44px tall, 6px corners. One primary per view. ---------- */
+/* ---------- Base: type rendering and figures that line up. ---------- */
+.rc-num,
+.rc-figures {
+  font-variant-numeric: tabular-nums lining-nums;
+}
+.rc-mono {
+  /* data */
+  font: 500 13px/20px var(--font-mono);
+  letter-spacing: -0.01em;
+}
+
+/* ---------- Button: 44px tall, 10px corners. One primary (volt) per view. ---------- */
 .rc-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: var(--space-2);
   min-height: 44px;
-  padding: 12px 18px;
-  border: 1.5px solid transparent;
+  padding: 0 18px;
+  border: 1px solid transparent;
   border-radius: var(--radius-sm);
-  font: 600 16px/20px var(--font-body);
+  font: 600 15px/1 var(--font-body);
+  letter-spacing: -0.005em;
   text-decoration: none;
+  white-space: nowrap;
   cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    transform var(--duration-press) var(--ease-out),
+    background-color var(--duration-quick),
+    border-color var(--duration-quick),
+    box-shadow var(--duration-quick),
+    color var(--duration-quick);
+}
+.rc-button:active:not(:disabled) {
+  transform: scale(0.97);
 }
 .rc-button--primary {
+  /* the one volt action */
   background: var(--brand);
   color: var(--on-brand);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.45),
+    inset 0 -1px 0 rgba(10, 14, 23, 0.12),
+    0 0 0 1px rgba(10, 14, 23, 0.06);
+}
+.rc-button--primary:hover {
+  background: #d3fa62;
+}
+.rc-button--strong {
+  /* a solid ink button: strong but not the volt action */
+  background: var(--ink);
+  color: var(--surface-0);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 1px 2px rgba(10, 14, 23, 0.2);
+}
+.rc-button--strong:hover {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 6px 16px -6px rgba(10, 14, 23, 0.45);
 }
 .rc-button--secondary {
-  background: transparent;
+  background: var(--surface-1);
   color: var(--ink);
   border-color: var(--line-strong);
+  box-shadow: var(--shadow-rest);
+}
+.rc-button--secondary:hover {
+  border-color: var(--ink-subtle);
+  box-shadow: var(--shadow-hover);
 }
 .rc-button--quiet {
   background: transparent;
   color: var(--ink-muted);
+}
+.rc-button--quiet:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+.rc-button--danger {
+  background: transparent;
+  color: var(--stop);
+  border-color: var(--stop);
+}
+.rc-button--small {
+  min-height: 34px;
+  padding: 0 12px;
+  font-size: 13.5px;
+  border-radius: 8px;
+}
+.rc-button--large {
+  min-height: 54px;
+  padding: 0 24px;
+  font-size: 16.5px;
+  border-radius: 14px;
+}
+.rc-button--block {
+  width: 100%;
 }
 .rc-button:focus-visible {
   outline: 2px solid var(--focus);
@@ -40,20 +115,79 @@
   background: var(--surface-2);
   color: var(--ink-subtle);
   border-color: transparent;
+  box-shadow: none;
   cursor: not-allowed;
+}
+.rc-button[aria-busy='true'] {
+  /* working: the label hides behind a small spinner, the size stays the same */
+  position: relative;
+  color: transparent !important;
+  pointer-events: none;
+}
+.rc-button[aria-busy='true']::after {
+  content: '';
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid var(--ink);
+  border-right-color: transparent;
+  border-left-color: transparent;
+  animation: rc-spin 0.8s linear infinite;
+}
+.rc-button--primary[aria-busy='true']::after {
+  border-top-color: var(--on-brand);
+  border-bottom-color: var(--on-brand);
+}
+.rc-button--strong[aria-busy='true']::after {
+  border-top-color: var(--surface-0);
+  border-bottom-color: var(--surface-0);
+}
+.rc-icon-button {
+  display: inline-grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  transition:
+    background-color var(--duration-quick),
+    transform var(--duration-press) var(--ease-out);
+}
+.rc-icon-button:hover {
+  background: var(--surface-2);
+}
+.rc-icon-button:active {
+  transform: scale(0.92);
+}
+.rc-icon-button:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.rc-icon {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 /* ---------- Field: label, input or select, helper or error text. ---------- */
 .rc-field {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: 6px;
   min-width: 0;
 }
 .rc-field__label {
-  /* body, 600 */
-  font: 600 16px/24px var(--font-body);
-  color: var(--ink);
+  font: 600 13.5px/20px var(--font-body);
+  color: var(--ink-muted);
 }
 .rc-field__help {
   /* caption */
@@ -68,92 +202,225 @@
 .rc-input {
   box-sizing: border-box;
   width: 100%;
-  min-height: 44px;
-  padding: 10px 12px;
+  min-width: 0;
+  min-height: 46px;
+  padding: 10px 14px;
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-sm);
-  background: var(--surface-0);
+  background: var(--surface-1);
   color: var(--ink);
-  font: 400 16px/24px var(--font-body);
+  font: 500 15.5px/24px var(--font-body);
+  transition:
+    border-color var(--duration-quick),
+    box-shadow var(--duration-quick);
 }
 .rc-input::placeholder {
   color: var(--ink-subtle);
+  font-weight: 400;
+}
+.rc-input:hover:not(:disabled) {
+  border-color: var(--ink-subtle);
 }
 .rc-input--number {
-  /* data: figures line up */
-  font: 500 16px/24px var(--font-mono);
+  font-variant-numeric: tabular-nums;
   text-align: right;
 }
 .rc-input:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: 2px;
+  /* the field lights up: ink edge and a soft volt glow (focus is never colour alone) */
+  outline: none;
+  border-color: var(--focus);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--brand) 38%, transparent);
 }
 .rc-input[aria-invalid='true'] {
   border-color: var(--stop);
-  border-width: 2px;
-  padding: 9px 11px;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--stop) 18%, transparent);
 }
 .rc-input:disabled {
   background: var(--surface-2);
   color: var(--ink-subtle);
   cursor: not-allowed;
 }
+select.rc-input {
+  appearance: none;
+  padding-right: 38px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%237A7F77' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9.5 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 16px;
+}
+.rc-code {
+  /* six boxes for a WhatsApp or SMS code */
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+.rc-code .rc-input {
+  min-height: 54px;
+  padding: 0;
+  text-align: center;
+  font: 600 22px/1 var(--font-body);
+}
+
+/* ---------- Switch and segmented control ---------- */
+.rc-switch {
+  position: relative;
+  flex: none;
+  width: 44px;
+  height: 26px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--line-strong);
+  cursor: pointer;
+  transition: background-color var(--duration-quick);
+}
+.rc-switch::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  transition: translate var(--duration-move) var(--ease-spring);
+}
+.rc-switch[aria-checked='true'] {
+  background: var(--go);
+}
+.rc-switch[aria-checked='true']::after {
+  translate: 18px 0;
+}
+.rc-switch:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.rc-segmented {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+.rc-segmented > * {
+  border: 0;
+  border-radius: 9px;
+  padding: 7px 14px;
+  background: transparent;
+  color: var(--ink-muted);
+  font: 600 13.5px/18px var(--font-body);
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background-color var(--duration-quick),
+    color var(--duration-quick),
+    box-shadow var(--duration-quick);
+}
+.rc-segmented > [aria-pressed='true'],
+.rc-segmented > [aria-current='page'],
+.rc-segmented > [aria-selected='true'] {
+  background: var(--surface-1);
+  color: var(--ink);
+  box-shadow: var(--shadow-rest);
+}
 
 /* ---------- Chips: status (a dot and a word) and filter (selectable). Pills. ---------- */
 .rc-chip {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
-  padding: 6px 12px;
-  border: 1px solid var(--line);
+  gap: 6px;
+  min-height: 24px;
+  padding: 0 10px;
+  border: 0;
   border-radius: var(--radius-pill);
-  background: transparent;
+  background: var(--surface-2);
   color: var(--ink-muted);
-  font: 600 13px/16px var(--font-body);
+  font: 600 12.5px/16px var(--font-body);
+  white-space: nowrap;
 }
 .rc-chip__dot {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: currentColor;
 }
 .rc-chip--go {
+  background: var(--go-soft);
   color: var(--go);
 }
 .rc-chip--paused {
+  /* live / running: the volt wash, its dot breathes */
+  background: var(--brand-soft);
   color: var(--brand-ink);
 }
 .rc-chip--paused .rc-chip__dot {
-  background: var(--brand);
+  background: var(--brand-ink);
+  animation: rc-breathe 2.4s var(--ease-in-out) infinite;
 }
 .rc-chip--offline {
+  background: var(--surface-2);
   color: var(--ink-subtle);
 }
 .rc-chip--stop {
+  background: var(--stop-soft);
   color: var(--stop);
 }
-button.rc-chip {
-  min-height: 32px;
-  border-color: var(--line-strong);
-  color: var(--ink);
-  cursor: pointer;
+.rc-chip--info {
+  background: var(--data-soft);
+  color: var(--data);
 }
-button.rc-chip:focus-visible {
+button.rc-chip,
+a.rc-chip {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px dashed var(--line-strong);
+  background: transparent;
+  color: var(--ink-muted);
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background-color var(--duration-quick),
+    border-color var(--duration-quick),
+    color var(--duration-quick);
+}
+button.rc-chip:hover,
+a.rc-chip:hover {
+  background: var(--surface-1);
+  color: var(--ink);
+}
+button.rc-chip:focus-visible,
+a.rc-chip:focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
-button.rc-chip[aria-pressed='true'] {
-  /* selected: wash + tick, so it never depends on colour alone */
-  background: var(--brand-soft);
-  border-color: var(--brand-ink);
+button.rc-chip[aria-pressed='true'],
+a.rc-chip[aria-current='page'] {
+  /* selected: solid edge, wash and a tick, so it never depends on colour alone */
+  border-style: solid;
+  border-color: var(--ink);
+  background: var(--surface-1);
   color: var(--ink);
 }
-button.rc-chip[aria-pressed='true']::before {
+button.rc-chip[aria-pressed='true']::before,
+a.rc-chip[aria-current='page']::before {
   content: '✓';
   color: var(--brand-ink);
 }
+.rc-count {
+  /* a number of things waiting, e.g. on a menu item */
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: var(--radius-pill);
+  background: var(--ink);
+  color: var(--surface-0);
+  font: 600 11px/1 var(--font-body);
+  font-variant-numeric: tabular-nums;
+}
 
-/* ---------- Card and stat tile: surface-1, hairline, 14px corners. ---------- */
+/* ---------- Card and stat tile: white on paper, 16px corners, soft depth. ---------- */
 .rc-card {
   display: flex;
   flex-direction: column;
@@ -163,46 +430,62 @@ button.rc-chip[aria-pressed='true']::before {
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
   background: var(--surface-1);
+  box-shadow: var(--shadow-rest);
   color: var(--ink);
+}
+a.rc-card,
+.rc-card--link {
+  text-decoration: none;
+  transition:
+    box-shadow var(--duration-quick),
+    border-color var(--duration-quick),
+    transform var(--duration-press) var(--ease-out);
+}
+a.rc-card:hover,
+.rc-card--link:hover {
+  box-shadow: var(--shadow-hover);
+}
+a.rc-card:active,
+.rc-card--link:active {
+  transform: scale(0.995);
 }
 .rc-card__title {
   /* title */
   margin: 0;
-  font: 600 24px/32px var(--font-body);
+  font: 600 20px/28px var(--font-body);
+  letter-spacing: -0.01em;
 }
 .rc-card__body {
   /* body */
   margin: 0;
-  font: 400 16px/24px var(--font-body);
+  font: 400 15px/24px var(--font-body);
   color: var(--ink-muted);
 }
 .rc-stat {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   min-width: 0;
-  padding: 20px;
+  padding: 18px 20px;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
   background: var(--surface-1);
+  box-shadow: var(--shadow-rest);
   /* The value shrinks to fit its tile (₹4,35,066 in a narrow column), never past it. */
   container-type: inline-size;
 }
 .rc-stat__label {
-  /* label (11px in tiles) */
   margin: 0;
-  font: 600 11px/16px var(--font-body);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  font: 500 13px/18px var(--font-body);
   color: var(--ink-subtle);
 }
 .rc-stat__value {
+  /* numeral, sized to the tile */
   margin: 0;
-  font: 800 40px/1 var(--font-display);
-  font-size: clamp(20px, 15cqi, 40px);
-  font-stretch: 110%;
-  letter-spacing: -0.02em;
-  font-variant-numeric: tabular-nums;
+  font: 600 32px/1.1 var(--font-body);
+  font-size: clamp(20px, 13cqi, 32px);
+  letter-spacing: -0.025em;
+  font-variant-numeric: tabular-nums lining-nums;
   color: var(--ink);
 }
 .rc-stat__note {
@@ -221,42 +504,48 @@ button.rc-chip[aria-pressed='true']::before {
   color: var(--on-brand);
 }
 
-/* ---------- Table: label headers, mono figures right-aligned, hairline rows. ---------- */
+/* ---------- Table: quiet headers, figures right-aligned, a row lights up under the pointer. ---------- */
 .rc-table {
   width: 100%;
-  border-collapse: collapse;
-  font: 400 16px/24px var(--font-body);
+  border-collapse: separate;
+  border-spacing: 0;
+  font: 400 14.5px/22px var(--font-body);
   color: var(--ink-muted);
 }
 .rc-table th {
-  /* label */
-  padding: var(--space-2) var(--space-3);
-  border-bottom: 1px solid var(--line-strong);
-  font: 600 12px/16px var(--font-body);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  padding: 10px var(--space-3);
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface-2) 45%, var(--surface-1));
+  font: 600 12.5px/16px var(--font-body);
   text-align: left;
+  white-space: nowrap;
   color: var(--ink-subtle);
 }
 .rc-table td {
-  padding: 12px var(--space-3);
+  padding: 13px var(--space-3);
   border-bottom: 1px solid var(--line);
+}
+.rc-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+.rc-table tbody tr {
+  transition: background-color var(--duration-quick);
+}
+.rc-table tbody tr:hover {
+  background: color-mix(in srgb, var(--surface-2) 35%, transparent);
 }
 .rc-table td:first-child {
   color: var(--ink);
+  font-weight: 500;
 }
 .rc-table .rc-num {
-  /* data */
-  font: 500 14px/20px var(--font-mono);
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: tabular-nums lining-nums;
   text-align: right;
   white-space: nowrap;
-}
-.rc-table th.rc-num {
-  font: 600 12px/16px var(--font-body);
+  color: var(--ink);
 }
 .rc-table--banded tbody tr:nth-child(even) {
-  background: var(--surface-2);
+  background: color-mix(in srgb, var(--surface-2) 40%, transparent);
 }
 .rc-table tr.rc-row--highlight {
   background: var(--brand-soft);
@@ -265,6 +554,124 @@ button.rc-chip[aria-pressed='true']::before {
   color: var(--ink);
 }
 .rc-table-wrap {
-  /* wide tables scroll inside their card on phones, never the page */
+  /* a table sits on its own white card; wide ones scroll inside it on phones, never the page */
   overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+  box-shadow: var(--shadow-rest);
+}
+
+/* ---------- Toast, loading shimmer, empty state ---------- */
+.rc-toast {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-radius: 14px;
+  background: var(--midnight);
+  color: var(--paper);
+  font: 500 14px/20px var(--font-body);
+  box-shadow: var(--shadow-lift);
+  animation: rc-toast-in var(--duration-move) var(--ease-spring) both;
+}
+.rc-toast .rc-icon {
+  color: var(--volt);
+}
+.rc-skeleton {
+  display: block;
+  min-height: 12px;
+  border-radius: var(--radius-xs);
+  background: linear-gradient(
+    90deg,
+    var(--surface-2) 0%,
+    color-mix(in srgb, var(--surface-2) 40%, var(--surface-1)) 50%,
+    var(--surface-2) 100%
+  );
+  background-size: 200% 100%;
+  animation: rc-shimmer 1.4s var(--ease-in-out) infinite;
+}
+.rc-empty {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-2);
+  padding: var(--space-6) var(--space-4);
+  text-align: center;
+  color: var(--ink-muted);
+}
+.rc-empty__title {
+  margin: 0;
+  font: 400 32px/1.1 var(--font-display);
+  color: var(--ink);
+}
+
+/* ---------- Motion helpers ---------- */
+.rc-enter {
+  animation: rc-enter var(--duration-move) var(--ease-out) both;
+}
+.rc-stagger > * {
+  animation: rc-enter var(--duration-slow) var(--ease-out) both;
+}
+.rc-stagger > :nth-child(2) {
+  animation-delay: 40ms;
+}
+.rc-stagger > :nth-child(3) {
+  animation-delay: 80ms;
+}
+.rc-stagger > :nth-child(4) {
+  animation-delay: 120ms;
+}
+.rc-stagger > :nth-child(5) {
+  animation-delay: 160ms;
+}
+.rc-stagger > :nth-child(n + 6) {
+  animation-delay: 200ms;
+}
+@keyframes rc-enter {
+  from {
+    opacity: 0;
+    translate: 0 10px;
+  }
+}
+@keyframes rc-toast-in {
+  from {
+    opacity: 0;
+    translate: 0 14px;
+    scale: 0.96;
+  }
+}
+@keyframes rc-spin {
+  to {
+    rotate: 360deg;
+  }
+}
+@keyframes rc-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+@keyframes rc-breathe {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, currentColor 45%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 4px transparent;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rc-button,
+  .rc-card,
+  .rc-switch::after,
+  .rc-enter,
+  .rc-stagger > *,
+  .rc-toast,
+  .rc-skeleton,
+  .rc-chip__dot {
+    animation: none !important;
+    transition: none !important;
+  }
 }

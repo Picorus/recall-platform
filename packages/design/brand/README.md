@@ -28,3 +28,17 @@ Clear space equals the cap height on every side. Minimum 120 px wide on screen (
 | Play Store listing | `android/play-store-512.png` |
 
 The square and adaptive versions are made from `recall-app-icon.svg` by moving or scaling the same three shapes (`src/icons.ts`); nothing is redrawn. Change the icon there and rebuild.
+
+## Night pictures (`photos/`)
+
+Hyderabad after dark, drawn for RECALL with code in the style of long-exposure street photography (P7.7). They are ours to use anywhere; when real photos of our bikes exist they take the same places.
+
+| File | Scene | Used for |
+|---|---|---|
+| `hero.webp` | A RECALL screen lit on a bike, the street in soft lights | Sign-in pages, investor deck, website |
+| `bridge.webp` | Durgam Cheruvu cable bridge over the lake | Madhapur |
+| `towers.webp`, `towers2.webp` | Glass towers over tail-light trails | Hitech City, Kondapur |
+| `flyover.webp` | A flyover curving through city lights | Gachibowli |
+| `avenue.webp`, `avenue2.webp` | Wet avenue with sodium lamps | Jubilee Hills, Banjara Hills |
+
+Each comes at 2560 × 1600 and as `-s` at 1280 × 800 for cards and thumbnails. To change one, edit `scripts/night-scenes.html` and run `node packages/design/scripts/photos.mjs`.

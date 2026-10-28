@@ -10,6 +10,8 @@ body {
   background: var(--surface-0);
   color: var(--ink);
   font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 .shell {
   max-width: 960px;
@@ -33,9 +35,10 @@ body {
   flex-wrap: wrap;
 }
 .brand {
-  font-family: var(--font-display);
+  /* the RECALL wordmark in text: sans, tracked wide (the serif is for headlines only) */
+  font-family: var(--font-body);
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.14em;
   margin: 0;
 }
 .narrow {
@@ -77,7 +80,10 @@ body {
 }
 h1,
 h2 {
-  font-family: var(--font-display);
+  /* headline: Instrument Sans 600, tight */
+  font-family: var(--font-body);
+  font-weight: 600;
+  letter-spacing: -0.02em;
   margin: 0;
 }
 .stack > * {

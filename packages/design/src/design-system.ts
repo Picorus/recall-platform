@@ -3,6 +3,7 @@
 import {
   coreColors,
   fontFamilies,
+  motion,
   radii,
   shadows,
   spacing,
@@ -15,7 +16,7 @@ import {
 export function designSystemTokens(): unknown {
   return {
     name: 'RECALL',
-    version: 3,
+    version: 4,
     meta: { source: 'github.com/Picorus/recall-platform · packages/design/src/tokens.ts' },
     color: {
       themes: [
@@ -50,12 +51,16 @@ export function designSystemTokens(): unknown {
       tokens: spacing.map(({ name, value, usage }) => ({ name, value: `${value}px`, usage })),
     },
     radius: {
-      note: 'Night Signal corners: 6px on controls, 14px on cards, 20px on hero panels and screen frames, pills for status only.',
+      note: 'Design 2.0 corners: 10px on controls, 16px on cards, 24px on sheets and hero panels, pills for chips.',
       tokens: radii.map(({ name, value, usage }) => ({ name, value: `${value}px`, usage })),
     },
     shadow: {
-      note: 'Flat by default. Separation comes from surface steps and hairlines; one lift shadow for floating layers only.',
+      note: 'Layered depth: rest for cards, hover for what the pointer is on, lift for floating layers only.',
       tokens: shadows.map(({ name, value, usage }) => ({ name, value, usage })),
+    },
+    motion: {
+      note: 'Quick to answer, slow to settle. Nothing moves when the viewer asks for reduced motion.',
+      tokens: motion.map(({ name, value, usage }) => ({ name, value, usage })),
     },
   };
 }
