@@ -2,6 +2,24 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 28 Oct 2026 · P7.7.4 · Design 2.0, the staff portal
+- **Side menu** grouped by job (Today and Dashboard; Sales; Fleet; Work; Money; Admin), each page with its icon, the open page marked; the same role rules as before (one list, `MENU` in `lib/session.tsx`). On a phone it becomes a row you scroll.
+- **Jump box**: Ctrl K (⌘K on a Mac) or "Jump to…" opens a search of every page you can see; arrows to move, Enter to go, Esc to close.
+- **Page title bar** (RECALL › page), the RECALL logo (the brand's own file), who is signed in and Sign out at the foot of the menu. Pages fade in.
+- Icons come from the shared set (`packages/design/src/glyphs.ts`, now also bars, pin, search, sliders).
+- Tests: the staff portal in a browser (17 journeys) passes.
+- Next: P7.7.5, polish and proof (screenshots, guides, every page at phone and laptop size).
+
+## 28 Oct 2026 · P7.7.3 · Design 2.0, the rider app
+- **Faces**: English now in Instrument Sans (bundled, 400/600/700), the sign-in headline in Instrument Serif; Telugu and Hindi stay in Anek. Anek Latin removed.
+- **Shared parts** (`src/ui.tsx`): the RECALL logo is the brand's own file (`src/logo.ts`, a test keeps it equal), an `Icon` drawing the shared icon set (`packages/design` glyphs, also used by the brand portal), buttons 54 tall with 14 px corners that press in, 18 px cards, calmer link buttons.
+- **Sign in**: a night picture of a Hyderabad avenue at the top, the headline in the serif, the three languages as pills.
+- **Today**: initials button for profile and settings, today's money in a pill (like Uber), the screen's state as a light (volt while playing, grey when the bike stands, red when off), the stop rule as a blue tip.
+- **Tabs**: icons with their words, a small volt mark over the chosen tab, a press that answers at once.
+- Tests: rider unit tests (with the logo copy) and the rider app in a browser (5 journeys, English, Telugu, Hindi) pass.
+- Open: the map home with a pull-up sheet (on the design board) waits for the maps account (P6); until then Today is the home.
+- Next: P7.7.4, the staff portal.
+
 ## 28 Oct 2026 · P7.7.2 · Design 2.0, the brand portal
 - **Frame**: a white top bar with the RECALL logo (the brand's own file), the pages a business moves between (Campaigns, Invoices, Team, Statement for agencies, Help), the volt Book button and an account menu (business details, switch business, set up another, sign out). Pages fade in.
 - **Sign in**: the form beside the night picture of a lit RECALL screen; Mobile number / Email as a segmented control.
