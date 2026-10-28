@@ -3,6 +3,7 @@
 // line (up to 40), an optional code and QR code, its colour and one of three themes. The picture is
 // drawn on our server as you type; "Make another version" moves things around; "Use this ad" keeps
 // it as one of your ads (checked and reviewed like any other).
+import { Info } from '@recall/web-ui';
 import { useEffect, useRef, useState } from 'react';
 import { ApiError, upload, type Ad } from '../../lib/api';
 
@@ -218,10 +219,10 @@ export default function MakeAd({
           Use this ad
         </button>
       </div>
-      <p className="muted">
+      <Info label="Colours at night">
         Light words on a dark ground read best at night. Your colour is yours: we show it as you
         pick it.
-      </p>
+      </Info>
     </section>
   );
 }

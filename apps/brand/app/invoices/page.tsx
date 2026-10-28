@@ -1,6 +1,7 @@
 'use client';
 // P5.8 Invoices: the business's tax invoices and credit notes for a financial year (April–March),
 // newest first; download one, or all of the year's in one PDF.
+import { Info } from '@recall/web-ui';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { api, ApiError, type Invoices } from '../../lib/api';
@@ -60,10 +61,10 @@ export default function InvoicesPage() {
       )}
       {page && (
         <>
-          <p className="muted">
+          <Info label="About invoices and credit notes">
             Tax invoices are made when you pay; a credit note when money comes back to you. Each
             shows GST as CGST and SGST (Telangana) or IGST (other states).
-          </p>
+          </Info>
           <div className="row">
             {page.years.length > 1 && (
               <label className="rc-field">
@@ -147,10 +148,10 @@ export default function InvoicesPage() {
             <p className="muted">Showing the latest 500: download all for the year to see each.</p>
           )}
           {page.documents.some((d) => d.gstinHeld) && (
-            <p className="muted">
+            <Info label="Why your GST number is missing on some">
               Your GST number is not on some invoices: it is printed once our team has checked it
               (we may ask for your GST certificate). Ask us on Help if you need it added.
-            </p>
+            </Info>
           )}
         </>
       )}

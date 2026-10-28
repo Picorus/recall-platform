@@ -1,7 +1,7 @@
 // Small shared pieces for the rider app's screens (P4.1): the screen frame, words, buttons and a
 // field, in Night Signal. Every control is at least 44 points and says what it is to screen readers.
 import type { RiderLanguage } from '@recall/domain';
-import { createContext, useContext, type ReactNode } from 'react';
+import { createContext, useContext, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -211,7 +211,70 @@ export function Field({
   );
 }
 
+/**
+ * Words folded away behind a tap (P7.7.6): the screen stays calm while riding, nothing is lost.
+ * A titled card that opens, or (with `quiet`) a small (i) line for a note.
+ */
+export function Fold({
+  title,
+  quiet,
+  icon,
+  children,
+}: {
+  readonly title: string;
+  readonly quiet?: boolean;
+  readonly icon?: GlyphName;
+  readonly children: ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <View style={quiet ? { gap: 6 } : [s.card, { gap: 10 }]}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ expanded: open }}
+        onPress={() => setOpen(!open)}
+        style={({ pressed }) => [
+          s.row,
+          { minHeight: touch.min, justifyContent: quiet ? 'flex-start' : 'space-between' },
+          pressed && { opacity: 0.7 },
+        ]}
+      >
+        {quiet && (
+          <View style={[s.info, open && { backgroundColor: color.text }]} accessible={false}>
+            <Text style={[s.infoI, open && { color: color.ground }]}>i</Text>
+          </View>
+        )}
+        <View style={[s.row, { flexShrink: 1 }]}>
+          {icon && <Icon name={icon} size={20} tint={color.data} />}
+          <Words
+            weight="semibold"
+            style={{ color: quiet ? color.muted : color.text, fontSize: 15 }}
+          >
+            {title}
+          </Words>
+        </View>
+        {!quiet && (
+          <View style={{ transform: [{ rotate: open ? '180deg' : '0deg' }] }}>
+            <Icon name="chevron" size={20} tint={color.muted} />
+          </View>
+        )}
+      </Pressable>
+      {open && <View style={{ gap: 6 }}>{children}</View>}
+    </View>
+  );
+}
+
 export const s = StyleSheet.create({
+  info: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 1.5,
+    borderColor: color.muted,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  infoI: { color: color.muted, fontSize: 12, fontStyle: 'italic', fontWeight: '700' },
   safe: { flex: 1, backgroundColor: color.ground },
   body: { padding: 20, paddingTop: 20, gap: 16, flexGrow: 1 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 8 },

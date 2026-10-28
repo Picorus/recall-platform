@@ -2,6 +2,7 @@
 // P3.12 Payouts: the weekly run. It is prepared by itself on Monday from 10:00 India time (or by
 // hand); someone else approves it; then it is sent to each rider's checked bank or UPI. A line can be
 // held (not sent until released) or dropped (owed in the next run); failures are sent again.
+import { Info } from '@recall/web-ui';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../../lib/api';
 import { clock, dayName, dayOfIndia, rupees } from '../../lib/format';
@@ -347,10 +348,10 @@ export default function PayoutsPage() {
   return (
     <Shell member={me}>
       <h1>Payouts</h1>
-      <p className="muted">
+      <Info label="How this works">
         Each Monday from 10:00 the week&apos;s run is prepared by itself. Someone other than who
         prepared it approves it; then it is sent to each rider&apos;s checked bank or UPI.
-      </p>
+      </Info>
       {list?.canAct && (
         <div className="cal-bar">
           <label className="rc-field">

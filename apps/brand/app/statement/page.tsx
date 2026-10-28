@@ -2,6 +2,7 @@
 // P5.10 Statement: an agency's month with RECALL: its share (cut) on each booking our team gave one,
 // the GST it charges on it, the TDS held back, what we paid and its invoices, opening and closing.
 // Its share never shows on a brand's invoice.
+import { Info } from '@recall/web-ui';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { api, ApiError, type Statement } from '../../lib/api';
@@ -155,10 +156,10 @@ export default function StatementPage() {
               </ul>
             </section>
           )}
-          <p className="muted">
+          <Info label="How you are paid">
             Send us your GST invoice for your share each month; we pay by bank transfer, less TDS.
             Your share never shows on a brand&apos;s invoice.
-          </p>
+          </Info>
         </>
       )}
     </Shell>

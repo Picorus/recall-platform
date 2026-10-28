@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@recall/design": "workspace:*",
+    "@recall/web-ui": "workspace:*",
     "maplibre-gl": "6.13.0",
     "next": "16.4.1",
     "qrcode": "1.5.4",

@@ -2,6 +2,7 @@
 // P3.8.2: a Sales admin books for a brand: one area, a run of days, chosen start hours and the same
 // bikes in each; any start date (staff can book last-minute; the 15 days are for the portal). The
 // price comes back at once; the booking is a draft (keeps no bikes) until it is sent for payment.
+import { Info } from '@recall/web-ui';
 import { useEffect, useState, type FormEvent } from 'react';
 import { api, ApiError } from '../../lib/api';
 import { linesOf } from '../../lib/bookings';
@@ -120,10 +121,10 @@ export default function NewBooking({
           </label>
         ))}
       </fieldset>
-      <p className="muted">
+      <Info label="How this works">
         Priced at the prices in force now, with GST added. It is a draft, keeping no bikes, until
         you send the payment link.
-      </p>
+      </Info>
       <button className="rc-button" type="submit" disabled={busy}>
         Make the booking
       </button>

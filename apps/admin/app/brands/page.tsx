@@ -4,6 +4,7 @@
 // an agency, the brands it handles. A Sales admin opens and changes accounts, contacts and notes; a
 // Sales or Finance admin sets tax details. Sales, Finance and Support look. P5.1: Sales gives or
 // removes a person's access to the brand portal for the account (a number or an email).
+import { Info } from '@recall/web-ui';
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { api, ApiError, type Member } from '../../lib/api';
 import { idFromName, matches, phoneText, STEP_NAMES, type AccountRow } from '../../lib/brands';
@@ -644,10 +645,10 @@ export default function BrandsPage() {
 
           <section className="rc-card stack" aria-label="Brand portal access">
             <h3 style={{ margin: 0 }}>Brand portal access</h3>
-            <p className="muted">
+            <Info label="How this works">
               Who may sign in to the brand portal for this account, with a code to their mobile
               number or email. An owner does everything; a booker books and pays.
-            </p>
+            </Info>
             {page.portal.length > 0 && (
               <ul className="plain">
                 {page.portal.map((p) => (

@@ -129,8 +129,15 @@ kbd {
 .side__nav a[aria-current='page'] .rc-icon {
   color: var(--ink);
 }
-.side__me {
+.side__theme {
   margin-top: auto;
+  padding: 10px 2px 2px;
+}
+.side__theme .rc-theme {
+  width: 100%;
+  justify-content: space-between;
+}
+.side__me {
   display: flex;
   align-items: center;
   gap: 10px;

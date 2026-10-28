@@ -1,7 +1,9 @@
 'use client';
 // The signed-in person for a page, or a move to the sign-in page. The API checks every request
 // itself; this only decides what to show.
+import lockupDark from '@recall/design/logo/recall-lockup-horizontal-dark.svg';
 import lockup from '@recall/design/logo/recall-lockup-horizontal-light.svg';
+import { ThemeSwitch } from '@recall/web-ui';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
@@ -60,7 +62,14 @@ export function Shell({ me, children }: { readonly me: Me; readonly children: Re
       <header className="appbar">
         <div className="appbar__in">
           <Link className="wordmark" href={account ? `/campaigns?${q}` : '/'}>
-            <img src={lockup.src} alt="RECALL" width={128} height={15} />
+            <img className="rc-logo--light" src={lockup.src} alt="RECALL" width={128} height={15} />
+            <img
+              className="rc-logo--dark"
+              src={lockupDark.src}
+              alt="RECALL"
+              width={128}
+              height={15}
+            />
           </Link>
           {account && (
             <nav className="appnav" aria-label="Main">
@@ -100,6 +109,10 @@ export function Shell({ me, children }: { readonly me: Me; readonly children: Re
                   </a>
                 ))}
                 <Link href="/business/new">Set up another business</Link>
+                <p className="acct__group">Look</p>
+                <div className="acct__theme">
+                  <ThemeSwitch />
+                </div>
                 <button type="button" onClick={() => void signOut()}>
                   <Icon name="signout" size={16} />
                   Sign out

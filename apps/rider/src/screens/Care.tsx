@@ -9,7 +9,19 @@ import { BackHandler, Pressable, View } from 'react-native';
 import { ApiError, call, upload } from '../api';
 import { say, sayError, type Key } from '../i18n';
 import { color, touch } from '../theme';
-import { Alert, Field, Label, LinkButton, MainButton, Muted, Screen, Title, Words, s } from '../ui';
+import {
+  Alert,
+  Fold,
+  Field,
+  Label,
+  LinkButton,
+  MainButton,
+  Muted,
+  Screen,
+  Title,
+  Words,
+  s,
+} from '../ui';
 import { Loan } from './Loan';
 
 const KINDS = ['not-on', 'damage', 'theft', 'accident', 'other'] as const;
@@ -120,12 +132,12 @@ export function Care({
   return (
     <Screen>
       <Title>{say(lang, 'careTitle')}</Title>
-      <View style={s.card}>
-        <Label>{say(lang, 'careTipsTitle')}</Label>
+
+      <Fold title={say(lang, 'careTipsTitle')}>
         {(['careTip1', 'careTip2', 'careTip3', 'careTip4'] as const).map((k) => (
           <Muted key={k}>{`• ${say(lang, k)}`}</Muted>
         ))}
-      </View>
+      </Fold>
 
       <View style={[s.card, { gap: 10 }]}>
         <Label>{say(lang, 'reportTitle')}</Label>

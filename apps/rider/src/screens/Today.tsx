@@ -14,7 +14,7 @@ import { Pressable, View } from 'react-native';
 import { ApiError, call, type Me } from '../api';
 import { say, sayError, type Key } from '../i18n';
 import { color, radius } from '../theme';
-import { Alert, Icon, Label, LinkButton, Muted, Screen, Title, Words, s } from '../ui';
+import { Alert, Fold, Label, LinkButton, Muted, Screen, Title, Words, s } from '../ui';
 
 interface Day {
   readonly day: string;
@@ -280,14 +280,16 @@ export function Today({
                 </Words>
               </View>
             ))}
-            <Muted small>
-              {page.mode === 'poc'
-                ? say(lang, 'payPoc')
-                : say(lang, 'payRegular', {
-                    rate: rupees(page.perMovingHourPaise),
-                    cap: page.monthlyCapHours,
-                  })}
-            </Muted>
+            <Fold quiet title={say(lang, 'howPayWorks')}>
+              <Muted small>
+                {page.mode === 'poc'
+                  ? say(lang, 'payPoc')
+                  : say(lang, 'payRegular', {
+                      rate: rupees(page.perMovingHourPaise),
+                      cap: page.monthlyCapHours,
+                    })}
+              </Muted>
+            </Fold>
           </View>
 
           {alerts.length > 0 && (
@@ -307,13 +309,9 @@ export function Today({
             </View>
           )}
 
-          <View style={[s.card, t.tip]}>
-            <View style={s.row}>
-              <Icon name="clock" size={20} tint={color.data} />
-              <Label>{say(lang, 'stopRuleTitle')}</Label>
-            </View>
+          <Fold icon="clock" title={say(lang, 'stopRuleTitle')}>
             <Muted>{say(lang, 'stopRule')}</Muted>
-          </View>
+          </Fold>
         </>
       )}
       <LinkButton label={say(lang, 'refresh')} onPress={() => void load()} />
@@ -354,5 +352,4 @@ const t = {
   },
   light: { width: 12, height: 12, borderRadius: 6 },
   glow: { shadowOpacity: 0.9, shadowRadius: 10, shadowOffset: { width: 0, height: 0 } },
-  tip: { backgroundColor: color.dataSoft, borderColor: color.dataSoft },
 } as const;

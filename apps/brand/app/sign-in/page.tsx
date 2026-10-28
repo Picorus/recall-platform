@@ -1,6 +1,7 @@
 'use client';
 // P5.1: sign in with a mobile number (a code on WhatsApp, or by SMS) or an email address (a code by
 // email; agencies mostly). Two steps on one page: where to send the code, then the code.
+import lockupDark from '@recall/design/logo/recall-lockup-horizontal-dark.svg';
 import lockup from '@recall/design/logo/recall-lockup-horizontal-light.svg';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, type FormEvent } from 'react';
@@ -99,7 +100,16 @@ export default function SignIn() {
   return (
     <main className="signin">
       <div className="signin__form stack">
-        <img className="signin__logo" src={lockup.src} alt="RECALL" width={150} height={18} />
+        <span className="signin__logo">
+          <img className="rc-logo--light" src={lockup.src} alt="RECALL" width={150} height={18} />
+          <img
+            className="rc-logo--dark"
+            src={lockupDark.src}
+            alt="RECALL"
+            width={150}
+            height={18}
+          />
+        </span>
         <h1 className="display">Sign in</h1>
         <p className="muted">
           Moving screens on bikes across Hyderabad. Sign in to book, pay, add your ads and get your

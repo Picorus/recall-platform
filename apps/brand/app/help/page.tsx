@@ -1,6 +1,7 @@
 'use client';
 // P5.9 Help: plain answers to what brands ask most, our numbers (call or WhatsApp) and hours, the
 // ad rules, and a question to our team (the reply comes by WhatsApp or email).
+import { Fold } from '@recall/web-ui';
 import Link from 'next/link';
 import { useEffect, useState, type FormEvent } from 'react';
 import { api, ApiError, type Help } from '../../lib/api';
@@ -93,12 +94,9 @@ export default function HelpPage() {
             <section className="stack" aria-label="Questions and answers">
               <h2>Questions and answers</h2>
               {page.answers.map((x) => (
-                <details key={x.q} className="rc-card">
-                  <summary>
-                    <b>{x.q}</b>
-                  </summary>
+                <Fold key={x.q} title={x.q}>
                   <p>{x.a}</p>
-                </details>
+                </Fold>
               ))}
             </section>
             <form className="rc-card stack" onSubmit={(e) => void ask(e)} aria-label="Ask us">
@@ -162,13 +160,14 @@ export default function HelpPage() {
                 </div>
               ))}
             </section>
-            <section className="rc-card stack" aria-label="Ad rules">
-              <h2>Ad rules</h2>
-              <ul className="tips">
-                {page.adRules.map((r) => (
-                  <li key={r}>{r}</li>
-                ))}
-              </ul>
+            <section aria-label="Ad rules">
+              <Fold title="Ad rules" hint={`${page.adRules.length} rules every ad must follow`}>
+                <ul className="tips">
+                  {page.adRules.map((r) => (
+                    <li key={r}>{r}</li>
+                  ))}
+                </ul>
+              </Fold>
             </section>
           </aside>
         </div>

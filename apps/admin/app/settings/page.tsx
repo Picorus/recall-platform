@@ -3,6 +3,7 @@
 // zone and the screen-loan bank; who has which role (changed on the Staff page); which outside
 // services are on. Every member sees them; a super admin changes one at a time, with why. Each save
 // is a new version (nothing overwritten) and shows in the audit log.
+import { Info } from '@recall/web-ui';
 import Link from 'next/link';
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { api, ApiError } from '../../lib/api';
@@ -250,10 +251,10 @@ export default function SettingsPageView() {
           <Section {...common('fittingCentres')} title="Fitting centres">
             {(v, set) => (
               <>
-                <p className="muted">
+                <Info label="About this setting">
                   Where screens are fitted and taken off. Slots are opened at a centre that is on. A
                   centre is never removed: switch it off.
-                </p>
+                </Info>
                 {v.length === 0 && <p className="muted">No centre yet.</p>}
                 {v.map((c, i) => (
                   <CentreRow
@@ -387,11 +388,11 @@ export default function SettingsPageView() {
           <Section {...common('payZone')} title="Rider pay zone">
             {(v, set) => (
               <>
-                <p className="muted">
+                <Info label="About this setting">
                   Where a rider&apos;s moving hours count for pay. The POC: a circle round Hitech
                   City. After it: the areas picked here. Not sent to the screens yet: until the step
                   that sends settings to screens, each screen counts the POC circle.
-                </p>
+                </Info>
                 <fieldset className="areas">
                   <legend className="rc-field__label">Kind</legend>
                   <label>
@@ -494,10 +495,10 @@ export default function SettingsPageView() {
           <Section {...common('loanBank')} title="Screen-loan bank">
             {(v, set) => (
               <>
-                <p className="muted">
+                <Info label="About this setting">
                   The bank that lends riders the money for a screen. The loan is between the rider
                   and the bank. Used when screen loans are recorded (rider app, P4.2.6).
-                </p>
+                </Info>
                 <Field label="Bank">
                   <input
                     className="rc-input"
@@ -512,11 +513,11 @@ export default function SettingsPageView() {
           <Section {...common('riderSignIn')} title="Rider app limits">
             {(v, set) => (
               <>
-                <p className="muted">
+                <Info label="About this setting">
                   Riders sign in with a code sent on WhatsApp or by SMS, and start their own ID,
                   agreement and bank checks. These limits stop guessing and keep costs down; each
                   message and check costs money.
-                </p>
+                </Info>
                 <div className="cal-bar">
                   {RIDER_SIGN_IN_LABELS.map(([k, label]) => (
                     <Field key={k} label={label}>
@@ -538,11 +539,11 @@ export default function SettingsPageView() {
           <Section {...common('freeWeek')} title="Free week for new businesses">
             {(v, set) => (
               <>
-                <p className="muted">
+                <Info label="About this setting">
                   When on, the brand portal offers each new brand one free week (its days and
                   bike-hours are in the price book). One per business, phone, GST number and person.
                   Off: no free week is offered.
-                </p>
+                </Info>
                 <label>
                   <input
                     type="checkbox"
@@ -558,11 +559,11 @@ export default function SettingsPageView() {
           <Section {...common('company')} title="Company details on invoices">
             {(v, set) => (
               <>
-                <p className="muted">
+                <Info label="About this setting">
                   RECALL&apos;s legal name, GSTIN and address, printed on every tax invoice and
                   credit note. Until all three are filled in, invoices say they are not valid tax
                   invoices yet. Leave all three empty to clear them.
-                </p>
+                </Info>
                 <Field label="Legal name">
                   <input
                     className="rc-input"
@@ -593,11 +594,11 @@ export default function SettingsPageView() {
           <Section {...common('brandSignIn')} title="Brand portal limits">
             {(v, set) => (
               <>
-                <p className="muted">
+                <Info label="About this setting">
                   Brands and agencies sign in to the brand portal with a code sent on WhatsApp, by
                   SMS or by email, and look up their GST number when they set up. These limits stop
                   guessing and keep message and lookup costs down.
-                </p>
+                </Info>
                 <div className="cal-bar">
                   {BRAND_SIGN_IN_LABELS.map(([k, label]) => (
                     <Field key={k} label={label}>
@@ -618,11 +619,11 @@ export default function SettingsPageView() {
 
           <section className="rc-card stack" aria-label="Outside services">
             <h2>Outside services</h2>
-            <p className="muted">
+            <Info label="About this setting">
               Which services are connected. Their keys are kept in the secret store, never on this
               page; a new provider is plugged in by the tech team. A stand-in works on a laptop only
               and sends nothing.
-            </p>
+            </Info>
             <table className="rc-table" aria-label="Connections">
               <thead>
                 <tr>

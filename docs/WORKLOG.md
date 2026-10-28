@@ -2,6 +2,14 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 28 Oct 2026 · P7.7.6 · Calmer pages, light and dark, a pointer that answers
+- **Long text folded away, nothing removed**: explanations sit behind a small (i) and a few words ("How this works", "Which files work"); lists of rules and tips are sections that open on a click ("What works on the road", "The rules, in plain words", "Ad rules", the help questions). Brand portal: ads, pay, book, invoices, statement, help. Staff portal: settings (8), payouts, calendar, dashboard, brands. Rider app: screen-care tips, how pay works and the stop rule open on a tap. Warnings before an action (cancelling, revoking) stay in sight.
+- **Light and dark** in the brand and staff portals: Auto (the device's setting), Light or Dark, in the brand account menu and at the foot of the staff menu. Kept in a cookie the server reads, so the page is drawn in the right look with no flash. The logo swaps to the brand's dark-ground file.
+- **The pointer**: a soft ring follows the mouse, swells over anything clickable and dips on a press (mouse and trackpad only; none on touch or with reduced motion). The normal cursor stays.
+- New package `@recall/web-ui` (Info, Fold, ThemeSwitch, Pointer) shared by both portals; styles in `packages/design/components.css`.
+- Tests: brand 5, staff 17 and rider 5 journeys in a browser pass; both portals checked in light and dark.
+- Next: P6 as accounts open.
+
 ## 28 Oct 2026 · P7.7.5 · Design 2.0, polish and proof
 - Every guide screenshot (`docs/guides/img`, 32 pictures) retaken from the demo in the new design by `pnpm --filter @recall/demo tour`, which also proves every page of the three apps opens.
 - The guides describe the new way around: the brand portal's top bar and account menu, the staff portal's side menu and Ctrl K.

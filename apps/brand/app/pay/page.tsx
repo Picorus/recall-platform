@@ -3,6 +3,7 @@
 // the repeat discount, GST as it will be invoiced and the total; the five plain rules with one tick
 // box; then payment in full at the payment provider (UPI, card or net banking). The GST invoice is
 // made the moment it is paid (Invoices, P5.8).
+import { Fold, Info } from '@recall/web-ui';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { api, ApiError } from '../../lib/api';
@@ -144,14 +145,18 @@ export default function PayPage() {
               </ul>
             </section>
             <section className="rc-card stack" aria-label="The rules">
-              <h2>The rules, in plain words</h2>
-              <ol className="terms">
-                {r.terms.map((t) => (
-                  <li key={t.key}>
-                    <b>{t.title}.</b> {t.text}
-                  </li>
-                ))}
-              </ol>
+              <Fold
+                title="The rules, in plain words"
+                hint={`${r.terms.length} short rules: what we promise and what happens if we fall short`}
+              >
+                <ol className="terms">
+                  {r.terms.map((t) => (
+                    <li key={t.key}>
+                      <b>{t.title}.</b> {t.text}
+                    </li>
+                  ))}
+                </ol>
+              </Fold>
               <label className="row">
                 <input
                   type="checkbox"
@@ -205,11 +210,11 @@ export default function PayPage() {
                 >
                   {busy ? 'Opening payment…' : `Pay ${rupees(r.totalPaise)}`}
                 </button>
-                <p className="muted">
+                <p className="muted">Your ads are due by {dayText(indiaDay(r.adsDueAt))}.</p>
+                <Info label="How paying works">
                   Pay in full by UPI, card or net banking. Your hours are kept for you once you
-                  start paying; your GST invoice is ready as soon as it is paid. Your ads are due by{' '}
-                  {dayText(indiaDay(r.adsDueAt))}.
-                </p>
+                  start paying; your GST invoice is ready as soon as it is paid.
+                </Info>
               </>
             ) : r.repeatMonths > 1 && r.state === 'draft' ? (
               <>

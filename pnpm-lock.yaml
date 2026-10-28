@@ -44,6 +44,9 @@ importers:
       '@recall/design':
         specifier: workspace:*
         version: link:../../packages/design
+      '@recall/web-ui':
+        specifier: workspace:*
+        version: link:../../packages/web-ui
       maplibre-gl:
         specifier: 6.13.0
         version: 6.13.0
@@ -93,6 +96,9 @@ importers:
       '@recall/design':
         specifier: workspace:*
         version: link:../../packages/design
+      '@recall/web-ui':
+        specifier: workspace:*
+        version: link:../../packages/web-ui
       next:
         specifier: 16.4.1
         version: 16.4.1(@types/node@22.20.5)(babel-plugin-react-compiler@1.0.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
@@ -250,6 +256,15 @@ importers:
       fast-check:
         specifier: 4.10.2
         version: 4.10.2
+
+  packages/web-ui:
+    devDependencies:
+      '@types/react':
+        specifier: 19.3.0
+        version: 19.3.0
+      react:
+        specifier: 19.3.0
+        version: 19.3.0
 
   services/api:
     dependencies:
