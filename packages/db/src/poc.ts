@@ -736,7 +736,7 @@ export async function pocPlans(c: Q, now: number): Promise<PocPlan[]> {
   const changes = await businessModes(c);
   const first = businessMonthAt(now) ?? calendarMonth(now);
   const rules = await pocRules(c);
-  const zone = await setting(c, 'payZone');
+  const zone = await setting(c, 'pocZone');
   const own = await c.query<{ ad_id: string }>(
     `SELECT a.ad_id FROM ads a JOIN ad_reviews r USING (ad_id)
       WHERE a.brand_id = $1 AND r.decision = 'approved' AND a.outcome <> 'fail'
@@ -830,7 +830,7 @@ export function pocJudge(c: Q, screenId: string) {
     async context(ref: string, startAt: number): Promise<PocPlayContext> {
       shared ??= (async () => ({
         changes: await businessModes(c),
-        zone: await setting(c, 'payZone'),
+        zone: await setting(c, 'pocZone'),
         perBrand: playsPerBrand(await pocRules(c)),
       }))();
       const s = await shared;

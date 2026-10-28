@@ -5,7 +5,7 @@ import { typedGstin } from './business.js';
 import { gstinProblems } from './gst.js';
 import { phoneOf } from './riders.js';
 import { INDIA_OFFSET_MINUTES } from './time.js';
-import { POC_PAY_ZONE, type PayZone } from './pay-zone.js';
+import { POC_PAY_ZONE, REGULAR_PAY_ZONE, type PayZone } from './pay-zone.js';
 import { checkPocRules, DEFAULT_POC_RULES, type PocRules } from './poc.js';
 import {
   DEFAULT_RIDER_SIGN_IN,
@@ -95,7 +95,10 @@ export interface Settings {
   readonly fittingCentres: readonly FittingCentre[];
   readonly support: SupportSettings;
   readonly messages: MessageWordings;
-  readonly payZone: PayZone;
+  /** Where riders' moving hours count, by business mode (Prateek, 28 Oct 2026): the POC's 15 km
+   * circle, and regular business's areas that are on. */
+  readonly pocZone: PayZone;
+  readonly regularZone: PayZone;
   readonly loanBank: LoanBank;
   /** P4.1: how rider sign-in codes are limited. */
   readonly riderSignIn: RiderSignInRules;
@@ -119,7 +122,8 @@ export const SETTING_KEYS = [
   'fittingCentres',
   'support',
   'messages',
-  'payZone',
+  'pocZone',
+  'regularZone',
   'loanBank',
   'riderSignIn',
   'brandSignIn',
@@ -170,7 +174,8 @@ export const DEFAULT_SETTINGS: Settings = {
         'Your campaign {booking} starts on {start}, and no ads are chosen yet. Please add them by {adsDue} so our team can check them: {link}',
     },
   },
-  payZone: POC_PAY_ZONE,
+  pocZone: POC_PAY_ZONE,
+  regularZone: REGULAR_PAY_ZONE,
   loanBank: { name: 'Dhanlaxmi Bank' },
   riderSignIn: DEFAULT_RIDER_SIGN_IN,
   brandSignIn: DEFAULT_BRAND_SIGN_IN,
@@ -270,6 +275,10 @@ function payZone(v: unknown): PayZone {
       radiusM: r as number,
     };
   }
+  if (o.kind === 'allAreas') {
+    if (typeof o.withEdge !== 'boolean') fail('Pay zone: count the edge zone or not');
+    return { kind: 'allAreas', withEdge: o.withEdge as boolean };
+  }
   if (o.kind === 'areas') {
     const ids = list(o.areaIds, 'Pay zone areas', 200).map((x) =>
       typeof x === 'string' && /^[a-z0-9-]{2,60}$/.test(x) ? x : fail('Pay zone: an area id'),
@@ -279,7 +288,7 @@ function payZone(v: unknown): PayZone {
     if (typeof o.withEdge !== 'boolean') fail('Pay zone: count the edge zone or not');
     return { kind: 'areas', areaIds: ids, withEdge: o.withEdge as boolean };
   }
-  return fail('Pay zone: a circle or a list of areas');
+  return fail('Pay zone: a circle, every area, or a list of areas');
 }
 
 /** Checks a setting's new value (as typed or sent) and returns it cleaned; throws why not. */
@@ -352,7 +361,8 @@ export function checkSetting<K extends SettingKey>(key: K, value: unknown): Sett
           adsMissing: wording(m.adsMissing, 'adsMissing', 'Ads missing'),
         };
       }
-      case 'payZone':
+      case 'pocZone':
+      case 'regularZone':
         return payZone(value);
       case 'loanBank':
         return { name: oneLine(obj(value, 'Screen-loan bank').name, 'Bank name', 2, 80) };

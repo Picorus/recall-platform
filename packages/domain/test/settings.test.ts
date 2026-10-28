@@ -107,22 +107,28 @@ describe('settings (P3.17)', () => {
     ).toThrow('"{link}" is not one of');
   });
 
-  it('pay zone: a circle in India of 1 to 100 km, or areas', () => {
-    expect(checkSetting('payZone', D.payZone)).toEqual(D.payZone);
+  it('pay zones: POC a circle in India of 1 to 100 km; regular all areas, or some (P1.7.5)', () => {
+    expect(checkSetting('pocZone', D.pocZone)).toEqual(D.pocZone);
+    expect(D.pocZone.kind).toBe('circle');
+    expect(checkSetting('regularZone', D.regularZone)).toEqual({
+      kind: 'allAreas',
+      withEdge: false,
+    });
     const circle = (lat: number, radiusM: number) => ({
       kind: 'circle',
       centre: { lat, lng: 78.38 },
       radiusM,
     });
-    expect(() => checkSetting('payZone', circle(51.5, 15_000))).toThrow('India');
-    expect(() => checkSetting('payZone', circle(17.45, 500))).toThrow('1 to 100 km');
+    expect(() => checkSetting('pocZone', circle(51.5, 15_000))).toThrow('India');
+    expect(() => checkSetting('pocZone', circle(17.45, 500))).toThrow('1 to 100 km');
     expect(
-      checkSetting('payZone', { kind: 'areas', areaIds: ['hyd-madhapur'], withEdge: true }),
+      checkSetting('regularZone', { kind: 'areas', areaIds: ['hyd-madhapur'], withEdge: true }),
     ).toEqual({ kind: 'areas', areaIds: ['hyd-madhapur'], withEdge: true });
-    expect(() => checkSetting('payZone', { kind: 'areas', areaIds: [], withEdge: true })).toThrow(
-      'at least one',
-    );
-    expect(() => checkSetting('payZone', { kind: 'square' })).toThrow('circle or');
+    expect(() =>
+      checkSetting('regularZone', { kind: 'areas', areaIds: [], withEdge: true }),
+    ).toThrow('at least one');
+    expect(() => checkSetting('regularZone', { kind: 'allAreas', withEdge: 'no' })).toThrow();
+    expect(() => checkSetting('regularZone', { kind: 'square' })).toThrow('circle');
   });
 
   it('rider sign-in limits: whole numbers in their ranges (P4.1)', () => {

@@ -93,7 +93,8 @@ async function rideToday(screen: string, lat: number, lng: number) {
   await pool.query(
     `INSERT INTO minute_summaries (screen_id, minute, seq, clock_s, pay_clock_s, moving_s,
        distance_m, plays, people, seconds_at, clock_at)
-     SELECT $1, to_timestamp($2 + (g - 1) * 60), g, c, c, c, 400, 0, 0, '{"outside":60}', '{}'
+     SELECT $1, to_timestamp($2 + (g - 1) * 60), g, c, c, c, 400, 0, 0, '{"outside":60}',
+            jsonb_build_object('inside:hyd-madhapur@1', c)
        FROM (SELECT g, CASE WHEN g <= 120 THEN 60 ELSE 0 END AS c
                FROM generate_series(1, 180) g) x`,
     [screen, opens],

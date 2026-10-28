@@ -33,7 +33,19 @@ sealed interface PayZone {
         }
     }
 
+    /** Any area that is on (regular business, Prateek 28 Oct 2026): not its edge zone unless `withEdge`. */
+    data class AllAreas(val withEdge: Boolean) : PayZone {
+        override fun counts(position: LatLng?, place: Place) = when (place) {
+            Place.Outside -> false
+            is Place.Edge -> withEdge
+            is Place.Inside -> true
+        }
+    }
+
     companion object {
+        /** Regular business: inside any area that is on, not its edge zone. */
+        val REGULAR = AllAreas(withEdge = false)
+
         /** POC: within 15 km of Hitech City (Cyber Towers). */
         val POC = Circle(LatLng(17.4504, 78.381), 15_000.0)
     }

@@ -22,6 +22,8 @@ import kotlinx.serialization.json.doubleOrNull
 sealed class PocZone {
     data class Circle(val centre: LatLng, val radiusM: Long) : PocZone()
     data class Areas(val areaIds: List<String>, val withEdge: Boolean) : PocZone()
+    /** Any area that is on (P1.7.5). */
+    data class AllAreas(val withEdge: Boolean) : PocZone()
 }
 
 /** A brand of a POC month: what its plays name, and its ads in turn. */
@@ -143,6 +145,11 @@ object PocPlans {
                     ?.mapNotNull(::str) ?: fail("bad zone areas")
                 val edge = (z["withEdge"] as? JsonPrimitive)?.takeIf { !it.isString }?.booleanOrNull ?: fail("bad zone")
                 PocZone.Areas(ids, edge)
+            }
+            "allAreas" -> {
+                obj(z, setOf("kind", "withEdge")) ?: fail("bad zone")
+                val edge = (z["withEdge"] as? JsonPrimitive)?.takeIf { !it.isString }?.booleanOrNull ?: fail("bad zone")
+                PocZone.AllAreas(edge)
             }
             else -> fail("bad zone")
         }

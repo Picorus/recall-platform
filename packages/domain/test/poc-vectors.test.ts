@@ -87,6 +87,8 @@ function build() {
   bad((x) => (p0(x).zone = { kind: 'circle', centre: { lat: 17.45, lng: 78.38 }, radiusM: 0 }));
   bad((x) => (p0(x).zone = { kind: 'areas', areaIds: [], withEdge: true }));
   bad((x) => (p0(x).zone = { kind: 'square' }));
+  bad((x) => (p0(x).zone = { kind: 'allAreas' }));
+  bad((x) => (p0(x).zone = { kind: 'allAreas', withEdge: false, areaIds: ['hyd-madhapur'] }));
   bad((x) => (p0(x).slots = 241));
   bad((x) => (p0(x).perBrand = 0));
   bad((x) => (p0(x).recallAds = ['bad ad']));
@@ -171,6 +173,8 @@ function build() {
     comment:
       'P7.8: the POC month plans a screen gets on down/poc (the newest message wins, whole), the ones it refuses with the reason, and the 240 spots of an hour under a plan for one screen (pocSpotAt): "kind|ref|ad". Made by packages/domain/test/poc-vectors.test.ts (UPDATE_VECTORS=1). The cloud (TypeScript) and the player (Kotlin) both pass these.',
     ok: { text: okText, months: [full.month, few.month], brands: [40, 7] },
+    /** P1.7.5: a month whose zone is every area that is on (inside only). */
+    allAreas: pocPlansText([{ ...few, zone: { kind: 'allAreas', withEdge: false } }], MADE),
     refused,
     rotations,
     offsets,
@@ -188,10 +192,12 @@ describe('POC shared cases (P7.8): the ones the Kotlin player also passes', () =
     expect(V).toEqual(now);
   });
 
-  it('the cases cover every refusal and both zones', () => {
+  it('the cases cover every refusal and every zone kind', () => {
     expect(new Set(V.refused.map((r) => r.problem)).size).toBeGreaterThanOrEqual(15);
     const back = parsePocPlans(V.ok.text);
     expect('plans' in back && back.plans.map((p) => p.zone.kind)).toEqual(['circle', 'areas']);
     for (const r of V.rotations) expect(r.spots).toHaveLength(240);
+    const all = parsePocPlans(V.allAreas);
+    expect('plans' in all && all.plans[0]?.zone).toEqual({ kind: 'allAreas', withEdge: false });
   });
 });

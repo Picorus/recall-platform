@@ -444,6 +444,10 @@ function zoneProblem(z: unknown): string | undefined {
       return 'bad zone areas';
     return typeof z.withEdge === 'boolean' ? undefined : 'bad zone';
   }
+  if (z.kind === 'allAreas') {
+    if (!exactly(z, ['kind', 'withEdge'])) return 'bad zone';
+    return typeof z.withEdge === 'boolean' ? undefined : 'bad zone';
+  }
   return 'bad zone';
 }
 
@@ -481,7 +485,9 @@ export function pocPlansText(plans: readonly PocPlan[], madeMs: number): string 
   const zone = (z: PayZone) =>
     z.kind === 'circle'
       ? { kind: 'circle', centre: { lat: z.centre.lat, lng: z.centre.lng }, radiusM: z.radiusM }
-      : { kind: 'areas', areaIds: z.areaIds, withEdge: z.withEdge };
+      : z.kind === 'allAreas'
+        ? { kind: 'allAreas', withEdge: z.withEdge }
+        : { kind: 'areas', areaIds: z.areaIds, withEdge: z.withEdge };
   const text = JSON.stringify({
     v: 1,
     made: madeMs,

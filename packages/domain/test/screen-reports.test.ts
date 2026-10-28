@@ -25,7 +25,14 @@ import {
   type Numbered,
   type Report,
 } from '../src/screen-reports.js';
-import { HITECH_CITY, inPayZone, POC_PAY_ZONE } from '../src/pay-zone.js';
+import {
+  HITECH_CITY,
+  inPayZone,
+  POC_PAY_ZONE,
+  REGULAR_PAY_ZONE,
+  zoneForMode,
+  type PayZone,
+} from '../src/pay-zone.js';
 import type { Second } from '../src/screen-tracker.js';
 
 const T = 1_800_000_000 - (1_800_000_000 % 60); // start of a minute
@@ -205,6 +212,38 @@ describe('moving hours (P1.2.6)', () => {
     const days = dailyTotals([m]);
     expect(days.get('2027-08-23')?.countedSeconds).toBe(40);
     expect(days.get('2027-08-23')?.clockSeconds).toBe(60);
+  });
+
+  it('P1.7.5: the zone of the mode in force: POC the circle; regular only inside areas', () => {
+    // Half a minute inside Madhapur, 20 s in its edge zone, 10 s outside; the box marked 50 s inside
+    // its 15 km circle.
+    const mixed = minute(nine, {
+      clockAt: { 'inside:hyd-madhapur@3': 30, 'edge:hyd-madhapur@3': 20, outside: 10 },
+      payClockSeconds: 50,
+    });
+    const regular = REGULAR_PAY_ZONE;
+    const counted = (zone: PayZone) =>
+      dailyTotals([mixed], undefined, () => zone).get('2027-08-23')?.countedSeconds;
+    expect(counted(POC_PAY_ZONE)).toBe(50);
+    expect(counted(regular)).toBe(30);
+    expect(counted({ kind: 'allAreas', withEdge: true })).toBe(50);
+    expect(counted({ kind: 'areas', areaIds: ['hyd-kondapur'], withEdge: true })).toBe(0);
+    // Outside every area, regular business counts nothing (even inside the circle).
+    const far = minute(nine, { clockAt: { outside: 60 }, payClockSeconds: 60 });
+    expect(dailyTotals([far], undefined, () => regular).get('2027-08-23')?.countedSeconds).toBe(0);
+    expect(
+      dailyTotals([far], undefined, () => POC_PAY_ZONE).get('2027-08-23')?.countedSeconds,
+    ).toBe(60);
+    // A switch day: the POC until 12:00 India time, regular business after it.
+    const noon = Date.UTC(2027, 7, 23, 6, 30) / 1000;
+    const zoneAt = (t: number) =>
+      zoneForMode(t < noon ? 'poc' : 'regular', { pocZone: POC_PAY_ZONE, regularZone: regular });
+    const day = dailyTotals(
+      [far, { ...far, minute: noon }, { ...mixed, minute: noon + 60 }],
+      undefined,
+      zoneAt,
+    );
+    expect(day.get('2027-08-23')?.countedSeconds).toBe(60 + 0 + 30);
   });
 
   it('two parts of one minute (a restart) add up, but a minute never holds more than 60 s', () => {

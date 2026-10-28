@@ -2,6 +2,16 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 29 Oct 2026 · P1.7.5 · Rider pay zone by business mode
+- Prateek's rule (28 Oct): during the POC, moving hours count within 15 km of Hitech City; in regular business only inside an area that is on (not its edge zone); outside every area nothing. Inside an area with no booking: ₹25 an hour only; with a booking playing: ₹25 an hour + his 25% share.
+- Settings: `payZone` split into `pocZone` (the circle) and `regularZone` (new kind "all areas that are on", or listed areas as an exception), both versioned. Migration `0063_pay_zones.sql` copies the newest circle and the newest area list from the old setting (saved by "migration"), keeps the old rows as history and refuses new `payZone` rows. Staff Settings page has a section for each, with an "All areas that are on" choice.
+- Counting: `dailyTotals` takes the zone at each minute; `payZoneAt` (db) gives the zone of the mode in force then, as saved then. Used by the pay run (hourly pay and POC bonus hours), the rider app's Today and Earnings. The POC plans and POC counting use `pocZone`. A circle is read from the seconds the screen marked (it always marks the POC circle); areas from the seconds it reports by place.
+- Player (Kotlin): `PayZone.AllAreas` and `PocZone.AllAreas`; shared vectors run the same ride through the all-areas zone (some minutes count in part).
+- Demo: the seeded minutes are all inside an area, so the demo pays as before; a live demo bike outside every area now earns no hourly pay, as the rule says.
+- Tests: domain 433 (zone by mode, switch day, settings); DB (rider pay: POC circle counts outside areas, the switch day counts nothing outside areas, outside and edge 0, inside an unbooked area ₹25/h only, ledger balances; old `payZone` refused); Kotlin 145 (all-areas minutes match the cloud; all-areas POC zone read).
+- Open: none.
+- **Next: P2.5** — blank screen outside our zone.
+
 ## 29 Oct 2026 · P7.8 · Review fixes and Prateek's answers
 - **Payments:** a provider that cannot answer is asked again (taken as run out only an hour after the link's end); its word that it took the money before the link's end wins over our own "run out" record while the news is in time.
 - **Ads:** after a brand's POC ads change, plays of its previous ads count for 30 more minutes (screens take the new plan with the next hello).

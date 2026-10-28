@@ -32,6 +32,7 @@ class PocTest {
         assertEquals(v.getValue("ok").jsonObject.getValue("brands").jsonArray.map { it.jsonPrimitive.int }, ok.plans.map { it.brands.size })
         assertTrue(ok.plans[0].zone is PocZone.Circle)
         assertEquals(PocZone.Areas(listOf("hyd-hitech-city", "hyd-madhapur"), true), ok.plans[1].zone)
+        assertEquals(PocZone.AllAreas(false), PocPlans.parse(v.getValue("allAreas").jsonPrimitive.content).plans.single().zone)
         for (r in v.getValue("refused").jsonArray.map { it.jsonObject }) {
             val text = r.getValue("text").jsonPrimitive.content
             assertEquals(r.getValue("problem").jsonPrimitive.content, PocPlans.parse(text).problem, text.take(120))

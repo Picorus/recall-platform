@@ -29,6 +29,7 @@ import { priceBooks } from './bookings.js';
 import { businessModes } from './business-mode.js';
 import { fleetScreens } from './fleet.js';
 import { monthBounds } from './rider-pay.js';
+import { payZoneAt } from './pay-zone.js';
 import { minutesOf } from './screen-reports.js';
 
 type Q = Pick<Pool, 'query'>;
@@ -131,7 +132,7 @@ export async function riderDays(
   for (const s of stretches)
     for (const m of await minutesOf(pool, s.screenId, Math.max(from, s.from), Math.min(to, s.to)))
       if (m.minute >= s.from && m.minute < s.to) minutes.push(m);
-  const totals = dailyTotals(minutes);
+  const totals = dailyTotals(minutes, undefined, await payZoneAt(pool, changes));
   const on = screenOnByDay(minutes);
   const pocFirst = pocFirstMonth(changes);
   const base = daysBetween(first, last).map((day) => ({

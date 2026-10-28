@@ -17,6 +17,7 @@ import {
   RIDER_SIGN_IN_LABELS,
   type FittingCentre,
   type MessageWordings,
+  type PayZone,
   type SettingKey,
   type SettingRecord,
   type Settings,
@@ -640,109 +641,28 @@ export default function SettingsPageView() {
             )}
           </Section>
 
-          <Section {...common('payZone')} title="Rider pay zone">
+          <Section {...common('pocZone')} title="Rider pay zone in the POC">
             {(v, set) => (
               <>
                 <Info label="About this setting">
-                  Where a rider&apos;s moving hours count for pay. The POC: a circle round Hitech
-                  City. After it: the areas picked here. Not sent to the screens yet: until the step
-                  that sends settings to screens, each screen counts the POC circle.
+                  Where a rider&apos;s moving hours count for pay while the POC runs: a circle round
+                  Hitech City (15 km). Sent to the screens with the POC plans; outside it the screen
+                  is blank.
                 </Info>
-                <fieldset className="areas">
-                  <legend className="rc-field__label">Kind</legend>
-                  <label>
-                    <input
-                      type="radio"
-                      name="zone-kind"
-                      checked={v.kind === 'circle'}
-                      onChange={() =>
-                        set({
-                          kind: 'circle',
-                          centre: { lat: 17.4504, lng: 78.381 },
-                          radiusM: 15_000,
-                        })
-                      }
-                    />
-                    A circle
-                  </label>
-                  <label>
-                    <input
-                      type="radio"
-                      name="zone-kind"
-                      checked={v.kind === 'areas'}
-                      onChange={() => set({ kind: 'areas', areaIds: [], withEdge: true })}
-                    />
-                    Areas
-                  </label>
-                </fieldset>
-                {v.kind === 'circle' ? (
-                  <div className="cal-bar">
-                    <Field label="Centre latitude">
-                      <input
-                        className="rc-input mono"
-                        type="number"
-                        step="0.0001"
-                        value={v.centre.lat}
-                        onChange={(e) =>
-                          set({ ...v, centre: { ...v.centre, lat: Number(e.target.value) } })
-                        }
-                      />
-                    </Field>
-                    <Field label="Centre longitude">
-                      <input
-                        className="rc-input mono"
-                        type="number"
-                        step="0.0001"
-                        value={v.centre.lng}
-                        onChange={(e) =>
-                          set({ ...v, centre: { ...v.centre, lng: Number(e.target.value) } })
-                        }
-                      />
-                    </Field>
-                    <Field label="Radius (km)">
-                      <input
-                        className="rc-input mono"
-                        type="number"
-                        step="0.1"
-                        value={v.radiusM / 1000}
-                        onChange={(e) =>
-                          set({ ...v, radiusM: Math.round(Number(e.target.value) * 1000) })
-                        }
-                      />
-                    </Field>
-                  </div>
-                ) : (
-                  <>
-                    <fieldset className="areas">
-                      <legend className="rc-field__label">Areas that count</legend>
-                      {page.areas.map((a) => (
-                        <label key={a.id}>
-                          <input
-                            type="checkbox"
-                            checked={v.areaIds.includes(a.id)}
-                            onChange={(e) =>
-                              set({
-                                ...v,
-                                areaIds: e.target.checked
-                                  ? [...v.areaIds, a.id]
-                                  : v.areaIds.filter((x) => x !== a.id),
-                              })
-                            }
-                          />
-                          {a.name}
-                        </label>
-                      ))}
-                    </fieldset>
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={v.withEdge}
-                        onChange={(e) => set({ ...v, withEdge: e.target.checked })}
-                      />{' '}
-                      Their edge zones count too
-                    </label>
-                  </>
-                )}
+                <ZoneFields name="poc-zone" v={v} set={set} areas={page.areas} />
+              </>
+            )}
+          </Section>
+
+          <Section {...common('regularZone')} title="Rider pay zone in regular business">
+            {(v, set) => (
+              <>
+                <Info label="About this setting">
+                  Where a rider&apos;s moving hours count for pay in regular business: inside any
+                  area that is on (not its edge zone). Outside every area nothing counts. Pick areas
+                  only for an exception.
+                </Info>
+                <ZoneFields name="regular-zone" v={v} set={set} areas={page.areas} />
               </>
             )}
           </Section>
@@ -1079,5 +999,123 @@ function PhoneRow({
         Remove
       </button>
     </div>
+  );
+}
+
+/** The fields of a pay zone: a circle, chosen areas, or all areas that are on (P1.7.5). */
+function ZoneFields({
+  name,
+  v,
+  set,
+  areas,
+}: {
+  readonly name: string;
+  readonly v: PayZone;
+  readonly set: (z: PayZone) => void;
+  readonly areas: readonly { readonly id: string; readonly name: string }[];
+}) {
+  return (
+    <>
+      <fieldset className="areas">
+        <legend className="rc-field__label">Kind</legend>
+        <label>
+          <input
+            type="radio"
+            name={name}
+            checked={v.kind === 'circle'}
+            onChange={() =>
+              set({
+                kind: 'circle',
+                centre: { lat: 17.4504, lng: 78.381 },
+                radiusM: 15_000,
+              })
+            }
+          />
+          A circle
+        </label>
+        <label>
+          <input
+            type="radio"
+            name={name}
+            checked={v.kind === 'areas'}
+            onChange={() => set({ kind: 'areas', areaIds: [], withEdge: true })}
+          />
+          Chosen areas
+        </label>
+        <label>
+          <input
+            type="radio"
+            name={name}
+            checked={v.kind === 'allAreas'}
+            onChange={() => set({ kind: 'allAreas', withEdge: false })}
+          />
+          All areas that are on
+        </label>
+      </fieldset>
+      {v.kind === 'circle' ? (
+        <div className="cal-bar">
+          <Field label="Centre latitude">
+            <input
+              className="rc-input mono"
+              type="number"
+              step="0.0001"
+              value={v.centre.lat}
+              onChange={(e) => set({ ...v, centre: { ...v.centre, lat: Number(e.target.value) } })}
+            />
+          </Field>
+          <Field label="Centre longitude">
+            <input
+              className="rc-input mono"
+              type="number"
+              step="0.0001"
+              value={v.centre.lng}
+              onChange={(e) => set({ ...v, centre: { ...v.centre, lng: Number(e.target.value) } })}
+            />
+          </Field>
+          <Field label="Radius (km)">
+            <input
+              className="rc-input mono"
+              type="number"
+              step="0.1"
+              value={v.radiusM / 1000}
+              onChange={(e) => set({ ...v, radiusM: Math.round(Number(e.target.value) * 1000) })}
+            />
+          </Field>
+        </div>
+      ) : (
+        <>
+          {v.kind === 'areas' && (
+            <fieldset className="areas">
+              <legend className="rc-field__label">Areas that count</legend>
+              {areas.map((a) => (
+                <label key={a.id}>
+                  <input
+                    type="checkbox"
+                    checked={v.areaIds.includes(a.id)}
+                    onChange={(e) =>
+                      set({
+                        ...v,
+                        areaIds: e.target.checked
+                          ? [...v.areaIds, a.id]
+                          : v.areaIds.filter((x) => x !== a.id),
+                      })
+                    }
+                  />
+                  {a.name}
+                </label>
+              ))}
+            </fieldset>
+          )}
+          <label>
+            <input
+              type="checkbox"
+              checked={v.withEdge}
+              onChange={(e) => set({ ...v, withEdge: e.target.checked })}
+            />{' '}
+            Their edge zones count too
+          </label>
+        </>
+      )}
+    </>
   );
 }

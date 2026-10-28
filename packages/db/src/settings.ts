@@ -56,7 +56,9 @@ export async function settingRecords(c: Q): Promise<SettingRecords> {
   const out: Record<string, SettingRecord> = {};
   for (const k of SETTING_KEYS)
     out[k] = { value: DEFAULT_SETTINGS[k], version: 0, savedBy: null, savedAt: null, reason: null };
-  for (const x of r.rows)
+  for (const x of r.rows) {
+    // A setting that was replaced (payZone, P1.7.5) stays in the table as history only.
+    if (!(SETTING_KEYS as readonly string[]).includes(x.key)) continue;
     out[x.key] = {
       value: withNewRules(x.key as SettingKey, x.value as Settings[SettingKey]),
       version: x.version,
@@ -64,6 +66,7 @@ export async function settingRecords(c: Q): Promise<SettingRecords> {
       savedAt: x.saved_at.getTime() / 1000,
       reason: x.reason,
     };
+  }
   return out as unknown as SettingRecords;
 }
 
@@ -123,8 +126,9 @@ export async function saveSetting<K extends SettingKey>(
       throw new Refusal(e instanceof Error ? e.message : String(e));
     }
     if (same(now.value, next)) throw new Refusal('Nothing changes');
-    if (key === 'payZone' && (next as Settings['payZone']).kind === 'areas') {
-      const ids = (next as Extract<Settings['payZone'], { kind: 'areas' }>).areaIds;
+    const zone = key === 'pocZone' || key === 'regularZone' ? (next as Settings['pocZone']) : null;
+    if (zone?.kind === 'areas') {
+      const ids = zone.areaIds;
       const known = await c.query<{ area_id: string }>(
         'SELECT DISTINCT area_id FROM area_versions WHERE area_id = ANY($1) AND NOT draft',
         [ids],

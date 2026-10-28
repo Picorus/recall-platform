@@ -1,5 +1,6 @@
 // P1.2.6: moving hours per bike per business day and month, the rider's monthly paid-hour cap, and
 // a daily check for odd patterns. Works from the one-minute summaries the screens send (P1.2.4).
+import { placeKeyInZone, type PayZone } from './pay-zone.js';
 import type { MinuteSummary } from './screen-reports.js';
 import { businessDayOf, DEFAULT_BUSINESS_HOURS, toIndiaTime, type BusinessHours } from './time.js';
 
@@ -78,14 +79,28 @@ function mergeMinutes(minutes: readonly MinuteSummary[]): MinuteSummary[] {
 }
 
 /**
- * Totals per business day ("YYYY-MM-DD", India time). Counted seconds are the clock seconds the
- * screen marked inside the pay zone (DECISIONS, 22 Oct 2026). Only clock
- * seconds inside business hours count (Prateek, 22 Oct 2026); the rest are reported on the
- * business day that ended just before them.
+ * A minute's clock seconds that count in a pay zone. An areas zone is read from the minute's clock
+ * seconds by place (the screen reports where each one ran); a circle zone from the seconds the screen
+ * itself marked inside its circle (`payClockSeconds`: the box always marks the POC circle).
+ */
+export function countedSecondsOf(m: MinuteSummary, zone: PayZone): number {
+  if (zone.kind === 'circle') return m.payClockSeconds;
+  let n = 0;
+  for (const [key, s] of Object.entries(m.clockAt)) if (placeKeyInZone(zone, key)) n += s;
+  return n;
+}
+
+/**
+ * Totals per business day ("YYYY-MM-DD", India time). Counted seconds are the clock seconds inside
+ * the pay zone of the business mode in force at that minute (`zoneAt`; Prateek, 28 Oct 2026),
+ * or the seconds the screen marked when no zone is given. Only clock seconds inside business hours
+ * count (Prateek, 22 Oct 2026); the rest are reported on the business day that ended just before
+ * them.
  */
 export function dailyTotals(
   minutes: readonly MinuteSummary[],
   hours: BusinessHours = DEFAULT_BUSINESS_HOURS,
+  zoneAt?: (minute: number) => PayZone,
 ): Map<string, Totals> {
   const days = new Map<string, Totals>();
   for (const m of mergeMinutes(minutes)) {
@@ -99,7 +114,7 @@ export function dailyTotals(
       continue;
     }
     const t = days.get(day) ?? ZERO;
-    const rawCounted = m.payClockSeconds;
+    const rawCounted = zoneAt ? countedSecondsOf(m, zoneAt(m.minute)) : m.payClockSeconds;
     days.set(day, {
       clockSeconds: t.clockSeconds + clock,
       countedSeconds: t.countedSeconds + Math.min(clock, rawCounted),

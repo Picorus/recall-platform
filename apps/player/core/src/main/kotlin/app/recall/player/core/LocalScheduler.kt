@@ -252,6 +252,11 @@ class LocalScheduler(
                 is Place.Edge -> z.withEdge && p.areaId in z.areaIds
                 Place.Outside -> false
             }
+            is PocZone.AllAreas -> when (place) {
+                is Place.Inside -> true
+                is Place.Edge -> z.withEdge
+                Place.Outside -> false
+            }
         }
         val hour = PocPlans.hourOf(t)
         // Outside the POC zone in a POC hour (Prateek, 29 Oct 2026): only RECALL's own ads, no area plans.

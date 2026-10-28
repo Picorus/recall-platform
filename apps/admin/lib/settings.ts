@@ -36,7 +36,9 @@ export type PayZone =
       readonly centre: { readonly lat: number; readonly lng: number };
       readonly radiusM: number;
     }
-  | { readonly kind: 'areas'; readonly areaIds: readonly string[]; readonly withEdge: boolean };
+  | { readonly kind: 'areas'; readonly areaIds: readonly string[]; readonly withEdge: boolean }
+  /** Any area that is on (regular business, P1.7.5). */
+  | { readonly kind: 'allAreas'; readonly withEdge: boolean };
 export interface LoanBank {
   readonly name: string;
 }
@@ -128,7 +130,9 @@ export interface Settings {
   readonly fittingCentres: readonly FittingCentre[];
   readonly support: SupportSettings;
   readonly messages: MessageWordings;
-  readonly payZone: PayZone;
+  /** P1.7.5: the rider pay zone while the POC runs, and in regular business. */
+  readonly pocZone: PayZone;
+  readonly regularZone: PayZone;
   readonly loanBank: LoanBank;
   readonly riderSignIn: RiderSignInRules;
   readonly brandSignIn: BrandSignInRules;
