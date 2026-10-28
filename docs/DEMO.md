@@ -84,6 +84,7 @@ To see 15,500 bikes (the full fleet), use the investor demo page: it plays back 
 | "node_modules missing" or "tsx: not found" | Type `pnpm install`, then `pnpm demo`. (`pnpm demo` now does the install itself; this is for a codespace made before 28 Oct 2026.) |
 | "the database is not running" | Type `pnpm services:up`, then `pnpm demo`. |
 | A page says "Not from the admin site" or sign-in fails | Open the portals from the demo desk's buttons, not from an old bookmark (the address changes with each codespace). |
+| Every link shows an error page | The browser could not sign in to the private ports. Ports tab → right-click each of the four ports → **Port Visibility → Public**, then open the demo desk with its globe icon. Everything in the demo is made up, and the links stop working when the codespace stops. |
 | The demo desk tab did not open | Ports tab → **Demo desk (start here)** → globe icon. |
 | Nothing works | Stop the codespace and open it again. The demo always starts fresh. |
 
