@@ -1,13 +1,14 @@
 // P4.1 sign-in (approved screen R01): pick a language, type the mobile number, get a code on
 // WhatsApp (or by SMS). A new number starts the sign-up the same way.
+import NIGHT from '@recall/design/photos/avenue-s.webp';
 import { indiaMobile, type CodeChannel, type RiderLanguage } from '@recall/domain';
 import { useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { ApiError, call } from '../api';
 import { LANGUAGE_NAMES, say, sayError } from '../i18n';
-import { face } from '../fonts';
-import { color, touch } from '../theme';
-import { Alert, Field, LinkButton, Logo, MainButton, Muted, Screen, Title, Words, s } from '../ui';
+import { face, SERIF } from '../fonts';
+import { color, radius, touch } from '../theme';
+import { Alert, Field, LinkButton, Logo, MainButton, Muted, Screen, Title } from '../ui';
 
 export interface CodeSent {
   readonly phone: string;
@@ -49,15 +50,30 @@ export function SignIn({
   };
   return (
     <Screen>
-      <Logo tagline={say(lang, 'forRiders')} />
-      <View style={{ gap: 8 }}>
-        <Title>{say(lang, 'headline')}</Title>
+      {/* Hyderabad at night (drawn for RECALL): the street the rider is about to light up. */}
+      <View style={h.hero} accessible={false}>
+        <Image source={NIGHT} style={h.photo} resizeMode="cover" />
+        <View style={h.fade1} />
+        <View style={h.fade2} />
+        <View style={h.logo}>
+          <Logo tagline={say(lang, 'forRiders')} />
+        </View>
+      </View>
+      <View style={{ gap: 8, marginTop: -64 }}>
+        {lang === 'en' ? (
+          <Text style={h.serif} accessibilityRole="header">
+            {say(lang, 'headline')}
+          </Text>
+        ) : (
+          <Title>{say(lang, 'headline')}</Title>
+        )}
         <Muted>{say(lang, 'pitch')}</Muted>
       </View>
-      <View accessibilityRole="radiogroup" accessibilityLabel="Language" style={{ gap: 8 }}>
-        <Words weight="semibold" style={[s.muted13, { letterSpacing: 1.4 }]}>
-          {say(lang, 'language')}
-        </Words>
+      <View
+        accessibilityRole="radiogroup"
+        accessibilityLabel="Language"
+        style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}
+      >
         {LANGUAGE_NAMES.map(([code, name]) => {
           const on = code === lang;
           return (
@@ -67,17 +83,24 @@ export function SignIn({
               accessibilityState={{ checked: on }}
               accessibilityLabel={name}
               onPress={() => onLanguage(code)}
-              style={{
-                minHeight: touch.main,
+              style={({ pressed }) => ({
+                minHeight: touch.min,
                 paddingHorizontal: 16,
-                borderRadius: 6,
+                borderRadius: radius.pill,
                 justifyContent: 'center',
-                backgroundColor: on ? color.raised : 'transparent',
-                borderWidth: on ? 2 : 1,
+                backgroundColor: on ? color.text : 'transparent',
+                borderWidth: 1,
                 borderColor: on ? color.text : color.line,
-              }}
+                transform: [{ scale: pressed ? 0.96 : 1 }],
+              })}
             >
-              <Text style={{ color: color.text, fontSize: 17, fontFamily: face(code, 'semibold') }}>
+              <Text
+                style={{
+                  color: on ? color.ground : color.text,
+                  fontSize: 15.5,
+                  fontFamily: face(code, 'semibold'),
+                }}
+              >
                 {name}
               </Text>
             </Pressable>
@@ -111,3 +134,49 @@ export function SignIn({
     </Screen>
   );
 }
+
+const h = StyleSheet.create({
+  hero: {
+    height: 300,
+    marginHorizontal: -20,
+    marginTop: -20,
+    overflow: 'hidden',
+    justifyContent: 'flex-start',
+  },
+  photo: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    width: '100%',
+    height: '100%',
+  },
+  // A soft fall into the page's ground (no gradient library: two veils).
+  fade1: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 150,
+    backgroundColor: color.ground,
+    opacity: 0.55,
+  },
+  fade2: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 70,
+    backgroundColor: color.ground,
+    opacity: 0.9,
+  },
+  logo: { paddingTop: 28, paddingHorizontal: 20 },
+  serif: {
+    color: color.text,
+    fontFamily: SERIF,
+    fontSize: 48,
+    lineHeight: 50,
+    letterSpacing: -0.5,
+  },
+});

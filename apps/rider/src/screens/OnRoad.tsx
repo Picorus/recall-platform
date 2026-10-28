@@ -1,5 +1,6 @@
 // P4.4–P4.8: a rider on the road moves between his pages with tabs at the bottom: Today, Earnings,
 // Payouts, Screen (care, problems and the screen loan), Help.
+import type { GlyphName } from '@recall/design';
 import type { RiderLanguage } from '@recall/domain';
 import { useEffect, useState } from 'react';
 import { BackHandler, Pressable, View } from 'react-native';
@@ -7,7 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Me } from '../api';
 import { say, type Key } from '../i18n';
 import { color, touch } from '../theme';
-import { Words } from '../ui';
+import { Icon, Words } from '../ui';
 import { Earnings } from './Earnings';
 import { Help } from './Help';
 import { Care } from './Care';
@@ -16,12 +17,12 @@ import { Profile } from './Profile';
 import { Today } from './Today';
 
 const TABS = [
-  ['today', 'tab.today'],
-  ['earnings', 'tab.earnings'],
-  ['payouts', 'tab.payouts'],
-  ['screen', 'tab.screen'],
-  ['help', 'tab.help'],
-] as const satisfies readonly (readonly [string, Key])[];
+  ['today', 'tab.today', 'home'],
+  ['earnings', 'tab.earnings', 'wallet'],
+  ['payouts', 'tab.payouts', 'bank'],
+  ['screen', 'tab.screen', 'screen'],
+  ['help', 'tab.help', 'help'],
+] as const satisfies readonly (readonly [string, Key, GlyphName])[];
 type Tab = (typeof TABS)[number][0];
 
 export function OnRoad({
@@ -82,31 +83,51 @@ export function OnRoad({
           flexDirection: 'row',
           borderTopWidth: 1,
           borderTopColor: color.divider,
-          backgroundColor: color.raised,
-          paddingBottom: insets.bottom,
+          backgroundColor: color.ground,
+          paddingTop: 6,
+          paddingBottom: Math.max(insets.bottom, 8),
         }}
       >
-        {TABS.map(([id, key]) => (
-          <Pressable
-            key={id}
-            accessibilityRole="tab"
-            accessibilityState={{ selected: tab === id }}
-            onPress={() => setTab(id)}
-            style={{
-              flex: 1,
-              minHeight: touch.main,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <Words
-              weight="semibold"
-              style={{ color: tab === id ? color.volt : color.muted, fontSize: 13 }}
+        {TABS.map(([id, key, glyph]) => {
+          const on = tab === id;
+          return (
+            <Pressable
+              key={id}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: on }}
+              onPress={() => setTab(id)}
+              style={({ pressed }) => ({
+                flex: 1,
+                minHeight: touch.main + 4,
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 3,
+                transform: [{ scale: pressed ? 0.92 : 1 }],
+              })}
             >
-              {say(lang, key)}
-            </Words>
-          </Pressable>
-        ))}
+              {/* The chosen tab: a small volt mark above its icon (the bar's one volt thing). */}
+              <View
+                style={{
+                  position: 'absolute',
+                  top: -6,
+                  width: 26,
+                  height: 3,
+                  borderBottomLeftRadius: 3,
+                  borderBottomRightRadius: 3,
+                  backgroundColor: on ? color.volt : 'transparent',
+                }}
+                accessible={false}
+              />
+              <Icon name={glyph} size={24} tint={on ? color.text : color.quiet} />
+              <Words
+                weight="semibold"
+                style={{ color: on ? color.text : color.quiet, fontSize: 11.5 }}
+              >
+                {say(lang, key)}
+              </Words>
+            </Pressable>
+          );
+        })}
       </View>
     </View>
   );

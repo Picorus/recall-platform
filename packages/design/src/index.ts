@@ -4,3 +4,4 @@ export * from './dataviz.ts';
 export { tokensCss } from './css.ts';
 export { designSystemTokens, designSystemTokensJson } from './design-system.ts';
 export { contrastRatio, luminance } from './contrast.ts';
+export { glyphs, type GlyphName } from './glyphs.ts';
