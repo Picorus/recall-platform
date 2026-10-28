@@ -2,6 +2,12 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 28 Oct 2026 · P7.6 · The demo rebuilds its websites after `git pull`
+- Found while writing Prateek's Codespace steps: the demo built the staff and brand portals and the rider app once and reused them forever, so a codespace that pulled new code still showed the old design.
+- `tools/demo/src/builds.ts`: each build notes the commit it was made from (`tools/demo/.built.json`, not committed); a different commit, or no note, means build again. Without git the old rule holds (build only when missing). `docs/DEMO.md`: "Getting the newest version", plus a fix for codespaces made before this.
+- Tests: 5 unit tests (`tools/demo/test/unit/builds.test.ts`); the demo started twice here: the first start rebuilt all three, the second reused them.
+- Next: P6 as accounts open.
+
 ## 28 Oct 2026 · P7.7.6 · Calmer pages, light and dark, a pointer that answers
 - **Long text folded away, nothing removed**: explanations sit behind a small (i) and a few words ("How this works", "Which files work"); lists of rules and tips are sections that open on a click ("What works on the road", "The rules, in plain words", "Ad rules", the help questions). Brand portal: ads, pay, book, invoices, statement, help. Staff portal: settings (8), payouts, calendar, dashboard, brands. Rider app: screen-care tips, how pay works and the stop rule open on a tap. Warnings before an action (cancelling, revoking) stay in sight.
 - **Light and dark** in the brand and staff portals: Auto (the device's setting), Light or Dark, in the brand account menu and at the foot of the staff menu. Kept in a cookie the server reads, so the page is drawn in the right look with no flash. The logo swaps to the brand's dark-ground file.
