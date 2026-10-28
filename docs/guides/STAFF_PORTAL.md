@@ -27,7 +27,7 @@ There are three other staff logins. Each one sees only its own part of the porta
 
 ## The menu, page by page
 
-The menu runs across the top. Here is what each page is for.
+The menu runs down the left, grouped by job: Sales, Fleet, Work, Money and Admin. Press **Ctrl K** (⌘K on a Mac), or click **Jump to…**, to type a page's name and go straight there. Here is what each page is for.
 
 ### Today
 ![Today](img/staff-today.png)

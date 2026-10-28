@@ -410,7 +410,7 @@ Phases overlap on purpose: each starts once the part it depends on is stable, no
 | P6 | Real integrations (needs company accounts) | Blocked | Mar – Jul 2027 |
 | P7 | Hardening, load test, security audit, POC readiness | Code done (P7.1–P7.5); the outside audit, staging and the 2-week road test need accounts, bikes and people | Jun – Jul 2027 |
 | P5 | Brand portal for self-serve | Done (real payments, GST lookups and messages wait for the outside accounts, P6) | Jul – Oct 2027 |
-| P7.7 | Design 2.0: premium look for the three apps | P7.7.1–P7.7.4 done; P7.7.5 next | Nov 2026 |
+| P7.7 | Design 2.0: premium look for the three apps | Done (the rider map home waits for the maps account, P6) | Oct 2026 |
 
 ## Records for a human takeover
 
