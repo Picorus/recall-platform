@@ -6,6 +6,7 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, type FormEvent } from 'react';
 import { api, ApiError, type BusinessForm, type GstAnswer } from '../../../lib/api';
+import { regroupMobile } from '../../../lib/sign-in';
 import { Shell, useMe } from '../../../lib/session';
 
 const message = (e: unknown) =>
@@ -115,11 +116,12 @@ export default function NewBusiness() {
                 name="gstin"
                 value={gstin}
                 onChange={(e) => {
-                  setGstin(e.target.value);
+                  // A GST number never has a space ("36 ABCDE 1234 F1Z5" as pasted).
+                  setGstin(e.target.value.replace(/\s/g, '').toUpperCase());
                   setGst(undefined);
                 }}
                 placeholder="36ABCDE1234F1Z5"
-                maxLength={20}
+                maxLength={30}
                 autoComplete="off"
               />
             </label>
@@ -221,7 +223,10 @@ export default function NewBusiness() {
               <input
                 className="rc-input"
                 name="invoiceEmail"
-                type="email"
+                type="text"
+                inputMode="email"
+                autoCapitalize="none"
+                spellCheck={false}
                 defaultValue={signedInWithEmail ? me.address : ''}
                 required
               />
@@ -233,6 +238,13 @@ export default function NewBusiness() {
                 name="phone"
                 type="tel"
                 defaultValue={signedInWithEmail ? '' : me.shown}
+                onChange={(e) => {
+                  // Shown grouped as typed ("98480 12345"); the API reads it again.
+                  const box = e.currentTarget;
+                  const grouped = regroupMobile(box.value, box.dataset.was ?? box.defaultValue);
+                  if (grouped !== box.value) box.value = grouped;
+                  box.dataset.was = grouped;
+                }}
                 required
               />
               <span className="rc-field__help">

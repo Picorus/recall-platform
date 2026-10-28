@@ -123,8 +123,10 @@ describe('fitting on the rider app (P4.3)', () => {
     });
     const at = start - 10 * 60;
     expect((await appFittingPage(pool, ravi, at, R)).booking?.canFitNow).toBe(true);
-    // The id printed under the QR, typed in small letters, works too.
-    expect(await fitFromApp(pool, ravi, box.screenId.toLowerCase(), at, R)).toBe(box.screenId);
+    // The id printed under the QR, typed in small letters with stray spaces, works too.
+    const id = box.screenId.toLowerCase();
+    const typed = ` ${id.slice(0, 3)} ${id.slice(4, 8)} ${id.slice(8)} `;
+    expect(await fitFromApp(pool, ravi, typed, at, R)).toBe(box.screenId);
     page = await appFittingPage(pool, ravi, at + 1, R);
     expect(page).toMatchObject({ screenId: box.screenId, check: null, slots: [] });
     expect(page.booking?.canFitNow).toBe(false);

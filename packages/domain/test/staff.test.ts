@@ -6,6 +6,7 @@ import {
   DEFAULT_SIGN_IN_RULES as R,
   lockedUntil,
   moneyRole,
+  normalEmail,
   passwordProblem,
   sessionAlive,
   STAFF_AREAS,
@@ -91,5 +92,14 @@ describe('sign-in rules', () => {
     expect(sessionAlive(t, t, t + R.idleMs)).toBe(false);
     expect(sessionAlive(t, t + R.sessionMs - 1000, t + R.sessionMs - 1)).toBe(true);
     expect(sessionAlive(t, t + R.sessionMs - 1000, t + R.sessionMs)).toBe(false);
+  });
+});
+
+describe('emails as typed', () => {
+  it('drops spaces around an email and next to "@" and "."; keeps one inside a name', () => {
+    expect(normalEmail(' Prateek @ Recall .in ')).toBe('prateek@recall.in');
+    expect(normalEmail('meena@recall.in')).toBe('meena@recall.in');
+    // Refused later (isEmail): a space inside a name could stand for a dot.
+    expect(normalEmail('ravi kumar@recall.in')).toBe('ravi kumar@recall.in');
   });
 });

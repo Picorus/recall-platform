@@ -216,9 +216,15 @@ describe('rider app joining routes (P4.2)', () => {
         .body,
     ).toEqual({ outcome: 'failed', reason: 'the name on the account is not yours' });
     expect((await post('/rider/checks', {}, auth)).body).toEqual({ answered: 1 });
+    // Stray spaces (pasted from WhatsApp) are dropped.
     expect(
-      (await post('/rider/bank', { kind: 'upi', vpa: 'ramesh@okaxis', name: 'Ramesh Naidu' }, auth))
-        .body,
+      (
+        await post(
+          '/rider/bank',
+          { kind: 'upi', vpa: ' ramesh @okaxis ', name: ' Ramesh Naidu ' },
+          auth,
+        )
+      ).body,
     ).toMatchObject({ outcome: 'passed' });
     const after = await get('/rider/join');
     expect((after.body.steps as { state: string }[]).map((x) => x.state)).toEqual([

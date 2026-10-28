@@ -86,11 +86,16 @@ export const BRAND_SIGN_IN_RANGES: Readonly<
 export type BrandCodeChannel = 'whatsapp' | 'sms' | 'email';
 
 /**
- * An email address as typed, trimmed and in small letters ("Media@Agency.in " → "media@agency.in"),
- * or null when it is not one. The same shape brand contacts are kept in.
+ * An email address as typed, trimmed and in small letters ("Media @ Agency.in " →
+ * "media@agency.in"), or null when it is not one. The same shape brand contacts are kept in.
+ * Spaces next to "@" or "." are dropped; one inside a name ("ravi kumar@x.in") is refused, as it
+ * could stand for a dot or a dash and reach someone else.
  */
 export function emailAddress(typed: string): string | null {
-  const e = typed.trim().toLowerCase();
+  const e = typed
+    .trim()
+    .replace(/\s*([@.])\s*/g, '$1')
+    .toLowerCase();
   return e.length <= 254 && /^[^@\s]{1,64}@[^@\s]{1,190}\.[a-z]{2,24}$/.test(e) ? e : null;
 }
 

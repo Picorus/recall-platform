@@ -1,11 +1,11 @@
 // P4.1: type the 6-digit code that came on WhatsApp or SMS. A new code can be asked for after 30
 // seconds; the number can be changed.
-import { typedCode, type RiderLanguage } from '@recall/domain';
+import { codeFromTyped, typedCode, type RiderLanguage } from '@recall/domain';
 import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { ApiError, call } from '../api';
 import { say, sayError } from '../i18n';
-import { Alert, Field, LinkButton, MainButton, Muted, Screen, Title } from '../ui';
+import { Alert, Field, LinkButton, MainButton, Muted, s, Screen, Title } from '../ui';
 import type { CodeSent } from './SignIn';
 
 const RESEND_AFTER_S = 30;
@@ -74,12 +74,15 @@ export function Code({
       <Field
         label={say(lang, 'code')}
         value={code}
-        onChangeText={(t) => setCode(t.replace(/\D/g, '').slice(0, 6))}
+        onChangeText={(t) => setCode(codeFromTyped(t))}
+        // Big digits that stand apart ("4 8 2 9 1 5"); the code itself stays "482915".
+        style={[s.input, s.code]}
         keyboardType="number-pad"
         inputMode="numeric"
         autoComplete="one-time-code"
         textContentType="oneTimeCode"
-        maxLength={6}
+        // Room for a pasted "123 456": the box keeps only its 6 digits.
+        maxLength={12}
         autoFocus
         onSubmitEditing={check}
       />

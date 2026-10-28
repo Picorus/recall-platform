@@ -277,6 +277,17 @@ describe('money routes (P3.13.1)', () => {
     expect((await send(fin, '/money/partners/invoice', inv)).status).toBe(200);
     expect((await send(fin, '/money/partners/invoice', inv)).status).toBe(409);
     expect((await send(fin, '/money/partners/pay', pay)).status).toBe(409);
+    // A GSTIN and partner id typed with stray spaces and small letters.
+    expect(
+      (
+        await send(fin, '/money/partners/invoice', {
+          ...inv,
+          partnerId: ' adwise ',
+          invoiceNo: 'AW/27/032',
+          gstin: ' 36 aapfu 0939 f1zw ',
+        })
+      ).status,
+    ).toBe(200);
     expect(
       (
         await send(fin, '/money/partners/invoice', {

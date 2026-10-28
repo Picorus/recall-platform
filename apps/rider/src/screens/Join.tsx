@@ -386,7 +386,9 @@ function BankStep({
         <Field
           label={say(lang, 'vpa')}
           value={vpa}
-          onChangeText={setVpa}
+          // Spaces beside the "@" go; one inside the name stays, so the server refuses it (never
+          // joined into someone else's UPI id).
+          onChangeText={(t) => setVpa(t.replace(/\s*@\s*/, '@'))}
           autoCapitalize="none"
           maxLength={100}
           placeholder="name@okaxis"
@@ -396,17 +398,17 @@ function BankStep({
           <Field
             label={say(lang, 'accountNumber')}
             value={accountNumber}
-            onChangeText={setAccount}
+            onChangeText={(t) => setAccount(t.replace(/\s/g, ''))}
             keyboardType="number-pad"
             inputMode="numeric"
-            maxLength={20}
+            maxLength={30}
           />
           <Field
             label={say(lang, 'ifsc')}
             value={ifsc}
-            onChangeText={setIfsc}
+            onChangeText={(t) => setIfsc(t.replace(/\s/g, ''))}
             autoCapitalize="characters"
-            maxLength={11}
+            maxLength={20}
           />
         </>
       )}

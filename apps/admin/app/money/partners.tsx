@@ -5,7 +5,7 @@
 // (super admin, never automatic).
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { api, ApiError } from '../../lib/api';
-import { dayOfIndia, rupees } from '../../lib/format';
+import { dayOfIndia, noSpaces, rupees, tidyBox } from '../../lib/format';
 import type { PartnerList, PartnerRow, PartnerStatement } from '../../lib/money';
 import { readPercent, readRupees } from '../../lib/prices';
 
@@ -212,7 +212,12 @@ function Statement({
             </label>
             <label className="rc-field">
               <span className="rc-field__label">Their GSTIN</span>
-              <input className="rc-input" name="gstin" maxLength={15} />
+              <input
+                className="rc-input"
+                name="gstin"
+                maxLength={20}
+                onChange={tidyBox(noSpaces)}
+              />
             </label>
             <label className="rc-field">
               <span className="rc-field__label">Before GST (₹)</span>
@@ -274,7 +279,13 @@ function GiveCut({ onDone }: { readonly onDone: () => void }) {
       <div className="cal-bar">
         <label className="rc-field">
           <span className="rc-field__label">Booking</span>
-          <input className="rc-input" name="bookingId" required maxLength={40} />
+          <input
+            className="rc-input"
+            name="bookingId"
+            required
+            maxLength={40}
+            onChange={tidyBox(noSpaces)}
+          />
         </label>
         <label className="rc-field">
           <span className="rc-field__label">To</span>
@@ -285,7 +296,13 @@ function GiveCut({ onDone }: { readonly onDone: () => void }) {
         </label>
         <label className="rc-field">
           <span className="rc-field__label">Partner id</span>
-          <input className="rc-input" name="partnerId" required maxLength={64} />
+          <input
+            className="rc-input"
+            name="partnerId"
+            required
+            maxLength={64}
+            onChange={tidyBox(noSpaces)}
+          />
         </label>
         <label className="rc-field">
           <span className="rc-field__label">Rate % (empty: the price book&apos;s)</span>

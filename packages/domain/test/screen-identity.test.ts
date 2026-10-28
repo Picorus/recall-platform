@@ -9,6 +9,7 @@ import {
   newScreenId,
   numberPlate,
   screenIdFromQr,
+  typedScreenId,
   type EnrolmentRequest,
 } from '../src/screen-identity.js';
 
@@ -58,5 +59,31 @@ describe('screen identity (P2.1): the shared cases the Kotlin player also passes
       'the two keys must be different',
     );
     expect(() => newScreenId([1, 2, 3])).toThrow();
+  });
+});
+
+describe('a screen id typed by hand', () => {
+  it('small letters, spaces, dashes and no "SCR" are fine; the check character still counts', () => {
+    const id = newScreenId([1, 2, 3, 4, 5, 6, 7]);
+    const body = id.slice(4);
+    for (const t of [
+      id,
+      id.toLowerCase(),
+      ` ${id} `,
+      `SCR ${body}`,
+      `scr ${body.slice(0, 4).toLowerCase()} ${body.slice(4)} `,
+      body,
+      `SCR-${body.slice(0, 4)}-${body.slice(4)}`,
+    ])
+      expect(typedScreenId(t), t).toBe(id);
+    const wrong = body.slice(0, 7) + (body[7] === '0' ? '1' : '0');
+    for (const t of ['', 'SCR-', `SCR-${wrong}`, `XYZ-${body}`, `RECALL1:${id}`, `${id}0`])
+      expect(typedScreenId(t), t).toBeUndefined();
+    fc.assert(
+      fc.property(fc.string(), (s) => {
+        const t = typedScreenId(s);
+        if (t !== undefined) expect(isScreenId(t)).toBe(true);
+      }),
+    );
   });
 });

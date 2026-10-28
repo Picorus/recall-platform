@@ -32,7 +32,7 @@ import {
   statementCsv,
   unknownPayments,
 } from '@recall/db';
-import { can, moneyRole } from '@recall/domain';
+import { can, moneyRole, typedGstin } from '@recall/domain';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Pool } from 'pg';
 import { HttpError, jsonBody, send, str } from './http.js';
@@ -189,7 +189,7 @@ async function partnerAction(
   const kind = b.kind;
   if (kind !== 'agency' && kind !== 'aggregator')
     throw new HttpError(400, 'kind must be agency or aggregator');
-  const partnerId = str(b, 'partnerId', 64);
+  const partnerId = str(b, 'partnerId', 64).replace(/\s/g, '');
   const whole = (key: string) => {
     const v = b[key];
     if (typeof v !== 'number' || !Number.isSafeInteger(v) || v < 0)
@@ -224,7 +224,7 @@ async function partnerAction(
       throw new HttpError(403, 'Only finance or a super admin records a partner invoice');
     const invoiceNo = str(b, 'invoiceNo', 16).trim();
     const invoiceDate = str(b, 'invoiceDate', 10);
-    const gstin = typeof b.gstin === 'string' && b.gstin.trim() ? b.gstin.trim() : undefined;
+    const gstin = typeof b.gstin === 'string' && b.gstin.trim() ? typedGstin(b.gstin) : undefined;
     const taxablePaise = whole('taxablePaise');
     const gstPaise = whole('gstPaise');
     if (invoiceNo.length < 1) throw new HttpError(400, 'The invoice number');
@@ -261,7 +261,7 @@ async function partnerAction(
   if (path === '/money/partners/cut') {
     if (me.access.role !== 'super-admin')
       throw new HttpError(403, 'Only a super admin gives a cut');
-    const bookingId = str(b, 'bookingId', 40);
+    const bookingId = str(b, 'bookingId', 40).replace(/\s/g, '');
     if (!/^BK-[A-Za-z0-9-]{1,36}$/.test(bookingId)) throw new HttpError(400, 'Which booking?');
     if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(partnerId)) throw new HttpError(400, 'Which partner?');
     const gstBp = whole('gstBp');

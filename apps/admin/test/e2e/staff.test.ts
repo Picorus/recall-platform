@@ -667,7 +667,8 @@ it('the Settings page: a fitting centre added, a support number refused then sav
   await support.getByLabel('Number').fill('+91 98480 12345');
   await support.getByRole('button', { name: 'Save' }).click();
   await support.getByText(/^Version 1, saved by Prateek/).waitFor();
-  expect(await support.getByLabel('Number').inputValue()).toBe('+919848012345');
+  // Kept as +919848012345, shown grouped so it reads easily.
+  expect(await support.getByLabel('Number').inputValue()).toBe('+91 98480 12345');
   await page.getByRole('table', { name: 'Connections' }).getByText('Brand payments').waitFor();
   if (process.env.SCREENSHOT_DIR) {
     await page.setViewportSize({ width: 1280, height: 900 });

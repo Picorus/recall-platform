@@ -1,7 +1,23 @@
-import { formatRupees, paise } from '@recall/domain';
+import {
+  codeFromTyped,
+  formatRupees,
+  groupMobile as domainGroup,
+  paise,
+  regroupMobile as domainRegroup,
+} from '@recall/domain';
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { clock, count, dayName, rupees, since } from '../../lib/format';
+import {
+  clock,
+  count,
+  dayName,
+  groupMobile,
+  noSpaces,
+  regroupMobile,
+  rupees,
+  since,
+  sixDigits,
+} from '../../lib/format';
 
 describe('how the admin site writes things', () => {
   it('rupees with Indian grouping, from paise', () => {
@@ -29,5 +45,31 @@ describe('how the admin site writes things', () => {
     expect(since(0, 7500)).toBe('2 h 5 min');
     expect(since(0, 7200)).toBe('2 h');
     expect(since(0, 3 * 86_400)).toBe('3 days');
+  });
+});
+
+describe('boxes for codes and ids', () => {
+  it('drops spaces anywhere; a code keeps its 6 digits', () => {
+    expect(noSpaces(' SBIN 0001234\t')).toBe('SBIN0001234');
+    expect(noSpaces('chai-co')).toBe('chai-co');
+    expect(sixDigits(' 123 456 ')).toBe('123456');
+    expect(sixDigits('123-456')).toBe('123456');
+    expect(sixDigits('1234567')).toBe('123456');
+    for (const t of ['482 915', 'Valid 10 min: 482915', '48', '1234567', ' 123-456 ', 'ab'])
+      expect(sixDigits(t), t).toBe(codeFromTyped(t));
+    for (const [t, was] of [
+      ['9848012345', '98480 12345'],
+      ['98480 1234', '98480 12345'],
+      ['+91 9848012345', '+91 98480 12345'],
+      ['9848', ''],
+    ] as const)
+      expect(regroupMobile(t, was), t).toBe(domainRegroup(t, was));
+    expect(sixDigits('12a')).toBe('12');
+  });
+
+  it('a mobile number shows grouped, as @recall/domain groups it', () => {
+    expect(groupMobile('9848000001')).toBe('98480 00001');
+    expect(groupMobile('+919848000001')).toBe('+91 98480 00001');
+    fc.assert(fc.property(fc.string(), (t) => groupMobile(t) === domainGroup(t)));
   });
 });

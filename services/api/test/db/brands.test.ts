@@ -110,7 +110,7 @@ describe('Brands page routes (P3.8.1)', () => {
       baseVersion: 1,
       name: 'Chai Company',
       agencyId: '',
-      referredBy: 'rapido',
+      referredBy: ' rapido ',
       active: true,
       reason: 'now books direct',
     };
@@ -119,13 +119,19 @@ describe('Brands page routes (P3.8.1)', () => {
       body: { version: 2 },
     });
     expect((await post('/brands/chai-co', sana, change)).status).toBe(409);
-    expect((await post('/brands/chai-co/contact', sana, { phone: '+91 98765 43210' })).status).toBe(
-      200,
-    );
+    // Typed with stray spaces, without +91: kept in one form.
+    expect(
+      (
+        await post('/brands/chai-co/contact', sana, {
+          phone: '98765 43210 ',
+          email: ' Ops @Chai.in',
+        })
+      ).status,
+    ).toBe(200);
     expect((await post('/brands/chai-co/contact', sana, { phone: '12345' })).body.error).toBe(
       'phone must be +91 and a 10-digit mobile number',
     );
-    const tax = { legalName: 'Chai Co Pvt Ltd', gstin: '36aapfu0939f1zw', stateCode: '36' };
+    const tax = { legalName: 'Chai Co Pvt Ltd', gstin: ' 36 aapfu 0939 f1zw ', stateCode: '36' };
     expect((await post('/brands/chai-co/tax', sana, tax)).status).toBe(200);
     expect((await post('/brands/chai-co/tax', fin, { ...tax, stateCode: '29' })).body.error).toBe(
       'The GSTIN belongs to another state',
@@ -137,13 +143,13 @@ describe('Brands page routes (P3.8.1)', () => {
     expect((await post('/brands/nobody/notes', sana, { note: 'x' })).status).toBe(404);
     const page = (await get('/brands/chai-co', fin)).body as {
       account: { name: string; agencyId: string | null; version: number };
-      contact: { phone: string };
+      contact: { phone: string; email: string };
       tax: { gstin: string; by: string };
       notes: { note: string }[];
       history: { reason: string }[];
     };
     expect(page.account).toMatchObject({ name: 'Chai Company', agencyId: null, version: 2 });
-    expect(page.contact.phone).toBe('+919876543210');
+    expect(page.contact).toMatchObject({ phone: '+919876543210', email: 'ops@chai.in' });
     expect(page.tax).toMatchObject({
       gstin: '36AAPFU0939F1ZW',
       by: expect.stringContaining('sana2'),

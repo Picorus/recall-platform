@@ -16,6 +16,7 @@ import {
   can,
   emailAddress,
   indiaMobile,
+  typedGstin,
   type AccountKind,
   type BrandMemberRole,
   type StaffAccess,
@@ -52,9 +53,10 @@ function reasonOf(b: Record<string, unknown>): string {
   return r;
 }
 
-/** An optional account id from the body: null when absent or empty. */
+/** An optional account id from the body (stray spaces dropped): null when absent or empty. */
 function idOrNull(b: Record<string, unknown>, key: string): string | null {
-  const v = b[key];
+  const raw = b[key];
+  const v = typeof raw === 'string' ? raw.replace(/\s/g, '') : raw;
   if (v === undefined || v === null || v === '') return null;
   if (typeof v !== 'string' || !ACCOUNT_ID.test(v))
     throw new HttpError(400, `${key}: lower case letters, digits and dashes`);
@@ -119,9 +121,7 @@ export async function handleBrands(
       throw new HttpError(403, 'Only a Sales or Finance admin sets tax details');
     if (!id || !(await findAccount(pool, id))) throw new HttpError(404, 'No such account');
     const gstin =
-      typeof b.gstin === 'string' && b.gstin.trim() !== ''
-        ? b.gstin.trim().toUpperCase()
-        : undefined;
+      typeof b.gstin === 'string' && b.gstin.trim() !== '' ? typedGstin(b.gstin) : undefined;
     const legalName = str(b, 'legalName', 200).trim();
     if (legalName.length < 2) throw new HttpError(400, 'Legal name: 2 to 200 characters');
     await refusedAs400(() =>
@@ -131,7 +131,7 @@ export async function handleBrands(
         {
           legalName,
           ...(gstin ? { gstin } : {}),
-          stateCode: str(b, 'stateCode', 2),
+          stateCode: str(b, 'stateCode', 8).replace(/\s/g, ''),
           address: typeof b.address === 'string' ? b.address.trim().slice(0, 300) : '',
           // P5.8: a GST number goes on invoices only once a person ticked that they checked it.
           gstinChecked: b.gstinChecked === true,
@@ -150,7 +150,7 @@ export async function handleBrands(
     const kind = b.kind;
     if (kind !== 'brand' && kind !== 'agency')
       throw new HttpError(400, 'kind must be brand or agency');
-    const brandId = str(b, 'brandId', 64).trim();
+    const brandId = str(b, 'brandId', 64).replace(/\s/g, '');
     await refusedAs400(() =>
       createAccount(
         pool,
@@ -175,9 +175,15 @@ export async function handleBrands(
   if (!(await findAccount(pool, id))) throw new HttpError(404, 'No such account');
 
   if (part === 'contact') {
+    // Typed any way ("98480 12345", "Ops @Brand.in "): kept in one form; a wrong one is refused.
     const phone =
-      typeof b.phone === 'string' && b.phone.trim() !== '' ? b.phone.replace(/\s/g, '') : undefined;
-    const email = typeof b.email === 'string' && b.email.trim() !== '' ? b.email.trim() : undefined;
+      typeof b.phone === 'string' && b.phone.trim() !== ''
+        ? (indiaMobile(b.phone) ?? b.phone.trim())
+        : undefined;
+    const email =
+      typeof b.email === 'string' && b.email.trim() !== ''
+        ? (emailAddress(b.email) ?? b.email.trim())
+        : undefined;
     await refusedAs400(() =>
       setBrandContact(pool, id, { ...(phone ? { phone } : {}), ...(email ? { email } : {}) }, who),
     );

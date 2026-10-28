@@ -2,6 +2,7 @@
 import { useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
 import { api, ApiError } from '../../lib/api';
+import { sixDigits, tidyBox } from '../../lib/format';
 
 export default function SignIn() {
   const router = useRouter();
@@ -32,7 +33,16 @@ export default function SignIn() {
         <h1 className="brand">RECALL admin</h1>
         <label className="rc-field">
           <span className="rc-field__label">Email</span>
-          <input className="rc-input" name="email" type="email" autoComplete="username" required />
+          <input
+            className="rc-input"
+            name="email"
+            type="text"
+            inputMode="email"
+            autoCapitalize="none"
+            spellCheck={false}
+            autoComplete="username"
+            required
+          />
         </label>
         <label className="rc-field">
           <span className="rc-field__label">Password</span>
@@ -47,12 +57,12 @@ export default function SignIn() {
         <label className="rc-field">
           <span className="rc-field__label">Code from your authenticator app</span>
           <input
-            className="rc-input"
+            className="rc-input rc-input--code"
             name="code"
             inputMode="numeric"
             autoComplete="one-time-code"
-            pattern="[0-9 ]{6,7}"
-            maxLength={7}
+            pattern="[0-9]{6}"
+            onChange={tidyBox(sixDigits)}
             required
           />
         </label>

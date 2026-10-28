@@ -12,6 +12,7 @@ import {
   certificateSoon,
   LIFE_CHIP,
   LIFE_NAMES,
+  screenMatches,
   stageText,
   type ScreenLife,
 } from '../../lib/screens';
@@ -321,15 +322,7 @@ export default function ScreensPage() {
   }, [me, load]);
 
   const rows = useMemo(() => {
-    const q = search.trim().toUpperCase().replace(/\s+/g, '');
-    return (page?.screens ?? []).filter(
-      (r) =>
-        lives.has(r.life) &&
-        (!q ||
-          r.screenId.includes(q) ||
-          (r.bike ?? '').includes(q) ||
-          r.serial.toUpperCase().includes(q)),
-    );
+    return (page?.screens ?? []).filter((r) => lives.has(r.life) && screenMatches(r, search));
   }, [page, lives, search]);
   const spares = useMemo(() => (page?.screens ?? []).filter((r) => r.life === 'in-stock'), [page]);
 

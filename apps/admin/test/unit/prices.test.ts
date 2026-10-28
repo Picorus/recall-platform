@@ -50,6 +50,15 @@ describe('prices page: reading what was typed (P3.6)', () => {
     expect(readPercent('0.05')).toBe(5);
     expect(readPercent('8.123')).toHaveProperty('problem');
     expect(readWhole('15')).toBe(15);
+    // Stray spaces anywhere (typed, pasted) are dropped.
+    expect(readRupees(' ₹ 1 500 ')).toBe(150_000);
+    expect(readRupees('1, 50, 000 .50')).toBe(15_000_050);
+    expect(readRupees('1 50 000')).toBe(15_000_000);
+    // A space counts as a comma, so a wrong grouping is refused, never read as another amount.
+    expect(readRupees('1500 50')).toHaveProperty('problem');
+    expect(readRupees('15 00')).toHaveProperty('problem');
+    expect(readPercent(' 12.5 % ')).toBe(1_250);
+    expect(readWhole(' 1 200 ')).toBe(1_200);
     expect(readWhole('1.5')).toHaveProperty('problem');
     expect([rupeesBox(22_050), rupeesBox(30_000), percentBox(1_250), percentBox(800)]).toEqual([
       '220.50',

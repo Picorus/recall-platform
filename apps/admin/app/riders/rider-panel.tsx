@@ -4,7 +4,15 @@
 // notes and the timeline. An Operations admin acts; Support adds notes.
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { api, ApiError } from '../../lib/api';
-import { dayOfIndia, clock, rupees } from '../../lib/format';
+import {
+  dayOfIndia,
+  clock,
+  groupMobile,
+  noSpaces,
+  regroupMobile,
+  rupees,
+  tidyBox,
+} from '../../lib/format';
 import {
   APPS,
   DOCUMENT_NAMES,
@@ -341,8 +349,10 @@ export default function RiderPanel({
             <input
               className="rc-input"
               name="phone"
-              defaultValue={r.phone}
+              type="tel"
+              defaultValue={/^\+91\d{10}$/.test(r.phone) ? groupMobile(r.phone) : r.phone}
               maxLength={20}
+              onChange={tidyBox(regroupMobile)}
               required
             />
           </label>
@@ -491,15 +501,21 @@ export default function RiderPanel({
           </label>
           <label className="rc-field">
             <span className="rc-field__label">UPI id</span>
-            <input className="rc-input" name="vpa" maxLength={100} />
+            <input className="rc-input" name="vpa" maxLength={100} onChange={tidyBox(noSpaces)} />
           </label>
           <label className="rc-field">
             <span className="rc-field__label">Account number</span>
-            <input className="rc-input" name="accountNumber" maxLength={22} inputMode="numeric" />
+            <input
+              className="rc-input"
+              name="accountNumber"
+              maxLength={30}
+              inputMode="numeric"
+              onChange={tidyBox(noSpaces)}
+            />
           </label>
           <label className="rc-field">
             <span className="rc-field__label">IFSC</span>
-            <input className="rc-input" name="ifsc" maxLength={11} />
+            <input className="rc-input" name="ifsc" maxLength={20} onChange={tidyBox(noSpaces)} />
           </label>
           <label className="rc-field">
             <span className="rc-field__label">Holder&apos;s name</span>

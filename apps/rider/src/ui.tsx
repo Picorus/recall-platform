@@ -309,6 +309,15 @@ export const s = StyleSheet.create({
     justifyContent: 'center',
   },
   mono: { color: color.text, fontSize: 17, fontFamily: MONO },
+  /** Money, dates and counts: the main face with even-width digits, so columns line up (Night Signal). */
+  figures: {
+    color: color.text,
+    fontSize: 17,
+    fontFamily: face('en', 'semibold'),
+    fontVariant: ['tabular-nums'],
+  },
+  /** A 6-digit code box: big digits set apart. */
+  code: { fontSize: 24, letterSpacing: 10, fontVariant: ['tabular-nums'] },
   input: {
     flex: 1,
     minWidth: 0,

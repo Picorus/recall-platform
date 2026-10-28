@@ -8,7 +8,7 @@
 // only around his own booked slot (and staff see every fitting, and take a wrong one off).
 import {
   commandText,
-  isScreenId,
+  typedScreenId,
   screenIdFromQr,
   screenQr,
   type FittingVerdict,
@@ -289,8 +289,9 @@ export async function fitFromApp(
   now: number,
   rules: RiderSignInRules,
 ): Promise<string> {
-  const typed = scanned.trim().toUpperCase();
-  const qr = isScreenId(typed) ? screenQr(typed) : scanned.trim();
+  // Typed by hand ("scr 7k3m 9qx4 "), or the QR's text as scanned.
+  const typed = typedScreenId(scanned);
+  const qr = typed ? screenQr(typed) : scanned.trim();
   if (!screenIdFromQr(qr))
     throw new Refusal('This is not a RECALL screen code', { code: 'not-a-screen' });
   const f = await facts(pool, riderId);

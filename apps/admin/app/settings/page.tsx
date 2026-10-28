@@ -7,7 +7,7 @@ import { Info } from '@recall/web-ui';
 import Link from 'next/link';
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { api, ApiError } from '../../lib/api';
-import { clock, dayOfIndia } from '../../lib/format';
+import { clock, dayOfIndia, groupMobile, noSpaces, regroupMobile } from '../../lib/format';
 import { Shell, useMember } from '../../lib/session';
 import {
   DAY_NAMES,
@@ -575,8 +575,8 @@ export default function SettingsPageView() {
                   <input
                     className="rc-input mono"
                     value={v.gstin}
-                    maxLength={15}
-                    onChange={(e) => set({ ...v, gstin: e.target.value.toUpperCase() })}
+                    maxLength={20}
+                    onChange={(e) => set({ ...v, gstin: noSpaces(e.target.value).toUpperCase() })}
                   />
                 </Field>
                 <Field label="Registered address">
@@ -749,8 +749,10 @@ function PhoneRow({
         <input
           className="rc-input mono"
           type="tel"
-          value={phone.phone}
-          onChange={(e) => onChange({ ...phone, phone: e.target.value })}
+          value={groupMobile(phone.phone)}
+          onChange={(e) =>
+            onChange({ ...phone, phone: regroupMobile(e.target.value, groupMobile(phone.phone)) })
+          }
         />
       </Field>
       <label>

@@ -50,6 +50,17 @@ export function screenIdFromQr(text: string): string | undefined {
 }
 
 /**
+ * A screen id typed by hand (the one printed under the QR), in its one form, or undefined: small
+ * letters, spaces and dashes anywhere, and "SCR" left off, are all fine ("scr 7k3m 9qx4 " →
+ * "SCR-7K3M9QX4"). The check character still catches a mistyped one.
+ */
+export function typedScreenId(text: string): string | undefined {
+  const m = /^(?:SCR)?([0-9A-Z]{8})$/.exec(text.toUpperCase().replace(/[\s-]/g, ''));
+  const id = m ? `SCR-${m[1] ?? ''}` : '';
+  return isScreenId(id) ? id : undefined;
+}
+
+/**
  * An Indian number plate in one form, or undefined when it is not one. Spaces, dots and dashes are
  * dropped, the district gets two digits and the number four ("ts 9 ea 12" → "TS09EA0012"), so one
  * bike is never two. Takes state series with 1–3 series letters (without letters the digits could

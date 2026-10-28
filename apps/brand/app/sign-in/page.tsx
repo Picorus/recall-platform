@@ -9,6 +9,8 @@ import { api, ApiError, type Me } from '../../lib/api';
 import { heroPhoto } from '../../lib/photos';
 import {
   backTo,
+  codeAsTyped,
+  regroupMobile,
   looksLikeCode,
   looksLikeEmail,
   looksLikeMobile,
@@ -148,7 +150,11 @@ export default function SignIn() {
                 className="rc-input"
                 name="address"
                 value={typed}
-                onChange={(e) => setTyped(e.target.value)}
+                // A number shows grouped as typed ("98480 12345"); what is sent is read again.
+                onChange={(e) => {
+                  const now = e.target.value;
+                  setTyped((was) => (way === 'phone' ? regroupMobile(now, was) : now));
+                }}
                 {...(way === 'phone'
                   ? {
                       type: 'tel',
@@ -156,7 +162,14 @@ export default function SignIn() {
                       autoComplete: 'tel',
                       placeholder: '98480 12345',
                     }
-                  : { type: 'email', autoComplete: 'email', placeholder: 'you@agency.in' })}
+                  : {
+                      type: 'text',
+                      inputMode: 'email',
+                      autoCapitalize: 'none',
+                      spellCheck: false,
+                      autoComplete: 'email',
+                      placeholder: 'you@agency.in',
+                    })}
                 required
               />
               {way === 'email' && (
@@ -201,13 +214,12 @@ export default function SignIn() {
             <label className="rc-field">
               <span className="rc-field__label">Code</span>
               <input
-                className="rc-input"
+                className="rc-input rc-input--code"
                 name="code"
                 value={code}
-                onChange={(e) => setCode(e.target.value)}
+                onChange={(e) => setCode(codeAsTyped(e.target.value))}
                 inputMode="numeric"
                 autoComplete="one-time-code"
-                maxLength={7}
                 autoFocus
                 required
               />

@@ -6,6 +6,7 @@ import { Info } from '@recall/web-ui';
 import { useEffect, useState, type FormEvent } from 'react';
 import { api, ApiError } from '../../lib/api';
 import { linesOf } from '../../lib/bookings';
+import { noSpaces } from '../../lib/format';
 import { hourLabel, START_HOURS } from '../../lib/prices';
 
 export default function NewBooking({
@@ -40,7 +41,7 @@ export default function NewBooking({
   const make = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
-    const bikes = String(f.get('bikes') ?? '');
+    const bikes = noSpaces(String(f.get('bikes') ?? ''));
     const r = linesOf(
       String(f.get('area') ?? ''),
       String(f.get('from') ?? ''),

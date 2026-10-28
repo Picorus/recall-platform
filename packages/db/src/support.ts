@@ -6,7 +6,7 @@
 import type { InboundMessage, MessagesAdapter } from '@recall/adapters';
 import { randomBytes } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
-import { fillWording } from '@recall/domain';
+import { emailAddress, fillWording, phoneOf } from '@recall/domain';
 import { inTransaction } from './makeups.js';
 import { Refusal } from './refusal.js';
 import { setting } from './settings.js';
@@ -205,7 +205,10 @@ export async function openThread(
   by: { readonly id: string; readonly name: string },
   now: number,
 ): Promise<string> {
-  const contact = t.contact.includes('@') ? t.contact.trim().toLowerCase() : t.contact.trim();
+  // Typed any way ("98480 12345", "Ops @Brand.in "): in the one form threads are kept in.
+  const contact = t.contact.includes('@')
+    ? (emailAddress(t.contact) ?? t.contact.trim())
+    : (phoneOf(t.contact) ?? t.contact.trim());
   if (!PHONE.test(contact) && !EMAIL.test(contact))
     throw new Refusal('Who: a mobile number (+91 and 10 digits) or an email address');
   if (t.channel === 'whatsapp' && !PHONE.test(contact))

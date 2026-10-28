@@ -59,8 +59,9 @@ export interface Filter {
 export function shown(s: FleetScreen, f: Filter): boolean {
   if (!f.states.has(s.state)) return false;
   if (f.area && areaOf(s.position?.place) !== f.area) return false;
-  const q = f.search.trim().toUpperCase().replace(/\s+/g, '');
-  if (q && !(s.bike ?? '').includes(q) && !s.screenId.includes(q)) return false;
+  // Spaces and dashes do not count: "TS 09-EA" and "scr 7k3m" find theirs.
+  const q = f.search.toUpperCase().replace(/[\s-]/g, '');
+  if (q && ![s.bike ?? '', s.screenId].some((x) => x.replace(/-/g, '').includes(q))) return false;
   return true;
 }
 

@@ -19,7 +19,18 @@ const row: AccountRow = {
 
 describe('Brands page (P3.8.1)', () => {
   it('search: name, id, email, GSTIN, agency, or 4+ digits of the phone', () => {
-    for (const q of ['', 'chai', 'CHAI-CO', 'hello@', '36aapfu', 'adwise', '98765', '987 654'])
+    for (const q of [
+      '',
+      'chai',
+      'CHAI-CO',
+      'hello@',
+      '36aapfu',
+      ' 36 AAPFU 0939 ',
+      'hello @chai',
+      'adwise',
+      '98765',
+      '987 654',
+    ])
       expect(matches(row, q), q).toBe(true);
     for (const q of ['dosa', '123', 'zz@']) expect(matches(row, q), q).toBe(false);
   });

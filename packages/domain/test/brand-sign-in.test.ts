@@ -5,6 +5,8 @@ describe('brand sign-in (P5.1)', () => {
   it('reads an email address as typed', () => {
     expect(emailAddress(' Media@Agency.IN ')).toBe('media@agency.in');
     expect(emailAddress('a.b+c@x.co')).toBe('a.b+c@x.co');
+    // Stray spaces next to "@" and "." (a phone keyboard adds them) are dropped.
+    expect(emailAddress('  ravi @ gmail .com\t')).toBe('ravi@gmail.com');
     for (const bad of ['', 'media', 'media@', '@agency.in', 'a b@x.in', 'a@b', 'a@@b.in'])
       expect(emailAddress(bad)).toBeNull();
     expect(emailAddress(`${'a'.repeat(65)}@x.in`)).toBeNull();

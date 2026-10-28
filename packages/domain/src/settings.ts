@@ -1,7 +1,9 @@
 // P3.17: the settings a super admin changes in the admin portal (each saved as a new version, with
 // who and why; nothing overwritten). Prices, offers and rider pay rates are the price book's; staff
 // and roles are the Staff page's; keys to outside services live in the secret store, never here.
+import { typedGstin } from './business.js';
 import { gstinProblems } from './gst.js';
+import { phoneOf } from './riders.js';
 import { INDIA_OFFSET_MINUTES } from './time.js';
 import { POC_PAY_ZONE, type PayZone } from './pay-zone.js';
 import {
@@ -309,7 +311,8 @@ export function checkSetting<K extends SettingKey>(key: K, value: unknown): Sett
         const s = obj(value, 'Support');
         const phones = list(s.phones, 'Support numbers', 10).map((x) => {
           const p = obj(x, 'Support number');
-          const phone = typeof p.phone === 'string' ? p.phone.replace(/[\s-]/g, '') : '';
+          // Typed any way ("98480 12345", "+91 98480-12345"): kept as +91 and 10 digits.
+          const phone = typeof p.phone === 'string' ? (phoneOf(p.phone) ?? p.phone) : '';
           if (!/^\+91[6-9]\d{9}$/.test(phone)) fail('Support number: +91 and 10 digits');
           if (typeof p.whatsapp !== 'boolean') fail('Support number: on WhatsApp or not');
           return {
@@ -370,7 +373,7 @@ export function checkSetting<K extends SettingKey>(key: K, value: unknown): Sett
           [o.legalName, o.gstin, o.address].every((x) => typeof x === 'string' && x.trim() === '')
         )
           return { legalName: '', gstin: '', address: '' };
-        const gstin = typeof o.gstin === 'string' ? o.gstin.trim().toUpperCase() : '';
+        const gstin = typeof o.gstin === 'string' ? typedGstin(o.gstin) : '';
         const problems = gstinProblems(gstin);
         if (problems.length > 0) fail(`Company GSTIN: ${problems[0] ?? ''}`);
         return {

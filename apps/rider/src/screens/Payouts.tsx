@@ -88,8 +88,8 @@ export function Payouts({
             {page.history.map((h) => (
               <View key={h.date} style={{ gap: 2, paddingVertical: 6 }}>
                 <View style={[s.row, { justifyContent: 'space-between' }]}>
-                  <Words style={[s.mono, { fontSize: 15 }]}>{dmy(h.date)}</Words>
-                  <Words style={[s.mono, { fontSize: 15 }]}>{rupees(h.amountPaise)}</Words>
+                  <Words style={[s.figures, { fontSize: 15 }]}>{dmy(h.date)}</Words>
+                  <Words style={[s.figures, { fontSize: 15 }]}>{rupees(h.amountPaise)}</Words>
                 </View>
                 <Words weight="semibold" style={{ color: STATE_COLOR[h.state], fontSize: 13 }}>
                   {say(lang, `payout.${h.state}` as Key)}
@@ -107,7 +107,7 @@ export function Payouts({
                 style={[s.row, { justifyContent: 'space-between', minHeight: 30 }]}
               >
                 <Words style={{ color: color.text, fontSize: 15 }}>{t.quarter}</Words>
-                <Words style={[s.mono, { fontSize: 15 }]}>{rupees(t.paise)}</Words>
+                <Words style={[s.figures, { fontSize: 15 }]}>{rupees(t.paise)}</Words>
               </View>
             ))}
             <Muted small>{say(lang, 'tdsNote')}</Muted>

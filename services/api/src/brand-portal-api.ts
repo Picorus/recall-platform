@@ -140,7 +140,8 @@ function templateOf(b: Record<string, unknown>): AdTemplate {
   const out = {
     headline: text('headline', 60),
     offer: text('offer', 80),
-    code: text('code', 32).trim().toUpperCase(),
+    // A promo code never has a space ("chai 30" → "CHAI30").
+    code: text('code', 32).replace(/\s/g, '').toUpperCase(),
     qr: text('qr', 300).trim(),
     colour: text('colour', 7),
     theme: text('theme', 10) as AdTemplate['theme'],
@@ -407,7 +408,7 @@ export async function handleBrandPortal(
     const opt = (k: string, max: number) =>
       b[k] === undefined || b[k] === null ? undefined : str(b, k, max);
     const legalName = opt('legalName', 200);
-    const stateCode = opt('stateCode', 2);
+    const stateCode = opt('stateCode', 8)?.replace(/\s/g, '');
     const address = opt('address', 300);
     const brandId = await refused(() =>
       setUpBusiness(

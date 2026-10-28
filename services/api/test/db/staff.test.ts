@@ -211,10 +211,11 @@ describe('staff sign-in', () => {
   it('a code is good once, and wrong details all get the same answer', async () => {
     tick();
     const code = totpCode(superSecret, step());
+    // Stray spaces in the email and the code are fine (the password, spaces and all, is as set).
     const first = await call('POST', '/staff/sign-in', {
-      email: 'prateek@recall.in',
+      email: ' Prateek @recall.in ',
       password: PW,
-      code,
+      code: `  ${code.slice(0, 3)} ${code.slice(3)}  `,
     });
     expect(first.status).toBe(200);
     const again = await call('POST', '/staff/sign-in', {

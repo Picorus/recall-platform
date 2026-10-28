@@ -148,7 +148,7 @@ export async function handleAreas(
       throw new HttpError(400, `City: ${city || 'none'} is not in Settings (Cities)`);
     let area: AreaVersion;
     try {
-      const areaId = str(b, 'areaId', 60);
+      const areaId = str(b, 'areaId', 60).replace(/\s/g, '');
       if (all.some((a) => a.areaId === areaId))
         throw new AreaError([{ kind: 'bad-id', detail: 'an area with this id already exists' }]);
       // Checked against the shapes in force (or coming), not every old one (review P3.5).

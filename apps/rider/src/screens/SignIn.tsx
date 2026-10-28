@@ -1,7 +1,13 @@
 // P4.1 sign-in (approved screen R01): pick a language, type the mobile number, get a code on
 // WhatsApp (or by SMS). A new number starts the sign-up the same way.
 import NIGHT from '@recall/design/photos/avenue-s.webp';
-import { indiaMobile, type CodeChannel, type RiderLanguage } from '@recall/domain';
+import {
+  groupMobile,
+  indiaMobile,
+  regroupMobile,
+  type CodeChannel,
+  type RiderLanguage,
+} from '@recall/domain';
 import { useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { ApiError, call } from '../api';
@@ -28,7 +34,7 @@ export function SignIn({
   readonly initialPhone: string;
   readonly onSent: (sent: CodeSent) => void;
 }) {
-  const [phone, setPhone] = useState(initialPhone);
+  const [phone, setPhone] = useState(() => groupMobile(initialPhone));
   const [error, setError] = useState('');
   const [busy, setBusy] = useState<CodeChannel | null>(null);
   const send = (channel: CodeChannel) => {
@@ -111,11 +117,13 @@ export function SignIn({
         label={say(lang, 'mobile')}
         prefix="+91"
         value={phone}
-        onChangeText={setPhone}
+        // Grouped as typed ("98480 12345"), so it reads easily; what is sent is read again.
+        onChangeText={(t) => setPhone((was) => regroupMobile(t, was))}
         keyboardType="phone-pad"
         inputMode="tel"
         autoComplete="tel"
-        maxLength={16}
+        // Room for a pasted "+91 98480-12345".
+        maxLength={20}
         onSubmitEditing={() => send('whatsapp')}
       />
       {error !== '' && <Alert>{error}</Alert>}

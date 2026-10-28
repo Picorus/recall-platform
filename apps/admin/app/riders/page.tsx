@@ -4,7 +4,7 @@
 // move his steps; Support looks and adds notes.
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { api, ApiError, type Member } from '../../lib/api';
-import { dayOfIndia } from '../../lib/format';
+import { dayOfIndia, regroupMobile, tidyBox } from '../../lib/format';
 import {
   APPS,
   phoneText,
@@ -146,7 +146,14 @@ export default function RidersPage() {
           </label>
           <label className="rc-field">
             <span className="rc-field__label">Phone (mobile)</span>
-            <input className="rc-input" name="phone" maxLength={20} required />
+            <input
+              className="rc-input"
+              name="phone"
+              type="tel"
+              maxLength={20}
+              onChange={tidyBox(regroupMobile)}
+              required
+            />
           </label>
           <label className="rc-field">
             <span className="rc-field__label">Number plate</span>
