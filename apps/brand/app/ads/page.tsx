@@ -3,6 +3,7 @@
 // (each picture is shown for a whole 15-second turn), 1280 × 640, no sound, up to 30 MB. Each file
 // is checked at once (size, shape, length) and then by our reviewer. Choose 2 to 5 of your ads for
 // the campaign; they take turns. Tips on what works on a moving screen at night are at the side.
+import { Fold, Info } from '@recall/web-ui';
 import Link from 'next/link';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { api, ApiError, upload, type Ad } from '../../lib/api';
@@ -155,10 +156,10 @@ export default function AdsPage() {
         <div className="stack">
           <form className="rc-card stack" onSubmit={send} aria-label="Upload an ad">
             <h2>Upload your ad</h2>
-            <p className="muted">
+            <Info label="Which files work">
               A 15-second MP4 video, or a picture (PNG, JPEG or WebP) shown for 15 seconds. 1280 ×
               640 (2 : 1), no sound, up to 30 MB. Several pictures take turns, like a carousel.
-            </p>
+            </Info>
             <label className="rc-field">
               <span className="rc-field__label">File</span>
               <input
@@ -244,10 +245,11 @@ export default function AdsPage() {
         </div>
         <aside className="rc-card stack summary" aria-label="Your choice">
           <h2>Your choice</h2>
-          <p>
-            {chosen.length} of 2 to 5 ads chosen. They take turns: each plays for 15 seconds, one
-            after the other.
-          </p>
+          <p>{chosen.length} of 2 to 5 ads chosen.</p>
+          <Info label="How they take turns">
+            They take turns: each plays for 15 seconds, one after the other. You can add your ads
+            after paying too, until they are due.
+          </Info>
           <button
             type="button"
             className="rc-button rc-button--primary"
@@ -262,13 +264,13 @@ export default function AdsPage() {
           >
             Next: review and pay
           </Link>
-          <p className="muted">You can add your ads after paying too, until they are due.</p>
-          <h3>What works on the road</h3>
-          <ul className="tips">
-            {TIPS.map((t) => (
-              <li key={t}>{t}</li>
-            ))}
-          </ul>
+          <Fold title="What works on the road" hint={`${TIPS.length} tips for ads people notice`}>
+            <ul className="tips">
+              {TIPS.map((t) => (
+                <li key={t}>{t}</li>
+              ))}
+            </ul>
+          </Fold>
         </aside>
       </div>
     </Shell>

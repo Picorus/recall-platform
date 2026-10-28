@@ -4,6 +4,7 @@
 // each hour, and an optional monthly repeat (6 months 8% off, 12 months 12% off). A live summary
 // prices it as it changes (bike-hours, plays promised, price, GST, total) and says what stops it
 // (under the minimum, too soon, hours sold). "Book again" opens with an earlier booking's plan.
+import { Info } from '@recall/web-ui';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -289,10 +290,10 @@ export default function BookPage() {
                 </button>
               ))}
             </div>
-            <p className="muted">
+            <Info label="How repeating works">
               The same days again each month. The discount is on Peak and Normal hours. A 6- or
               12-month deal is set up with our sales team: they call you after you continue.
-            </p>
+            </Info>
           </section>
         </div>
 

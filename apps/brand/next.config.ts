@@ -11,7 +11,7 @@ const config: NextConfig = {
   poweredByHeader: false,
   // No page uses next/image: its image service stays off (P7.1).
   images: { unoptimized: true },
-  transpilePackages: ['@recall/design'],
+  transpilePackages: ['@recall/design', '@recall/web-ui'],
   // The site's own code only; the tests (which reach into the API) are checked by `pnpm typecheck`.
   typescript: { tsconfigPath: 'tsconfig.build.json' },
   async headers() {

@@ -1,6 +1,7 @@
 'use client';
 // P3.14.2 Dashboard: the business month by month (India time), for the founder and sales. Bike-hours
 // sold, how full the screens' time was, bike-hours moving, money in, revenue earned, refunds.
+import { Info } from '@recall/web-ui';
 import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError } from '../../lib/api';
 import { count, rupees } from '../../lib/format';
@@ -131,10 +132,10 @@ export default function DashboardPage() {
           </table>
         </div>
       )}
-      <p className="muted">
+      <Info label="How this works">
         Brands pay by bike-hours only. Screen time sold compares bike-hours sold for days already
         over with the hours the screens were out.
-      </p>
+      </Info>
     </Shell>
   );
 }

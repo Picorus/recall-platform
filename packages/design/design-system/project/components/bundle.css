@@ -606,6 +606,217 @@ a.rc-card:active,
   color: var(--ink);
 }
 
+/* ---------- Information that is there when wanted (P7.7.6) ---------- */
+.rc-info {
+  /* an (i) and a few words; the explanation opens under it */
+  display: block;
+}
+.rc-info > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px 4px 4px;
+  border-radius: var(--radius-pill);
+  color: var(--ink-muted);
+  font: 500 13.5px/20px var(--font-body);
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+  transition:
+    background-color var(--duration-quick),
+    color var(--duration-quick);
+}
+.rc-info > summary::-webkit-details-marker,
+.rc-fold > summary::-webkit-details-marker {
+  display: none;
+}
+.rc-info > summary:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+.rc-info > summary:focus-visible,
+.rc-fold > summary:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.rc-info__i {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1.5px solid currentColor;
+  font: italic 600 12px/1 var(--font-display);
+  transition:
+    background-color var(--duration-quick),
+    color var(--duration-quick),
+    transform var(--duration-move) var(--ease-spring);
+}
+.rc-info[open] .rc-info__i {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--surface-0);
+  transform: rotate(-12deg) scale(1.05);
+}
+.rc-info__body {
+  margin-top: 8px;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--ink-muted);
+  font: 400 14px/22px var(--font-body);
+  animation: rc-unfold var(--duration-move) var(--ease-out) both;
+}
+.rc-info__body > :first-child {
+  margin-top: 0;
+}
+.rc-info__body > :last-child {
+  margin-bottom: 0;
+}
+.rc-fold {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+  box-shadow: var(--shadow-rest);
+  transition: box-shadow var(--duration-quick);
+}
+.rc-fold:hover {
+  box-shadow: var(--shadow-hover);
+}
+.rc-fold > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 14px 16px;
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+}
+.rc-fold__title {
+  display: grid;
+  gap: 2px;
+}
+.rc-fold__title b {
+  font: 600 15.5px/22px var(--font-body);
+  color: var(--ink);
+}
+.rc-fold__title span {
+  font: 400 13px/18px var(--font-body);
+  color: var(--ink-subtle);
+}
+.rc-fold__chev {
+  flex: none;
+  fill: none;
+  stroke: var(--ink-muted);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform var(--duration-move) var(--ease-out);
+}
+.rc-fold[open] .rc-fold__chev {
+  transform: rotate(180deg);
+}
+.rc-fold__body {
+  padding: 0 16px 16px;
+  color: var(--ink-muted);
+  font: 400 14.5px/23px var(--font-body);
+  animation: rc-unfold var(--duration-move) var(--ease-out) both;
+}
+@keyframes rc-unfold {
+  from {
+    opacity: 0;
+    translate: 0 -4px;
+  }
+}
+
+/* ---------- Light, dark or the device's choice ---------- */
+.rc-theme {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+.rc-theme button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 9px;
+  padding: 6px 10px;
+  background: transparent;
+  color: var(--ink-muted);
+  font: 600 12.5px/16px var(--font-body);
+  cursor: pointer;
+  transition:
+    background-color var(--duration-quick),
+    color var(--duration-quick);
+}
+.rc-theme button[aria-pressed='true'] {
+  background: var(--surface-1);
+  color: var(--ink);
+  box-shadow: var(--shadow-rest);
+}
+.rc-theme button:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+/* The logo file for the ground it sits on (brand/logo has one for light, one for dark). */
+.rc-logo--dark {
+  display: none;
+}
+[data-theme='dark'] .rc-logo--light {
+  display: none;
+}
+[data-theme='dark'] .rc-logo--dark {
+  display: inline-block;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .rc-logo--light {
+    display: none;
+  }
+  :root:not([data-theme='light']) .rc-logo--dark {
+    display: inline-block;
+  }
+}
+
+/* ---------- The pointer: a ring that answers before the click ---------- */
+.rc-pointer {
+  position: fixed;
+  left: -18px;
+  top: -18px;
+  z-index: 9999;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1.5px solid color-mix(in srgb, var(--ink) 35%, transparent);
+  pointer-events: none;
+  opacity: 0;
+  transition:
+    opacity var(--duration-quick),
+    scale var(--duration-move) var(--ease-spring),
+    background-color var(--duration-quick),
+    border-color var(--duration-quick);
+  will-change: transform;
+}
+.rc-pointer[data-on='true'] {
+  opacity: 1;
+}
+.rc-pointer[data-hover='true'] {
+  scale: 1.45;
+  border-color: color-mix(in srgb, var(--brand-ink) 70%, transparent);
+  background: color-mix(in srgb, var(--brand) 22%, transparent);
+}
+.rc-pointer[data-press='true'] {
+  scale: 0.8;
+}
+@media (pointer: coarse) {
+  .rc-pointer {
+    display: none;
+  }
+}
+
 /* ---------- Motion helpers ---------- */
 .rc-enter {
   animation: rc-enter var(--duration-move) var(--ease-out) both;
@@ -671,7 +882,10 @@ a.rc-card:active,
   .rc-stagger > *,
   .rc-toast,
   .rc-skeleton,
-  .rc-chip__dot {
+  .rc-chip__dot,
+  .rc-info__body,
+  .rc-fold__body,
+  .rc-pointer {
     animation: none !important;
     transition: none !important;
   }

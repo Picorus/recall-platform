@@ -3,6 +3,7 @@
 // what is free, the bikes usually seen, and what was delivered in hours already over. A Sales admin
 // holds a client's hours, days and bikes until a set time (no money), releases a hold early or turns
 // it into a draft booking; a super admin sets or lifts a manual limit. Every change asks why.
+import { Info } from '@recall/web-ui';
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { api, ApiError, type Member } from '../../lib/api';
 import {
@@ -344,10 +345,10 @@ export default function CalendarPage() {
           {canHold(me) && (
             <section className="rc-card stack">
               <h2 style={{ margin: 0 }}>Hold for a client</h2>
-              <p className="muted">
+              <Info label="How this works">
                 Keeps bikes for a brand until the end you set (no money). It blocks other brands
                 only where an area-hour has a limit. Pick a cell to start from it.
-              </p>
+              </Info>
               <form className="stack" onSubmit={hold} aria-label="Hold">
                 <label className="rc-field">
                   <span className="rc-field__label">Brand id (e.g. chai-co)</span>

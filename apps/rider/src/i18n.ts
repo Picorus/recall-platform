@@ -299,6 +299,7 @@ const en = {
   payRegular:
     '{rate} for each moving hour (up to {cap} hours a month), plus your share of sales, added later. Before tax. Paid every Monday.',
   stopRuleTitle: 'Keep moving',
+  howPayWorks: 'How pay works',
   stopRule:
     'If the bike stops for more than 10 minutes, the screen rests and your hours pause. They start again as soon as you ride.',
   refresh: 'Refresh',
@@ -662,6 +663,7 @@ const te: Record<Key, string> = {
   payRegular:
     'ప్రతి నడిపిన గంటకు {rate} (నెలకు {cap} గంటల వరకు), తర్వాత అమ్మకాలలో మీ వాటా. పన్నుకు ముందు. ప్రతి సోమవారం చెల్లిస్తాం.',
   stopRuleTitle: 'నడుపుతూ ఉండండి',
+  howPayWorks: 'చెల్లింపు ఎలా లెక్కిస్తాం',
   stopRule:
     'బైక్ 10 నిమిషాల కంటే ఎక్కువ ఆగితే, స్క్రీన్ విశ్రాంతి తీసుకుంటుంది, మీ గంటలు ఆగుతాయి. మీరు నడపగానే మళ్లీ మొదలవుతాయి.',
   refresh: 'రిఫ్రెష్ చేయండి',
@@ -1016,6 +1018,7 @@ const hi: Record<Key, string> = {
   payRegular:
     'हर चलने के घंटे के {rate} (महीने में {cap} घंटे तक), और बाद में बिक्री में आपका हिस्सा। टैक्स से पहले। हर सोमवार भुगतान।',
   stopRuleTitle: 'चलते रहें',
+  howPayWorks: 'पैसे कैसे गिने जाते हैं',
   stopRule:
     'बाइक 10 मिनट से ज़्यादा रुके तो स्क्रीन आराम करती है और आपके घंटे रुक जाते हैं। चलाते ही फिर शुरू हो जाते हैं।',
   refresh: 'रीफ़्रेश करें',

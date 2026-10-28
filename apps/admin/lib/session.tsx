@@ -2,7 +2,9 @@
 // The signed-in member for a page, or a move to the sign-in page. The API checks every request
 // itself; this only decides what to show.
 import { type GlyphName } from '@recall/design';
+import lockupDark from '@recall/design/logo/recall-lockup-horizontal-dark.svg';
 import lockup from '@recall/design/logo/recall-lockup-horizontal-light.svg';
+import { ThemeSwitch } from '@recall/web-ui';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
@@ -141,7 +143,14 @@ export function Shell({
     <div className="frame">
       <aside className="side">
         <div className="side__org">
-          <img src={lockup.src} alt="RECALL" width={112} height={13} />
+          <img className="rc-logo--light" src={lockup.src} alt="RECALL" width={112} height={13} />
+          <img
+            className="rc-logo--dark"
+            src={lockupDark.src}
+            alt="RECALL"
+            width={112}
+            height={13}
+          />
           <span>Staff</span>
         </div>
         <button type="button" className="side__jump" onClick={() => setJump(true)}>
@@ -166,6 +175,9 @@ export function Shell({
             </div>
           ))}
         </nav>
+        <div className="side__theme">
+          <ThemeSwitch />
+        </div>
         <div className="side__me">
           <span className="side__badge" aria-hidden="true">
             {member.name
