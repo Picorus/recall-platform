@@ -38,6 +38,14 @@ A Codespace is a computer in GitHub's cloud that opens in your browser.
 2. Click your RECALL codespace.
 3. The demo starts by itself, fresh, with campaigns running today. Wait for the box above, then open the demo desk.
 
+### Getting the newest version
+
+A codespace keeps the version it was made with. After a new change is merged:
+1. Open the codespace and click in the terminal at the bottom, where the demo is running.
+2. Press **Ctrl+C** to stop it.
+3. Type `git pull && pnpm demo` and press Enter.
+4. The demo sees the new code and builds the websites again (about 5 minutes, only this once). Then the box appears as usual.
+
 ### The demo desk
 
 The desk is your home page for the demo. It has:
@@ -85,6 +93,7 @@ To see 15,500 bikes (the full fleet), use the investor demo page: it plays back 
 | "the database is not running" | Type `pnpm services:up`, then `pnpm demo`. |
 | A page says "Not from the admin site" or sign-in fails | Open the portals from the demo desk's buttons, not from an old bookmark (the address changes with each codespace). |
 | Every link shows an error page | The browser could not sign in to the private ports. Ports tab → right-click each of the four ports → **Port Visibility → Public**, then open the demo desk with its globe icon. Everything in the demo is made up, and the links stop working when the codespace stops. |
+| After `git pull` the portals still look old | Your codespace has a demo from before 28 Oct 2026 that never rebuilds. Press Ctrl+C, type `rm -rf apps/admin/.next apps/brand/.next apps/rider/dist-demo && pnpm demo`, and press Enter. |
 | The demo desk tab did not open | Ports tab → **Demo desk (start here)** → globe icon. |
 | Nothing works | Stop the codespace and open it again. The demo always starts fresh. |
 

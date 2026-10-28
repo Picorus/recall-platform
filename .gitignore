@@ -5,6 +5,8 @@ node_modules/
 dist/
 dist-e2e/
 dist-demo/
+# Which code the demo's website builds were made from (tools/demo).
+.built.json
 # Expo's own working folder (rider app).
 .expo/
 build/

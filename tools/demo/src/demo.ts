@@ -35,12 +35,13 @@ import {
 } from '@recall/db';
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { createServer, request } from 'node:http';
 import { extname, join } from 'node:path';
 import { parseArgs } from 'node:util';
 import pg from 'pg';
 import { startBikes } from './bikes.js';
+import { codeVersion, needsBuild, noteBuild, readBuilds } from './builds.js';
 import { startDesk } from './desk.js';
 import { seedDemo } from './seed.js';
 
@@ -205,7 +206,8 @@ every(120, 'riders', async () => {
   await accrueRiderPay(pool, new Date((secs() + 19_800) * 1000).toISOString().slice(0, 7), secs());
 });
 
-// 6. The websites: the staff and brand portals (built once), the rider app's web build.
+// 6. The websites: the staff and brand portals, the rider app's web build (each built again only
+// when the code has changed since, e.g. after `git pull`).
 const children: ChildProcess[] = [];
 // The websites stop with the demo, however it ends (a crash included).
 process.on('exit', () => {
@@ -230,15 +232,20 @@ for (const [name, port] of Object.entries(PORTS))
     );
     process.exit(1);
   }
-const built = (app: string) => existsSync(join(ROOT, 'apps', app, '.next', 'BUILD_ID'));
+const version = codeVersion(ROOT);
+const builds = readBuilds(ROOT);
 for (const app of ['admin', 'brand']) {
-  if (built(app)) continue;
-  log(`building the ${app === 'admin' ? 'staff' : 'brand'} portal (once, a few minutes)…`);
+  const present = existsSync(join(ROOT, 'apps', app, '.next', 'BUILD_ID'));
+  if (!needsBuild(present, builds[app], version)) continue;
+  log(
+    `building the ${app === 'admin' ? 'staff' : 'brand'} portal (${present ? 'new code' : 'once'}, a few minutes)…`,
+  );
   const r = spawnSync('pnpm', ['--filter', `@recall/${app}`, 'build'], {
     cwd: ROOT,
     stdio: 'inherit',
   });
   if (r.status !== 0) throw new Error(`could not build ${app}`);
+  noteBuild(ROOT, app, version);
 }
 for (const [app, port] of [
   ['admin', PORTS.staff],
@@ -258,14 +265,19 @@ for (const [app, port] of [
   children.push(child);
 }
 const riderDir = join(ROOT, 'apps', 'rider', 'dist-demo');
-if (!existsSync(join(riderDir, 'index.html'))) {
-  log('building the rider app for the browser (once, a minute or two)…');
+const riderPresent = existsSync(join(riderDir, 'index.html'));
+if (needsBuild(riderPresent, builds['rider'], version)) {
+  log(
+    `building the rider app for the browser (${riderPresent ? 'new code' : 'once'}, a minute or two)…`,
+  );
+  rmSync(riderDir, { recursive: true, force: true });
   const r = spawnSync('npx', ['expo', 'export', '--platform', 'web', '--output-dir', 'dist-demo'], {
     cwd: join(ROOT, 'apps', 'rider'),
     env: { ...process.env, EXPO_PUBLIC_API_URL: '/rider-api' },
     stdio: 'inherit',
   });
   if (r.status !== 0) throw new Error('could not build the rider app');
+  noteBuild(ROOT, 'rider', version);
 }
 const TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
