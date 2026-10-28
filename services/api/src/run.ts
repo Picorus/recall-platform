@@ -76,8 +76,8 @@ if (process.env.SETTLE_MAKE_UPS === 'on') {
 }
 
 // Every 10 minutes: what sold lines have earned moves from held to revenue (P1.7.3, the hour close),
-// then riders' pay is brought up to date in the ledger (P1.7.5–6) for this month and the last (its
-// final days are added after midnight, until the month closes), ready for the Monday payout run.
+// then riders' pay is brought up to date in the ledger (P1.7.5–6) for this month (and the last in
+// its first week, until it closes), ready for the Monday payout run.
 // Both post only what is new, so running them often is safe.
 const money = () => {
   const now = Math.floor(Date.now() / 1000);
@@ -90,11 +90,22 @@ const money = () => {
     .then(async (e) => {
       for (const f of e.failed)
         console.error(`api: could not close earnings of ${f.lineId}: ${f.error}`);
-      // Each month on its own: the month before the first price book has no pay to add.
-      for (const m of [before, month])
-        await accrueRiderPay(pool, m, now).catch((err: unknown) =>
-          console.error(`api: rider pay for ${m} failed`, err),
-        );
+      // Each month on its own. The month before only in the first week (it closes 48 hours after
+      // its end, a setting): after that nothing more can be added to it.
+      const months = india.getUTCDate() <= 7 ? [before, month] : [month];
+      for (const m of months) {
+        try {
+          const r = await accrueRiderPay(pool, m, now);
+          for (const f of r.failed)
+            console.error(`api: rider pay of ${f.riderId} for ${m}: ${f.error}`);
+          for (const l of r.late)
+            console.error(
+              `api: rider pay of ${l.riderId} for ${m} changed after the close (${l.grossChange} paise): for finance`,
+            );
+        } catch (err: unknown) {
+          console.error(`api: rider pay for ${m} failed`, err);
+        }
+      }
     })
     .catch((e: unknown) => console.error('api: closing earnings or rider pay failed', e))
     .finally(() => setTimeout(money, 600_000).unref());
