@@ -1276,7 +1276,7 @@ it('the POC (P7.8): switched on in Settings (scheduled), a brand added with its 
   await row.getByText(/: Link sent$/).waitFor();
   if (process.env.SCREENSHOT_DIR) {
     await page.setViewportSize({ width: 1280, height: 1400 });
-    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.mouse.wheel(0, -10_000);
     await page.screenshot({ path: `${process.env.SCREENSHOT_DIR}/staff-poc.png` });
   }
   expect(errors).toEqual([]);
