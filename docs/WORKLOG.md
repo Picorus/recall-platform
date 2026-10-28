@@ -8,7 +8,7 @@ Newest first. Each entry: date · step id · what changed · tests · open issue
 - **Guides** with screenshots and a 5-minute script each: `docs/guides/STAFF_PORTAL.md`, `BRAND_PORTAL.md`, `RIDER_APP.md`. Screenshots made by `pnpm --filter @recall/demo tour`, which also checks every page opens.
 - **Investor page** (published): bikes at 200, 2,000 and 15,500 on the map, from `pnpm --filter @recall/simulator frames`, with the simulator and load-test results. Source: `tools/demo/investor/`.
 - **Fixed:** the API server never ran the hour close of earnings or riders' pay update (only tests did). Now every 10 minutes.
-- Tests: demo world (headline lengths, unique riders, brands); the tour (every page of the three apps opens).
+- Tests: demo world (headline lengths, unique riders, brands); the tour (every page of the three apps opens). Fixed an old brand-portal test that failed before 19:00 India time: it started its finished campaign at "now minus 5 days" instead of the campaign's own first hour.
 - Open: Prateek to open the Codespace once. At 200 bikes over all of west Hyderabad no area has 5 bikes to sell, so the real test fleet must be hired inside its areas.
 - Next: P6 as accounts open.
 
