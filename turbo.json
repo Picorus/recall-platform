@@ -9,6 +9,10 @@
     },
     "@recall/repo-checks#test": {
       "cache": false
+    },
+    "@recall/db#test": {
+      "dependsOn": ["^typecheck"],
+      "cache": false
     }
   }
 }
