@@ -6,7 +6,8 @@
 //    bonus of up to ₹6,000 a month on the month's verified moving hours (full at 150+, in proportion
 //    from 100 to 150, none below 100), given by a super admin once the month has closed. No sales
 //    share in the POC. Riders who finish the POC and keep the screen get ₹3,000 more.
-//  - After the POC: ₹25 for each moving hour (up to 260 a month) + 25% of what his hours sold.
+//  - After the POC: ₹25 for each moving hour (up to 260 a month) + 25% of what his hours sold,
+//    after the agency and aggregator cuts on the booking (Prateek, 29 Oct 2026).
 // TDS is held back from rider pay at the rate the CA confirms (a setting).
 import type { Entry } from './ledger.js';
 

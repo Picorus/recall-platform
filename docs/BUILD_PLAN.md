@@ -149,7 +149,7 @@ The scheduler answers one question every minute: which booking does each bike in
 2. **P1.7.2 Brand pays in advance.** Full amount + GST, then a GST tax invoice is issued at once. The money sits as "held" until plays are delivered.
 3. **P1.7.3 Revenue earned hour by hour.** At each hour close, the delivered part moves from held to earned.
 4. **P1.7.4 Cuts.** Agency 10% on bookings made by an agency; aggregator 2% on brands referred by a delivery or ride app. Not automatic: RECALL decides whether a cut is given (per booking or per partner deal); the cut includes the partner's GST (claimed back), and TDS on the part before GST is held back (Prateek, 24 Oct 2026). Worked out on what was delivered (not invoiced), recorded as payable and paid monthly with a statement.
-5. **P1.7.5 Rider earnings (after the POC).** ₹25 for each moving hour + 25% of what his hours sold (the booking's bike-hour price × the share of plays his screen delivered). Paid hours capped at 260 active hours a month (moving hours as RECALL counts them; Prateek, 22 Oct 2026).
+5. **P1.7.5 Rider earnings (after the POC).** ₹25 for each moving hour + 25% of what his hours sold (the booking's bike-hour price × the share of plays his screen delivered, after the agency and aggregator cuts given on that booking — Prateek, 29 Oct 2026). Paid hours capped at 260 active hours a month (moving hours as RECALL counts them; Prateek, 22 Oct 2026).
 6. **P1.7.6 Rider earnings (POC).** While the business switch (admin portal, super admin) is on POC: flat base ₹2,000 / ₹4,000 / ₹6,000 in POC months 1 / 2 / 3, earned day by day and paid weekly; founding bonus up to ₹6,000 a month on verified moving hours inside 15 km of Hitech City (full at 150+, in proportion from 100, none below), given by a super admin once the month closes; no sales share; ₹3,000 more for riders who finish the POC and keep the screen. Moving hours as RECALL calculates them from the screen, never app-open time (Prateek, 22 and 24 Oct 2026).
 7. **P1.7.7 Payouts.** Weekly run every Monday: system prepares, finance approves in admin, the payout provider pays each rider's bank or UPI. Failed payouts retry and show in admin. TDS is deducted from rider pay at the rate the CA confirms (a setting); a gig-worker levy, if any, is a setting too.
 8. **P1.7.8 Screen loan.** The bank lends to the rider; RECALL only records loan status and EMI dates shown in the rider app. Loans and EMIs are never on RECALL's books.
@@ -329,6 +329,16 @@ A premium redesign of all three apps on the same colours, from the approved desi
 4. **P7.7.4** Staff portal: side menu, Ctrl K, tables with side panels, the new home page.
 5. **P7.7.5** Polish and proof: every page at phone and laptop size, new screenshots and guides.
 
+### P7.8 The POC package (Prateek, 29 Oct 2026)
+
+While the business switch is on POC (Settings, super admin; it runs 3 months, then Prateek switches back to regular business on the 1st of month 4):
+
+1. **P7.8.1 POC brands and money.** Up to 40 brands (a setting) on a POC package: a fixed fee a month (₹2.5 L + GST, a setting) paid **before** each month, through the payment provider like a booking; the GST invoice is made when it is paid. Sales records each brand's commitment (1 to 3 months; the aim is all 3) and its 2 to 5 approved ads. A month not paid before it starts does not play. Up to 200 bikes (a setting) can be fitted while the POC is on. The money is a double-entry ledger in paise like every booking (no make-ups, no refunds: nothing is promised).
+2. **P7.8.2 Every hour shared.** On every bike, every business hour, anywhere in the POC zone: 200 brand plays = 5 for each POC brand of the month (in turn, evenly spread), and 40 RECALL spots (one after every five brand plays) that also fill gaps (fewer than 40 brands: their slots go to RECALL's ads). The screen builds the hour from the plan it is sent (P1.4.1) and keeps playing the same rotation with no network. Each play is signed and counted as today (hard rule 1), for the brand's POC month; at most 5 per brand per bike-hour count.
+3. **P7.8.3 What each brand sees.** No promise, the numbers: plays, different bikes, hours, busiest streets, people (an estimate, never billed), by day and by month, in the brand portal and as a monthly report; the staff portal shows every POC brand's plays and payments side by side.
+4. **P7.8.4 Riders.** Already built: the POC base (₹2,000 / ₹4,000 / ₹6,000) and the founding bonus (150-hour rule); no share of sales in the POC.
+5. **P7.8.5 Proof.** The simulator and the demo can run the POC (`pnpm demo -- --poc`), with 40 brands and 200 bikes, and show every brand getting its share.
+
 ## External services to plug in later
 
 Eleven outside services are needed. Each gets an adapter in the code with a working fake from day one, so the whole platform runs and is tested without any keys. Going live = sign the contract, add the keys, run the adapter's tests. Providers listed are candidates to compare at that time, not decisions.
@@ -411,6 +421,7 @@ Phases overlap on purpose: each starts once the part it depends on is stable, no
 | P7 | Hardening, load test, security audit, POC readiness | Code done (P7.1–P7.5); the outside audit, staging and the 2-week road test need accounts, bikes and people | Jun – Jul 2027 |
 | P5 | Brand portal for self-serve | Done (real payments, GST lookups and messages wait for the outside accounts, P6) | Jul – Oct 2027 |
 | P7.7 | Design 2.0: premium look for the three apps | Done (the rider map home waits for the maps account, P6) | Oct 2026 |
+| P7.8 | The POC package: 40 brands share every hour on every bike for a fixed monthly fee | In progress | Oct 2026 |
 
 ## Records for a human takeover
 
@@ -431,6 +442,7 @@ A new engineer should be able to read four files and start work the same day. Th
 
 | Date | Version | Change |
 | --- | --- | --- |
+| 29 Oct 2026 | 1.11 | Prateek: the POC package (P7.8): 40 brands × ₹2.5 L a month, 5 plays each per bike-hour on all 200 bikes, nothing promised; the rider's 25% is after the agency and aggregator cuts. |
 | 28 Oct 2026 | 1.10 | Prateek: approved Design 2.0 (P7.7), a premium redesign of the three apps on the same colours, in five steps. |
 | 22 Oct 2026 | 1.9 | Prateek: forecast only after the POC (a price-book setting, POC mode first); 6/12-month deals: no discount on Lite hours, hours spread about equally over the months (±20%, a setting), discount on the bill; aggregator ads are free. |
 | 22 Oct 2026 | 1.8 | Prateek: sell only what an area can deliver (supply forecast, P1.3.7; replaces "no sell cap"); drafts reserve nothing, offers and suggestions when a request doesn't fit; the 40 RECALL spots: make-ups → aggregator ads → RECALL ads; 6-month deals priced on total hours with the discount on the bill; drafts are always paid at the prices in force. |

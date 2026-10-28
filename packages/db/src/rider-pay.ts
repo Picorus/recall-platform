@@ -117,11 +117,16 @@ function ridersOf(all: readonly Stretch[]) {
     byScreen.get(screenId)?.find((s) => s.from <= t && t < s.to)?.riderId;
 }
 
+/** A cut on an amount at a rate, to the nearest paisa (halves up), as the cuts are posted. */
+const cutOf = (paise: number, bp: number) => Math.floor((paise * bp + 5_000) / 10_000);
+
 /**
  * What each rider's counted plays sold in a month: every sold line of the month's business days
  * (with its make-ups) is shared between the screens that delivered its counted plays, and each
  * play goes to the rider riding that screen when it played. Money kept without delivery sells
- * nothing for a rider.
+ * nothing for a rider. "Sold" is after the agency and aggregator cuts given on the booking
+ * (Prateek, 29 Oct 2026: the rider's 25% is on what RECALL keeps, as the money model has it);
+ * a cut given after the month's pay is final does not change it.
  */
 async function soldByRider(
   c: PoolClient,
@@ -142,6 +147,13 @@ async function soldByRider(
   );
   const out = new Map<string, number>();
   const riderAt = ridersOf(all);
+  // The cuts given on these bookings: agency and aggregator rates added up (basis points).
+  const cuts = await c.query<{ booking_id: string; bp: string }>(
+    `SELECT booking_id, sum(rate_bp) AS bp FROM booking_cuts
+      WHERE booking_id = ANY($1) GROUP BY booking_id`,
+    [[...new Set(lines.rows.map((l) => l.booking_id))]],
+  );
+  const cutBp = new Map(cuts.rows.map((x) => [x.booking_id, Number(x.bp)]));
   for (const l of lines.rows) {
     const book = books.find((b) => b.version === l.price_book_version);
     if (!book) throw new Error(`price book ${l.price_book_version} not found`);
@@ -156,7 +168,9 @@ async function soldByRider(
     const keys = counted.map((p) =>
       keep(p.startAt) ? (riderAt(p.screenId, p.startAt) ?? '') : '',
     );
-    for (const [rider, paise] of soldShares(await paidForLine(c, l, book), l.plays, keys))
+    const paid = await paidForLine(c, l, book);
+    const kept = paid - cutOf(paid, cutBp.get(l.booking_id) ?? 0);
+    for (const [rider, paise] of soldShares(kept, l.plays, keys))
       if (rider !== '') out.set(rider, (out.get(rider) ?? 0) + paise);
   }
   return out;
