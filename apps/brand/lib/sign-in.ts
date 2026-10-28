@@ -30,9 +30,7 @@ export function groupMobile(typed: string): string {
 
 /** An email address as typed (spaces around it, or next to "@" and ".", allowed). */
 export function looksLikeEmail(typed: string): boolean {
-  return /^[^@\s]{1,64}@[^@\s]{1,190}\.[A-Za-z]{2,24}$/.test(
-    typed.trim().replace(/\s*([@.])\s*/g, '$1'),
-  );
+  return /^[^@\s]{1,64}@[^@\s]{1,190}\.[A-Za-z]{2,24}$/.test(typed.trim());
 }
 
 /** A 6-digit code (spaces allowed). */

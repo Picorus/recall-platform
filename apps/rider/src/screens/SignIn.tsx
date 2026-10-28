@@ -129,6 +129,7 @@ export function SignIn({
       {error !== '' && <Alert>{error}</Alert>}
       <MainButton
         label={say(lang, 'sendWhatsApp')}
+        icon="chat"
         busy={busy === 'whatsapp'}
         disabled={busy !== null}
         onPress={() => send('whatsapp')}

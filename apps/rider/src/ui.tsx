@@ -132,11 +132,14 @@ export function MainButton({
   onPress,
   busy,
   disabled,
+  icon,
 }: {
   readonly label: string;
   readonly onPress: () => void;
   readonly busy?: boolean;
   readonly disabled?: boolean;
+  /** A small glyph before the words (e.g. "chat" for WhatsApp). */
+  readonly icon?: GlyphName;
 }) {
   const off = disabled === true || busy === true;
   return (
@@ -154,9 +157,12 @@ export function MainButton({
       {busy ? (
         <ActivityIndicator color={color.onVolt} />
       ) : (
-        <Words weight="semibold" style={s.mainText}>
-          {label}
-        </Words>
+        <View style={s.row}>
+          {icon !== undefined && <Icon name={icon} size={18} tint={color.onVolt} />}
+          <Words weight="semibold" style={s.mainText}>
+            {label}
+          </Words>
+        </View>
       )}
     </Pressable>
   );
@@ -283,15 +289,21 @@ export const s = StyleSheet.create({
   muted13: { color: color.muted, fontSize: 13, lineHeight: 20 },
   label: { color: color.text, fontSize: 14 },
   alert: { color: color.error, fontSize: 15, lineHeight: 22 },
+  // Round 3 (Prateek): a curved pill, a size smaller, with a soft volt glow.
   main: {
-    minHeight: 54,
-    borderRadius: radius.control,
+    minHeight: touch.main,
+    borderRadius: radius.pill,
     backgroundColor: color.volt,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 16,
+    paddingHorizontal: 22,
+    shadowColor: color.volt,
+    shadowOpacity: 0.28,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
   },
-  mainText: { color: color.onVolt, fontSize: 16.5 },
+  mainText: { color: color.onVolt, fontSize: 15.5, letterSpacing: -0.1 },
   link: {
     minHeight: touch.min,
     alignSelf: 'center',

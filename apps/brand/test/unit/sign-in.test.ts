@@ -48,7 +48,8 @@ describe('brand sign-in page checks (P5.1)', () => {
   it('an email address and a 6-digit code', () => {
     expect(looksLikeEmail(' Media@Adwise.in ')).toBe(true);
     expect(looksLikeEmail('media@adwise')).toBe(false);
-    expect(looksLikeEmail(' media @ adwise .in ')).toBe(true);
+    expect(looksLikeEmail(' media@adwise.in ')).toBe(true);
+    expect(looksLikeEmail('media @ adwise.in')).toBe(false);
     expect(looksLikeEmail('media team@adwise.in')).toBe(false);
     expect(looksLikeCode('123 456')).toBe(true);
     expect(looksLikeCode('12345')).toBe(false);
