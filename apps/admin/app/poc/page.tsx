@@ -367,6 +367,12 @@ export default function PocPage() {
                     <td>{count(b.playsToday)}</td>
                     <td>
                       {b.ads.filter((a) => a.approved).length} of {b.ads.length} approved
+                      {b.ads.every((a) => !a.approved) &&
+                        b.months.some((m) => m.state === 'paid' && m.month >= desk.month) && (
+                          <span className="rc-chip rc-chip--stop" role="status">
+                            Paid, no approved ads: nothing will play
+                          </span>
+                        )}
                     </td>
                     <td>
                       <button

@@ -21,10 +21,13 @@ import {
   playsPerBrand,
   pocDayEarned,
   pocDaysOver,
+  pocEndedAt,
   pocMonthMoney,
   pocMonthPaid,
   pocMonthWindow,
   pocRef,
+  POC_TERMS_VERSION,
+  pocMonthCancelled,
   priceBookAt,
   type ModeChange,
   type PocPlan,
@@ -61,6 +64,13 @@ const MIN_LINK_SECONDS = 15 * 60;
 const EXPIRY_GRACE_SECONDS = 2 * 60;
 /** News of a payment taken before a month started may reach us this long after its start. */
 const PAID_NEWS_GRACE_SECONDS = 30 * 60;
+/**
+ * After a brand's POC ads change, plays of the ads it had before still count this long: screens
+ * take the new plan with their next hello (every 15 minutes, twice over for a missed one).
+ */
+export const ADS_CHANGE_GRACE_SECONDS = 30 * 60;
+/** A link the provider cannot report on is treated as run out this long after its end (as bookings). */
+const PROVIDER_SILENT_SECONDS = 60 * 60;
 const AD_ID = /^AD-[0-9A-F]{10}$/;
 
 const MONTHS = [
@@ -306,12 +316,24 @@ async function adChoices(c: Q, brandIds: readonly string[]) {
       ...(choices.get(x.brand_id) ?? []),
       { at: Number(x.at), ads: x.ad_ids },
     ]);
-  /** The approved ads of the choice in force at `t` (the latest made by then). */
-  const at = (brandId: string, t: number): string[] => {
+  /**
+   * The approved ads of the choice in force at `t` (the latest made by then). With `grace` (for
+   * counting), also those of the choice before it for ADS_CHANGE_GRACE_SECONDS after a change:
+   * screens get the new plan only with their next hello.
+   */
+  const at = (brandId: string, t: number, grace = false): string[] => {
     const list = choices.get(brandId) ?? [];
     let pick: string[] = [];
-    for (const ch of list) if (ch.at <= t) pick = ch.ads;
-    return pick.filter((a) => approved.has(a));
+    let before: string[] = [];
+    let since = 0;
+    for (const ch of list)
+      if (ch.at <= t) {
+        before = pick;
+        pick = ch.ads;
+        since = ch.at;
+      }
+    const ads = grace && t < since + ADS_CHANGE_GRACE_SECONDS ? [...pick, ...before] : pick;
+    return [...new Set(ads)].filter((a) => approved.has(a));
   };
   return { at, approved };
 }
@@ -478,8 +500,13 @@ export async function applyPocLinkStatus(
   status: LinkStatus,
   now: number,
 ): Promise<PaymentOutcome | undefined> {
-  const r = await pool.query<{ poc_ref: string; amount_paise: string; brand_id: string }>(
-    `SELECT l.poc_ref, l.amount_paise, m.brand_id
+  const r = await pool.query<{
+    poc_ref: string;
+    amount_paise: string;
+    brand_id: string;
+    expires_at: Date;
+  }>(
+    `SELECT l.poc_ref, l.amount_paise, m.brand_id, l.expires_at
        FROM payment_links l JOIN poc_months m ON m.ref = l.poc_ref WHERE l.link_id = $1`,
     [linkId],
   );
@@ -524,11 +551,17 @@ export async function applyPocLinkStatus(
     if (!row) throw new Error(`No POC month ${l.ref}`);
     // A month is paid before it starts (links stop then): news of a payment may come a little
     // later, never days later; and a link we recorded as run out or stopped takes no money.
+    // Our own "run out" record gives way to the provider's word that it took the money before the
+    // link's end, while the news is still in time.
     const ended = await c.query(
       `SELECT 1 FROM payment_link_events WHERE link_id = $1 AND state IN ('expired', 'cancelled')`,
       [linkId],
     );
-    if (ended.rowCount || now > pocMonthWindow(row.month).startsAt + PAID_NEWS_GRACE_SECONDS) {
+    const tookInTime = status.paidAt <= secs(link.expires_at);
+    if (
+      (ended.rowCount && !tookInTime) ||
+      now > pocMonthWindow(row.month).startsAt + PAID_NEWS_GRACE_SECONDS
+    ) {
       const out = await moneyBack(
         c,
         l,
@@ -594,8 +627,8 @@ export async function expirePocLinks(
   now: number,
   log: (line: string) => void = (l) => console.error(l),
 ): Promise<number> {
-  const r = await pool.query<{ link_id: string }>(
-    `SELECT l.link_id FROM payment_links l
+  const r = await pool.query<{ link_id: string; expires_at: Date }>(
+    `SELECT l.link_id, l.expires_at FROM payment_links l
       WHERE l.poc_ref IS NOT NULL AND l.expires_at <= to_timestamp($1)
         AND NOT EXISTS (SELECT 1 FROM payment_link_events e WHERE e.link_id = l.link_id
                          AND e.state IN ('paid', 'expired', 'cancelled'))
@@ -606,7 +639,16 @@ export async function expirePocLinks(
   for (const x of r.rows) {
     try {
       await payments.cancelLink(x.link_id).catch(() => undefined);
-      const s = await payments.status(x.link_id).catch((): LinkStatus => ({ state: 'expired' }));
+      let s: LinkStatus;
+      try {
+        s = await payments.status(x.link_id);
+      } catch (e) {
+        // The provider cannot say: asked again on the next run (a payment may be behind it); only an
+        // hour after the link's end is it taken as run out (as for bookings).
+        if (secs(x.expires_at) + PROVIDER_SILENT_SECONDS > now) throw e;
+        log(`payments: no answer for POC link ${x.link_id}; taking it as run out`);
+        s = { state: 'expired' };
+      }
       // Stopped by us because it ran out: recorded as run out, unless it was paid meanwhile. A
       // payment that could not be kept (wrong amount, a second one) does not end the link: it is
       // recorded as run out too, so it is never picked up again.
@@ -706,27 +748,30 @@ export async function pocPlans(c: Q, now: number): Promise<PocPlan[]> {
   for (const month of [first, nextMonth(first)]) {
     const span = pocSpan(changes, pocMonthWindow(month));
     if (!span) continue;
-    const paid = await c.query<{ ref: string; brand_id: string }>(
-      `SELECT m.ref, m.brand_id FROM poc_months m
-        WHERE m.month = $1
-          AND EXISTS (SELECT 1 FROM payment_links l JOIN payment_link_events e USING (link_id)
-                       WHERE l.poc_ref = m.ref AND e.state = 'paid')
-        ORDER BY m.ref LIMIT $2`,
-      [month, rules.maxBrands],
+    // Every brand of the month keeps a fixed slot (reference order): one not paid yet (it may still
+    // be paid in the grace after the 1st) or with no approved ads has no ads, and RECALL fills it,
+    // so a brand paying late or losing its ads never moves the others mid-hour.
+    const all = await c.query<{ ref: string; brand_id: string; paid: boolean }>(
+      `SELECT m.ref, m.brand_id,
+              EXISTS (SELECT 1 FROM payment_links l JOIN payment_link_events e USING (link_id)
+                       WHERE l.poc_ref = m.ref AND e.state = 'paid') AS paid
+         FROM poc_months m WHERE m.month = $1 ORDER BY m.ref`,
+      [month],
     );
     const ads = await adChoices(
       c,
-      paid.rows.map((x) => x.brand_id),
+      all.rows.map((x) => x.brand_id),
     );
     out.push({
       month,
       ...span,
       zone,
-      slots: rules.maxBrands,
+      slots: Math.max(rules.maxBrands, all.rows.length),
       perBrand: playsPerBrand(rules),
-      brands: paid.rows
-        .map((x) => ({ ref: x.ref, ads: ads.at(x.brand_id, now).slice(0, 5) }))
-        .filter((x) => x.ads.length > 0),
+      brands: all.rows.map((x) => ({
+        ref: x.ref,
+        ads: x.paid ? ads.at(x.brand_id, now).slice(0, 5) : [],
+      })),
       recallAds,
     });
   }
@@ -772,7 +817,7 @@ export function pocJudge(c: Q, screenId: string) {
           brandId: r.brandId,
           paid: (await paidOf(c, ref)) !== undefined,
           ...pocMonthWindow(r.month),
-          adsAt: (t: number) => ads.at(r.brandId, t),
+          adsAt: (t: number) => ads.at(r.brandId, t, true),
         };
       })();
       months.set(ref, m);
@@ -1059,4 +1104,84 @@ async function pocDeskFor(c: Q, brandId: string, now: number): Promise<BrandPocP
     ads: a.rows.map((x) => ({ adId: x.ad_id, name: x.name, approved: x.approved })),
     perBrand: playsPerBrand(await pocRules(c)),
   };
+}
+
+// ---------------------------------------------------------------- paying from the portal
+
+/**
+ * The brand agrees to the POC package's plain rules and pays a month (P7.8, as P5.6): refused when
+ * the rules changed since it read them; the agreement is kept once the link is made (once per month
+ * and rules version, with who and from where).
+ */
+export async function payPocFromPortal(
+  pool: Pool,
+  payments: PaymentsAdapter,
+  p: {
+    readonly brandId: string;
+    readonly month: string;
+    readonly by: string;
+    readonly ip: string;
+    readonly termsVersion: number;
+  },
+  now: number,
+): Promise<SentLink> {
+  if (p.termsVersion !== POC_TERMS_VERSION)
+    throw new Refusal('The rules have changed: read them again and tick the box', {
+      code: 'terms-changed',
+    });
+  if (!isMonth(p.month)) throw new Refusal('No such POC month', { code: 'no-month' });
+  const ref = pocRef(p.brandId, p.month);
+  const link = await sendPocForPayment(pool, payments, ref, p.by, now);
+  await pool.query(
+    `INSERT INTO poc_terms (ref, terms_version, accepted_by, ip, at)
+     VALUES ($1, $2, $3, $4, to_timestamp($5)) ON CONFLICT (ref, terms_version) DO NOTHING`,
+    [ref, p.termsVersion, p.by.slice(0, 254), p.ip.slice(0, 64), now],
+  );
+  return link;
+}
+
+// ---------------------------------------------------------------- a cancelled POC
+
+/**
+ * After a scheduled POC is cancelled (cancelScheduledPoc): every paid POC month the POC is no longer
+ * on for never ran, so its fee and GST are owed back with a credit note, once (Prateek, 29 Oct
+ * 2026). Safe to run again. Returns the months owed back.
+ */
+export async function owePocMonthsBack(pool: Pool, now: number): Promise<string[]> {
+  const changes = await businessModes(pool);
+  // Only for a POC that never ran: after one ended early, unplayed days stay held for a super
+  // admin to decide (DECISIONS, 29 Oct 2026).
+  if (pocEndedAt(changes) !== undefined) return [];
+  const r = await pool.query<MonthRow>(
+    `SELECT m.* FROM poc_months m
+      WHERE EXISTS (SELECT 1 FROM ledger_entries e WHERE e.ref = m.ref AND e.kind = 'poc-paid')
+        AND NOT EXISTS (SELECT 1 FROM ledger_entries e WHERE e.ref = m.ref
+                         AND e.kind IN ('poc-cancelled', 'poc-earned'))
+      ORDER BY m.ref`,
+  );
+  const out: string[] = [];
+  for (const m of r.rows) {
+    if (modeAt(changes, pocMonthWindow(m.month).startsAt) === 'poc') continue;
+    await inTransaction(pool, async (c) => {
+      await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`poc-pay:${m.ref}`]);
+      const entry = pocMonthCancelled({
+        ref: m.ref,
+        brandId: m.brand_id,
+        fee: Number(m.fee_paise),
+        gst: Number(m.gst_paise),
+        at: now,
+      });
+      if ((await postEntry(c, entry, 'poc-cancelled')) === 'already') return;
+      await issueGstDocument(c, {
+        kind: 'credit-note',
+        sourceEntry: entry.entryId,
+        pocRef: m.ref,
+        taxable: Number(m.fee_paise),
+        gst: Number(m.gst_paise),
+        at: now,
+      });
+      out.push(m.ref);
+    });
+  }
+  return out;
 }

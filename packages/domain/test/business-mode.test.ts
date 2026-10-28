@@ -103,7 +103,9 @@ describe('P7.8: the POC is scheduled, runs, and is switched back by hand', () =>
     expect(kinds(ist('2027-08-01T09:00:00'))).toEqual(['starts-today']);
     expect(kinds(ist('2027-08-20T09:00:00'))).toEqual([]);
     expect(kinds(ist('2027-10-25T09:00:00'))).toEqual(['ends-soon']);
-    expect(kinds(ist('2027-11-01T00:30:00'))).toEqual(['ends-soon', 'months-over']);
+    // Just after midnight it is still the last POC day; from 02:00 the months are over.
+    expect(kinds(ist('2027-11-01T00:30:00'))).toEqual(['ends-soon']);
+    expect(kinds(ist('2027-11-01T02:00:00'))).toEqual(['months-over']);
     expect(kinds(ist('2027-11-03T09:00:00'))).toEqual(['months-over']);
     const done = [...changes, { mode: 'regular' as const, from: ist('2027-11-01T08:00:00') }];
     expect(

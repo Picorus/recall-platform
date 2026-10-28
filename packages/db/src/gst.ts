@@ -141,7 +141,8 @@ export async function issueGstDocument(
   d: {
     readonly kind: 'invoice' | 'credit-note';
     readonly sourceEntry: string;
-    /** What it is for: a booking, or (P7.8) a POC month "poc/<brand>/<YYYY-MM>" (invoices only). */
+    /** What it is for: a booking, or (P7.8) a POC month "poc/<brand>/<YYYY-MM>" (a credit note
+     * only when its POC was cancelled before it started). */
     readonly bookingId?: string;
     readonly pocRef?: string;
     readonly taxable: number;
@@ -158,8 +159,6 @@ export async function issueGstDocument(
   await c.query("SELECT pg_advisory_xact_lock(hashtext('gst-documents'))");
   if ((d.bookingId === undefined) === (d.pocRef === undefined))
     throw new Error('A tax document is for a booking or for a POC month');
-  if (d.pocRef !== undefined && d.kind !== 'invoice')
-    throw new Error('A POC month is never refunded: no credit note');
   const b = await c.query<{ brand_id: string; gst_bp: number | null }>(
     d.pocRef !== undefined
       ? 'SELECT brand_id, gst_bp FROM poc_months WHERE ref = $1'
@@ -249,12 +248,12 @@ export async function issueGstDocument(
               coalesce(sum(n.taxable_paise), 0) AS c_taxable, coalesce(sum(n.cgst_paise), 0) AS c_cgst,
               coalesce(sum(n.sgst_paise), 0) AS c_sgst, coalesce(sum(n.igst_paise), 0) AS c_igst
          FROM gst_documents i LEFT JOIN gst_documents n ON n.against_doc = i.doc_no
-        WHERE i.booking_id = $1 AND i.kind = 'invoice'
+        WHERE coalesce(i.booking_id, i.poc_ref) = $1 AND i.kind = 'invoice'
         GROUP BY i.doc_no ORDER BY min(i.issued_at) LIMIT 1`,
-      [d.bookingId],
+      [d.pocRef ?? d.bookingId],
     );
     const i = inv.rows[0];
-    if (!i) throw new Error(`No invoice for booking ${d.bookingId} to credit`);
+    if (!i) throw new Error(`No invoice for ${d.pocRef ?? d.bookingId ?? ''} to credit`);
     against = i.doc_no;
     recipient = {
       legal_name: i.legal_name,

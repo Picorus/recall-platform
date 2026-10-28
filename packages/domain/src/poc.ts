@@ -256,6 +256,56 @@ export function pocDayEarned(d: {
   };
 }
 
+/**
+ * A POC month paid for a POC cancelled before it started (Prateek, 29 Oct 2026): it never ran, so
+ * the fee and its GST go back to the brand (with a credit note), owed until paid back. Once, ever.
+ */
+export function pocMonthCancelled(p: {
+  readonly ref: string;
+  readonly brandId: string;
+  readonly fee: number;
+  readonly gst: number;
+  readonly at: number;
+}): Entry {
+  return {
+    entryId: `poc-cancelled:${p.ref}`,
+    at: p.at,
+    kind: 'poc-cancelled',
+    ref: p.ref,
+    memo: `POC cancelled before it started: ${p.ref} goes back to the brand`,
+    postings: [
+      ...post('campaign-held', 'debit', p.fee, p.brandId),
+      ...post('gst-payable', 'debit', p.gst),
+      ...post('refunds-payable', 'credit', p.fee + p.gst, p.brandId),
+    ],
+  };
+}
+
+// ---------------------------------------------------------------- the rules a brand agrees to
+
+/** Goes up whenever the words below change: a brand agrees again before its next payment. */
+export const POC_TERMS_VERSION = 1;
+
+/** The POC package's plain rules, agreed with one tick before paying a month (P7.8, as P5.6). */
+export const POC_TERMS: readonly { readonly title: string; readonly text: string }[] = [
+  {
+    title: 'A fixed fee a month',
+    text: 'You pay the same fee for each month, plus GST, before the month starts. A month not paid by then does not play.',
+  },
+  {
+    title: 'Plays are shared',
+    text: 'Your ads take turns with the other POC brands on every RECALL bike in the POC zone, every business hour.',
+  },
+  {
+    title: 'No number of views is promised',
+    text: 'We show you the plays, bikes, hours and streets as they are; any audience count is an estimate and never billed.',
+  },
+  {
+    title: 'No refund once the month starts',
+    text: 'Once a month has started its fee is not refunded, and there are no make-ups.',
+  },
+];
+
 // ---------------------------------------------------------------- the hour on a screen
 
 /** A brand of a POC month as the screens need it: what its plays name, and its ads in turn. */
@@ -277,7 +327,10 @@ export interface PocPlan {
   /** Brand slots in the rotation (the most brands, 40) and plays a slot gets an hour (5). */
   readonly slots: number;
   readonly perBrand: number;
-  /** The brands paid for the month, in slot order (at most `slots`). */
+  /**
+   * Every brand of the month in a fixed slot (in reference order, at most `slots`): one not paid
+   * yet, or with no approved ads, has no ads and RECALL fills its slot, so nobody else moves up.
+   */
   readonly brands: readonly PocBrandPlan[];
   /** RECALL's own ads: its 40 spots, and the slots of brands not there. */
   readonly recallAds: readonly string[];
@@ -326,6 +379,25 @@ export function pocSpotAt(
   if (turn >= plan.perBrand || !b) return recall();
   const ad = nth(b.ads, turn + offset);
   return ad === undefined ? recall() : { kind: 'brand', lineId: b.ref, ad };
+}
+
+/**
+ * What a screen shows in spot `index` of the hour holding `t` while a POC month's plan covers `t`
+ * (Prateek, 29 Oct 2026): inside the POC zone, the rotation; outside it, only RECALL's own ads (no
+ * brand rotation and no area booking plans). Undefined when the plan does not cover `t` (the POC's
+ * nights, or another month): the usual plans then.
+ */
+export function pocScreenSpotAt(
+  plan: PocPlan,
+  screenId: string,
+  t: number,
+  index: number,
+  inZone: boolean,
+  rules: SpotRules = DEFAULT_SPOT_RULES,
+): SpotChoice | undefined {
+  if (!pocPlanCovers(plan, t)) return undefined;
+  if (!inZone) return { kind: 'recall', ad: nth(plan.recallAds, index) ?? '' };
+  return pocSpotAt(plan, screenId, indiaHourOf(t), index, rules);
 }
 
 // ---------------------------------------------------------------- the message (down/poc)
@@ -399,7 +471,7 @@ function planProblem(p: unknown): string | undefined {
     const r = typeof b.ref === 'string' ? parsePocRef(b.ref) : undefined;
     if (!r || r.month !== p.month || refs.has(b.ref as string)) return 'bad brand ref';
     refs.add(b.ref as string);
-    if (!adList(b.ads, 1, 5)) return 'bad brand ads';
+    if (!adList(b.ads, 0, 5)) return 'bad brand ads';
   }
   return undefined;
 }

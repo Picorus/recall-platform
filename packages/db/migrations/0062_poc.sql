@@ -57,8 +57,42 @@ ALTER TABLE gst_documents ADD COLUMN poc_ref text REFERENCES poc_months (ref);
 ALTER TABLE gst_documents ADD CONSTRAINT gst_documents_for_one
   CHECK ((booking_id IS NULL) <> (poc_ref IS NULL));
 
--- POC plays name their month; counting looks them up by screen, month and hour.
-CREATE INDEX plays_poc_screen ON plays (screen_id, line_id, start_at) WHERE line_id LIKE 'poc/%';
+-- (POC plays are counted per screen and hour through plays_screen_time (screen_id, start_at) and
+-- per month through plays_line (line_id, start_at): no index of their own.)
+
+-- The brand's agreement to the POC package's plain rules before paying a month (once per month and
+-- rules version, with who and from where), as booking_terms for bookings.
+CREATE TABLE poc_terms (
+  ref           text        NOT NULL REFERENCES poc_months (ref),
+  terms_version integer     NOT NULL CHECK (terms_version >= 1),
+  accepted_by   text        NOT NULL CHECK (length(accepted_by) BETWEEN 1 AND 254),
+  ip            text        NOT NULL CHECK (length(ip) BETWEEN 1 AND 64),
+  at            timestamptz NOT NULL,
+  PRIMARY KEY (ref, terms_version)
+);
+CREATE TRIGGER poc_terms_no_change BEFORE UPDATE OR DELETE ON poc_terms
+  FOR EACH ROW EXECUTE FUNCTION recall_append_only();
+CREATE TRIGGER poc_terms_no_truncate BEFORE TRUNCATE ON poc_terms
+  FOR EACH STATEMENT EXECUTE FUNCTION recall_append_only();
+GRANT SELECT, INSERT ON poc_terms TO recall_app;
+
+-- A scheduled POC can be cancelled before it starts (Prateek, 29 Oct 2026): the cancel is its own
+-- record; a cancelled switch is as if never made (it never ran), so the POC can be scheduled again,
+-- even for the same 1st. Switches get their own number for that.
+ALTER TABLE business_modes DROP CONSTRAINT business_modes_pkey;
+ALTER TABLE business_modes ADD COLUMN id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY;
+CREATE INDEX business_modes_from ON business_modes (from_at);
+CREATE TABLE business_mode_cancels (
+  mode_id      bigint      PRIMARY KEY REFERENCES business_modes (id),
+  cancelled_by text        NOT NULL,
+  reason       text        NOT NULL CHECK (length(reason) >= 5),
+  cancelled_at timestamptz NOT NULL
+);
+CREATE TRIGGER business_mode_cancels_no_change BEFORE UPDATE OR DELETE ON business_mode_cancels
+  FOR EACH ROW EXECUTE FUNCTION recall_append_only();
+CREATE TRIGGER business_mode_cancels_no_truncate BEFORE TRUNCATE ON business_mode_cancels
+  FOR EACH STATEMENT EXECUTE FUNCTION recall_append_only();
+GRANT SELECT, INSERT ON business_mode_cancels TO recall_app;
 
 CREATE TRIGGER poc_brands_no_change BEFORE UPDATE OR DELETE ON poc_brands
   FOR EACH ROW EXECUTE FUNCTION recall_append_only();
@@ -108,7 +142,10 @@ UNION ALL SELECT set_at, set_by, 'areas', 'supply estimate set', area_id || ' ' 
                  bikes || ' bikes', concat_ws(':', 'area_supply_estimates', area_id, start_hour, version)
             FROM area_supply_estimates
 UNION ALL SELECT saved_at, saved_by, 'prices', 'price book saved', 'v' || version, reason, 'price_books:' || version FROM price_books
-UNION ALL SELECT set_at, set_by, 'business', 'business mode set', mode, reason, 'business_modes:' || from_at FROM business_modes
+UNION ALL SELECT set_at, set_by, 'business', 'business mode set', mode, reason, 'business_modes:' || id FROM business_modes
+UNION ALL SELECT c.cancelled_at, c.cancelled_by, 'business', 'scheduled POC cancelled', m.mode, c.reason,
+                 'business_mode_cancels:' || c.mode_id
+            FROM business_mode_cancels c JOIN business_modes m ON m.id = c.mode_id
 UNION ALL SELECT created_at, held_by, 'calendar', 'hold made', hold_id, concat_ws(': ', brand_id, reason), 'holds:' || hold_id FROM holds
 UNION ALL SELECT ended_at, ended_by, 'calendar', 'hold ended', hold_id, reason, 'hold_ends:' || hold_id FROM hold_ends
 UNION ALL SELECT created_at, created_by, 'brands', 'brand added', brand_id, kind, 'brands:' || brand_id FROM brands
@@ -220,6 +257,8 @@ UNION ALL SELECT created_at, created_by, 'poc', 'POC month added', ref,
                  '₹' || to_char(total_paise / 100.0, 'FM999999999990.00') || ' with GST', 'poc_months:' || ref FROM poc_months
 UNION ALL SELECT set_at, set_by, 'poc', 'POC ads chosen', brand_id, array_to_string(ad_ids, ', '),
                  'poc_ad_sets:' || brand_id || ':' || version FROM poc_ad_sets
+UNION ALL SELECT at, accepted_by, 'poc', 'POC rules agreed', ref, 'version ' || terms_version,
+                 'poc_terms:' || ref || ':' || terms_version FROM poc_terms
 ) x;
 
 GRANT SELECT ON audit_log TO recall_app;

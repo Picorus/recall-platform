@@ -16,10 +16,12 @@ import type pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { brandDocuments } from '../../src/brand-invoices.js';
 import { applyLinkStatus, expireUnpaid, paymentMessage } from '../../src/booking-desk.js';
-import { savePriceBook } from '../../src/bookings.js';
+import { createBooking, savePriceBook } from '../../src/bookings.js';
 import { createAccount } from '../../src/brands.js';
 import {
+  businessModeHistory,
   businessModes,
+  cancelScheduledPoc,
   canSwitch,
   EarlyEnd,
   pocPhaseAt,
@@ -28,11 +30,13 @@ import {
 import { closeEarnings } from '../../src/earnings.js';
 import { accountTotals, trialBalance } from '../../src/ledger.js';
 import { paymentsIn } from '../../src/money.js';
-import { addScreenKey } from '../../src/plays.js';
+import { addScreenKey, revokeScreenKey } from '../../src/plays.js';
 import {
   addPocBrand,
   bikesFitted,
   brandPocPage,
+  expirePocLinks,
+  owePocMonthsBack,
   checkPocBikeRoom,
   pocDesk,
   pocPlans,
@@ -365,9 +369,11 @@ describe('the screens and the plays (P7.8.2)', () => {
       slots: 40,
       perBrand: 5,
       zone: { kind: 'circle', radiusM: 15_000 },
+      // Every brand of the month in a fixed slot: gamma, not paid, keeps its slot with no ads.
       brands: [
         { ref: 'poc/alpha/2027-08', ads: ads.alpha },
         { ref: 'poc/beta/2027-08', ads: ads.beta },
+        { ref: 'poc/gamma/2027-08', ads: [] },
       ],
       recallAds: [],
     });
@@ -661,5 +667,254 @@ describe('the most brands while the POC runs', () => {
         0,
       ),
     ).toBe(1);
+  });
+});
+
+/** A fresh database with the POC switched on at ON (scheduled from 1 August) and one brand. */
+async function pocWorld(brandId: string, months = 1) {
+  const d = await freshDatabase();
+  const p = d.pool;
+  await savePriceBook(p, PRICE_BOOK_V1, 'prateek');
+  await createAccount(
+    p,
+    {
+      brandId,
+      kind: 'brand',
+      details: { name: brandId, agencyId: null, referredBy: null, active: true },
+      by: SALES,
+      reason: 'test',
+    },
+    ON - 86_400,
+  );
+  await setBusinessMode(p, 'poc', SUPER, 'POC on', ON);
+  const own: string[] = [];
+  for (const k of [1, 2, 3]) {
+    const adId = `AD-00000000C${k}`;
+    await p.query(
+      `INSERT INTO ads (ad_id, brand_id, name, file_key, bytes, kind, checks, outcome, uploaded_by, uploaded_at)
+       VALUES ($1, $2, 'ad', $3, 1, 'png', '[]', 'pass', 'test', now())`,
+      [adId, brandId, String(k).repeat(64)],
+    );
+    await p.query(
+      `INSERT INTO ad_reviews (ad_id, decision, checklist, reviewed_by, reviewed_at)
+       VALUES ($1, 'approved', '{}', 'r', now())`,
+      [adId],
+    );
+    own.push(adId);
+  }
+  await addPocBrand(
+    p,
+    { brandId, firstMonth: '2027-08', months, adIds: own.slice(0, 2), reason: 'signed up' },
+    SALES,
+    ON,
+  );
+  return { d, p, own };
+}
+
+describe('review fixes (P7.8): payment news, ad changes, revoked keys, bookings, cancelling', () => {
+  it('a provider that cannot answer: asked again later, never taken as run out at once; a payment in time wins', async () => {
+    const { d, p } = await pocWorld('news');
+    try {
+      const fake = fakePayments({ clock: () => ON });
+      let down = true;
+      const flaky = {
+        ...fake,
+        status: (id: string) => (down ? Promise.reject(new Error('timeout')) : fake.status(id)),
+        cancelLink: (id: string) => fake.cancelLink(id),
+        createLink: (r: Parameters<typeof fake.createLink>[0]) => fake.createLink(r),
+      };
+      const link = await sendPocForPayment(p, flaky, 'poc/news/2027-08', SALES, ON);
+      const events = async () =>
+        (
+          await p.query<{ state: string }>(
+            'SELECT state FROM payment_link_events WHERE link_id = $1 ORDER BY id',
+            [link.linkId],
+          )
+        ).rows.map((x) => x.state);
+      // Five minutes after its end, the provider does not answer: nothing recorded, tried again.
+      await expirePocLinks(p, flaky, link.expiresAt + 300, () => undefined);
+      expect(await events()).toEqual([]);
+      // An hour after its end it is taken as run out.
+      await expirePocLinks(p, flaky, link.expiresAt + 3_700, () => undefined);
+      expect(await events()).toEqual(['expired']);
+      down = false;
+      // The provider then says it took the money before the link ended, while the news is still in
+      // time: the payment wins over our own record.
+      expect(
+        await applyLinkStatus(
+          p,
+          link.linkId,
+          {
+            state: 'paid',
+            paymentId: 'pay_in_time',
+            paidAt: link.expiresAt - 60,
+            amountPaise: link.amountPaise,
+          },
+          link.expiresAt + 3_800,
+        ),
+      ).toBe('paid');
+      expect(await events()).toEqual(['expired', 'paid']);
+    } finally {
+      await d.drop();
+    }
+  });
+
+  it('after a brand changes its ads, plays of the ads it had count for 30 minutes more', async () => {
+    const { d, p, own } = await pocWorld('switcher');
+    try {
+      const link = await sendPocForPayment(p, payments, 'poc/switcher/2027-08', SALES, ON);
+      await applyLinkStatus(
+        p,
+        link.linkId,
+        { state: 'paid', paymentId: 'pay_sw', paidAt: ON, amountPaise: link.amountPaise },
+        ON + 60,
+      );
+      const k = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+      const screen = 'SCR-0000004D';
+      const spki = (x: typeof k.publicKey) =>
+        x.export({ format: 'der', type: 'spki' }).toString('base64');
+      await addScreenKey(p, screen, 'k1', spki(k.publicKey), 'fitter');
+      let n = 0;
+      const signed = (adId: string, startAt: number, key = k, keyId = 'k1'): Numbered => {
+        n += 1;
+        const body: Omit<PlayReport, 'sig'> = {
+          kind: 'play',
+          keyId,
+          slot: 'brand',
+          ref: 'poc/switcher/2027-08',
+          adId,
+          startAt,
+          lengthS: 15,
+          latE6: 17_455_000,
+          lngE6: 78_385_000,
+          accuracyM: 6,
+          place: 'outside',
+          people: 1,
+        };
+        const sig = sign('sha256', Buffer.from(playBytes(screen, n, body)), {
+          key: key.privateKey,
+          dsaEncoding: 'der',
+        }).toString('base64');
+        return { seq: n, at: startAt + 15, report: { ...body, sig } };
+      };
+      const change = ist('2027-08-03T18:05:00');
+      await setPocAds(p, 'switcher', [own[1] ?? '', own[2] ?? ''], SALES, change);
+      const old = own[0] ?? '';
+      await storeUpload(
+        p,
+        screen,
+        [
+          signed(old, change + 600),
+          signed(old, ist('2027-08-03T19:10:00')),
+          signed(own[2] ?? '', ist('2027-08-03T19:20:00')),
+        ],
+        1,
+        ist('2027-08-03T20:00:00'),
+      );
+      const rows = (
+        await p.query<{ counts: string; reason: string | null }>(
+          'SELECT counts, reason FROM plays WHERE screen_id = $1 ORDER BY start_at',
+          [screen],
+        )
+      ).rows.map((x) => x.reason ?? x.counts);
+      expect(rows).toEqual(['inside', 'not one of its ads', 'inside']);
+
+      // A key given up: its late plays never use up the brand's 5 that bike-hour.
+      const k2 = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+      await addScreenKey(p, screen, 'k2', spki(k2.publicKey), 'fitter');
+      const hour = ist('2027-08-04T18:00:00');
+      await revokeScreenKey(p, screen, 'k1', 'ops', 'box stolen at night', hour + 3_600);
+      const batch = [
+        ...Array.from({ length: 5 }, (_, i) => signed(own[1] ?? '', hour + i * 60)),
+        ...Array.from({ length: 5 }, (_, i) => signed(own[2] ?? '', hour + 600 + i * 60, k2, 'k2')),
+      ];
+      await storeUpload(p, screen, batch, batch[0]?.seq ?? 1, ist('2027-08-04T20:00:00'));
+      const k2rows = (
+        await p.query<{ counts: string }>(
+          `SELECT counts FROM plays WHERE screen_id = $1 AND key_id = 'k2'`,
+          [screen],
+        )
+      ).rows.map((x) => x.counts);
+      expect(k2rows).toEqual(['inside', 'inside', 'inside', 'inside', 'inside']);
+      expect((await pocReport(p, 'switcher', '2027-08'))?.plays).toBe(2 + 5);
+    } finally {
+      await d.drop();
+    }
+  });
+
+  it('while the POC is scheduled, an area booking for its hours is refused in plain words', async () => {
+    const { d, p } = await pocWorld('booker');
+    try {
+      await expect(
+        createBooking(
+          p,
+          {
+            bookingId: 'BK-POC-1',
+            brandId: 'booker',
+            request: {
+              lines: [{ areaId: 'hyd-madhapur', date: '2027-09-10', startHour: 19, bikes: 20 }],
+              repeatMonths: 1,
+              channel: 'admin',
+            },
+            by: SALES,
+          },
+          ON + 60,
+        ),
+      ).rejects.toThrow(
+        /The POC uses every bike-hour from 1 Aug 2027; area bookings open again when regular business starts \(planned 1 Nov 2027\)/,
+      );
+    } finally {
+      await d.drop();
+    }
+  });
+
+  it('a scheduled POC cancelled before it starts: never ran, paid months owed back, schedulable again', async () => {
+    const { d, p } = await pocWorld('cancelled', 2);
+    try {
+      const link = await sendPocForPayment(p, payments, 'poc/cancelled/2027-08', SALES, ON);
+      await applyLinkStatus(
+        p,
+        link.linkId,
+        { state: 'paid', paymentId: 'pay_cancel', paidAt: ON, amountPaise: link.amountPaise },
+        ON + 60,
+      );
+      await expect(
+        cancelScheduledPoc(p, { id: 'asha', role: 'admin' }, 'not yet', ON),
+      ).rejects.toThrow(/super admin/);
+      expect(await cancelScheduledPoc(p, SUPER, 'brands not ready', ON + 86_400)).toBe(
+        AUG.startsAt,
+      );
+      expect(await businessModes(p)).toEqual([]);
+      expect((await pocPhaseAt(p, ON + 86_400)).phase).toBe('none');
+      expect((await businessModeHistory(p))[0]?.cancelled?.reason).toBe('brands not ready');
+      expect(await owePocMonthsBack(p, ON + 86_400)).toEqual(['poc/cancelled/2027-08']);
+      expect(await owePocMonthsBack(p, ON + 86_500)).toEqual([]);
+      const back = await accountTotals(p, 'refunds-payable', { party: 'cancelled' });
+      expect(back.credit - back.debit).toBe(29_500_000);
+      const notes = await p.query<{ kind: string }>(
+        "SELECT kind FROM gst_documents WHERE poc_ref = 'poc/cancelled/2027-08' ORDER BY n",
+      );
+      expect(notes.rows.map((x) => x.kind).sort()).toEqual(['credit-note', 'invoice']);
+      const tb = await trialBalance(p);
+      expect(tb.debit).toBe(tb.credit);
+      // Its other month cannot be paid now.
+      await expect(
+        sendPocForPayment(p, payments, 'poc/cancelled/2027-09', SALES, ON + 86_400),
+      ).rejects.toThrow(/The POC is not on in September 2027/);
+      await expect(cancelScheduledPoc(p, SUPER, 'again please', ON + 86_400)).rejects.toThrow(
+        /No POC is scheduled/,
+      );
+      // It never ran: it can be scheduled again, for the same 1st.
+      expect(await setBusinessMode(p, 'poc', SUPER, 'POC on again', ON + 2 * 86_400)).toBe(
+        AUG.startsAt,
+      );
+      expect((await pocPhaseAt(p, ON + 2 * 86_400)).phase).toBe('scheduled');
+      // Once it has started it cannot be cancelled.
+      await expect(cancelScheduledPoc(p, SUPER, 'too late now', AUG.startsAt + 60)).rejects.toThrow(
+        /has started/,
+      );
+    } finally {
+      await d.drop();
+    }
   });
 });

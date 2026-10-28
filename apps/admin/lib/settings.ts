@@ -219,6 +219,12 @@ export interface BusinessSwitch {
     readonly setBy: string;
     readonly reason: string;
     readonly setAt: number;
+    /** P7.8: a scheduled POC cancelled before it started (it counts for nothing). */
+    readonly cancelled: {
+      readonly by: string;
+      readonly reason: string;
+      readonly at: number;
+    } | null;
   }[];
 }
 

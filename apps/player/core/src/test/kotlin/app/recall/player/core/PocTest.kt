@@ -41,7 +41,7 @@ class PocTest {
     @Test
     fun `every spot of the hour matches the cloud, 5 a brand, 40 RECALL spots, the gaps RECALL too`() {
         val rotations = v.getValue("rotations").jsonArray.map { it.jsonObject }
-        assertEquals(6, rotations.size)
+        assertEquals(7, rotations.size)
         for (r in rotations) {
             val p = r.getValue("plan").jsonObject
             val plan = PocPlan(
@@ -94,9 +94,11 @@ class PocTest {
         val s = LocalScheduler(dir, me)
         assertTrue(s.onPoc(okText))
         assertTrue(!s.onPoc(okText), "the same message again changes nothing")
-        // Out of the zone: no POC hour (area plans or RECALL's own ads, as before).
+        // Out of the zone in a POC hour: RECALL's own ads only.
         second(s, h18 + 30, far)
-        assertNull(s.at((h18 + 30) * 1000))
+        val outside = assertNotNull(s.at((h18 + 30) * 1000))
+        assertEquals("poc-outside", outside.first.areaId)
+        assertTrue((0 until 240).all { Spots.spotAt(outside.first, outside.second, it).kind == "recall" })
         second(s, h18 + 60, near)
         val (plan, carry) = assertNotNull(s.at((h18 + 60) * 1000))
         assertEquals("poc", plan.areaId)
@@ -126,6 +128,24 @@ class PocTest {
         second(s, dec + 1, null, Place.Edge("hyd-hitech-city", 1, 40.0))
         assertNotNull(s.at((dec + 1) * 1000))
         second(s, dec + 2, null, Place.Inside("hyd-kondapur", 1))
-        assertNull(s.at((dec + 2) * 1000))
+        assertEquals("poc-outside", assertNotNull(s.at((dec + 2) * 1000)).first.areaId)
+    }
+
+    @Test
+    fun `outside the zone in a POC hour an area booking plan never plays, only RECALL ads`() {
+        val sp = Json.parseToJsonElement(File(System.getProperty("recall.vectors"), "screen-plan.json").readText()).jsonObject
+        val s = LocalScheduler(dir, me)
+        assertTrue(s.onPlans(sp.getValue("plans").jsonObject.getValue("text").jsonPrimitive.content))
+        assertTrue(s.onPoc(okText))
+        // Inside Madhapur (it has a booking plan this hour) but 50 km from Hitech City.
+        second(s, h18 + 60, far, Place.Inside("hyd-madhapur", 3))
+        val (plan, carry) = assertNotNull(s.at((h18 + 60) * 1000))
+        assertEquals("poc-outside", plan.areaId)
+        assertTrue(plan.lines.isEmpty())
+        assertTrue((0 until 240).all { Spots.spotAt(plan, carry, it).kind == "recall" })
+        // With no POC plan the same bike would carry the area's booking.
+        val plain = second(LocalScheduler(Files.createTempDirectory("plain").toFile(), me), h18 + 60, far, Place.Inside("hyd-madhapur", 3))
+        plain.onPlans(sp.getValue("plans").jsonObject.getValue("text").jsonPrimitive.content)
+        assertEquals("hyd-madhapur", assertNotNull(plain.at((h18 + 60) * 1000)).first.areaId)
     }
 }

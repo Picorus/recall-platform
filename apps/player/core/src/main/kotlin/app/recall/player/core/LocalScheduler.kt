@@ -218,7 +218,8 @@ class LocalScheduler(
     /** The plan and what this bike carries at `utcMs`; null outside every area or without a plan. */
     override fun at(utcMs: Long): Pair<HourPlan, Carry>? {
         val s = state
-        // P7.8: in a POC month's business hours, inside its zone, the POC rotation takes every brand spot.
+        // P7.8: in a POC month's business hours the POC decides: inside its zone the rotation, outside it
+        // RECALL's own ads only.
         pocAt(s, utcMs)?.let { return it }
         val (areaId, edge) = when (val p = place) {
             is Place.Inside -> p.areaId to false
@@ -239,7 +240,7 @@ class LocalScheduler(
         return plan to Carry(if (line != null) own.lineId else given.lineId, if (spot != null) own.spotId else given.spotId)
     }
 
-    /** The POC hour at `utcMs` when a POC month plays then and the bike is in its zone; else null. */
+    /** The POC hour at `utcMs` when a POC month plays then (outside its zone: RECALL's ads only); else null. */
     private fun pocAt(s: State, utcMs: Long): Pair<HourPlan, Carry>? {
         val t = Math.floorDiv(utcMs, 1000L)
         val plan = s.poc.plans.firstOrNull { PocPlans.covers(it, t) } ?: return null
@@ -252,8 +253,9 @@ class LocalScheduler(
                 Place.Outside -> false
             }
         }
-        if (!inZone) return null
         val hour = PocPlans.hourOf(t)
+        // Outside the POC zone in a POC hour (Prateek, 29 Oct 2026): only RECALL's own ads, no area plans.
+        if (!inZone) return HourPlan("poc-outside", hour, emptyList(), emptyList(), plan.recallAds) to Carry(null, null)
         return HourPlan("poc", hour, emptyList(), emptyList(), plan.recallAds, poc = PocCarry(plan, screenId)) to Carry(null, null)
     }
 

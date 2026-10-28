@@ -132,7 +132,7 @@ export interface PocAlert {
 /**
  * What super admins are told about the POC in the staff portal (Prateek, 28 Oct 2026): from the
  * switch-on until it starts, that it is scheduled; on the day it starts; from 7 days before its
- * planned end; and from the 1st after its months, while it is still on, to switch back.
+ * planned end; and from 02:00 on the 1st after its months, while it is still on, to switch back.
  */
 export function pocAlerts(p: PocPhase, months: number, now: number): PocAlert[] {
   if (p.phase === 'none' || p.phase === 'ended') return [];
@@ -150,12 +150,14 @@ export function pocAlerts(p: PocPhase, months: number, now: number): PocAlert[] 
       kind: 'starts-today',
       text: `The POC starts today (${dayText(p.startsAt)}, 8 am): only paid POC months play`,
     });
-  if (p.phase === 'running' && now < p.plannedEnd && now >= p.plannedEnd - 7 * 86_400)
+  // The 1st after its months begins at 02:00 (the 00:00–02:00 tail is still the last POC day).
+  const monthsOver = p.plannedEnd - 6 * 3600;
+  if (p.phase === 'running' && now < monthsOver && now >= p.plannedEnd - 7 * 86_400)
     out.push({
       kind: 'ends-soon',
       text: `The POC's planned end is in ${Math.max(1, Math.ceil((p.plannedEnd - now) / 86_400))} days (last day ${lastDay}): switch to regular business on the morning of ${dayText(p.plannedEnd)}`,
     });
-  if (p.phase === 'running' && (now >= p.plannedEnd || sameDay(now, p.plannedEnd)))
+  if (p.phase === 'running' && now >= monthsOver)
     out.push({
       kind: 'months-over',
       text: `The POC's ${months} months are over: switch to regular business (from 8 am today, the switch counts from today)`,

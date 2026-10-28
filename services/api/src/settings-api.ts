@@ -10,6 +10,8 @@ import {
   areaRecords,
   businessModeHistory,
   canSwitch,
+  cancelScheduledPoc,
+  owePocMonthsBack,
   businessModes,
   pocPhaseAt,
   pocMonthsSetting,
@@ -85,7 +87,7 @@ export async function handleSettings(
     const business = {
       mode: modeAt(await businessModes(pool), now),
       // A switch already made that has not started yet (counts from a later day).
-      next: history.find((h) => h.from > now) ?? null,
+      next: history.find((h) => h.from > now && !h.cancelled) ?? null,
       canSwitch: me.access.role === 'super-admin' && (await canSwitch(pool, now)),
       // P7.8: the POC is scheduled, running or ended (by itself after its months, or by hand).
       poc: phase,
@@ -110,6 +112,30 @@ export async function handleSettings(
       connections: cfg.connections ?? [],
       business,
     });
+    return true;
+  }
+
+  // P7.8 (Prateek, 29 Oct 2026): a super admin cancels a POC scheduled and not started, with why.
+  if (path === '/settings/business/cancel') {
+    if (method !== 'POST') throw new HttpError(405, 'Not allowed');
+    const origin = req.headers.origin;
+    if (!origin || !cfg.origins.includes(origin))
+      throw new HttpError(403, 'Not from the admin site');
+    const me = await staffFor(pool, cfg, req, nowMs);
+    if (me.access.role !== 'super-admin')
+      throw new HttpError(403, 'Only a super admin cancels the POC');
+    const reason = str(await jsonBody(req), 'reason', 300).trim();
+    if (reason.length < 5) throw new HttpError(400, 'Say why (a few words)');
+    try {
+      const from = await cancelScheduledPoc(pool, { id: me.id, role: me.access.role }, reason, now);
+      // Months already paid for it never ran: owed back.
+      const owed = await owePocMonthsBack(pool, now);
+      send(res, 200, { cancelled: from, owedBack: owed });
+    } catch (e) {
+      if (e instanceof Error && /No POC is scheduled|has started/.test(e.message))
+        throw new HttpError(400, e.message);
+      throw e;
+    }
     return true;
   }
 

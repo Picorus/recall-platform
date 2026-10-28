@@ -202,6 +202,22 @@ function BusinessSwitchCard({
       ? Math.max(1, Math.ceil((p.plannedEnd - from) / 86_400))
       : 0;
   const [sure, setSure] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const cancel = async (e: FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setError('');
+    try {
+      await api('/settings/business/cancel', { reason });
+      setCancelling(false);
+      setReason('');
+      onSaved();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not reach the server. Try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
   const save = async (e: FormEvent) => {
     e.preventDefault();
     setBusy(true);
@@ -286,6 +302,50 @@ function BusinessSwitchCard({
           Switch to {MODE_NAMES[to]} from {dayOfIndia(from)}
         </button>
       )}
+      {b.canSwitch && p.phase === 'scheduled' && !cancelling && !asking && (
+        <button
+          type="button"
+          className="rc-button rc-button--secondary"
+          onClick={() => setCancelling(true)}
+        >
+          Cancel the scheduled POC
+        </button>
+      )}
+      {cancelling && (
+        <form className="stack" onSubmit={(e) => void cancel(e)} aria-label="Cancel the POC">
+          <p>
+            The POC will not start on {dayOfIndia(p.phase === 'scheduled' ? p.startsAt : 0)}. It
+            never ran, so it can be scheduled again; POC months already paid for it are owed back.
+          </p>
+          <label className="rc-field">
+            <span className="rc-field__label">Why (kept with the cancel)</span>
+            <input
+              className="rc-input"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              minLength={5}
+              maxLength={300}
+              required
+            />
+          </label>
+          <div className="row">
+            <button
+              type="submit"
+              className="rc-button rc-button--primary"
+              disabled={busy || reason.trim().length < 5}
+            >
+              Yes, cancel the POC
+            </button>
+            <button
+              type="button"
+              className="rc-button rc-button--quiet"
+              onClick={() => setCancelling(false)}
+            >
+              Keep it
+            </button>
+          </div>
+        </form>
+      )}
       {asking && (
         <form className="stack" onSubmit={(e) => void save(e)} aria-label="Switch the business">
           <p>
@@ -346,10 +406,12 @@ function BusinessSwitchCard({
           hint={`${b.history.length} ${b.history.length === 1 ? 'switch' : 'switches'}`}
         >
           <ul className="plain">
-            {b.history.map((h) => (
-              <li key={h.from}>
+            {b.history.map((h, i) => (
+              <li key={i}>
                 <b>{MODE_NAMES[h.mode]}</b> from {dayOfIndia(h.from)} · by {h.setBy} on{' '}
                 {dayOfIndia(h.setAt)}, {clock(h.setAt)} · {h.reason}
+                {h.cancelled &&
+                  ` · cancelled before it started on ${dayOfIndia(h.cancelled.at)}: ${h.cancelled.reason}`}
               </li>
             ))}
           </ul>

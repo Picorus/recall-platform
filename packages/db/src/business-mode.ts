@@ -61,7 +61,8 @@ export async function pocPhaseAt(c: Pick<PoolClient, 'query'>, now: number): Pro
   return pocPhase(await businessModes(c), await pocMonthsSetting(c), now);
 }
 
-/** Every switch with who made it, why and when (oldest first), for the staff portal. */
+/** Every switch with who made it, why and when (oldest first), for the staff portal; a scheduled
+ * POC cancelled before it started says so (it counts for nothing). */
 export async function businessModeHistory(c: Pick<PoolClient, 'query'>): Promise<
   {
     readonly mode: BusinessMode;
@@ -69,6 +70,11 @@ export async function businessModeHistory(c: Pick<PoolClient, 'query'>): Promise
     readonly setBy: string;
     readonly reason: string;
     readonly setAt: number;
+    readonly cancelled: {
+      readonly by: string;
+      readonly reason: string;
+      readonly at: number;
+    } | null;
   }[]
 > {
   const r = await c.query<{
@@ -77,10 +83,15 @@ export async function businessModeHistory(c: Pick<PoolClient, 'query'>): Promise
     set_by: string;
     reason: string;
     set_at: string;
+    c_by: string | null;
+    c_reason: string | null;
+    c_at: string | null;
   }>(
-    `SELECT mode, extract(epoch FROM from_at)::bigint AS from, set_by, reason,
-            extract(epoch FROM set_at)::bigint AS set_at
-       FROM business_modes ORDER BY from_at`,
+    `SELECT m.mode, extract(epoch FROM m.from_at)::bigint AS from, m.set_by, m.reason,
+            extract(epoch FROM m.set_at)::bigint AS set_at, x.cancelled_by AS c_by,
+            x.reason AS c_reason, extract(epoch FROM x.cancelled_at)::bigint AS c_at
+       FROM business_modes m LEFT JOIN business_mode_cancels x ON x.mode_id = m.id
+      ORDER BY m.from_at, m.id`,
   );
   return r.rows.map((x) => ({
     mode: x.mode,
@@ -88,15 +99,57 @@ export async function businessModeHistory(c: Pick<PoolClient, 'query'>): Promise
     setBy: x.set_by,
     reason: x.reason,
     setAt: Number(x.set_at),
+    cancelled:
+      x.c_by !== null && x.c_reason !== null && x.c_at !== null
+        ? { by: x.c_by, reason: x.c_reason, at: Number(x.c_at) }
+        : null,
   }));
 }
 
-/** Every switch, oldest first. */
+/** Every switch in force, oldest first: a scheduled POC cancelled before it started is left out
+ * (it never ran; Prateek, 29 Oct 2026). */
 export async function businessModes(c: Pick<PoolClient, 'query'>): Promise<ModeChange[]> {
   const r = await c.query<{ mode: BusinessMode; from: string }>(
-    'SELECT mode, extract(epoch FROM from_at)::bigint AS from FROM business_modes ORDER BY from_at',
+    `SELECT mode, extract(epoch FROM from_at)::bigint AS from FROM business_modes m
+      WHERE NOT EXISTS (SELECT 1 FROM business_mode_cancels x WHERE x.mode_id = m.id)
+      ORDER BY from_at, id`,
   );
   return r.rows.map((x) => ({ mode: x.mode, from: Number(x.from) }));
+}
+
+/**
+ * P7.8 (Prateek, 29 Oct 2026): a super admin cancels a scheduled POC before it starts, with why.
+ * The cancel is its own record; the switch then counts for nothing, so the POC can be scheduled
+ * again. POC months already paid for it are owed back (cancelPocMonths, called after it).
+ * Returns when the cancelled POC would have started.
+ */
+export async function cancelScheduledPoc(
+  pool: Pool,
+  by: { readonly id: string; readonly role: string },
+  reason: string,
+  now: number,
+): Promise<number> {
+  if (by.role !== 'super-admin') throw new Error('Only a super admin can cancel the POC');
+  if (reason.trim().length < 5) throw new Error('Say why (a few words)');
+  return inTransaction(pool, async (c) => {
+    await c.query("SELECT pg_advisory_xact_lock(hashtext('rider-pay'))");
+    const r = await c.query<{ id: string; from: string }>(
+      `SELECT id, extract(epoch FROM from_at)::bigint AS from FROM business_modes m
+        WHERE mode = 'poc'
+          AND NOT EXISTS (SELECT 1 FROM business_mode_cancels x WHERE x.mode_id = m.id)
+        ORDER BY from_at, id LIMIT 1`,
+    );
+    const poc = r.rows[0];
+    if (!poc) throw new Error('No POC is scheduled');
+    if (Number(poc.from) <= now)
+      throw new Error('The POC has started: it can only be switched back to regular business');
+    await c.query(
+      `INSERT INTO business_mode_cancels (mode_id, cancelled_by, reason, cancelled_at)
+       VALUES ($1, $2, $3, to_timestamp($4))`,
+      [poc.id, by.id, reason.trim(), now],
+    );
+    return Number(poc.from);
+  });
 }
 
 /** A switch back that would end the POC before its planned end, sent without `early` (P7.8). */

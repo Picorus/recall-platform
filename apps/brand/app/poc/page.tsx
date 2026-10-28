@@ -29,6 +29,9 @@ interface PocPage {
   readonly months: readonly PocMonth[];
   readonly ads: readonly { adId: string; name: string; approved: boolean }[];
   readonly month: string;
+  /** The plain rules agreed with one tick before paying a month. */
+  readonly terms: readonly { readonly title: string; readonly text: string }[];
+  readonly termsVersion: number;
   readonly report: {
     readonly plays: number;
     readonly bikes: number;
@@ -66,6 +69,7 @@ export default function PocBrandPage() {
   const [page, setPage] = useState<PocPage>();
   const [error, setError] = useState('');
   const [busy, setBusy] = useState('');
+  const [agree, setAgree] = useState(false);
   const load = (b: string, month?: string) =>
     api<PocPage>(
       `/poc?brand=${encodeURIComponent(b)}${month ? `&month=${encodeURIComponent(month)}` : ''}`,
@@ -88,7 +92,7 @@ export default function PocBrandPage() {
     try {
       const link = await api<{ url: string }>(
         `/poc/pay?brand=${encodeURIComponent(brand)}&month=${encodeURIComponent(month)}`,
-        {},
+        { agree, termsVersion: page?.termsVersion ?? 0 },
       );
       // To the payment provider's page (UPI, card or net banking); never anything but https.
       if (!/^https:\/\//.test(link.url))
@@ -144,7 +148,7 @@ export default function PocBrandPage() {
                         <button
                           type="button"
                           className="rc-button rc-button--primary rc-button--small"
-                          disabled={busy !== ''}
+                          disabled={busy !== '' || !agree}
                           aria-busy={busy === m.month}
                           onClick={() => void pay(m.month)}
                         >
@@ -156,6 +160,25 @@ export default function PocBrandPage() {
                 </li>
               ))}
             </ul>
+            {page.months.some((m) => m.state === 'to-pay' || m.state === 'link-sent') && (
+              <div className="stack">
+                <ul className="plain stack" aria-label="The rules">
+                  {page.terms.map((t) => (
+                    <li key={t.title}>
+                      <b>{t.title}.</b> {t.text}
+                    </li>
+                  ))}
+                </ul>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={agree}
+                    onChange={(e) => setAgree(e.target.checked)}
+                  />{' '}
+                  I agree to these rules for the months I pay
+                </label>
+              </div>
+            )}
           </section>
           {page.months.length > 1 && (
             <div className="row" role="group" aria-label="Month">

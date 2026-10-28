@@ -47,11 +47,17 @@ const few: PocPlan = {
   brands: brands(7, '2026-12'),
 };
 const odd: PocPlan = { ...full, slots: 30, perBrand: 6, brands: brands(30) };
+/** Two brands of the month with no ads (one not paid yet, one with none approved): their slots stay
+ * theirs, filled by RECALL, and nobody else moves. */
+const gaps: PocPlan = {
+  ...full,
+  brands: full.brands.map((b, i) => (i === 3 || i === 17 ? { ...b, ads: [] } : b)),
+};
 
 const show = (c: SpotChoice) => `${c.kind}|${c.kind === 'brand' ? c.lineId : ''}|${c.ad}`;
 
 function build() {
-  const okText = pocPlansText([full, few], MADE);
+  const okText = pocPlansText([gaps, few], MADE);
   const parsed = JSON.parse(okText) as { plans: Record<string, unknown>[] };
   const refused: { text: string; problem: string }[] = [];
   const bad = (f: (x: { v: unknown; made: unknown; plans: Record<string, unknown>[] }) => void) => {
@@ -116,6 +122,12 @@ function build() {
       plan: few,
       screenId: screens[2] ?? '',
       hourStartsAt: few.startsAt,
+    },
+    {
+      name: '40 brands, two with no ads (gaps)',
+      plan: gaps,
+      screenId: screens[0] ?? '',
+      hourStartsAt: hour,
     },
     { name: '30 slots of 6', plan: odd, screenId: screens[1] ?? '', hourStartsAt: hour + 7200 },
     {

@@ -66,11 +66,12 @@ async function items(c: Q, only: string | null, open: boolean): Promise<MoneyBac
               ORDER BY v.version DESC LIMIT 1) AS brand_name,
             p.credit - p.debit AS amount,
             (SELECT x.payment_id FROM payment_link_events x JOIN payment_links l USING (link_id)
-              WHERE l.booking_id = split_part(e.ref, '/', 1) AND x.state = 'paid'
+              WHERE (l.booking_id = split_part(e.ref, '/', 1) OR l.poc_ref = e.ref)
+                AND x.state = 'paid'
               ORDER BY x.id LIMIT 1) AS booking_payment
        FROM ledger_entries e JOIN ledger_postings p USING (entry_id)
       WHERE p.account = 'refunds-payable' AND p.credit > 0
-        AND e.kind IN ('refund-approved', 'money-to-return')
+        AND e.kind IN ('refund-approved', 'money-to-return', 'poc-cancelled')
         AND ($1::text IS NULL OR e.entry_id = $1)
         AND (NOT $2 OR NOT EXISTS (SELECT 1 FROM ledger_entries d
                                     WHERE d.entry_id = 'paid-back:' || e.entry_id))
@@ -96,7 +97,8 @@ async function items(c: Q, only: string | null, open: boolean): Promise<MoneyBac
   return r.rows.map((x) => {
     const mine = tries.rows.filter((t) => t.owed_entry === x.entry_id);
     const last = mine.at(-1);
-    const isRefund = x.kind === 'refund-approved';
+    // P7.8: a POC month paid for a POC cancelled before it started goes back like a refund.
+    const isRefund = x.kind === 'refund-approved' || x.kind === 'poc-cancelled';
     const bookingId = /^BK-/.test(x.ref) ? (x.ref.split('/')[0] ?? null) : null;
     return {
       owedEntry: x.entry_id,

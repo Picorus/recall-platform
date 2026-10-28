@@ -53,12 +53,13 @@
 // P7.8, the POC package (a POC brand's own; others get 404):
 //   GET  /portal/poc?brand=<id>[&month=YYYY-MM]   its months (paid, to pay, missed), its ads, and a
 //                                           month's numbers (plays, bikes, hours, streets, people)
-//   POST /portal/poc/pay?brand=<id>&month=YYYY-MM  the payment link (before the month starts)
+//   POST /portal/poc/pay?brand=<id>&month=YYYY-MM { agree: true, termsVersion }  the payment link
+//                                           (before the month starts), the POC rules agreed
 import {
   brandPocPage,
   pocBrandIds,
   pocReport,
-  sendPocForPayment,
+  payPocFromPortal,
   partnerStatement,
   askFromPortal,
   brandQuestions,
@@ -127,6 +128,8 @@ import {
   isoAt,
   supportOpenAt,
   type BrandMemberRole,
+  POC_TERMS,
+  POC_TERMS_VERSION,
 } from '@recall/domain';
 import { renderReportHtml, renderReportPdf, renderTaxDocumentsPdf } from '@recall/workers';
 import { createHmac } from 'node:crypto';
@@ -972,7 +975,15 @@ export async function handleBrandPortal(
     const report = month
       ? await pocReport(pool, a.brandId, month, cfg.maps ?? cfg.reports?.maps)
       : undefined;
-    send(res, 200, { account: a, ...page, month, report: report ?? null });
+    send(res, 200, {
+      account: a,
+      ...page,
+      month,
+      report: report ?? null,
+      // The plain rules a brand agrees to before paying a month (P7.8, as P5.6).
+      terms: POC_TERMS,
+      termsVersion: POC_TERMS_VERSION,
+    });
     return true;
   }
   if (path === '/portal/poc/pay' && method === 'POST') {
@@ -986,9 +997,25 @@ export async function handleBrandPortal(
     const page = await brandPocPage(pool, a.brandId, now);
     const m = page?.months.find((x) => x.month === month);
     if (!m) throw new HttpError(404, 'No such POC month', { code: 'no-month' });
+    const b = await jsonBody(req);
+    if (b.agree !== true)
+      throw new HttpError(400, 'Tick the box to agree to the rules', { code: 'not-agreed' });
+    if (!Number.isSafeInteger(b.termsVersion))
+      throw new HttpError(400, 'termsVersion: a whole number');
     const link = await refused(async () => {
       try {
-        return await sendPocForPayment(pool, payments, m.ref, portalBy(me.address), now);
+        return await payPocFromPortal(
+          pool,
+          payments,
+          {
+            brandId: a.brandId,
+            month: m.month,
+            by: portalBy(me.address),
+            ip: ip(),
+            termsVersion: b.termsVersion as number,
+          },
+          now,
+        );
       } catch (e) {
         if (e instanceof Refusal && e.why?.code === 'paid')
           throw new HttpError(409, e.message, e.why);

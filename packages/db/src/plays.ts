@@ -224,8 +224,14 @@ export async function judgePlays(
   const out = new Map<number, PlayJudgement>();
   if (plays.length === 0) return out;
   const books = knownBooks ?? (await priceBooks(c));
-  const keys = await c.query<{ key_id: string; public_key: string; until: string | null }>(
-    `SELECT k.key_id, k.public_key, extract(epoch FROM r.plays_until)::bigint AS until
+  const keys = await c.query<{
+    key_id: string;
+    public_key: string;
+    until: string | null;
+    revoked: string | null;
+  }>(
+    `SELECT k.key_id, k.public_key, extract(epoch FROM r.plays_until)::bigint AS until,
+            extract(epoch FROM r.revoked_at)::bigint AS revoked
        FROM screen_keys k LEFT JOIN screen_key_revocations r USING (screen_id, key_id)
       WHERE k.screen_id = $1`,
     [screenId],
@@ -275,7 +281,10 @@ export async function judgePlays(
       rules,
     );
     out.set(seq, j);
-    if (!j.refused && j.count.counts !== 'no' && isPocRef(play.ref))
+    // A play signed with a key given up before now never counts (playsOf), so it must not use up
+    // the brand's 5 a bike-hour either.
+    const revokedBefore = key?.revoked != null && Number(key.revoked) <= now;
+    if (!j.refused && j.count.counts !== 'no' && isPocRef(play.ref) && !revokedBefore)
       poc.counted(play.ref, play.startAt);
     if (!j.refused) taken.push(play.startAt);
   }

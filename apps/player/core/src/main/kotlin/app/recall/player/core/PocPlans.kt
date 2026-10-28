@@ -167,7 +167,8 @@ object PocPlans {
             val ref = str(b["ref"])
             val r = ref?.let(REF::matchEntire)
             if (ref == null || r == null || r.groupValues[2] != month || !refs.add(ref)) fail("bad brand ref")
-            PocBrand(ref, adList(b["ads"], 1, 5) ?: fail("bad brand ads"))
+            // A brand not paid yet, or with no approved ads, keeps its slot with no ads (RECALL's).
+            PocBrand(ref, adList(b["ads"], 0, 5) ?: fail("bad brand ads"))
         }
         return PocPlan(month, start, endsAt, zone, slots.toInt(), perBrand.toInt(), brands, recallAds)
     }

@@ -206,7 +206,28 @@ describe('the POC page for staff, and for brands (P7.8)', () => {
     expect((await call(b, '/portal/poc/pay?brand=alpha&month=2027-08', {}, PORTAL)).status).toBe(
       404,
     );
-    const pay = await call(a, '/portal/poc/pay?brand=alpha&month=2027-08', {}, PORTAL);
+    // The plain POC rules must be agreed (one tick) before paying, at the version shown.
+    expect(page.body).toMatchObject({ termsVersion: 1 });
+    expect((page.body.terms as unknown[]).length).toBe(4);
+    expect(
+      (await call(a, '/portal/poc/pay?brand=alpha&month=2027-08', {}, PORTAL)).body,
+    ).toMatchObject({ why: 'not-agreed' });
+    expect(
+      (
+        await call(
+          a,
+          '/portal/poc/pay?brand=alpha&month=2027-08',
+          { agree: true, termsVersion: 99 },
+          PORTAL,
+        )
+      ).body,
+    ).toMatchObject({ why: 'terms-changed' });
+    const agreed = { agree: true, termsVersion: 1 };
+    const pay = await call(a, '/portal/poc/pay?brand=alpha&month=2027-08', agreed, PORTAL);
+    const terms = await db.pool.query<{ terms_version: number; accepted_by: string }>(
+      "SELECT terms_version, accepted_by FROM poc_terms WHERE ref = 'poc/alpha/2027-08'",
+    );
+    expect(terms.rows).toEqual([{ terms_version: 1, accepted_by: 'portal:+919800000001' }]);
     expect(pay.body).toMatchObject({ amountPaise: 29_500_000 });
     // The brand pays; the provider's signed message records it.
     const m = payments.pay(String(pay.body.linkId));
@@ -222,9 +243,9 @@ describe('the POC page for staff, and for brands (P7.8)', () => {
       'link-sent',
       'to-pay',
     ]);
-    expect((await call(a, '/portal/poc/pay?brand=alpha&month=2027-08', {}, PORTAL)).status).toBe(
-      409,
-    );
+    expect(
+      (await call(a, '/portal/poc/pay?brand=alpha&month=2027-08', agreed, PORTAL)).status,
+    ).toBe(409);
     // Its invoice is on its Invoices page.
     const inv = await call(a, '/portal/invoices?brand=alpha');
     expect(inv.body).toMatchObject({
@@ -296,5 +317,63 @@ describe('switching back from the POC over HTTP (Prateek, 28 Oct 2026)', () => {
       poc: { phase: 'ended' },
     });
     expect((await post({ mode: 'poc', reason: 'POC again please' })).status).toBe(400);
+  });
+});
+
+describe('cancelling a scheduled POC over HTTP (Prateek, 29 Oct 2026)', () => {
+  const NOW = ist('2027-07-20T11:00:00') * 1000;
+  const CFG: StaffApiConfig = {
+    secretKey: randomBytes(32),
+    origins: [ADMIN],
+    secureCookies: true,
+    proxyHops: 0,
+  };
+  let db: Awaited<ReturnType<typeof freshDatabase>>;
+  let server: Server;
+  let url = '';
+  const member = members(() => db.pool, NOW);
+  beforeAll(async () => {
+    db = await freshDatabase();
+    ({ server, url } = await serve(db.pool, CFG, NOW));
+    await setBusinessMode(db.pool, 'poc', SUPER, 'POC scheduled', ist('2027-07-15T11:00:00'));
+  }, 120_000);
+  afterAll(async () => {
+    await new Promise<void>((ok) => server.close(() => ok()));
+    await db.drop();
+  });
+
+  it('only a super admin, with why, before it starts; then it can be switched on again', async () => {
+    const boss = await member('prateek@recall.in', { role: 'super-admin', areas: [] });
+    const sales = await member('sana@recall.in', { role: 'admin', areas: ['sales'] });
+    const post = async (cookie: string, path: string, body: unknown) => {
+      const r = await fetch(`${url}${path}`, {
+        method: 'POST',
+        headers: { cookie, origin: ADMIN, 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      return { status: r.status, body: (await r.json()) as Record<string, unknown> };
+    };
+    expect((await post(sales, '/settings/business/cancel', { reason: 'not ready' })).status).toBe(
+      403,
+    );
+    expect((await post(boss, '/settings/business/cancel', { reason: 'no' })).status).toBe(400);
+    expect(await post(boss, '/settings/business/cancel', { reason: 'brands not ready' })).toEqual({
+      status: 200,
+      body: { cancelled: ist('2027-08-01T08:00:00'), owedBack: [] },
+    });
+    const settings = (await (
+      await fetch(`${url}/settings`, { headers: { cookie: boss } })
+    ).json()) as { business: Record<string, unknown> };
+    expect(settings.business).toMatchObject({
+      mode: 'regular',
+      next: null,
+      poc: { phase: 'none' },
+    });
+    expect((await post(boss, '/settings/business/cancel', { reason: 'again please' })).status).toBe(
+      400,
+    );
+    expect(
+      (await post(boss, '/settings/business', { mode: 'poc', reason: 'POC on again' })).body,
+    ).toEqual({ mode: 'poc', from: ist('2027-08-01T08:00:00') });
   });
 });

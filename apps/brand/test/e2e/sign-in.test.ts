@@ -686,7 +686,12 @@ it('a POC brand: its months, a Pay button for the next, and its numbers by day (
   await page.getByRole('heading', { name: 'Your POC package' }).waitFor();
   const months = page.getByRole('region', { name: 'Your months' });
   await expect.poll(() => months.getByText('Paid', { exact: true }).count()).toBe(2);
-  await months.getByRole('button', { name: 'Pay' }).waitFor();
+  // Pay waits for the rules to be agreed (one tick).
+  const pay = months.getByRole('button', { name: 'Pay' });
+  await pay.waitFor();
+  expect(await pay.isDisabled()).toBe(true);
+  await months.getByLabel('I agree to these rules for the months I pay').check();
+  expect(await pay.isDisabled()).toBe(false);
   // The month of the last evening in numbers: its plays, one bike; people only as an estimate.
   await page
     .getByRole('button', {
@@ -709,7 +714,7 @@ it('a POC brand: its months, a Pay button for the next, and its numbers by day (
       const r = await fetch(`/api/poc/pay?brand=poc-chai&month=${m}`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: '{}',
+        body: JSON.stringify({ agree: true, termsVersion: 1 }),
       });
       return { status: r.status, body: (await r.json()) as { url?: string } };
     },

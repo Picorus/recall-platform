@@ -157,7 +157,9 @@ async function checkPocChange(
 ): Promise<void> {
   if (before.maxBrands === after.maxBrands) return;
   const on = await c.query<{ mode: string }>(
-    `SELECT mode FROM business_modes WHERE from_at <= now() ORDER BY from_at DESC LIMIT 1`,
+    `SELECT mode FROM business_modes m WHERE from_at <= now()
+        AND NOT EXISTS (SELECT 1 FROM business_mode_cancels x WHERE x.mode_id = m.id)
+      ORDER BY from_at DESC, id DESC LIMIT 1`,
   );
   if (on.rows[0]?.mode === 'poc')
     throw new Refusal(

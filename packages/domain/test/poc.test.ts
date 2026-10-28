@@ -20,13 +20,17 @@ import {
   pocDaysOver,
   pocEarnedAfter,
   pocMonthMoney,
+  pocMonthCancelled,
   pocMonthPaid,
+  POC_TERMS,
+  POC_TERMS_VERSION,
   pocMonthWindow,
   pocOffset,
   pocPlanCovers,
   pocPlansText,
   pocPlayProblem,
   pocRef,
+  pocScreenSpotAt,
   pocSpotAt,
   type PocPlan,
   type PocPlayContext,
@@ -181,6 +185,14 @@ describe('money (P7.8.1): the month is paid before it starts and earned day by d
     );
   });
 
+  it('a POC cancelled before it started: the month goes back, with its GST, balanced', () => {
+    const e = pocMonthCancelled({ ref: 'poc/x/2026-11', brandId: 'x', fee: 100, gst: 18, at: 1 });
+    expect(checkEntry(e)).toEqual([]);
+    expect(e.postings.find((p) => p.account === 'refunds-payable')?.credit).toBe(118);
+    expect(POC_TERMS).toHaveLength(4);
+    expect(POC_TERMS_VERSION).toBe(1);
+  });
+
   it('a day is earned when its business day ends (02:00 the next morning)', () => {
     const endOfFirst = pocMonthWindow('2026-11').startsAt + 18 * 3600; // 02:00 on 2 Nov
     expect(pocDaysOver('2026-11', endOfFirst - 1)).toEqual([]);
@@ -257,6 +269,18 @@ describe('every hour shared (P7.8.2)', () => {
     );
   });
 
+  it('a brand with no ads keeps its slot for RECALL: nobody else moves', () => {
+    const p = plan(3);
+    const gap = { ...p, brands: p.brands.map((b, i) => (i === 1 ? { ...b, ads: [] } : b)) };
+    const before = hourOn(p, 'SCR-0000003C');
+    const after = hourOn(gap, 'SCR-0000003C');
+    after.forEach((s, i) => {
+      const was = before[i];
+      if (was?.kind === 'brand' && was.lineId === p.brands[1]?.ref) expect(s.kind).toBe('recall');
+      else expect(s).toEqual(was);
+    });
+  });
+
   it("a different setting: 30 slots of 6 plays (180), the 20 left over are RECALL's", () => {
     const spots = hourOn(plan(30, 30, 6), 'SCR-0000002B');
     expect(spots.filter((s) => s.kind === 'brand')).toHaveLength(180);
@@ -279,6 +303,17 @@ describe('every hour shared (P7.8.2)', () => {
     const p = { ...plan(0), recallAds: [] };
     expect(pocSpotAt(p, 'S', HOUR, 0)).toEqual({ kind: 'recall', ad: '' });
     expect(() => pocSpotAt(p, 'S', HOUR, -1)).toThrow(/count from 0/);
+  });
+
+  it('outside the POC zone in a POC hour: RECALL spots only, every one of the 240', () => {
+    const p = plan(40);
+    const t = HOUR + 100;
+    const out = Array.from({ length: 240 }, (_, i) => pocScreenSpotAt(p, 'SCR-1', t, i, false));
+    expect(out.every((x) => x?.kind === 'recall')).toBe(true);
+    const inside = Array.from({ length: 240 }, (_, i) => pocScreenSpotAt(p, 'SCR-1', t, i, true));
+    expect(inside).toEqual(hourOn(p, 'SCR-1'));
+    // At night the POC plan does not cover the hour: the usual plans.
+    expect(pocScreenSpotAt(p, 'SCR-1', HOUR + 9 * 3600, 0, false)).toBeUndefined();
   });
 
   it('a plan plays only inside its window and in business hours', () => {
@@ -315,7 +350,11 @@ describe('the message the screens get (down/poc)', () => {
     expect(bad((p) => (p.endsAt = (p.endsAt as number) + 1))).toBe('bad end time');
     expect(bad((p) => (p.slots = 0))).toBe('bad slots');
     expect(bad((p) => (p.brands = [{ ref: 'poc/x/2026-12', ads: ['a'] }]))).toBe('bad brand ref');
-    expect(bad((p) => (p.brands = [{ ref: 'poc/x/2026-11', ads: [] }]))).toBe('bad brand ads');
+    expect(
+      bad((p) => (p.brands = [{ ref: 'poc/x/2026-11', ads: ['1', '2', '3', '4', '5', '6'] }])),
+    ).toBe('bad brand ads');
+    // A brand with no ads (not paid yet, or none approved) keeps its slot: taken.
+    expect(bad((p) => (p.brands = [{ ref: 'poc/x/2026-11', ads: [] }]))).toBe('taken');
     expect(bad((p) => (p.zone = { kind: 'circle', centre: { lat: 99, lng: 0 }, radiusM: 1 }))).toBe(
       'bad zone centre',
     );
