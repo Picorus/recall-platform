@@ -201,8 +201,10 @@ beforeAll(async () => {
   await moveBooking(db.pool, 'BK-E2E-DONE', 'awaiting-payment', who, now - 30 * 86_400);
   await moveBooking(db.pool, 'BK-E2E-DONE', 'paid', sys, now - 29 * 86_400);
   await moveBooking(db.pool, 'BK-E2E-DONE', 'ads-approved', who, now - 20 * 86_400);
-  await moveBooking(db.pool, 'BK-E2E-DONE', 'running', sys, now - 5 * 86_400);
-  await moveBooking(db.pool, 'BK-E2E-DONE', 'done', sys, now - 4 * 86_400);
+  // Its first hour starts 19:00 India time (13:30 UTC) that day, whatever time the test runs.
+  const firstHour = Date.parse(`${ranOn}T13:30:00Z`) / 1000;
+  await moveBooking(db.pool, 'BK-E2E-DONE', 'running', sys, firstHour);
+  await moveBooking(db.pool, 'BK-E2E-DONE', 'done', sys, firstHour + 3 * 3600);
   const report: CampaignReport = {
     bookingId: 'BK-E2E-DONE',
     brandId: 'chai-co',

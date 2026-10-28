@@ -1,0 +1,290 @@
+<title>RECALL at Scale</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anek+Latin:wdth,wght@75..125,400..800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  /* Layout: one column; a night map (always dark: it is the road at 6 pm) with live counters beside it,
+     then what each fleet size proved, side by side. Colours are RECALL's own design system. */
+  :root {
+    --surface-0: #F4F5F0; --surface-1: #FBFBF8; --surface-2: #E7E9E2; --line: #DADDD4; --line-strong: #767C88;
+    --ink: #0E121B; --ink-muted: #3D4350; --ink-subtle: #5B6272;
+    --brand: #C8F54A; --on-brand: #0A0E17; --brand-ink: #4F6B00; --data: #3B47D9; --go: #137A4E; --stop: #C2341B;
+    --focus: #0E121B;
+    --night: #0A0E17; --night-raised: #161B26; --night-line: #262D3B; --night-ink: #F4F5F0; --night-muted: #A3AAB8; --ion: #6E7BFF;
+    --display: "Anek Latin", "Segoe UI", system-ui, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    --surface-0: #0A0E17; --surface-1: #121723; --surface-2: #161B26; --line: #262D3B; --line-strong: #606777;
+    --ink: #F4F5F0; --ink-muted: #A3AAB8; --ink-subtle: #8A909C; --brand-ink: #C8F54A; --data: #6E7BFF; --go: #3DDC97; --stop: #FF6B4A;
+    --focus: #C8F54A; color-scheme: dark; } }
+  :root[data-theme="dark"] {
+    --surface-0: #0A0E17; --surface-1: #121723; --surface-2: #161B26; --line: #262D3B; --line-strong: #606777;
+    --ink: #F4F5F0; --ink-muted: #A3AAB8; --ink-subtle: #8A909C; --brand-ink: #C8F54A; --data: #6E7BFF; --go: #3DDC97; --stop: #FF6B4A;
+    --focus: #C8F54A; color-scheme: dark; }
+
+  body { background: var(--surface-0); color: var(--ink); font: 16px/1.5 var(--display); }
+  .wrap { max-width: 1120px; margin: 0 auto; padding-block: 32px 64px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+    display: grid; gap: 32px; }
+  h1 { font-size: clamp(34px, 6vw, 56px); line-height: 1; margin: 0; font-weight: 800; font-variation-settings: "wdth" 112; letter-spacing: -0.01em; text-wrap: balance; }
+  h2 { font-size: 24px; margin: 0; font-weight: 700; font-variation-settings: "wdth" 110; text-wrap: balance; }
+  p { margin: 0; max-width: 65ch; }
+  .lede { color: var(--ink-muted); font-size: 18px; }
+  .eyebrow { font: 600 12px/1 var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-subtle); }
+  header { display: grid; gap: 12px; }
+
+  .picker { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .picker button { font: 700 16px/1 var(--display); padding: 12px 18px; border-radius: 999px; border: 1px solid var(--line-strong);
+    background: transparent; color: var(--ink); cursor: pointer; font-variant-numeric: tabular-nums; }
+  .picker button[aria-pressed="true"] { background: var(--brand); color: var(--on-brand); border-color: var(--brand); }
+  .picker button:focus-visible, .play:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+  .picker .note { color: var(--ink-subtle); font-size: 14px; }
+
+  .stage { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 16px; align-items: start; }
+  @media (max-width: 860px) { .stage { grid-template-columns: minmax(0, 1fr); } }
+  .map { position: relative; background: var(--night); border-radius: 16px; overflow: hidden; border: 1px solid var(--night-line); }
+  .map canvas { display: block; width: 100%; height: auto; }
+  .map .bar { position: absolute; left: 12px; right: 12px; top: 12px; display: flex; justify-content: space-between; align-items: center; gap: 8px; pointer-events: none; }
+  .clock { font: 600 22px/1 var(--mono); color: var(--night-ink); font-variant-numeric: tabular-nums; background: rgba(10,14,23,.72); padding: 8px 10px; border-radius: 8px; }
+  .play { pointer-events: auto; font: 700 14px/1 var(--display); padding: 10px 14px; border-radius: 999px; border: 1px solid var(--night-line); background: var(--night-raised); color: var(--night-ink); cursor: pointer; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; padding: 10px 14px; border-top: 1px solid var(--night-line); color: var(--night-muted); font-size: 13px; }
+  .legend i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: 0; }
+  .loading[hidden] { display: none; }
+  .loading { position: absolute; inset: 0; display: grid; place-items: center; color: var(--night-muted); font: 500 15px var(--mono); }
+
+  .counters { display: grid; gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
+  @media (max-width: 860px) { .counters { grid-template-columns: repeat(2, minmax(0, 1fr)); } .counters .counter:last-child { grid-column: 1 / -1; } }
+  .counter { background: var(--surface-1); padding: 14px 16px; display: grid; gap: 4px; min-width: 0; }
+  .counter .k { font-size: 13px; color: var(--ink-muted); }
+  .counter .v { font: 600 28px/1.1 var(--mono); font-variant-numeric: tabular-nums; }
+  .counter.key .v { color: var(--brand-ink); }
+  .counter .s { font-size: 12px; color: var(--ink-subtle); }
+
+  .proof { display: grid; gap: 16px; }
+  .scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 16px; background: var(--surface-1); }
+  table { border-collapse: collapse; width: 100%; min-width: 620px; }
+  th, td { text-align: left; padding: 12px 16px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tr:last-child td { border-bottom: 0; }
+  thead th { font: 600 12px/1.2 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-subtle); }
+  thead th.num, td.num { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  thead th.on, td.on { background: color-mix(in srgb, var(--brand) 14%, transparent); }
+  td .sub { display: block; font: 400 12px/1.4 var(--display); color: var(--ink-subtle); }
+  td.what { font-weight: 600; }
+  .good { color: var(--go); }
+
+  .notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+  .notes div { display: grid; gap: 6px; align-content: start; }
+  .notes h3 { margin: 0; font-size: 17px; }
+  .notes p { color: var(--ink-muted); font-size: 15px; }
+  footer { color: var(--ink-subtle); font-size: 13px; }
+  @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <span class="eyebrow">RECALL · fleet simulator · Hyderabad</span>
+    <h1>200 bikes today. 15,500 tomorrow.</h1>
+    <p class="lede">Fake bikes riding the real roads of west Hyderabad, from 6 pm to 6:15 pm, running the same screen software the real bikes will run. Pick a fleet size to watch it, then see what each run proved below.</p>
+  </header>
+
+  <section class="picker" aria-label="Fleet size">
+    <button type="button" id="size-200" data-size="200" aria-pressed="true">200 bikes</button>
+    <button type="button" id="size-2000" data-size="2000" aria-pressed="false">2,000 bikes</button>
+    <button type="button" id="size-15500" data-size="15500" aria-pressed="false">15,500 bikes</button>
+    <span class="note" id="size-note">The test fleet (POC)</span>
+  </section>
+
+  <section class="stage">
+    <div class="map">
+      <canvas id="map" width="1120" height="940" aria-label="Map of west Hyderabad with moving bikes"></canvas>
+      <div class="bar"><span class="clock" id="clock">6:00 pm</span><button type="button" class="play" id="play">Pause</button></div>
+      <div class="loading" id="loading">Loading the bikes…</div>
+      <div class="legend">
+        <span><i style="background:#C8F54A"></i>In a sold area: playing a brand's ad</span>
+        <span><i style="background:#6E7BFF"></i>Riding elsewhere: RECALL's own ads</span>
+        <span><i style="background:#606777"></i>Stopped</span>
+      </div>
+    </div>
+    <div class="counters" aria-live="off">
+      <div class="counter"><span class="k">Bikes on the road</span><span class="v" id="c-bikes">200</span></div>
+      <div class="counter key"><span class="k">In a sold area right now</span><span class="v" id="c-inside">0</span><span class="s">their screens play brands' ads</span></div>
+      <div class="counter"><span class="k">Riding right now</span><span class="v" id="c-riding">0</span><span class="s">the rest are stopped at a shop or signal</span></div>
+      <div class="counter"><span class="k">Ads played so far</span><span class="v" id="c-plays">0</span><span class="s">about one every 15 s per screen, each signed</span></div>
+      <div class="counter"><span class="k">Ads a day at this size</span><span class="v" id="c-day">0</span><span class="s">18 hours, 8 am to 2 am</span></div>
+    </div>
+  </section>
+
+  <section class="proof">
+    <span class="eyebrow">What the runs proved</span>
+    <h2>The software keeps its promise at every size</h2>
+    <p class="lede">Each column is a real run of RECALL's simulator, one hour at 6 pm with 90% of every area sold to brands. Same seed, same roads, only the number of bikes changes. The 15,500 runs and the load test are from 22–28 Oct 2026.</p>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Measure</th><th class="num" data-col="200">200 bikes</th><th class="num" data-col="2000">2,000 bikes</th><th class="num" data-col="15500">15,500 bikes</th></tr></thead>
+        <tbody id="results"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="notes">
+    <div><h3>What a brand buys</h3><p>Bike-hours in the areas and hours it picks. Each bike-hour promises 200 ads. If the road falls short, the system makes up the plays, then refunds what it could not deliver. People counts are estimates and are never billed.</p></div>
+    <div><h3>Why the counts can be trusted</h3><p>The screen signs every ad it plays, like a receipt. The cloud only counts signed plays from fitted screens, never twice, and never invents one.</p></div>
+    <div><h3>What this is, and is not</h3><p>The bikes are simulated; the roads, the areas and the software are real. It shows the system keeps up and delivers. It does not predict sales. Real numbers come from the 200-bike test fleet.</p></div>
+  </section>
+
+  <footer>RECALL simulator, seed 7, Tue 24 Aug 2027 at 6 pm India time, roads from OpenStreetMap. The live demo (staff portal, brand portal and rider app) runs the same software with 200 or 2,000 bikes.</footer>
+</div>
+
+<script>
+// What each run measured (filled from the simulator's output; see tools/demo/investor/README.md).
+const RESULTS = /*RESULTS*/{"rows": [{"what": "Ads delivered as sold", "why": "cloud connected; 90% of each area sold", "200": "—<span class=\"sub\">no area had 5 bikes to sell: the real test fleet is hired inside its areas</span>", "2000": "<span class=\"good\">100%</span><span class=\"sub\">40,200 of 40,200</span>", "15500": "<span class=\"good\">100%</span><span class=\"sub\">5,21,200 of 5,21,200</span>"}, {"what": "Bookings fully delivered", "why": "every play, on as many bikes as sold", "200": "—", "2000": "13 of 13", "15500": "133 of 133"}, {"what": "No network for the whole hour", "why": "screens choose by themselves; any shortfall becomes a make-up", "200": "—", "2000": "99.75%", "15500": "98.9%"}, {"what": "Moving hours counted right", "why": "riders are paid for moving hours", "200": "97.8%", "2000": "98.1%", "15500": "—"}, {"what": "Screen reports lost", "why": "each counted once, even when sent twice", "200": "<span class=\"good\">0</span><span class=\"sub\">of 34,179</span>", "2000": "<span class=\"good\">0</span><span class=\"sub\">of 3,42,775</span>", "15500": "<span class=\"good\">0</span><span class=\"sub\">of 62,000 in the load test</span>"}, {"what": "Cloud speed", "why": "load test: every screen reporting every 30 s", "200": "—", "2000": "—", "15500": "99% under 68 ms<span class=\"sub\">the bar: under 1 s</span>"}, {"what": "Monday payout run", "why": "every rider prepared and paid", "200": "—", "2000": "—", "15500": "85 s<span class=\"sub\">all 15,500 riders</span>"}]}/*END*/;
+const NOTES = { 200: 'The test fleet (POC)', 2000: 'After the first city launch', 15500: 'The full Hyderabad fleet' };
+
+const fmt = (n) => Math.round(n).toLocaleString('en-IN');
+const canvas = document.getElementById('map');
+const ctx = canvas.getContext('2d');
+const COLORS = { inside: '#C8F54A', riding: '#6E7BFF', stopped: '#606777' };
+const SPEED = 30; // simulated seconds per real second: 15 minutes in 30 seconds
+const cache = new Map();
+let current = null;
+let size = 200;
+let simT = 0;
+let playing = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+let last = performance.now();
+
+function decode(json) {
+  const bikes = json.bikes;
+  const frames = json.frames.map((f) => {
+    const bin = atob(f.data);
+    const lat = new Float32Array(bikes), lng = new Float32Array(bikes), st = new Uint8Array(bikes);
+    for (let i = 0; i < bikes; i++) {
+      const o = i * 5;
+      lat[i] = (bin.charCodeAt(o) | (bin.charCodeAt(o + 1) << 8)) / 65535;
+      lng[i] = (bin.charCodeAt(o + 2) | (bin.charCodeAt(o + 3) << 8)) / 65535;
+      st[i] = bin.charCodeAt(o + 4);
+    }
+    return { lat, lng, st, riding: f.riding, inside: f.inside };
+  });
+  return { ...json, frames };
+}
+
+async function load(n) {
+  if (!cache.has(n)) {
+    cache.set(n, fetch(`frames-${n}.json`).then((r) => {
+      if (!r.ok) throw new Error(`frames-${n}.json: ${r.status}`);
+      return r.json();
+    }).then(decode));
+  }
+  return cache.get(n);
+}
+
+// Projection: the box around the roads, kept to true proportions (a degree of longitude is shorter here).
+let W = 0, H = 0, dpr = 1, ground = null;
+function layout(d) {
+  const { s, n, w, e } = d.box;
+  const aspect = ((e - w) * Math.cos(((s + n) / 2) * Math.PI / 180)) / (n - s);
+  const cssW = canvas.parentElement.clientWidth;
+  dpr = Math.min(2, window.devicePixelRatio || 1);
+  W = Math.round(cssW * dpr); H = Math.round((cssW / aspect) * dpr);
+  canvas.width = W; canvas.height = H;
+  // The roads, traced by where the bikes went: every position of every picture, faint.
+  ground = document.createElement('canvas');
+  ground.width = W; ground.height = H;
+  const g = ground.getContext('2d');
+  g.fillStyle = '#0A0E17'; g.fillRect(0, 0, W, H);
+  g.fillStyle = 'rgba(163,170,184,0.10)';
+  const r = Math.max(1, dpr);
+  for (const f of d.frames) for (let i = 0; i < d.bikes; i++) g.fillRect(f.lng[i] * W, (1 - f.lat[i]) * H, r, r);
+  // The areas brands buy.
+  g.lineWidth = 1.5 * dpr; g.font = `600 ${12 * dpr}px "Anek Latin", system-ui, sans-serif`;
+  for (const a of d.areas) {
+    const pts = a.ring.map((p) => [((p.lng - w) / (e - w)) * W, (1 - (p.lat - s) / (n - s)) * H]);
+    g.beginPath(); pts.forEach(([x, y], k) => (k ? g.lineTo(x, y) : g.moveTo(x, y))); g.closePath();
+    g.fillStyle = 'rgba(110,123,255,0.08)'; g.fill();
+    g.strokeStyle = 'rgba(110,123,255,0.65)'; g.stroke();
+    const top = pts.reduce((m, p) => (p[1] < m[1] ? p : m));
+    const left = Math.min(...pts.map((p) => p[0]));
+    g.fillStyle = '#A3AAB8'; g.fillText(a.name, left + 6 * dpr, top[1] + 16 * dpr);
+  }
+}
+
+function draw() {
+  const d = current;
+  if (!d) return;
+  const span = (d.frames.length - 1) * d.every;
+  const pos = Math.min(simT, span) / d.every;
+  const k = Math.min(Math.floor(pos), d.frames.length - 2);
+  const f = pos - k;
+  const a = d.frames[k], b = d.frames[k + 1];
+  ctx.drawImage(ground, 0, 0);
+  const r = (d.bikes > 5000 ? 1.1 : d.bikes > 1000 ? 1.6 : 2.6) * dpr;
+  const groups = { stopped: [], riding: [], inside: [] };
+  for (let i = 0; i < d.bikes; i++) {
+    const st = f < 0.5 ? a.st[i] : b.st[i];
+    if (!(st & 2)) continue;
+    const x = (a.lng[i] + (b.lng[i] - a.lng[i]) * f) * W;
+    const y = (1 - (a.lat[i] + (b.lat[i] - a.lat[i]) * f)) * H;
+    (st >> 2 ? groups.inside : st & 1 ? groups.riding : groups.stopped).push(x, y);
+  }
+  for (const key of ['stopped', 'riding', 'inside']) {
+    ctx.fillStyle = COLORS[key];
+    const p = groups[key];
+    for (let j = 0; j < p.length; j += 2) { ctx.beginPath(); ctx.arc(p[j], p[j + 1], r, 0, Math.PI * 2); ctx.fill(); }
+  }
+  const near = f < 0.5 ? a : b;
+  const minutes = Math.floor(Math.min(simT, span) / 60);
+  document.getElementById('clock').textContent = `6:${String(minutes).padStart(2, '0')} pm`;
+  document.getElementById('c-bikes').textContent = fmt(d.bikes);
+  document.getElementById('c-inside').textContent = fmt(near.inside);
+  document.getElementById('c-riding').textContent = fmt(near.riding);
+  document.getElementById('c-plays').textContent = fmt(Math.floor(Math.min(simT, span) / 15) * d.bikes);
+  document.getElementById('c-day').textContent = fmt(d.bikes * 240 * 18);
+}
+
+function frame(now) {
+  const dt = Math.min(0.1, (now - last) / 1000);
+  last = now;
+  if (playing && current) {
+    const span = (current.frames.length - 1) * current.every;
+    simT += dt * SPEED;
+    if (simT > span + 3 * SPEED) simT = 0; // a short hold at 6:15, then again
+  }
+  draw();
+  requestAnimationFrame(frame);
+}
+
+async function choose(n) {
+  size = n;
+  for (const b of document.querySelectorAll('.picker button')) b.setAttribute('aria-pressed', String(Number(b.dataset.size) === n));
+  for (const th of document.querySelectorAll('[data-col]')) th.classList.toggle('on', Number(th.dataset.col) === n);
+  for (const td of document.querySelectorAll('td[data-col]')) td.classList.toggle('on', Number(td.dataset.col) === n);
+  document.getElementById('size-note').textContent = NOTES[n];
+  const loading = document.getElementById('loading');
+  loading.hidden = false;
+  loading.textContent = `Loading ${fmt(n)} bikes…`;
+  try {
+    const d = await load(n);
+    if (size !== n) return;
+    current = d; simT = 0; layout(d); loading.hidden = true;
+  } catch (err) {
+    loading.textContent = `Could not load the bikes (${err.message}). Reload the page to try again.`;
+  }
+}
+
+function fillResults() {
+  const rows = RESULTS.rows ?? [];
+  document.getElementById('results').innerHTML = rows.map((row) =>
+    `<tr><td class="what">${row.what}<span class="sub">${row.why}</span></td>${[200, 2000, 15500]
+      .map((n) => `<td class="num${n === size ? ' on' : ''}" data-col="${n}">${row[n] ?? '—'}</td>`).join('')}</tr>`).join('');
+}
+
+document.querySelectorAll('.picker button').forEach((b) => b.addEventListener('click', () => choose(Number(b.dataset.size))));
+const playBtn = document.getElementById('play');
+playBtn.textContent = playing ? 'Pause' : 'Play';
+playBtn.addEventListener('click', () => { playing = !playing; playBtn.textContent = playing ? 'Pause' : 'Play'; });
+window.addEventListener('resize', () => { if (current) layout(current); });
+fillResults();
+choose(200);
+requestAnimationFrame(frame);
+</script>

@@ -1,8 +1,10 @@
 // Starts the API from the environment.
 import { createServer } from 'node:http';
 import {
+  accrueRiderPay,
   advanceReadyBookings,
   buildDueReports,
+  closeEarnings,
   expireUnpaid,
   makeRiderAlerts,
   sendRiderAlerts,
@@ -72,6 +74,43 @@ if (process.env.SETTLE_MAKE_UPS === 'on') {
   };
   setTimeout(settle, 60_000).unref();
 }
+
+// Every 10 minutes: what sold lines have earned moves from held to revenue (P1.7.3, the hour close),
+// then riders' pay is brought up to date in the ledger (P1.7.5–6) for this month (and the last in
+// its first week, until it closes), ready for the Monday payout run.
+// Both post only what is new, so running them often is safe.
+const money = () => {
+  const now = Math.floor(Date.now() / 1000);
+  const india = new Date((now + 19_800) * 1000);
+  const month = india.toISOString().slice(0, 7);
+  const before = new Date(Date.UTC(india.getUTCFullYear(), india.getUTCMonth() - 1, 1))
+    .toISOString()
+    .slice(0, 7);
+  closeEarnings(pool, now)
+    .then(async (e) => {
+      for (const f of e.failed)
+        console.error(`api: could not close earnings of ${f.lineId}: ${f.error}`);
+      // Each month on its own. The month before only in the first week (it closes 48 hours after
+      // its end, a setting): after that nothing more can be added to it.
+      const months = india.getUTCDate() <= 7 ? [before, month] : [month];
+      for (const m of months) {
+        try {
+          const r = await accrueRiderPay(pool, m, now);
+          for (const f of r.failed)
+            console.error(`api: rider pay of ${f.riderId} for ${m}: ${f.error}`);
+          for (const l of r.late)
+            console.error(
+              `api: rider pay of ${l.riderId} for ${m} changed after the close (${l.grossChange} paise): for finance`,
+            );
+        } catch (err: unknown) {
+          console.error(`api: rider pay for ${m} failed`, err);
+        }
+      }
+    })
+    .catch((e: unknown) => console.error('api: closing earnings or rider pay failed', e))
+    .finally(() => setTimeout(money, 600_000).unref());
+};
+setTimeout(money, 60_000).unref();
 
 // Every 5 minutes, unless PAYOUT_PREPARE=off: on Monday from 10:00 India time, the week's payout run
 // is prepared if nobody has prepared it yet (P3.12). Nothing is paid: finance approves and sends it.

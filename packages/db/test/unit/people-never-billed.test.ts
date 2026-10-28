@@ -44,6 +44,9 @@ const ALLOWED = [
   'apps/brand/app/team/page.tsx',
   // the load test makes the messages a screen sends, which carry its signed count; it bills nothing (P7.2)
   'services/gateway/src/load.ts',
+  // the demo's fake screens make what a real screen sends, its signed count included; they bill nothing (P7.6)
+  'tools/demo/src/bikes.ts',
+  'tools/demo/src/screens.ts',
 ];
 /** Lines allowed elsewhere: loading the people settings with the price book. */
 const ALLOWED_LINES = [
