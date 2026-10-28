@@ -16,6 +16,7 @@ export const MONEY_AND_PLAYS = [
   'moving-hours',
   'pay-zone',
   'plays',
+  'poc',
   'portal-booking',
   'price-book',
   'rider-pay',

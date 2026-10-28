@@ -2,6 +2,7 @@
 // on the screen with its own key, and the cloud never invents one. The cloud checks every play,
 // re-checks where it happened against the real area shape, and counts what the promise allows.
 import { locate, placeKey, publishedAt, type AreaVersion } from './areas.js';
+import { isPocRef, pocPlayProblem, type PocPlayContext } from './poc.js';
 
 /** Settings for checking and counting plays (in the price book, versioned). */
 export interface PlayRules {
@@ -142,6 +143,8 @@ export interface PlayContext {
   readonly areas: readonly AreaVersion[];
   /** The line or make-up the play names, if it exists and counts (ads approved, not called off). */
   readonly line: LineForPlays | undefined;
+  /** P7.8: for a play naming a POC month ("poc/<brand>/<YYYY-MM>"), what the cloud knows of it. */
+  readonly poc?: PocPlayContext;
 }
 
 /**
@@ -171,7 +174,8 @@ export function judgePlay(
     return v?.active ? [v] : [];
   });
   const point = { lat: p.latE6 / 1e6, lng: p.lngE6 / 1e6 };
-  const cloudPlace = placeKey(locate(point, inForce));
+  const here = locate(point, inForce);
+  const cloudPlace = placeKey(here);
   const no = (reason: string) => ({ count: { counts: 'no' as const, reason }, cloudPlace });
 
   // Brand spots count for a booking line; make-up plays (in RECALL spots or on spare bikes) for
@@ -181,6 +185,11 @@ export function judgePlay(
   if (p.startAt < ctx.receivedAt - rules.maxAgeSeconds) return no('arrived too late');
   if (p.lengthS < rules.minPlaySeconds) return no('cut short');
   if (p.accuracyM > rules.maxAccuracyM) return no('position not accurate enough');
+  // P7.8: a POC play counts for its brand's POC month, inside the POC zone, at most 5 a bike-hour.
+  if (isPocRef(p.ref)) {
+    const why = ctx.poc ? pocPlayProblem(p, point, here, ctx.poc) : 'not a POC month';
+    return why ? no(why) : { count: { counts: 'inside', lineId: p.ref }, cloudPlace };
+  }
   const line = ctx.line;
   if (!line || line.lineId !== p.ref)
     return no(p.slot === 'make-up' ? 'not an open make-up' : 'not a sold booking line');

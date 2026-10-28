@@ -53,3 +53,4 @@ export * from './campaigns.js';
 export * from './portal-booking.js';
 export * from './ad-template.js';
 export * from './booking-terms.js';
+export * from './poc.js';

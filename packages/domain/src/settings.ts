@@ -6,6 +6,7 @@ import { gstinProblems } from './gst.js';
 import { phoneOf } from './riders.js';
 import { INDIA_OFFSET_MINUTES } from './time.js';
 import { POC_PAY_ZONE, type PayZone } from './pay-zone.js';
+import { checkPocRules, DEFAULT_POC_RULES, type PocRules } from './poc.js';
 import {
   DEFAULT_RIDER_SIGN_IN,
   RIDER_SIGN_IN_RANGES,
@@ -107,6 +108,8 @@ export interface Settings {
   readonly freeWeek: { readonly on: boolean };
   /** P5.8: RECALL's legal name, GSTIN and address on invoices. */
   readonly company: CompanyDetails;
+  /** P7.8: the POC package: most brands, the fee a month, most bikes, longest commitment. */
+  readonly poc: PocRules;
 }
 
 export type SettingKey = keyof Settings;
@@ -122,6 +125,7 @@ export const SETTING_KEYS = [
   'brandSignIn',
   'freeWeek',
   'company',
+  'poc',
 ] as const satisfies readonly SettingKey[];
 
 /** Placeholders each wording may use, and the ones its email text must have. */
@@ -173,6 +177,8 @@ export const DEFAULT_SETTINGS: Settings = {
   freeWeek: { on: false },
   // Not registered yet (Prateek gives them after incorporation).
   company: { legalName: '', gstin: '', address: '' },
+  // Prateek, 29 Oct 2026: 40 brands × ₹2.5 L + GST a month, 200 bikes, up to 3 months.
+  poc: DEFAULT_POC_RULES,
 };
 
 /** Fills {placeholders} (unknown ones are left as written; checkSetting refuses them on save). */
@@ -382,6 +388,8 @@ export function checkSetting<K extends SettingKey>(key: K, value: unknown): Sett
           address: text(o.address, 'Company address', 10, 300),
         };
       }
+      case 'poc':
+        return checkPocRules(value);
       case 'brandSignIn': {
         const o = obj(value, 'Brand sign-in');
         const out: Record<string, number> = {};
