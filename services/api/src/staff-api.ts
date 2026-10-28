@@ -121,6 +121,11 @@ export interface StaffApiConfig {
    * laptop. Keys stay in the secret store; only the provider's name is shown.
    */
   readonly connections?: readonly Connection[];
+  /**
+   * Maps for the rider app's "where am I" (P4.4): the street name and the roads around him. Absent:
+   * the reports' maps if set; else his position and route on a plain ground.
+   */
+  readonly maps?: MapsAdapter;
   /** WhatsApp and SMS out (P4.1: riders' sign-in codes). Absent: riders cannot sign in. */
   readonly messages?: MessagesAdapter;
   /** Phone notifications to riders (P4.10). Absent: alerts are only listed in the app. */

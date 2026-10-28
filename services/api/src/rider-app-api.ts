@@ -23,9 +23,14 @@
 //   POST /rider/fitting/check     start the fitting check on his screen
 //   POST /rider/fitting/panel     { commandId, seen }  every part of the panel lit up, or not
 // P4.4:
-//   GET  /rider/today             his screen now, moving hours and earnings today and this week
+//   GET  /rider/today             his screen now, screen-on and moving hours and earnings today and
+//                                 this week
+//   GET  /rider/where[?roads=no]  where he is (his screen's last position, its age), the street, his
+//                                 route today, the roads around him (bounded; never anyone else)
 // P4.5:
 //   GET  /rider/earnings?month=YYYY-MM   days, weeks and the month's parts (this month by default)
+//   GET  /rider/earnings/range?from=YYYY-MM-DD&to=YYYY-MM-DD   days he picks (at most 92, none
+//                                 after today): screen-on and moving hours, earnings, by day
 //   POST /rider/statement         { month }  a link to his statement page (15 minutes)
 //   GET  /rider/statement/<token> the statement page itself (printable; no sign-in needed)
 // P4.6:
@@ -74,6 +79,8 @@ import {
   riderSession,
   riderToday,
   riderEarnings,
+  riderRange,
+  riderWhere,
   riderPayouts,
   riderLoanPage,
   reportScreenProblem,
@@ -91,6 +98,8 @@ import {
   type RiderSession,
 } from '@recall/db';
 import {
+  checkDayRange,
+  todayOf,
   MAX_DOCUMENT_BYTES,
   accountNumberOf,
   ifscOf,
@@ -114,6 +123,9 @@ import { callerIp, type StaffApiConfig } from './staff-api.js';
 const uploadingRiders = new Set<string>();
 /** How often each rider asked the providers about his checks this hour (at most 30). */
 const asked = new Map<string, { readonly hour: number; n: number }>();
+
+/** "Where am I" looks each rider made this hour (each may ask the maps provider: at most 240). */
+const whereLooks = new Map<string, { readonly hour: number; n: number }>();
 
 /** Screen codes each rider tried this hour (a QR is only an id: at most 20 tries). */
 const fitTries = new Map<string, { readonly hour: number; n: number }>();
@@ -141,6 +153,15 @@ const DELETE_ACCOUNT_PAGE = `<!doctype html><html lang="en"><head><meta charset=
 <p>In the RECALL rider app: open <b>Today</b>, then <b>Profile and settings</b>, then <b>Delete my account</b>. Or message RECALL support on WhatsApp from the number you signed up with.</p>
 <p>We first take back the screen and settle your last pay and your screen loan with the bank. Then your name, phone number, photos, vehicle papers and bank details are erased. We keep only what the law requires (pay and tax records), for as long as it requires.</p>
 </body></html>`;
+
+/** P4.5: why a pick of days is refused, in plain words (the app words it by the code). */
+const RANGE_REFUSED = {
+  'bad-date': 'Pick real dates',
+  backwards: 'The first day must come before the last',
+  future: 'Pick days up to today',
+  'too-long': 'Pick at most 92 days',
+  'too-old': 'Pick days in the last year',
+} as const;
 
 /** The key sign-in codes are fingerprinted with: its own, made from the API's secret key. */
 const codeKey = (cfg: StaffApiConfig) =>
@@ -329,6 +350,23 @@ export async function handleRiderApp(
   }
   if (path === '/rider/today' && method === 'GET') {
     send(res, 200, await riderToday(pool, riderId, now));
+    return true;
+  }
+  if (path === '/rider/where' && method === 'GET') {
+    // Each look may ask the maps provider (paid, in production): a few a minute at most.
+    if (!tryOnce(whereLooks, riderId, now, 240))
+      throw new HttpError(429, 'Too many looks: wait a while', { code: 'too-many-tries' });
+    const roads = new URLSearchParams((req.url ?? '').split('?')[1] ?? '').get('roads') !== 'no';
+    send(res, 200, await riderWhere(pool, cfg.maps ?? cfg.reports?.maps, riderId, now, { roads }));
+    return true;
+  }
+  if (path === '/rider/earnings/range' && method === 'GET') {
+    const q = new URLSearchParams((req.url ?? '').split('?')[1] ?? '');
+    const from = q.get('from') ?? '';
+    const to = q.get('to') ?? '';
+    const ok = checkDayRange(from, to, todayOf(now));
+    if (!ok.ok) throw new HttpError(400, RANGE_REFUSED[ok.why], { code: `range-${ok.why}` });
+    send(res, 200, await riderRange(pool, riderId, from, to, now));
     return true;
   }
   if (path === '/rider/earnings' && method === 'GET') {

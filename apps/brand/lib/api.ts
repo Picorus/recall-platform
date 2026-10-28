@@ -189,12 +189,26 @@ export interface Report {
   readonly summary: readonly string[];
   /** The report as a whole page, the same one the "Done" message links to. */
   readonly html: string;
+  /** P7.7.7, for the charts: plays promised and delivered, by day and by India hour. */
+  readonly promised?: number;
+  readonly delivered?: number;
+  readonly days?: readonly (ReportRow & { readonly date: string })[];
+  readonly hours?: readonly (ReportRow & { readonly hour: number })[];
+}
+
+/** Bike-hours booked, plays promised and delivered (make-ups included) for a day or an hour. */
+export interface ReportRow {
+  readonly bikeHours: number;
+  readonly promised: number;
+  readonly delivered: number;
 }
 
 export interface Campaigns {
   readonly at: number;
   readonly account: Account;
   readonly campaigns: readonly Campaign[];
+  /** P7.7.7: bike-hours booked and paid for, by month they run ("2027-08"), oldest first. */
+  readonly months?: readonly { month: string; bikeHours: number }[];
 }
 
 /** P5.4: what a brand picks. */

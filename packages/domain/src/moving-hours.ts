@@ -162,3 +162,26 @@ export function oddMinutes(
   }
   return odd;
 }
+
+/**
+ * Seconds a screen was on and reporting, per business day ("Screen on" in the rider app): each
+ * minute summary it sent says how many seconds of that minute its tracker ran, moving or not
+ * (`secondsAt`, by place). A minute counts at most 60 seconds, and never less than its clock seconds,
+ * so a day's screen-on time is never below its moving (clock) time. Only minutes inside business
+ * hours count, as for moving hours; nothing here is paid (pay counts moving hours only).
+ */
+export function screenOnByDay(
+  minutes: readonly MinuteSummary[],
+  hours: BusinessHours = DEFAULT_BUSINESS_HOURS,
+): Map<string, number> {
+  const days = new Map<string, number>();
+  for (const m of mergeMinutes(minutes)) {
+    const day = businessDayOf(new Date(m.minute * 1000), hours);
+    if (day === null) continue;
+    let tracked = 0;
+    for (const v of Object.values(m.secondsAt)) tracked += Number.isFinite(v) && v > 0 ? v : 0;
+    const on = Math.min(60, Math.max(tracked, m.clockSeconds));
+    if (on > 0) days.set(day, (days.get(day) ?? 0) + on);
+  }
+  return days;
+}

@@ -94,3 +94,26 @@ export async function portalCampaigns(
     };
   });
 }
+
+/**
+ * P7.7.7: bike-hours a business booked and paid for, by month of the days they run (India business
+ * days), for the chart on its campaigns page: the latest 24 months with any, oldest first. A
+ * cancelled booking is left out. Bike-hours are what brands buy (hard rule 7).
+ */
+export async function campaignMonths(
+  c: Q,
+  brandId: string,
+): Promise<{ month: string; bikeHours: number }[]> {
+  const r = await c.query<{ month: string; bike_hours: string }>(
+    `SELECT to_char(bl.day, 'YYYY-MM') AS month, sum(bl.bikes) AS bike_hours
+       FROM booking_lines bl JOIN bookings b ON b.booking_id = bl.booking_id
+      WHERE b.brand_id = $1
+        AND EXISTS (SELECT 1 FROM booking_events e WHERE e.booking_id = b.booking_id
+                     AND e.state = 'paid')
+        AND (SELECT state FROM booking_events e WHERE e.booking_id = b.booking_id
+              ORDER BY seq DESC LIMIT 1) <> 'cancelled'
+      GROUP BY 1 ORDER BY 1 DESC LIMIT 24`,
+    [brandId],
+  );
+  return r.rows.reverse().map((x) => ({ month: x.month, bikeHours: Number(x.bike_hours) }));
+}

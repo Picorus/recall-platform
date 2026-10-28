@@ -59,4 +59,24 @@ describe('dashboard route (P3.14.2)', () => {
     expect((await get(sales, '/dashboard?month=2027-13')).status).toBe(400);
     expect((await get(sales, '/dashboard?count=99')).status).toBe(400);
   });
+
+  it('the charts: today hour by hour and the last days (P7.7.7)', async () => {
+    const ops = await member('omar2@recall.in', { role: 'admin', areas: ['operations'] });
+    const finance = await member('fara@recall.in', { role: 'read-only', areas: ['finance'] });
+    const get = (cookie: string, path: string) => fetch(`${url}${path}`, { headers: { cookie } });
+    expect((await get(ops, '/dashboard/trends')).status).toBe(403);
+    const t = (await (await get(finance, '/dashboard/trends?days=14')).json()) as {
+      day: string;
+      hours: { hour: number }[];
+      days: { day: string }[];
+    };
+    expect(t.day).toBe('2027-08-23');
+    expect(t.hours).toHaveLength(18);
+    expect(t.days).toHaveLength(14);
+    expect(t.days.at(-1)?.day).toBe('2027-08-23');
+    expect((await get(finance, '/dashboard/trends')).status).toBe(200);
+    expect((await get(finance, '/dashboard/trends?days=0')).status).toBe(400);
+    expect((await get(finance, '/dashboard/trends?days=91')).status).toBe(400);
+    expect((await get(finance, '/dashboard/trendsx')).status).toBe(404);
+  });
 });

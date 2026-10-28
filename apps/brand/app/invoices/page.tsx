@@ -1,7 +1,15 @@
 'use client';
 // P5.8 Invoices: the business's tax invoices and credit notes for a financial year (April–March),
-// newest first; download one, or all of the year's in one PDF.
-import { Info } from '@recall/web-ui';
+// newest first; download one, or all of the year's in one PDF. P7.7.7: what the year cost, month by
+// month (invoices less credit notes, with GST), as a chart.
+import {
+  BarChart,
+  Info,
+  monthLabel,
+  monthsBetween,
+  rupeesShort,
+  sumByIndiaMonth,
+} from '@recall/web-ui';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { api, ApiError, type Invoices } from '../../lib/api';
@@ -92,6 +100,7 @@ export default function InvoicesPage() {
               </a>
             )}
           </div>
+          {page.documents.length > 0 && <SpendChart page={page} />}
           {page.documents.length === 0 ? (
             <section className="rc-card stack">
               <h2>No invoices yet</h2>
@@ -156,5 +165,43 @@ export default function InvoicesPage() {
         </>
       )}
     </Shell>
+  );
+}
+
+/**
+ * The year month by month (April to March, India time): invoices less credit notes, with GST.
+ * Whole paise throughout. Months still to come are left out.
+ */
+function SpendChart({ page }: { page: Invoices }) {
+  const start = Number(page.fy.slice(0, 4));
+  const latest = page.documents.reduce((t, d) => Math.max(t, d.issuedAt), 0);
+  const last = new Date((latest + 19_800) * 1000).toISOString().slice(0, 7);
+  const months = monthsBetween(`${start}-04`, `${start + 1}-03`).filter((m) => m <= last);
+  const sums = sumByIndiaMonth(
+    page.documents.map((d) => ({
+      at: d.issuedAt,
+      value: d.kind === 'credit-note' ? -d.totalPaise : d.totalPaise,
+    })),
+    months,
+  );
+  const total = sums.reduce((t, m) => t + m.value, 0);
+  // One month is not a chart: the table says it.
+  if (sums.length < 2) return null;
+  return (
+    <section className="rc-chart-card" aria-label="Spend by month">
+      <BarChart
+        title="Spend, month by month"
+        summary={`${rupees(total)} with GST so far this year, after credit notes`}
+        points={sums.map((m) => ({
+          label: monthLabel(m.month),
+          full: monthLabel(m.month, true),
+          value: m.value,
+        }))}
+        format={rupees}
+        axisFormat={rupeesShort}
+        valueName="Spend"
+        height={140}
+      />
+    </section>
   );
 }

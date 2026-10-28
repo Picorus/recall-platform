@@ -8,5 +8,5 @@
     "moduleResolution": "bundler",
     "types": []
   },
-  "include": ["src"]
+  "include": ["src", "test"]
 }

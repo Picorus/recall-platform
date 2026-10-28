@@ -1,6 +1,7 @@
 'use client';
 // P3.2 Today: the business day at a glance. Refreshes every minute. Each part shows only when the
 // member's areas cover it (the API decides; a part it leaves out is not shown).
+import { Meter } from '@recall/web-ui';
 import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError } from '../lib/api';
 import { ALERT_NAMES, clock, count, dayName, dayOfIndia, rupees, since } from '../lib/format';
@@ -128,6 +129,27 @@ export default function TodayPage() {
               value={`${count(t.hours.runningBikeHours)} bike-hours`}
             />
           </div>
+          {t.hours.soldBikeHours > 0 && (
+            <div className="rc-chart-card stack">
+              <Meter
+                label="Bike-hours over by now, of all sold today"
+                value={t.hours.dueBikeHours}
+                max={t.hours.soldBikeHours}
+                format={count}
+                note={`of ${count(t.hours.soldBikeHours)}`}
+              />
+              <Meter
+                label="Plays delivered in those hours"
+                value={t.hours.deliveredPlays}
+                max={t.hours.duePlays}
+                format={count}
+                note={`of ${count(t.hours.duePlays)} promised`}
+                tone={
+                  t.hours.duePlays > 0 && t.hours.deliveredPlays < t.hours.duePlays ? 'data' : 'go'
+                }
+              />
+            </div>
+          )}
         </section>
       )}
 

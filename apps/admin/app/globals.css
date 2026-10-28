@@ -1,5 +1,6 @@
 @import '@recall/design/tokens.css';
 @import '@recall/design/components.css';
+@import '@recall/design/charts.css';
 
 * {
   box-sizing: border-box;

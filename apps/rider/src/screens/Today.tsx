@@ -1,7 +1,8 @@
 // P4.4 Today (home), for a rider on the road: his screen now (on and playing, bike stopped, or
 // off; battery, signal), his counted moving hours and earnings today and this week (by his pay
 // rules, before tax; the sales share comes later), and the 10-minute stop rule. Looks again every
-// minute while open.
+// minute while open. Today's moving hours sit beside how long his screen was on ("Screen on"), and a
+// small map shows where he is (from his screen; map.tsx).
 import {
   alertWords,
   formatRupees,
@@ -12,6 +13,8 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { ApiError, call, type Me } from '../api';
+import { HoursPair } from '../hours';
+import { MapCard, useWhere } from '../map';
 import { say, sayError, type Key } from '../i18n';
 import { color, radius } from '../theme';
 import { Alert, Fold, Label, LinkButton, Muted, Screen, Title, Words, s } from '../ui';
@@ -38,7 +41,7 @@ export interface TodayPage {
     readonly signalBars: number | null;
   } | null;
   readonly mode: 'poc' | 'regular';
-  readonly today: Day;
+  readonly today: Day & { readonly screenOnSeconds?: number };
   readonly week: {
     readonly days: readonly Day[];
     readonly countedSeconds: number;
@@ -127,6 +130,7 @@ export function Today({
   const [error, setError] = useState('');
   const signOut = useRef(onSignOut);
   signOut.current = onSignOut;
+  const { where, roads, reload: reloadWhere } = useWhere(token, () => signOut.current());
 
   // Only the newest look counts (a slow answer never overwrites a newer one), and none after the
   // page has closed.
@@ -249,14 +253,14 @@ export function Today({
 
           <View style={s.card}>
             <Label>{say(lang, 'todayTitle')}</Label>
-            <View style={{ flexDirection: 'row', gap: 12 }}>
-              <Stat
-                label={say(lang, 'movingHours')}
-                value={hoursText(lang, page.today.countedSeconds)}
-              />
-              <Stat label={say(lang, 'earned')} value={rupees(page.today.earnedPaise)} />
-            </View>
+            <HoursPair
+              lang={lang}
+              screenOnSeconds={Math.max(page.today.screenOnSeconds ?? 0, page.today.countedSeconds)}
+              countedSeconds={page.today.countedSeconds}
+            />
           </View>
+
+          <MapCard lang={lang} where={where} roads={roads?.roads ?? []} credit={roads?.credit} />
 
           <View style={s.card}>
             <Label>{say(lang, 'weekTitle')}</Label>
@@ -314,7 +318,13 @@ export function Today({
           </Fold>
         </>
       )}
-      <LinkButton label={say(lang, 'refresh')} onPress={() => void load()} />
+      <LinkButton
+        label={say(lang, 'refresh')}
+        onPress={() => {
+          void load();
+          void reloadWhere();
+        }}
+      />
       <LinkButton label={say(lang, 'signOut')} onPress={onSignOut} />
     </Screen>
   );

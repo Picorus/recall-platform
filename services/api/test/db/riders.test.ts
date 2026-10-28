@@ -217,10 +217,16 @@ describe('rider routes (P3.11.1)', () => {
     ).json()) as {
       fitting: { slotId: string } | null;
       money: { owedPaise: number };
+      recent: { day: string; countedSeconds: number; earnedPaise: number }[];
       leaving: { item: string; done: boolean }[];
     };
     expect(after.fitting?.slotId).toBe(slot);
     expect(after.money.owedPaise).toBe(0);
+    // P7.7.7: his last 14 business days for the chart, today (1 Jun, India time) last; no screen
+    // yet, so nothing counted.
+    expect(after.recent).toHaveLength(14);
+    expect(after.recent[0]?.day).toBe('2027-05-19');
+    expect(after.recent.at(-1)).toEqual({ day: '2027-06-01', countedSeconds: 0, earnedPaise: 0 });
     expect(after.leaving.map((l) => [l.item, l.done])).toEqual([
       ['Screen returned', true],
       ['Final pay', true],

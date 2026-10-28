@@ -2,9 +2,12 @@
 // P3.11.1: one rider for staff: details (changed with why), what approval needs, his steps (each with
 // why), the documents he sent (preview, accept or reject with why; insurance with the day it ends),
 // notes and the timeline. An Operations admin acts; Support adds notes.
+// P7.7.7: his last 14 days' pay as a chart; the timeline and past payouts fold away.
+import { BarChart, dayLabel, Fold, foldHint, latestOf } from '@recall/web-ui';
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { api, ApiError } from '../../lib/api';
 import {
+  dayName,
   dayOfIndia,
   clock,
   groupMobile,
@@ -591,15 +594,23 @@ export default function RiderPanel({
       <p>
         Owed now: <strong>{rupees(p.money.owedPaise)}</strong>
       </p>
+      {p.recent && p.recent.length > 0 && <EarnedChart days={p.recent} />}
       {p.money.payouts.length > 0 && (
-        <ul className="plain" aria-label="Payouts">
-          {p.money.payouts.map((x) => (
-            <li key={x.runId}>
-              Run {x.runId}: {rupees(x.amountPaise)} · {x.status}
-              {x.reason ? ` (${x.reason})` : ''}
-            </li>
-          ))}
-        </ul>
+        <Fold
+          title="Past payouts"
+          hint={`${p.money.payouts.length} ${p.money.payouts.length === 1 ? 'run' : 'runs'}, latest ${dayName(
+            [...p.money.payouts].sort((a, b) => (a.runId < b.runId ? 1 : -1))[0]?.runId ?? '',
+          )}`}
+        >
+          <ul className="plain" aria-label="Payouts">
+            {p.money.payouts.map((x) => (
+              <li key={x.runId}>
+                Run {x.runId}: {rupees(x.amountPaise)} · {x.status}
+                {x.reason ? ` (${x.reason})` : ''}
+              </li>
+            ))}
+          </ul>
+        </Fold>
       )}
 
       {['approved', 'active', 'paused'].includes(r.status) && (
@@ -650,17 +661,26 @@ export default function RiderPanel({
         </form>
       )}
 
-      <h4 style={{ margin: 0 }}>Timeline</h4>
-      <ul className="plain" aria-label="Timeline">
-        {p.timeline.map((t, i) => (
-          <li key={i}>
-            {t.text}
-            <div className="muted">
-              {when(t.at)} · {t.by}
-            </div>
-          </li>
-        ))}
-      </ul>
+      <Fold
+        title="Timeline and notes"
+        hint={foldHint(
+          p.timeline.length,
+          ['entry', 'entries'],
+          latestOf(p.timeline.map((t) => t.at)),
+          p.at,
+        )}
+      >
+        <ul className="plain" aria-label="Timeline">
+          {p.timeline.map((t, i) => (
+            <li key={i}>
+              {t.text}
+              <div className="muted">
+                {when(t.at)} · {t.by}
+              </div>
+            </li>
+          ))}
+        </ul>
+      </Fold>
       {canNote && (
         <form className="stack" onSubmit={addNote} aria-label="Rider note">
           <label className="rc-field">
@@ -673,5 +693,27 @@ export default function RiderPanel({
         </form>
       )}
     </section>
+  );
+}
+
+/** His last 14 days: what each earned (counted moving hours in the hover). */
+function EarnedChart({ days }: { days: NonNullable<RiderPage['recent']> }) {
+  const earned = days.reduce((n, d) => n + d.earnedPaise, 0);
+  const hours = Math.floor(days.reduce((n, d) => n + d.countedSeconds, 0) / 3600);
+  return (
+    <BarChart
+      title="Earned, last 14 days"
+      summary={`${rupees(earned)} earned · ${hours} counted ${hours === 1 ? 'hour' : 'hours'} on the move`}
+      points={days.map((d) => ({
+        label: dayLabel(d.day),
+        full: `${dayName(d.day)} · ${Math.floor(d.countedSeconds / 3600)} h ${Math.floor((d.countedSeconds % 3600) / 60)} min counted`,
+        value: d.earnedPaise,
+      }))}
+      format={rupees}
+      valueName="Earned"
+      height={120}
+      maxLabels={5}
+      empty="Nothing earned in the last 14 days."
+    />
   );
 }

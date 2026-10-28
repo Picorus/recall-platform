@@ -85,3 +85,43 @@ export function daysBetween(from: string, to: string): string[] {
     out.push(new Date(t).toISOString().slice(0, 10));
   return out;
 }
+
+/** P4.5: the most business days one look at his earnings may cover (about three months). */
+export const RANGE_MAX_DAYS = 92;
+/** …and how far back it may start (his earnings are shown for about a year). */
+export const RANGE_BACK_DAYS = 400;
+
+const DAY = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+/** A real calendar date "YYYY-MM-DD" (not 30 February), else false. */
+export function isDay(text: string): boolean {
+  const m = DAY.exec(text);
+  if (!m) return false;
+  const t = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  return new Date(t).toISOString().slice(0, 10) === text;
+}
+
+/** Whole days from `a` to `b` (both "YYYY-MM-DD"; negative when `b` is earlier). */
+export function daysFrom(a: string, b: string): number {
+  return Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86_400_000);
+}
+
+export type DayRangeProblem = 'bad-date' | 'backwards' | 'future' | 'too-long' | 'too-old';
+
+/**
+ * A rider's own pick of business days, `from` to `to` (both included), checked against `today` (his
+ * business day now): real dates, in order, not after today, at most `RANGE_MAX_DAYS` days and
+ * starting at most `RANGE_BACK_DAYS` ago. The reason code when refused.
+ */
+export function checkDayRange(
+  from: string,
+  to: string,
+  today: string,
+): { readonly ok: true } | { readonly ok: false; readonly why: DayRangeProblem } {
+  if (!isDay(from) || !isDay(to)) return { ok: false, why: 'bad-date' };
+  if (to < from) return { ok: false, why: 'backwards' };
+  if (to > today) return { ok: false, why: 'future' };
+  if (daysFrom(from, to) + 1 > RANGE_MAX_DAYS) return { ok: false, why: 'too-long' };
+  if (daysFrom(from, today) > RANGE_BACK_DAYS) return { ok: false, why: 'too-old' };
+  return { ok: true };
+}

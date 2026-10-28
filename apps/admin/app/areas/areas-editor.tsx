@@ -4,6 +4,7 @@
 // draft); a super admin adds areas and turns them on or off. "Check" asks the area rules (no
 // overlap, no crossing border, edge zone 0–2,000 m) before saving.
 import type { GeoJSONSource, Map as MapLibre, MapMouseEvent } from 'maplibre-gl';
+import { Fold } from '@recall/web-ui';
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { api, ApiError, type Member } from '../../lib/api';
 import { cornersText, parseCorners, type Corner } from '../../lib/areas';
@@ -496,8 +497,12 @@ export default function AreasEditor({ styleUrl }: { readonly styleUrl: string })
       )}
 
       {current && (
-        <section className="stack">
-          <h2>{current.latest.name}: versions</h2>
+        <Fold
+          // Who cannot change areas opens one to read its history: open for them.
+          open={!canEdit(me)}
+          title={`${current.latest.name}: versions`}
+          hint={`${current.history.length} ${current.history.length === 1 ? 'version' : 'versions'}, latest from ${dayOfIndia(secs(current.latest.validFrom))} · who saved each, and why`}
+        >
           <div className="rc-table-wrap">
             <table className="rc-table">
               <thead>
@@ -528,7 +533,7 @@ export default function AreasEditor({ styleUrl }: { readonly styleUrl: string })
               </tbody>
             </table>
           </div>
-        </section>
+        </Fold>
       )}
 
       <h2>All areas ({count(page?.areas.length ?? 0)})</h2>

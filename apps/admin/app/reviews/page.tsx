@@ -3,6 +3,7 @@
 // reviewer looks at the ad (preview) and what the automatic checks found, then approves (every rule
 // on the checklist ticked) or rejects with why. A booking runs once all its ads are approved; past
 // its deadline (7 days before, a setting) a reviewer approves it on short notice, with why.
+import { Fold, foldHint, latestOf } from '@recall/web-ui';
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { adSummary, reviewText, type AdView } from '../../lib/ads';
 import { api, ApiError, type Member } from '../../lib/api';
@@ -273,16 +274,25 @@ export default function ReviewsPage() {
             </ul>
           </section>
           <section className="stack" aria-label="Latest decisions">
-            <h2 style={{ margin: 0 }}>Latest decisions</h2>
-            {q.recent.length === 0 && <p className="muted">None yet.</p>}
-            <ul className="plain">
-              {q.recent.map((a) => (
-                <li key={a.adId}>
-                  <strong>{a.name}</strong> · {a.brandName} · {reviewText(a)}
-                  {a.review && <span className="muted"> · {when(a.review.at)}</span>}
-                </li>
-              ))}
-            </ul>
+            <Fold
+              title="Latest decisions"
+              hint={foldHint(
+                q.recent.length,
+                ['decision', 'decisions'],
+                latestOf(q.recent.flatMap((a) => (a.review ? [a.review.at] : []))),
+                q.at,
+              )}
+            >
+              {q.recent.length === 0 && <p className="muted">None yet.</p>}
+              <ul className="plain">
+                {q.recent.map((a) => (
+                  <li key={a.adId}>
+                    <strong>{a.name}</strong> · {a.brandName} · {reviewText(a)}
+                    {a.review && <span className="muted"> · {when(a.review.at)}</span>}
+                  </li>
+                ))}
+              </ul>
+            </Fold>
           </section>
         </>
       )}

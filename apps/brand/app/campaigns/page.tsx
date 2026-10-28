@@ -1,7 +1,8 @@
 'use client';
 // P5.3 My campaigns: every booking of the business, under Scheduled (with any not paid yet),
 // Running and Done (with any cancelled), each with its areas, days, bike-hours, plays promised and
-// total, what comes next, and "Book again".
+// total, what comes next, and "Book again". P7.7.7: bike-hours booked by month, as a chart.
+import { BarChart, monthLabel, monthsBetween } from '@recall/web-ui';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { api, ApiError, type Campaign, type Campaigns } from '../../lib/api';
@@ -104,6 +105,8 @@ export default function CampaignsPage() {
               )}
             </section>
           )}
+          {/* A chart only from two months on: one month is already in its campaigns' cards. */}
+          {page.months && page.months.length > 1 && <MonthsChart months={page.months} />}
           <div className="rc-segmented" role="tablist" aria-label="Campaigns">
             {TABS.map(([t, label]) => (
               <button
@@ -224,5 +227,33 @@ export default function CampaignsPage() {
         </>
       )}
     </Shell>
+  );
+}
+
+/** Bike-hours booked and paid for, month by month (the last 12 months with a booking). */
+function MonthsChart({ months }: { months: NonNullable<Campaigns['months']> }) {
+  const all = monthsBetween(months[0]?.month ?? '', months.at(-1)?.month ?? '').slice(-12);
+  const of = new Map(months.map((m) => [m.month, m.bikeHours]));
+  const shown = all.map((m) => ({ month: m, bikeHours: of.get(m) ?? 0 }));
+  const total = shown.reduce((n, m) => n + m.bikeHours, 0);
+  const n = (v: number) => v.toLocaleString('en-IN');
+  return (
+    <section className="rc-chart-card" aria-label="Bike-hours by month">
+      <BarChart
+        title="Bike-hours booked, month by month"
+        summary={`${n(total)} bike-hours paid for${
+          shown.length > 1 ? ` from ${monthLabel(all[0] ?? '', true)}` : ''
+        }`}
+        points={shown.map((m) => ({
+          label: monthLabel(m.month),
+          full: monthLabel(m.month, true),
+          value: m.bikeHours,
+        }))}
+        format={(v) => `${n(v)} bike-hours`}
+        axisFormat={n}
+        valueName="Bike-hours"
+        height={140}
+      />
+    </section>
   );
 }

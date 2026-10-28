@@ -2,7 +2,8 @@
 // P3.12 Payouts: the weekly run. It is prepared by itself on Monday from 10:00 India time (or by
 // hand); someone else approves it; then it is sent to each rider's checked bank or UPI. A line can be
 // held (not sent until released) or dropped (owed in the next run); failures are sent again.
-import { Info } from '@recall/web-ui';
+// P7.7.7: what each run paid, as a chart; the list of every run folds away.
+import { BarChart, dayLabel, Fold, Info, rupeesShort } from '@recall/web-ui';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../../lib/api';
 import { clock, dayName, dayOfIndia, rupees } from '../../lib/format';
@@ -403,44 +404,78 @@ export default function PayoutsPage() {
         </section>
       )}
       {list && list.runs.length === 0 && <p className="muted">No payout runs yet.</p>}
+      {list && list.runs.length > 1 && <PaidChart runs={list.runs} />}
       {list && list.runs.length > 0 && (
-        <div className="rc-table-wrap">
-          <table className="rc-table" aria-label="Payout runs">
-            <thead>
-              <tr>
-                <th>Monday</th>
-                <th>Where it stands</th>
-                <th>Riders</th>
-                <th>Paid</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {list.runs.map((r) => (
-                <tr key={r.runId}>
-                  <td>{dayName(r.runId)}</td>
-                  <td>
-                    {runStage(r)} <span className="muted">({statesText(r.states)})</span>
-                  </td>
-                  <td>{r.lines}</td>
-                  <td className="mono">{paidText(r)}</td>
-                  <td>
-                    <button
-                      className="rc-button rc-button--quiet"
-                      type="button"
-                      aria-pressed={open === r.runId}
-                      onClick={() => setOpen(r.runId)}
-                    >
-                      Open
-                    </button>
-                  </td>
+        <Fold
+          title="All runs"
+          hint={`${list.runs.length} ${list.runs.length === 1 ? 'run' : 'runs'}, latest ${dayName(list.runs[0]?.runId ?? '')}`}
+        >
+          <div className="rc-table-wrap">
+            <table className="rc-table" aria-label="Payout runs">
+              <thead>
+                <tr>
+                  <th>Monday</th>
+                  <th>Where it stands</th>
+                  <th>Riders</th>
+                  <th>Paid</th>
+                  <th></th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {list.runs.map((r) => (
+                  <tr key={r.runId}>
+                    <td>{dayName(r.runId)}</td>
+                    <td>
+                      {runStage(r)} <span className="muted">({statesText(r.states)})</span>
+                    </td>
+                    <td>{r.lines}</td>
+                    <td className="mono">{paidText(r)}</td>
+                    <td>
+                      <button
+                        className="rc-button rc-button--quiet"
+                        type="button"
+                        aria-pressed={open === r.runId}
+                        onClick={() => setOpen(r.runId)}
+                      >
+                        Open
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Fold>
       )}
       {list && open && <Run key={open} runId={open} canSend={list.canSend} onChanged={load} />}
     </Shell>
+  );
+}
+
+/** What the last 12 runs paid, against what each had to pay. */
+function PaidChart({ runs }: { runs: RunList['runs'] }) {
+  const last = [...runs].slice(0, 12).reverse();
+  const paid = last.reduce((n, r) => n + r.paidPaise, 0);
+  const total = last.reduce((n, r) => n + r.totalPaise, 0);
+  return (
+    <div className="rc-chart-card">
+      <BarChart
+        title="Paid to riders, run by run"
+        summary={`${rupees(paid)} paid of ${rupees(total)} over the last ${last.length} ${
+          last.length === 1 ? 'run' : 'runs'
+        }`}
+        points={last.map((r) => ({
+          label: dayLabel(r.runId),
+          full: `Run for ${dayName(r.runId)}`,
+          value: r.paidPaise,
+          target: r.totalPaise,
+        }))}
+        format={rupees}
+        axisFormat={rupeesShort}
+        valueName="Paid"
+        targetName="In the run"
+        empty="Nothing paid yet."
+      />
+    </div>
   );
 }

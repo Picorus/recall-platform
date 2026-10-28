@@ -4,6 +4,7 @@
 // reason, as the next version starting now (bookings keep the version they were sold on). "Check"
 // asks the price rules first and shows what would change; every version is listed with who,
 // when, why and what changed.
+import { Fold } from '@recall/web-ui';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { api, ApiError } from '../../lib/api';
 import { clock, dayOfIndia, rupees } from '../../lib/format';
@@ -441,8 +442,10 @@ export default function PricesPage() {
             )}
           </form>
 
-          <section>
-            <h2>Versions</h2>
+          <Fold
+            title="Versions"
+            hint={`${page?.versions.length ?? 0} saved${page?.inForce ? `, version ${page.inForce} in force` : ''} · what changed, who and why`}
+          >
             <ul className="plain">
               {page?.versions.map((v) => (
                 <li className="rc-card stack" key={v.version}>
@@ -457,7 +460,7 @@ export default function PricesPage() {
                 </li>
               ))}
             </ul>
-          </section>
+          </Fold>
         </>
       )}
     </Shell>

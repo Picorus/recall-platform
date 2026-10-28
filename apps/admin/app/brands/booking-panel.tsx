@@ -1,7 +1,8 @@
 'use client';
 // P3.8.2: one booking for staff: its lines and money, the payment link (send, copy, check), the
 // timeline of everything that happened, cancel with a reason, and notes. A Sales admin acts; Sales,
-// Finance and Support look.
+// Finance and Support look. P7.7.7: the timeline folds away (one press opens it).
+import { Fold, foldHint, latestOf } from '@recall/web-ui';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { api, ApiError } from '../../lib/api';
 import { STEP_NAMES } from '../../lib/brands';
@@ -166,10 +167,10 @@ export default function BookingPanel({
           )}
         </dd>
       </dl>
-      <details>
-        <summary>
-          {b.lines.length} area-hour{b.lines.length === 1 ? '' : 's'}
-        </summary>
+      <Fold
+        title="Area-hours"
+        hint={`${b.lines.length} area-hour${b.lines.length === 1 ? '' : 's'}, ${b.lines.reduce((n, l) => n + l.bikes, 0)} bike-hours`}
+      >
         <ul className="plain">
           {b.lines.map((l) => (
             <li key={`${l.areaId}|${l.date}|${l.startHour}`}>
@@ -178,7 +179,7 @@ export default function BookingPanel({
             </li>
           ))}
         </ul>
-      </details>
+      </Fold>
       {canAct && open && !b.trial && (
         <div className="cal-bar">
           {(b.state === 'draft' || linkOpen || b.link === null) && (
@@ -226,18 +227,26 @@ export default function BookingPanel({
       {['ads-approved', 'running', 'done', 'report-sent', 'ads-missing', 'cancelled'].includes(
         b.state,
       ) && <BookingDelivery bookingId={b.bookingId} />}
-      <h4 style={{ margin: 0 }}>Timeline</h4>
-      <ul className="plain" aria-label="Timeline">
-        {b.timeline.map((t, i) => (
-          <li key={i}>
-            {t.text}
-            <div className="muted">
-              {when(t.at)}
-              {t.by ? ` · ${t.by}` : ''}
-            </div>
-          </li>
-        ))}
-      </ul>
+      <Fold
+        title="Timeline and notes"
+        hint={foldHint(
+          b.timeline.length,
+          ['entry', 'entries'],
+          latestOf(b.timeline.map((t) => t.at)),
+        )}
+      >
+        <ul className="plain" aria-label="Timeline">
+          {b.timeline.map((t, i) => (
+            <li key={i}>
+              {t.text}
+              <div className="muted">
+                {when(t.at)}
+                {t.by ? ` · ${t.by}` : ''}
+              </div>
+            </li>
+          ))}
+        </ul>
+      </Fold>
       {canAct && (
         <form className="stack" onSubmit={addNote} aria-label="Booking note">
           <label className="rc-field">

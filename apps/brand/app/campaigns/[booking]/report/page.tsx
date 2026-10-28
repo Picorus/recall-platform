@@ -2,11 +2,13 @@
 // P5.7 Final report: the page the "Done, here is your report" message links to. Plays delivered,
 // different bikes, the heat map, busiest streets, made-up plays and an estimate of who saw it, the same
 // report our team sees and the PDF carries. Download the PDF, share it (on a phone: straight to
-// WhatsApp), or book again.
+// WhatsApp), or book again. P7.7.7: plays delivered day by day and hour by hour, as charts.
+import { BarChart, dayLabel, hourLabel, Meter } from '@recall/web-ui';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { api, ApiError, type Report } from '../../../../lib/api';
+import { dayText } from '../../../../lib/format';
 import { Icon } from '../../../../lib/icons';
 import { areaPhoto } from '../../../../lib/photos';
 import { Shell, useMe } from '../../../../lib/session';
@@ -135,6 +137,7 @@ export default function ReportPage() {
               {note}
             </p>
           )}
+          <ReportCharts report={report} />
           {/* The report page itself, as sent. No scripts can run in it (sandbox); same origin only
               so its height can be read to show it whole. */}
           <iframe
@@ -148,5 +151,70 @@ export default function ReportPage() {
         </>
       )}
     </Shell>
+  );
+}
+
+const n = (v: number) => v.toLocaleString('en-IN');
+
+/**
+ * Plays the screens delivered against those promised, in all, day by day and by hour of the day.
+ * Billing is by bike-hours (shown in each hover); people counts are estimates and live in the report.
+ */
+function ReportCharts({ report }: { report: Report }) {
+  const days = report.days ?? [];
+  const hours = report.hours ?? [];
+  if (days.length === 0 || report.promised === undefined || report.delivered === undefined)
+    return null;
+  const bikeHours = days.reduce((t, d) => t + d.bikeHours, 0);
+  const full = report.delivered >= report.promised;
+  return (
+    <section className="stack" aria-label="Plays delivered">
+      <div className="rc-chart-card stack">
+        <Meter
+          label={`Plays delivered on ${n(bikeHours)} bike-hours booked`}
+          value={report.delivered}
+          max={report.promised}
+          format={n}
+          note={`of ${n(report.promised)} promised${full ? ' · all delivered' : ''}`}
+          tone={full ? 'go' : 'data'}
+        />
+      </div>
+      <div className="rc-chart-grid">
+        {days.length > 1 && (
+          <div className="rc-chart-card">
+            <BarChart
+              title="Plays, day by day"
+              summary={`Delivered against promised, ${days.length} ${days.length === 1 ? 'day' : 'days'}`}
+              points={days.map((d) => ({
+                label: dayLabel(d.date),
+                full: `${dayText(d.date)} · ${n(d.bikeHours)} bike-hours`,
+                value: d.delivered,
+                target: d.promised,
+              }))}
+              format={n}
+              valueName="Delivered"
+              targetName="Promised"
+            />
+          </div>
+        )}
+        {hours.length > 1 && (
+          <div className="rc-chart-card">
+            <BarChart
+              title="Plays by hour of the day"
+              summary="All days added up, India time"
+              points={hours.map((h) => ({
+                label: hourLabel(h.hour),
+                full: `${hourLabel(h.hour)}–${hourLabel(h.hour + 1)} · ${n(h.bikeHours)} bike-hours`,
+                value: h.delivered,
+                target: h.promised,
+              }))}
+              format={n}
+              valueName="Delivered"
+              targetName="Promised"
+            />
+          </div>
+        )}
+      </div>
+    </section>
   );
 }

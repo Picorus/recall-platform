@@ -5,7 +5,7 @@ import { launchAreas, PRICE_BOOK_V1 } from '@recall/domain';
 import type pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { saveAreaVersion } from '../../src/areas.js';
-import { portalCampaigns } from '../../src/brand-campaigns.js';
+import { campaignMonths, portalCampaigns } from '../../src/brand-campaigns.js';
 import { createBooking, moveBooking, savePriceBook } from '../../src/bookings.js';
 import { freshDatabase } from './fresh-db.js';
 
@@ -114,5 +114,30 @@ describe('my campaigns (P5.3)', () => {
     expect((await portalCampaigns(pool, 'dosa-co', NOW)).map((x) => x.bookingId)).toEqual([
       'BK-C-OTHER',
     ]);
+  });
+});
+
+describe('bike-hours by month (P7.7.7)', () => {
+  it('paid bookings only, by the month they run, oldest first; cancelled left out', async () => {
+    // BK-C-PAID: 80 bike-hours on 10 Sep. The draft and the one to pay (later cancelled) are not
+    // paid; another business's are not its own.
+    expect(await campaignMonths(pool, 'chai-co')).toEqual([{ month: '2027-09', bikeHours: 80 }]);
+    await book('BK-C-OCT', 'chai-co', '2027-10-02', 'admin');
+    await step('BK-C-OCT', 'awaiting-payment');
+    await step('BK-C-OCT', 'paid');
+    await book('BK-C-AUG', 'chai-co', '2027-08-30', 'admin');
+    await step('BK-C-AUG', 'awaiting-payment');
+    await step('BK-C-AUG', 'paid');
+    expect(await campaignMonths(pool, 'chai-co')).toEqual([
+      { month: '2027-08', bikeHours: 80 },
+      { month: '2027-09', bikeHours: 80 },
+      { month: '2027-10', bikeHours: 80 },
+    ]);
+    await step('BK-C-OCT', 'cancelled');
+    expect((await campaignMonths(pool, 'chai-co')).map((m) => m.month)).toEqual([
+      '2027-08',
+      '2027-09',
+    ]);
+    expect(await campaignMonths(pool, 'dosa-co')).toEqual([]);
   });
 });

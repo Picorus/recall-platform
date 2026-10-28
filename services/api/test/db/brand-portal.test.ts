@@ -318,6 +318,8 @@ describe('brand portal sign-in routes (P5.1)', () => {
     const id = String(made.body.bookingId);
     const list = await call('/portal/campaigns?brand=irani-chai', undefined, { cookie: s.session });
     expect(list.body.campaigns).toMatchObject([{ bookingId: id, stage: 'to-pay', bikeHours: 160 }]);
+    // P7.7.7: not paid yet, so no bike-hours booked by month.
+    expect(list.body.months).toEqual([]);
     const again = await call(`/portal/book-form?brand=irani-chai&again=${id}`, undefined, {
       cookie: s.session,
     });
@@ -531,7 +533,20 @@ describe('brand portal sign-in routes (P5.1)', () => {
       from: NOW / 1000 - 7200,
       until: NOW / 1000,
       builtAt: NOW / 1000,
-      lines: [],
+      lines: [
+        {
+          lineId: `${booking}/hyd-madhapur/2027-08-23/19`,
+          areaId: 'hyd-madhapur',
+          areaName: 'Madhapur',
+          date: '2027-08-23',
+          startHour: 19,
+          bikes: 28,
+          promised: 6_000,
+          delivered: 5_300,
+          madeUp: 100,
+          missing: 600,
+        },
+      ],
       promised: 6_000,
       delivered: 5_400,
       deliveredBp: 9_000,
@@ -557,6 +572,13 @@ describe('brand portal sign-in routes (P5.1)', () => {
     expect(r.body).toMatchObject({ bookingId: booking, account: { brandId: 'irani-chai' } });
     expect(String(r.body.html)).toContain('<!doctype html>');
     expect((r.body.summary as string[]).join(' ')).toMatch(/5,400 of 6,000 plays delivered/);
+    // P7.7.7: by day and by hour, for the charts (make-ups with their day and hour).
+    expect(r.body).toMatchObject({
+      promised: 6_000,
+      delivered: 5_400,
+      days: [{ date: '2027-08-23', bikeHours: 28, promised: 6_000, delivered: 5_400 }],
+      hours: [{ hour: 19, bikeHours: 28, promised: 6_000, delivered: 5_400 }],
+    });
     const pdf = await fetch(`${url}/portal/report/pdf?booking=${booking}`, {
       headers: { cookie: s.session },
     });

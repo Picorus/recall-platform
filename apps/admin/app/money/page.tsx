@@ -2,6 +2,18 @@
 // P3.13.1 Money: where money stands now (held for campaigns, owed back to brands, to partners, to
 // riders, TDS and GST not yet paid), a month's payments received, its tax invoices and credit
 // notes, the GST summary, and the accountant's files. Read-only: nothing here moves money.
+// P7.7.7: the month's money in as a chart; the payments and tax documents fold away under it.
+import {
+  BarChart,
+  dayLabel,
+  daysOfMonth,
+  Fold,
+  foldHint,
+  latestOf,
+  peak,
+  rupeesShort,
+  sumByIndiaDay,
+} from '@recall/web-ui';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../../lib/api';
 import { clock, dayOfIndia, rupees } from '../../lib/format';
@@ -196,88 +208,135 @@ export default function MoneyPage() {
       )}
       {m && (
         <section className="stack" aria-label="Payments received">
-          <h2 style={{ margin: 0 }}>Payments received ({m.payments.length})</h2>
+          <MoneyInChart m={m} />
           {m.paymentsTruncated && <p className="error">Only the latest 500 are shown.</p>}
           {m.payments.length === 0 ? (
-            <p className="muted">None this month.</p>
+            <p className="muted">No payments received this month.</p>
           ) : (
-            <div className="rc-table-wrap">
-              <table className="rc-table" aria-label="Payments">
-                <thead>
-                  <tr>
-                    <th>When</th>
-                    <th>Brand · booking</th>
-                    <th>Amount</th>
-                    <th>What it is</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {m.payments.map((x) => (
-                    <tr key={x.paymentId}>
-                      <td>{when(x.at)}</td>
-                      <td>
-                        {x.brandName} · <span className="mono">{x.bookingId}</span>
-                      </td>
-                      <td className="mono">{rupees(x.amountPaise)}</td>
-                      <td>
-                        <span
-                          className={`rc-chip ${x.state === 'paid' ? 'rc-chip--go' : 'rc-chip--stop'}`}
-                        >
-                          {PAYMENT_NAMES[x.state]}
-                        </span>
-                      </td>
+            <Fold
+              title={`Payments received (${m.payments.length})`}
+              hint={foldHint(
+                m.payments.length,
+                ['payment', 'payments'],
+                latestOf(m.payments.map((x) => x.at)),
+              )}
+            >
+              <div className="rc-table-wrap">
+                <table className="rc-table" aria-label="Payments">
+                  <thead>
+                    <tr>
+                      <th>When</th>
+                      <th>Brand · booking</th>
+                      <th>Amount</th>
+                      <th>What it is</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {m.payments.map((x) => (
+                      <tr key={x.paymentId}>
+                        <td>{when(x.at)}</td>
+                        <td>
+                          {x.brandName} · <span className="mono">{x.bookingId}</span>
+                        </td>
+                        <td className="mono">{rupees(x.amountPaise)}</td>
+                        <td>
+                          <span
+                            className={`rc-chip ${x.state === 'paid' ? 'rc-chip--go' : 'rc-chip--stop'}`}
+                          >
+                            {PAYMENT_NAMES[x.state]}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Fold>
           )}
         </section>
       )}
       {m && (
         <section className="stack" aria-label="Invoices and credit notes">
-          <h2 style={{ margin: 0 }}>Invoices and credit notes ({m.documents.length})</h2>
           {m.documentsTruncated && <p className="error">Only the first 1,000 are shown.</p>}
           {m.documents.length === 0 ? (
-            <p className="muted">None this month.</p>
+            <p className="muted">No invoices or credit notes this month.</p>
           ) : (
-            <div className="rc-table-wrap">
-              <table className="rc-table" aria-label="Tax documents">
-                <thead>
-                  <tr>
-                    <th>Number</th>
-                    <th>Date</th>
-                    <th>Billed to</th>
-                    <th>Booking</th>
-                    <th>Before GST</th>
-                    <th>GST</th>
-                    <th>Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {m.documents.map((d) => (
-                    <tr key={d.docNo}>
-                      <td className="mono">
-                        {d.docNo}
-                        {d.againstDoc ? ` (against ${d.againstDoc})` : ''}
-                      </td>
-                      <td>{dayOfIndia(d.issuedAt)}</td>
-                      <td>
-                        {d.legalName}
-                        {d.gstin ? <span className="muted"> · {d.gstin}</span> : null}
-                      </td>
-                      <td className="mono">{d.bookingId}</td>
-                      <td className="mono">{rupees(d.taxablePaise)}</td>
-                      <td className="mono">{rupees(d.gstPaise)}</td>
-                      <td className="mono">{rupees(d.totalPaise)}</td>
+            <Fold
+              title={`Invoices and credit notes (${m.documents.length})`}
+              hint={foldHint(
+                m.documents.length,
+                ['document', 'documents'],
+                latestOf(m.documents.map((d) => d.issuedAt)),
+              )}
+            >
+              <div className="rc-table-wrap">
+                <table className="rc-table" aria-label="Tax documents">
+                  <thead>
+                    <tr>
+                      <th>Number</th>
+                      <th>Date</th>
+                      <th>Billed to</th>
+                      <th>Booking</th>
+                      <th>Before GST</th>
+                      <th>GST</th>
+                      <th>Total</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {m.documents.map((d) => (
+                      <tr key={d.docNo}>
+                        <td className="mono">
+                          {d.docNo}
+                          {d.againstDoc ? ` (against ${d.againstDoc})` : ''}
+                        </td>
+                        <td>{dayOfIndia(d.issuedAt)}</td>
+                        <td>
+                          {d.legalName}
+                          {d.gstin ? <span className="muted"> · {d.gstin}</span> : null}
+                        </td>
+                        <td className="mono">{d.bookingId}</td>
+                        <td className="mono">{rupees(d.taxablePaise)}</td>
+                        <td className="mono">{rupees(d.gstPaise)}</td>
+                        <td className="mono">{rupees(d.totalPaise)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Fold>
           )}
         </section>
       )}
     </Shell>
+  );
+}
+
+/** The month's payments received, day by day (India time). Money is whole paise throughout. */
+function MoneyInChart({ m }: { m: MoneyMonth }) {
+  const days = daysOfMonth(m.month);
+  const sums = sumByIndiaDay(
+    m.payments.map((x) => ({ at: x.at, value: x.amountPaise })),
+    days,
+  );
+  const total = sums.reduce((n, d) => n + d.value, 0);
+  const best = peak(sums);
+  return (
+    <div className="rc-chart-card">
+      <BarChart
+        title={`Money received, day by day · ${monthName(m.month)}`}
+        summary={
+          total === 0
+            ? 'Nothing received this month'
+            : `${rupees(total)} from ${m.payments.length} ${m.payments.length === 1 ? 'payment' : 'payments'}, with GST${
+                best ? ` · most on ${dayLabel(best.day)} (${rupees(best.value)})` : ''
+              }`
+        }
+        points={sums.map((d) => ({ label: dayLabel(d.day), value: d.value }))}
+        format={rupees}
+        axisFormat={rupeesShort}
+        valueName="Received"
+        empty="Nothing received this month."
+      />
+    </div>
   );
 }

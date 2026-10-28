@@ -492,12 +492,52 @@ it("a rider on the road sees his screen, today's and this week's hours and earni
   if (minutes === 90) await page.getByText('₹37.50').first().waitFor();
   await page.getByText('₹1,234.50 is on its way to your account.').waitFor();
   await page.getByText('Keep moving').waitFor();
+  // Screen on beside moving hours (screen on is never less), and pay counts moving hours.
+  await page.getByText('Screen on', { exact: true }).first().waitFor();
+  await page.getByRole('button', { name: 'Pay counts moving hours' }).click();
+  await page.getByText(/^Screen on is the time your screen was on/).waitFor();
+  // Where he is: from his screen, just now; the big map opens and closes.
+  await page.getByText('Where you are').first().waitFor();
+  await page.getByText('Now', { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Open the big map' }).click();
+  await page.getByRole('button', { name: 'Close the map' }).click();
   await shot(page, 'rider-today');
   // P4.5: Earnings, this month, and the statement opens in the browser.
   await page.getByRole('tab', { name: 'Earnings' }).click();
   await page.getByText('This month so far').waitFor();
   await page.getByText('Your share of sales (added at the next pay update)').waitFor();
   if (minutes === 90) await page.getByText('₹37.50').first().waitFor();
+  // P4.5: days he picks: this week first; today; his own dates on the calendar.
+  await expect(
+    page.getByRole('radio', { name: 'This week' }).getAttribute('aria-checked'),
+  ).resolves.toBe('true');
+  await page.getByText('Earned, before tax').waitFor();
+  await page.getByRole('radio', { name: 'Today', exact: true }).click();
+  const dm = `${today.slice(8, 10)}/${today.slice(5, 7)}`;
+  await page.getByText(dm, { exact: true }).first().waitFor();
+  await page.getByRole('radio', { name: 'Pick dates' }).click();
+  const months =
+    'January,February,March,April,May,June,July,August,September,October,November,December'.split(
+      ',',
+    );
+  const title = `${months[Number(today.slice(5, 7)) - 1]} ${today.slice(0, 4)}`;
+  const dayButton = (d: string) =>
+    page.getByRole('button', { name: `${Number(d.slice(8, 10))} ${title}`, exact: true });
+  // Tomorrow cannot be tapped (when it is in this month).
+  const tomorrow = new Date(Date.parse(`${today}T00:00:00Z`) + 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+  if (tomorrow.slice(0, 7) === today.slice(0, 7))
+    await expect(dayButton(tomorrow).isDisabled()).resolves.toBe(true);
+  const first = `${today.slice(0, 7)}-01`;
+  await dayButton(first).click();
+  await dayButton(today).click();
+  await page.getByRole('button', { name: 'Show these days' }).click();
+  await page
+    .getByText('Hours by day')
+    .or(page.getByText(dm, { exact: true }))
+    .first()
+    .waitFor();
   await shot(page, 'rider-earnings');
   const [statement] = await Promise.all([
     page.context().waitForEvent('page'),

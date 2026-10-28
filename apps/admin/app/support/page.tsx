@@ -2,6 +2,7 @@
 // P3.15 Support: brand and rider requests in one inbox. Messages on WhatsApp or by email arrive by
 // themselves; staff start a conversation for a call or a visit. Longest waiting first. Support admins
 // reply, add notes only staff see, pick a conversation up, and mark it waiting or done, with why.
+import { Fold, foldHint, latestOf } from '@recall/web-ui';
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { api, ApiError } from '../../lib/api';
 import { clock, dayOfIndia } from '../../lib/format';
@@ -69,6 +70,8 @@ function Conversation({
   };
   if (!t) return error ? <p className="error">{error}</p> : <p className="muted">Loading…</p>;
   const replyable = t.channel === 'whatsapp' || t.channel === 'email';
+  // The last thing said (not a step): shown as it is; the whole conversation folds away.
+  const latest = [...t.timeline].reverse().find((e) => e.kind !== 'step');
   const step = (state: SupportState, owner: 'me' | null, done: string) =>
     act('step', { state, owner, reason: why.trim() }, done, () => setWhy(''));
   return (
@@ -100,25 +103,42 @@ function Conversation({
           )}
         </p>
       ))}
-      <ol className="stack" aria-label="History" style={{ listStyle: 'none', padding: 0 }}>
-        {t.timeline.map((e, i) => (
-          <li key={i} className={e.kind === 'step' ? 'muted' : ''}>
-            <span className="muted">{when(e.at)}</span> ·{' '}
-            {e.kind === 'step' ? (
-              <>
-                {e.by}: {e.text}
-              </>
-            ) : (
-              <>
-                <strong>
-                  {KIND_NAMES[e.kind]} ({e.by})
-                </strong>
-                : <span style={{ whiteSpace: 'pre-wrap' }}>{e.text}</span>
-              </>
-            )}
-          </li>
-        ))}
-      </ol>
+      {latest && (
+        <div className="stack" style={{ gap: 2 }}>
+          <span className="muted">
+            Latest · {when(latest.at)} · {KIND_NAMES[latest.kind]} ({latest.by})
+          </span>
+          <span style={{ whiteSpace: 'pre-wrap' }}>{latest.text}</span>
+        </div>
+      )}
+      <Fold
+        title="Whole conversation"
+        hint={foldHint(
+          t.timeline.length,
+          ['entry', 'entries'],
+          latestOf(t.timeline.map((e) => e.at)),
+        )}
+      >
+        <ol className="stack" aria-label="History" style={{ listStyle: 'none', padding: 0 }}>
+          {t.timeline.map((e, i) => (
+            <li key={i} className={e.kind === 'step' ? 'muted' : ''}>
+              <span className="muted">{when(e.at)}</span> ·{' '}
+              {e.kind === 'step' ? (
+                <>
+                  {e.by}: {e.text}
+                </>
+              ) : (
+                <>
+                  <strong>
+                    {KIND_NAMES[e.kind]} ({e.by})
+                  </strong>
+                  : <span style={{ whiteSpace: 'pre-wrap' }}>{e.text}</span>
+                </>
+              )}
+            </li>
+          ))}
+        </ol>
+      </Fold>
       {canAct && (
         <>
           {replyable && (
