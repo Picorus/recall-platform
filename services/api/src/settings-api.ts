@@ -3,9 +3,25 @@
 //   GET  /settings          every setting in force (version, who, when, why), the areas (for the pay
 //                           zone), whether support is open now, and which outside services are on
 //   POST /settings/<key>    { value, reason, version }   a new version (version: the one shown)
-import { areaRecords, Refusal, saveSetting, settingRecords, type SettingRecords } from '@recall/db';
+//   POST /settings/business { mode: 'poc' | 'regular', reason }   the business switch (P7.7.7): a
+//                           super admin flips the whole business between the POC and regular
+//                           business (rider pay, the calendar's limits); it counts from a day ahead
 import {
+  areaRecords,
+  businessModeHistory,
+  canSwitch,
+  Refusal,
+  saveSetting,
+  setBusinessMode,
+  settingRecords,
+  type SettingRecords,
+} from '@recall/db';
+import {
+  modeAt,
+  pocEndedAt,
+  pocStartsFrom,
   SETTING_KEYS,
+  switchCountsFrom,
   STAFF_AREAS,
   STAFF_ROLES,
   supportOpenAt,
@@ -50,6 +66,26 @@ export async function handleSettings(
         { ...r, savedBy: r.savedBy && (names.get(r.savedBy) ?? r.savedBy) },
       ]),
     ) as unknown as SettingRecords;
+    // The business switch: where it stands, what a switch now would count from, and every switch.
+    const history = await businessModeHistory(pool);
+    const setters = new Map(
+      (
+        await pool.query<{ id: string; name: string }>(
+          'SELECT id, name FROM staff WHERE id = ANY($1)',
+          [history.map((h) => h.setBy)],
+        )
+      ).rows.map((x) => [x.id, x.name]),
+    );
+    const business = {
+      mode: modeAt(history, now),
+      // A switch already made that has not started yet (counts from a later day).
+      next: history.find((h) => h.from > now) ?? null,
+      canSwitch: me.access.role === 'super-admin' && (await canSwitch(pool)),
+      pocEnded: pocEndedAt(history) !== undefined,
+      pocFrom: pocStartsFrom(now),
+      regularFrom: switchCountsFrom(now),
+      history: history.map((h) => ({ ...h, setBy: setters.get(h.setBy) ?? h.setBy })),
+    };
     // The newest version of each area (its name today), for picking the pay zone's areas.
     const areas = new Map<string, string>();
     for (const r of await areaRecords(pool)) areas.set(r.area.areaId, r.area.name);
@@ -62,7 +98,39 @@ export async function handleSettings(
       roles: STAFF_ROLES,
       staffAreas: STAFF_AREAS,
       connections: cfg.connections ?? [],
+      business,
     });
+    return true;
+  }
+
+  if (path === '/settings/business') {
+    if (method !== 'POST') throw new HttpError(405, 'Not allowed');
+    const origin = req.headers.origin;
+    if (!origin || !cfg.origins.includes(origin))
+      throw new HttpError(403, 'Not from the admin site');
+    const me = await staffFor(pool, cfg, req, nowMs);
+    if (me.access.role !== 'super-admin')
+      throw new HttpError(403, 'Only a super admin switches the business');
+    const b = await jsonBody(req);
+    const mode = b.mode;
+    if (mode !== 'poc' && mode !== 'regular') throw new HttpError(400, 'POC or regular business?');
+    const reason = str(b, 'reason', 300).trim();
+    if (reason.length < 5) throw new HttpError(400, 'Say why (a few words)');
+    try {
+      const from = await setBusinessMode(
+        pool,
+        mode,
+        { id: me.id, role: me.access.role },
+        reason,
+        now,
+      );
+      send(res, 200, { mode, from });
+    } catch (e) {
+      // The switch's own rules (one switch at a time, the POC runs once): said in its words.
+      if (e instanceof Error && /already set|already on|POC has ended/.test(e.message))
+        throw new HttpError(400, e.message);
+      throw e;
+    }
     return true;
   }
 
