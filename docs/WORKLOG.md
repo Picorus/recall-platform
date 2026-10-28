@@ -2,6 +2,14 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 29 Oct 2026 · P2.4.2 · The cloud sends each screen its ad files
+- `packages/db/src/ad-files.ts`: `neededAdFiles` works out the files every screen must keep: the approved ads of playing bookings from 24 h before their first hour to a day after their last (make-ups); while the POC is scheduled or running, the paid POC brands' approved ads and RECALL's own (kept to the month's end); RECALL's own ads always (3 days ahead). Soonest first, at most 200 (`left` says how many wait). `signAdFiles` adds HTTPS links signed by the file store (6 h); `screenAdFiles` for one screen (none for a screen we do not know).
+- Gateway: every hello now also brings `down/files` (with the time, the POC plan, commands and updates); the list is worked out once a minute, links signed per screen. When the list changes, every screen gets it at once (checked once a minute in the gateway's timer). No list goes out if the store's links are not HTTPS.
+- Config: `FILES_LINK_SECRET` (new, names only in `.env.example`): the API's file store and the gateway sign links with it; without it, or without an https `FILES_PUBLIC_URL`, the gateway sends no lists. Production has no file store until P6, so no lists there yet.
+- Tests: DB 6 (`ad-files.test.ts`: 24 h ahead, rejected ad left out, keep-until, links HTTPS and genuine, unknown screen none, a cancelled booking drops its files, a finished one keeps nothing, POC files once paid, kept to the month's end); gateway 1 more (hello → down/files; plain-http store → none).
+- Open: aggregator ads are not listed yet (they have no record of their own); a booking line's make-up running later than a day after the booking's last hour would miss its file (make-ups end the next day by the rules). The real file store (S3) and its link signing come in P6.
+- **Next:** full checks, then Prateek's next step.
+
 ## 29 Oct 2026 · P2.5 · Blank screen outside our zone
 - Prateek's rule (28 Oct): outside our zone the screen is fully blank — during the POC outside the 15 km circle, in regular business outside every area that is on. No plays and no rider hours there. Inside an area with no booking: RECALL's own ads. Replaces "RECALL ads outside the POC zone".
 - One place for the rule on each side: `OurZone.kt` (screen) and `packages/domain/src/our-zone.ts` (cloud), each with one switch to go back to RECALL's ads.

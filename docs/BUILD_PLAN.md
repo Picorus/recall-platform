@@ -196,7 +196,7 @@ Each bike carries a 28-inch P2.5 LED screen driven by a small Android controller
 1. **P2.1 Identity and set-up.** Each box gets a unique id and its own security certificate at our warehouse. Fitting links box → bike → rider by scanning a QR in the rider app.
 2. **P2.2 Kiosk mode.** The player is the device owner: starts on power-up, cannot be closed, a watchdog restarts it within 5 seconds if it crashes.
 3. **P2.3 Connection.** MQTT over TLS; reconnects by itself; clock set from network and GPS time; store-and-forward up to 7 days.
-4. **P2.4 Ad storage.** Downloads ads ahead, checks each file's fingerprint, keeps them until the booking ends, clears old files when space runs low. Never streams.
+4. **P2.4 Ad storage.** Downloads ads ahead, checks each file's fingerprint, keeps them until the booking ends, clears old files when space runs low. Never streams. The cloud side (P2.4.2): every screen gets the list of files it must keep on each hello and when the list changes (checked once a minute): the approved ads of bookings from 24 hours before their first hour until a day after their last (make-ups), the POC's paid brands' ads and RECALL's own while the POC is scheduled or running, and RECALL's own ads always; at most 200, soonest first; HTTPS links signed by the file store for 6 hours.
 5. **P2.5 Playback.** Plays 15-second videos and still images without gaps, rotates the brand's 2 to 5 ads, keeps the 200-brand / 40-RECALL pattern each hour. Outside our zone the screen is blank (a black frame, no play; Prateek, 28 Oct 2026): during the POC outside 15 km of Hitech City, in regular business outside every area that is on. Inside an area with no booking: RECALL's own ads.
 6. **P2.6 Local scheduler.** Knows its area from GPS (P1.2), follows the cloud's assignment, falls back to its own pick from the hour plan when offline (P1.4.3).
 7. **P2.7 Signed play log.** Every play is written to local storage and signed with a key held in the box's secure store.
@@ -442,6 +442,7 @@ A new engineer should be able to read four files and start work the same day. Th
 
 | Date | Version | Change |
 | --- | --- | --- |
+| 29 Oct 2026 | 1.15 | P2.4.2: the cloud sends each screen its ad files (on hello and on change). |
 | 29 Oct 2026 | 1.14 | Prateek: the screen is blank outside our zone (P2.5): outside the POC's circle during the POC, outside every area in regular business. |
 | 29 Oct 2026 | 1.13 | Prateek: rider pay zone by business mode (P1.7.5): the POC's 15 km circle while it runs; in regular business only inside areas that are on. |
 | 29 Oct 2026 | 1.12 | Prateek: the POC is scheduled from its switch-on to its 1st and ends only by a super admin's switch (planned 3 months, alerts, an early-end check); P7.8 is proved by tests, not a demo. |

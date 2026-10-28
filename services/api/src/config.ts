@@ -312,8 +312,9 @@ export function filesFrom(env: NodeJS.ProcessEnv, production: boolean): FileStor
   if (production) return undefined;
   return fakeFileStore({
     baseUrl: env.FILES_PUBLIC_URL || 'http://localhost:3001/api/files',
-    // A fresh key on each start: the fake's files do not outlive the process either.
-    secret: randomBytes(32).toString('hex'),
+    // A fresh key on each start (the fake's files do not outlive the process either), unless one is
+    // shared with the screen gateway, which signs the screens' download links too (P2.4.2).
+    secret: env.FILES_LINK_SECRET || randomBytes(32).toString('hex'),
   });
 }
 

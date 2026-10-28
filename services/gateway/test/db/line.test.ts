@@ -305,3 +305,54 @@ describe('P7.8: the POC months go to every box with its hello', () => {
     ]);
   });
 });
+
+describe('P2.4.2: the ad files go to every box with its hello', () => {
+  it('a hello brings down/files: the whole list, HTTPS links signed by the store', async () => {
+    const { createAccount } = await import('@recall/db');
+    const { fakeFileStore } = await import('@recall/adapters');
+    const { parseAdFiles } = await import('@recall/domain');
+    await createAccount(
+      pool,
+      {
+        brandId: 'recall',
+        kind: 'brand',
+        details: { name: 'RECALL', agencyId: null, referredBy: null, active: true },
+        by: 'test',
+        reason: 'our own ads',
+      },
+      NOW - 86_400,
+    );
+    await pool.query(
+      `INSERT INTO ads (ad_id, brand_id, name, file_key, bytes, kind, checks, outcome, uploaded_by, uploaded_at)
+       VALUES ('AD-00000000F1', 'recall', 'Our ad', $1, 2048, 'png', '[]', 'pass', 'test', now())`,
+      ['f'.repeat(64)],
+    );
+    await pool.query(
+      `INSERT INTO ad_reviews (ad_id, decision, checklist, reviewed_by, reviewed_at)
+       VALUES ('AD-00000000F1', 'approved', '{}', 'reviewer', now())`,
+    );
+    const up = `recall/v1/s/${box.screenId}/up/hello`;
+    const at = (NOW + 3 * 3600) * 1000;
+    const store = fakeFileStore({ baseUrl: 'https://admin.test/api/files', secret: 's' });
+    const replies = await handleUp(pool, up, bytes(helloText('0.1.0', 7)), at, undefined, store);
+    const files = replies.find((r) => r.topic === `recall/v1/s/${box.screenId}/down/files`);
+    const list = parseAdFiles(files?.payload ?? '');
+    expect('files' in list && list.made).toBe(at);
+    expect('files' in list && list.files.map((f) => [f.ad, f.sha256, f.bytes])).toEqual([
+      ['AD-00000000F1', 'f'.repeat(64), 2048],
+    ]);
+    expect('files' in list && list.files.every((f) => f.url.startsWith('https://'))).toBe(true);
+    // Links that are not HTTPS (a laptop's plain store): no list at all, so a box never drops its
+    // files for an empty one.
+    const plain = fakeFileStore({ baseUrl: 'http://localhost:3001/api/files', secret: 's' });
+    const none = await handleUp(
+      pool,
+      up,
+      bytes(helloText('0.1.0', 8)),
+      at + 60_000,
+      undefined,
+      plain,
+    );
+    expect(none.some((r) => r.topic.endsWith('/down/files'))).toBe(false);
+  });
+});

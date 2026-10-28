@@ -7,9 +7,9 @@ import { createServer, type Server } from 'node:http';
 import mqtt from 'mqtt';
 import type { Pool } from 'pg';
 import { hookHandler, type HookConfig } from './hooks.js';
-import { handleUp, LineMemory } from './line.js';
+import { filesFingerprint, filesMessage, handleUp, LineMemory, type AdLinks } from './line.js';
 import { Waiting } from './waiting.js';
-import { freshCommands } from '@recall/db';
+import { enrolledScreens, freshCommands } from '@recall/db';
 import { downTopic, MAX_COMMAND_LIFE_MS } from '@recall/domain';
 
 /** Messages handled at once; more wait their turn (each holds a database connection). */
@@ -25,6 +25,8 @@ export interface GatewayConfig extends HookConfig {
   /** Where the broker reaches the hooks (keep it on the internal network). */
   readonly hookHost: string;
   readonly hookPort: number;
+  /** Signs the ad files' download links (P2.4.2); none: no file lists are sent. */
+  readonly links?: AdLinks;
 }
 
 export interface RunningGateway {
@@ -68,7 +70,7 @@ export async function startGateway(
         while (running < AT_ONCE && waiting.length > 0) {
           const [topic, payload] = waiting.next() as [string, Buffer];
           running++;
-          handleUp(pool, topic, payload, Date.now(), memory)
+          handleUp(pool, topic, payload, Date.now(), memory, cfg.links)
             .then((replies) => {
               for (const r of replies) c.publish(r.topic, r.payload, { qos: 1 });
             })
@@ -107,9 +109,32 @@ export async function startGateway(
           c.publish(downTopic(x.screenId, 'command'), x.text, { qos: 1 });
         }
       };
+      // P2.4.2: when the files the screens need change (an ad approved, a booking cancelled, a POC
+      // month paid), every screen gets its new list at once, not only at its next hello. Checked at
+      // most once a minute; the first check only notes where things stand.
+      let filesSeen: string | undefined;
+      let filesCheckedAt = 0;
+      const sendFiles = async () => {
+        const links = cfg.links;
+        const nowMs = Date.now();
+        if (!links || nowMs - filesCheckedAt < 60_000) return;
+        filesCheckedAt = nowMs;
+        const now = await filesFingerprint(pool, nowMs);
+        const changed = filesSeen !== undefined && now !== filesSeen;
+        filesSeen = now;
+        if (!changed) return;
+        for (const screenId of await enrolledScreens(pool)) {
+          if (stopping) return;
+          const text = await filesMessage(pool, screenId, nowMs, links);
+          if (text) c.publish(downTopic(screenId, 'files'), text, { qos: 1 });
+        }
+      };
       const tick = () => {
         if (stopping) return;
-        sendFresh()
+        Promise.all([
+          sendFresh(),
+          sendFiles().catch((e: unknown) => log(`ad files: ${(e as Error).message}`)),
+        ])
           .catch((e: unknown) => log(`fresh commands: ${(e as Error).message}`))
           .finally(() => {
             if (!stopping) freshTimer = setTimeout(tick, FRESH_EVERY_MS);

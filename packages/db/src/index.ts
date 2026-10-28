@@ -69,3 +69,4 @@ export * from './rider-where.js';
 export * from './poc.js';
 export * from './poc-report.js';
 export * from './pay-zone.js';
+export * from './ad-files.js';
