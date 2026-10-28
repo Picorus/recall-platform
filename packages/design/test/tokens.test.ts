@@ -6,6 +6,7 @@ import {
   coreColors,
   fontFamilies,
   googleFontsUrl,
+  motion,
   px,
   radii,
   shadows,
@@ -30,7 +31,14 @@ describe('colours', () => {
   });
 
   it('every token has a usage note', () => {
-    for (const token of [...coreColors, ...themedColors, ...spacing, ...radii, ...shadows]) {
+    for (const token of [
+      ...coreColors,
+      ...themedColors,
+      ...spacing,
+      ...radii,
+      ...shadows,
+      ...motion,
+    ]) {
       expect(token.usage.length, token.name).toBeGreaterThan(10);
     }
   });
@@ -124,16 +132,22 @@ describe('contrast maths', () => {
 });
 
 describe('type', () => {
-  it('uses Anek and IBM Plex Mono, never Inter or Space Grotesk', () => {
+  it('uses Instrument Sans and Serif, Anek for Indian scripts and IBM Plex Mono, never Inter or Space Grotesk', () => {
     const all = [...Object.values(fontFamilies), googleFontsUrl].join(' ');
-    expect(all).not.toMatch(/Inter\b|Space Grotesk|Space\+Grotesk/);
-    expect(fontFamilies.display).toMatch(/^"Anek Latin"/);
-    expect(fontFamilies.body).toMatch(/^"Anek Latin"/);
+    expect(all).not.toMatch(/"Inter"|family=Inter\b|Space Grotesk|Space\+Grotesk/);
+    expect(fontFamilies.display).toMatch(/^"Instrument Serif"/);
+    expect(fontFamilies.body).toMatch(/^"Instrument Sans", "Anek Telugu", "Anek Devanagari"/);
     expect(fontFamilies.mono).toMatch(/^"IBM Plex Mono"/);
   });
 
   it('loads every family it names', () => {
-    for (const family of ['Anek+Latin', 'Anek+Telugu', 'Anek+Devanagari', 'IBM+Plex+Mono']) {
+    for (const family of [
+      'Instrument+Sans',
+      'Instrument+Serif',
+      'Anek+Telugu',
+      'Anek+Devanagari',
+      'IBM+Plex+Mono',
+    ]) {
       expect(googleFontsUrl).toContain(`family=${family}`);
     }
   });
@@ -147,21 +161,39 @@ describe('type', () => {
     }
   });
 
-  it('display styles use Anek at width 110, text at 100', () => {
+  it('the serif is kept for big brand headlines: display styles only, and 48px or larger', () => {
     for (const group of textStyles) {
-      if (group.family === 'mono') continue;
       for (const style of group.styles) {
-        expect(style.width).toBe(style.fontWeight >= 700 ? 110 : 100);
+        if (group.family === 'display')
+          expect(Number.parseInt(style.fontSize, 10)).toBeGreaterThanOrEqual(48);
       }
     }
+    expect(textStyles.find((g) => g.family === 'display')?.styles.map((s) => s.name)).toEqual([
+      'display-xl',
+      'display-l',
+    ]);
   });
 });
 
 describe('shape', () => {
-  it('corners are 4 / 6 / 14 / 20 / pill', () => {
-    expect(radii.map((r) => r.value)).toEqual([4, 6, 14, 20, 999]);
-    expect(px('radius-sm')).toBe(6);
-    expect(px('radius-md')).toBe(14);
+  it('corners are 6 / 10 / 16 / 24 / pill', () => {
+    expect(radii.map((r) => r.value)).toEqual([6, 10, 16, 24, 999]);
+    expect(px('radius-sm')).toBe(10);
+    expect(px('radius-md')).toBe(16);
+  });
+
+  it('depth comes in three steps, each for light and dark', () => {
+    expect(shadows.map((s) => s.name)).toEqual(['shadow-rest', 'shadow-hover', 'shadow-lift']);
+  });
+});
+
+describe('motion', () => {
+  it('durations stay short and every easing is a cubic-bezier', () => {
+    for (const token of motion) {
+      if (token.name.startsWith('duration-')) {
+        expect(Number.parseInt(token.value, 10), token.name).toBeLessThanOrEqual(600);
+      } else expect(token.value, token.name).toMatch(/^cubic-bezier\(/);
+    }
   });
 
   it('spacing is the 8-point grid with a 4 px half step', () => {

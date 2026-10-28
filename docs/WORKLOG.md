@@ -2,6 +2,16 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 28 Oct 2026 · P7.7.1 · Design 2.0, the shared kit
+- **Design board** (published page "RECALL Design 2.0"): working prototypes of the new rider app (like Uber Driver), brand portal (like Airbnb) and staff portal (like Stripe), the system underneath, motion and pictures. Prateek approved it; his two notes (pictures looked pixelated, grey text looked off) are fixed: pictures redrawn at 2,560 px as WebP, text greys made warmer and a font setting that swapped letter shapes removed.
+- **Tokens** (`packages/design/src/tokens.ts`): Instrument Sans and Serif (Anek kept for Telugu and Devanagari), corners 10 / 16 / 24, three shadow steps, motion durations and easings, warmer `ink-muted` / `ink-subtle` / `line-strong`, white `surface-1` on paper. All contrast promises still hold (secondary text now 8.6:1 or more).
+- **Components** (`packages/design/components.css`): every existing `rc-` class restyled (the apps pick it up with no page changes), plus new parts: strong and small/large buttons, a busy state, icon buttons, the six-box code field, switch, segmented control, filter chips, counts, toast, loading shimmer, empty state, enter and stagger motion.
+- **Pictures** (`packages/design/brand/photos/`): seven night scenes (the lit screen, Durgam Cheruvu bridge, Hitech City towers, Gachibowli flyover, Jubilee Hills and Banjara Hills avenues, Kondapur), each at 2,560 and 1,280 px, drawn by `scripts/night-scenes.html` (`node packages/design/scripts/photos.mjs`).
+- **Portals**: headings and the wordmark use Instrument Sans (the serif stays out of the apps), smoother text rendering.
+- Tests: design tokens (fonts, the serif only at 48px+, corners, three depth steps, motion limits, every contrast promise); `pnpm -s check` green.
+- Open: the rider app still uses Anek (its fonts are bundled in the app); it moves to Instrument Sans in P7.7.3. The "RECALL" design-system page is rebuilt from `design-system/project/tokens.json` when it is next published.
+- Next: P7.7.2, the brand portal.
+
 ## 28 Oct 2026 · P7.6 · A live demo and investor material
 - **One-command demo** (`pnpm demo`, `tools/demo`): the real software on its own database marked as a demo copy, with made-up brands, staff, 200 riders and screens, 51 campaigns (done, running, upcoming), history of signed plays, invoices, reports, refunds and a payout run waiting for approval. Fake bikes ride real roads and send plays live. A demo desk (port 4000) shows the sign-in codes, the staff code and live numbers. `--bikes 2000` for a bigger fleet.
 - **Codespaces** (`.devcontainer/`): opens the demo in a browser, nothing to install. How to: `docs/DEMO.md`.

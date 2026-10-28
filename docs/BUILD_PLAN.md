@@ -319,6 +319,16 @@ The new look is **"Night Signal"**: deep midnight surfaces with one electric vol
 3. **P0.3.3** New logo mark and app icon in Night Signal.
 4. **P0.3.4** Redraw the 9 brand screens, then rider and admin screens, page by page, for your approval before code.
 
+### Design 2.0 (P7.7, approved by Prateek 28 Oct 2026)
+
+A premium redesign of all three apps on the same colours, from the approved design board (the "RECALL Design 2.0" page): the rider app like Uber Driver (dark, map first, one thumb), the brand portal like Airbnb (light, photo-led, areas as places you book, a price card that follows you), the staff portal like Stripe (calm, dense, a side menu grouped by job, Ctrl K to jump anywhere). Instrument Sans for words, Instrument Serif for big brand headlines only, 10 / 16 / 24 px corners, soft layered depth, quick-to-answer motion, and night pictures of Hyderabad drawn for RECALL. The money, plays and rules underneath do not change.
+
+1. **P7.7.1** The shared kit: tokens (warmer greys, white cards on paper, fonts, corners, depth, motion), shared components, the night pictures.
+2. **P7.7.2** Brand portal: areas as places, the booking card, campaigns, reports.
+3. **P7.7.3** Rider app: map home with a sheet, earnings, screen, account, daylight mode, Telugu and Hindi in the new fonts.
+4. **P7.7.4** Staff portal: side menu, Ctrl K, tables with side panels, the new home page.
+5. **P7.7.5** Polish and proof: every page at phone and laptop size, new screenshots and guides.
+
 ## External services to plug in later
 
 Eleven outside services are needed. Each gets an adapter in the code with a working fake from day one, so the whole platform runs and is tested without any keys. Going live = sign the contract, add the keys, run the adapter's tests. Providers listed are candidates to compare at that time, not decisions.
@@ -400,6 +410,7 @@ Phases overlap on purpose: each starts once the part it depends on is stable, no
 | P6 | Real integrations (needs company accounts) | Blocked | Mar – Jul 2027 |
 | P7 | Hardening, load test, security audit, POC readiness | Code done (P7.1–P7.5); the outside audit, staging and the 2-week road test need accounts, bikes and people | Jun – Jul 2027 |
 | P5 | Brand portal for self-serve | Done (real payments, GST lookups and messages wait for the outside accounts, P6) | Jul – Oct 2027 |
+| P7.7 | Design 2.0: premium look for the three apps | P7.7.1 done; P7.7.2–P7.7.5 next | Nov 2026 |
 
 ## Records for a human takeover
 
@@ -420,6 +431,7 @@ A new engineer should be able to read four files and start work the same day. Th
 
 | Date | Version | Change |
 | --- | --- | --- |
+| 28 Oct 2026 | 1.10 | Prateek: approved Design 2.0 (P7.7), a premium redesign of the three apps on the same colours, in five steps. |
 | 22 Oct 2026 | 1.9 | Prateek: forecast only after the POC (a price-book setting, POC mode first); 6/12-month deals: no discount on Lite hours, hours spread about equally over the months (±20%, a setting), discount on the bill; aggregator ads are free. |
 | 22 Oct 2026 | 1.8 | Prateek: sell only what an area can deliver (supply forecast, P1.3.7; replaces "no sell cap"); drafts reserve nothing, offers and suggestions when a request doesn't fit; the 40 RECALL spots: make-ups → aggregator ads → RECALL ads; 6-month deals priced on total hours with the discount on the bill; drafts are always paid at the prices in force. |
 | 22 Oct 2026 | 1.7 | Prateek's answers: POC pay zone 15 km around Hitech City; after the POC, the areas that are on (plus exceptions); POC pay once a month after it ends; TDS on rider pay; settings for fitting centres, support numbers and hours (10 am–7 pm), the loan bank (Dhanlaxmi Bank). |

@@ -4,6 +4,7 @@ import {
   coreColors,
   fontFamilies,
   lineWidth,
+  motion,
   radii,
   shadows,
   spacing,
@@ -25,6 +26,7 @@ export function tokensCss(): string {
     ...spacing.map((token) => `--${token.name}: ${token.value}px;`),
     ...radii.map((token) => `--${token.name}: ${token.value}px;`),
     `--line-width: ${lineWidth}px;`,
+    ...motion.map((token) => `--${token.name}: ${token.value};`),
   ]
     .map((line) => `  ${line}`)
     .join('\n');

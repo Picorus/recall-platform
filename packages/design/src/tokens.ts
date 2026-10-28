@@ -1,4 +1,5 @@
 // Night Signal design tokens: the ONE source for every value the apps and the RECALL design system use.
+// Design 2.0 (P7.7, approved 28 Oct 2026): Instrument Sans and Serif, softer corners, layered depth, motion.
 // Colours come from docs/NIGHT_SIGNAL.md; names, type styles, spacing and corners match the RECALL brand book
 // (the "RECALL" design-system artifact). Change a value here, then run `pnpm --filter @recall/design build`:
 // it rewrites tokens.css (web apps) and the design system's tokens.json. Tests hold the contrast promises.
@@ -61,9 +62,9 @@ export const themedColors = [
   },
   {
     name: 'surface-1',
-    value: { light: '#FBFBF8', dark: '#121723' },
+    value: { light: '#FFFFFF', dark: '#121723' },
     usage:
-      'Cards, sheets, tiles. `ink`, `ink-muted` and `ink-subtle` all pass on it (subtle 5.9:1 light, 5.6:1 dark).',
+      'Cards, sheets, tiles, tables: chalk white on paper, graphite on midnight. `ink`, `ink-muted` and `ink-subtle` all pass on it (subtle 6.3:1 light, 5.7:1 dark).',
   },
   {
     name: 'surface-2',
@@ -73,15 +74,15 @@ export const themedColors = [
   },
   {
     name: 'line',
-    value: { light: '#DADDD4', dark: '#262D3B' },
+    value: { light: '#E3E5DE', dark: '#262D3B' },
     usage:
       'Hairlines and card borders, 1px. Decorative separation only; never the only cue for a control.',
   },
   {
     name: 'line-strong',
-    value: { light: '#767C88', dark: '#606777' },
+    value: { light: '#7A7F77', dark: '#666B66' },
     usage:
-      'Control borders that must be seen: inputs, secondary buttons, checkboxes. 3:1 or more on every surface in both themes (light 3.8 / 4.0 / 3.4:1, dark 3.4 / 3.2 / 3.0:1 on `surface-0` / `-1` / `-2`).',
+      'Control borders that must be seen: inputs, secondary buttons, checkboxes. 3:1 or more on every surface in both themes (light 3.7 / 4.1 / 3.3:1, dark 3.6 / 3.3 / 3.2:1 on `surface-0` / `-1` / `-2`).',
   },
   {
     name: 'ink',
@@ -91,15 +92,15 @@ export const themedColors = [
   },
   {
     name: 'ink-muted',
-    value: { light: '#3D4350', dark: '#A3AAB8' },
+    value: { light: '#3B403D', dark: '#B9BEB8' },
     usage:
-      'Secondary text, descriptions, table body on all surfaces (9.1:1 light, 8.3:1 dark on `surface-0`; 7:1+ everywhere).',
+      'Secondary text, descriptions, table body on all surfaces (9.7:1 light, 10.2:1 dark on `surface-0`; 8.6:1+ everywhere). A warm grey with a hint of the paper green, never a cold blue-grey.',
   },
   {
     name: 'ink-subtle',
-    value: { light: '#5B6272', dark: '#8A909C' },
+    value: { light: '#5C615A', dark: '#8E938C' },
     usage:
-      'Captions, footnotes, timestamps on `surface-0` and `surface-1` (5.6:1+ light, 5.6:1+ dark). 5.0:1 / 5.4:1 on `surface-2`.',
+      'Captions, footnotes, timestamps on `surface-0` and `surface-1` (5.8:1+ light, 5.7:1+ dark). 5.2:1 / 5.5:1 on `surface-2`.',
   },
   {
     name: 'brand',
@@ -176,20 +177,21 @@ export const themes = Object.fromEntries(
   ]),
 ) as Readonly<Record<ThemeName, Readonly<Record<ThemedColorName, string>>>>;
 
-/** Font stacks by role. Anek for words (Latin, Telugu, Devanagari), IBM Plex Mono for figures. */
+/** Font stacks by role. Instrument Sans for words, Instrument Serif for big brand headlines only, Anek for
+ * Telugu and Devanagari (it fills in for those scripts inside the sans stack), IBM Plex Mono for IDs. */
 export const fontFamilies = {
-  display: '"Anek Latin", Arial, sans-serif',
-  body: '"Anek Latin", "Anek Telugu", "Anek Devanagari", Arial, sans-serif',
-  mono: '"IBM Plex Mono", "Courier New", monospace',
-  telugu: '"Anek Telugu", "Anek Latin", sans-serif',
-  devanagari: '"Anek Devanagari", "Anek Latin", sans-serif',
+  display: '"Instrument Serif", "Iowan Old Style", Georgia, serif',
+  body: '"Instrument Sans", "Anek Telugu", "Anek Devanagari", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif',
+  mono: '"IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace',
+  telugu: '"Anek Telugu", "Instrument Sans", sans-serif',
+  devanagari: '"Anek Devanagari", "Instrument Sans", sans-serif',
 } as const;
 
 export type FontFamilyName = keyof typeof fontFamilies;
 
-/** Loads every face the stacks name (variable width 75–125 and weight 100–800 for Anek). */
+/** Loads every face the stacks name (Instrument Sans: variable width 75–100, weight 400–700). */
 export const googleFontsUrl =
-  'https://fonts.googleapis.com/css2?family=Anek+Latin:wdth,wght@75..125,100..800&family=Anek+Telugu:wdth,wght@75..125,100..800&family=Anek+Devanagari:wdth,wght@75..125,100..800&family=IBM+Plex+Mono:wght@400;500;600&display=swap';
+  'https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wdth,wght@0,75..100,400..700;1,75..100,400..700&family=Instrument+Serif:ital@0;1&family=Anek+Telugu:wght@400..700&family=Anek+Devanagari:wght@400..700&family=IBM+Plex+Mono:wght@400;500;600&display=swap';
 
 export interface TextStyle {
   readonly name: string;
@@ -197,7 +199,7 @@ export interface TextStyle {
   readonly lineHeight: string;
   readonly fontWeight: number;
   readonly letterSpacing?: string;
-  /** Anek width axis in % (`font-stretch`): 110 for display styles, 100 for text. */
+  /** Width axis in % (`font-stretch`), where the face has one. */
   readonly width?: number;
   readonly sample: string;
   readonly usage: string;
@@ -218,42 +220,21 @@ export const textStyles: readonly TextStyleGroup[] = [
         name: 'display-xl',
         fontSize: '96px',
         lineHeight: '0.95',
-        fontWeight: 800,
+        fontWeight: 400,
         letterSpacing: '-0.02em',
-        width: 110,
-        sample: 'Be seen where the city moves.',
+        sample: 'The city at night, on screen.',
         usage:
-          'One line per piece: covers, hoardings, screen headlines. Anek Latin 800 at wdth 110 (`font-stretch: 110%`).',
+          'Brand moments only: sign-in pages, report covers, the website, slides. Instrument Serif 400; the key words may be italic in `brand-ink` or `volt` on dark.',
       },
       {
         name: 'display-l',
         fontSize: '64px',
         lineHeight: '1',
-        fontWeight: 800,
+        fontWeight: 400,
         letterSpacing: '-0.015em',
-        width: 110,
-        sample: '200 plays. One brand.',
-        usage: 'Section openers, slide titles, poster headlines. Anek Latin 800, wdth 110.',
-      },
-      {
-        name: 'headline',
-        fontSize: '40px',
-        lineHeight: '1.1',
-        fontWeight: 700,
-        letterSpacing: '-0.01em',
-        width: 110,
-        sample: 'Book the city by the hour',
-        usage: 'Page and card headlines. Anek Latin 700, wdth 110.',
-      },
-      {
-        name: 'numeral',
-        fontSize: '56px',
-        lineHeight: '1',
-        fontWeight: 800,
-        letterSpacing: '-0.02em',
-        width: 110,
-        sample: '₹36,750',
-        usage: 'Hero numbers on tiles and slides. Anek Latin 800, wdth 110, tabular figures.',
+        sample: 'Book a street like you book a stay.',
+        usage:
+          'Section openers and empty-state headlines. Instrument Serif 400. Never inside tables or forms.',
       },
     ],
   },
@@ -262,49 +243,66 @@ export const textStyles: readonly TextStyleGroup[] = [
     family: 'body',
     styles: [
       {
-        name: 'title',
-        fontSize: '24px',
-        lineHeight: '32px',
+        name: 'headline',
+        fontSize: '30px',
+        lineHeight: '1.15',
         fontWeight: 600,
-        width: 100,
+        letterSpacing: '-0.02em',
+        sample: 'Hitech City launch week',
+        usage: 'Page headlines in the apps. Instrument Sans 600, tight tracking.',
+      },
+      {
+        name: 'numeral',
+        fontSize: '52px',
+        lineHeight: '1',
+        fontWeight: 600,
+        letterSpacing: '-0.035em',
+        sample: '₹2,97,360',
+        usage:
+          'The one hero number on a screen: earnings, a total. Instrument Sans 600, tabular figures.',
+      },
+      {
+        name: 'title',
+        fontSize: '20px',
+        lineHeight: '28px',
+        fontWeight: 600,
+        letterSpacing: '-0.01em',
         sample: '₹25 an hour + 25% of the sale',
-        usage: 'Card titles, dialog titles, table titles. Anek Latin 600, wdth 100.',
+        usage: 'Card titles, dialog titles, table titles. Instrument Sans 600.',
       },
       {
         name: 'body-l',
         fontSize: '18px',
-        lineHeight: '28px',
+        lineHeight: '29px',
         fontWeight: 400,
-        width: 100,
         sample: 'Brands buy bike-hours. Riders are paid for moving hours.',
-        usage: 'Lead paragraphs, brand book text, marketing pages. Anek Latin 400, wdth 100.',
+        usage:
+          'Lead paragraphs and marketing pages. Instrument Sans 400; `ink-muted` for secondary leads.',
       },
       {
         name: 'body',
-        fontSize: '16px',
+        fontSize: '15px',
         lineHeight: '24px',
         fontWeight: 400,
-        width: 100,
         sample: 'The clock pauses after 10 minutes standing still.',
         usage:
-          'Default UI and document text. Anek Latin 400/500, wdth 100. Measure 60–72 characters.',
+          'Default UI and document text. Instrument Sans 400/500 (430 on dark grounds, where thin strokes fade). Measure 60–72 characters.',
       },
       {
         name: 'label',
         fontSize: '12px',
         lineHeight: '16px',
         fontWeight: 600,
-        letterSpacing: '0.12em',
-        width: 100,
+        letterSpacing: '0.06em',
         sample: 'PLAYS DELIVERED',
-        usage: 'Eyebrows, column headers, chip text. Uppercase, tracked. Anek Latin 600, wdth 100.',
+        usage:
+          'Eyebrows, menu group names, uppercase column labels. Instrument Sans 600, lightly tracked.',
       },
       {
         name: 'caption',
         fontSize: '13px',
         lineHeight: '18px',
         fontWeight: 400,
-        width: 100,
         sample: 'Before GST. People counts are approximate.',
         usage: 'Footnotes, sources, helper text. `ink-subtle`.',
       },
@@ -316,12 +314,12 @@ export const textStyles: readonly TextStyleGroup[] = [
     styles: [
       {
         name: 'data',
-        fontSize: '14px',
+        fontSize: '13px',
         lineHeight: '20px',
         fontWeight: 500,
-        sample: 'BH 3,00,000 · ₹250.00/h',
+        sample: 'BK-DEMO-0011 · RCL-0148',
         usage:
-          'Tables of figures, IDs, bills, timestamps, GPS logs. IBM Plex Mono 500. Indian digit grouping.',
+          'IDs, GST numbers, codes and logs: IBM Plex Mono 500. Money and counts stay in Instrument Sans with tabular figures, so they read as words. Indian digit grouping.',
       },
     ],
   },
@@ -331,22 +329,20 @@ export const textStyles: readonly TextStyleGroup[] = [
     styles: [
       {
         name: 'telugu-headline',
-        fontSize: '40px',
-        lineHeight: '1.35',
-        fontWeight: 700,
-        width: 110,
+        fontSize: '32px',
+        lineHeight: '1.4',
+        fontWeight: 600,
         sample: 'మీ ప్రయాణం, మీ అదనపు ఆదాయం',
         usage:
-          'Telugu headlines for rider and local-brand creatives. Anek Telugu 700, wdth 110. Needs the extra line height for vowel signs.',
+          'Telugu headlines in the rider app and local-brand creatives. Anek Telugu 600. Needs the extra line height for vowel signs.',
       },
       {
         name: 'telugu-body',
-        fontSize: '18px',
-        lineHeight: '30px',
+        fontSize: '17px',
+        lineHeight: '28px',
         fontWeight: 400,
-        width: 100,
         sample: 'గంటకు ₹25 + 25%',
-        usage: 'Telugu body copy in the rider app and posters. Anek Telugu 400, wdth 100.',
+        usage: 'Telugu body copy in the rider app and posters. Anek Telugu 400.',
       },
     ],
   },
@@ -368,23 +364,91 @@ export const spacing = [
   { name: 'space-8', value: 96, usage: 'Hero padding, slide margins (scaled).' },
 ] as const satisfies readonly Token<number>[];
 
-/** Night Signal corners in px: 6 on controls, 14 on cards, 20 on hero panels and screen frames, pills for status only. */
+/** Corners in px (Design 2.0): 10 on controls, 16 on cards, 24 on sheets and hero panels, pills for chips. */
 export const radii = [
-  { name: 'radius-xs', value: 4, usage: 'Tags, small inputs, the geofenced field highlight.' },
-  { name: 'radius-sm', value: 6, usage: 'Controls: buttons, inputs, selectable table cells.' },
-  { name: 'radius-md', value: 14, usage: 'Cards, sheets, tiles, image frames.' },
-  { name: 'radius-screen', value: 20, usage: 'Screen frames and hero panels.' },
-  { name: 'radius-pill', value: 999, usage: 'Status chips, filter chips and toggles only.' },
+  {
+    name: 'radius-xs',
+    value: 6,
+    usage: 'Tags, small inputs, keyboard keys, the geofenced field highlight.',
+  },
+  {
+    name: 'radius-sm',
+    value: 10,
+    usage: 'Controls: buttons, inputs, menu items, selectable table cells.',
+  },
+  { name: 'radius-md', value: 16, usage: 'Cards, tables, tiles, image frames.' },
+  {
+    name: 'radius-screen',
+    value: 24,
+    usage: 'Bottom sheets, hero panels, screen frames, photo cards.',
+  },
+  {
+    name: 'radius-pill',
+    value: 999,
+    usage: 'Status chips, filter chips, toggles and the brand search bar.',
+  },
 ] as const satisfies readonly Token<number>[];
 
-/** Flat by default. Separation comes from surface steps and hairlines; one lift shadow for floating layers only. */
+/** Layered depth: soft, stacked shadows that read as light falling on paper, never a hard drop shadow. */
 export const shadows = [
   {
+    name: 'shadow-rest',
+    value: {
+      light: '0 1px 1px rgba(10,14,23,0.04), 0 2px 4px rgba(10,14,23,0.04)',
+      dark: '0 0 0 1px rgba(255,255,255,0.04)',
+    },
+    usage: 'Cards, tables and secondary buttons at rest: just enough to lift chalk off paper.',
+  },
+  {
+    name: 'shadow-hover',
+    value: {
+      light:
+        '0 1px 1px rgba(10,14,23,0.04), 0 4px 10px rgba(10,14,23,0.05), 0 12px 28px -12px rgba(10,14,23,0.14)',
+      dark: '0 12px 28px -12px rgba(0,0,0,0.6)',
+    },
+    usage: 'A card or photo the pointer is over, a booking card that follows the page.',
+  },
+  {
     name: 'shadow-lift',
-    value: { light: '0 8px 24px rgba(14,16,19,0.12)', dark: '0 8px 24px rgba(0,0,0,0.45)' },
-    usage: 'Menus, popovers, the floating booking bar. Never on cards in a grid.',
+    value: {
+      light:
+        '0 2px 4px rgba(10,14,23,0.05), 0 18px 40px -12px rgba(10,14,23,0.22), 0 40px 80px -24px rgba(10,14,23,0.25)',
+      dark: '0 18px 40px -12px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.08)',
+    },
+    usage: 'Floating layers only: menus, popovers, the search box (Ctrl K), side panels, toasts.',
   },
 ] as const satisfies readonly Token<ThemedValue>[];
+
+/** Motion: quick to answer, slow to settle. Every value respects "reduce motion" (no movement at all). */
+export const motion = [
+  { name: 'duration-press', value: '110ms', usage: 'A button or tile pressing in (scale 0.97).' },
+  { name: 'duration-quick', value: '180ms', usage: 'Hover, colour and fade changes.' },
+  {
+    name: 'duration-move',
+    value: '320ms',
+    usage: 'Pages cross-fading, panels sliding, tabs moving.',
+  },
+  {
+    name: 'duration-slow',
+    value: '560ms',
+    usage: 'Numbers rolling, bars growing, lists arriving one by one.',
+  },
+  {
+    name: 'ease-out',
+    value: 'cubic-bezier(0.16, 1, 0.3, 1)',
+    usage: 'Things arriving: fast start, soft landing.',
+  },
+  {
+    name: 'ease-in-out',
+    value: 'cubic-bezier(0.65, 0, 0.35, 1)',
+    usage: 'Things changing in place: loops, shimmer.',
+  },
+  {
+    name: 'ease-spring',
+    value: 'cubic-bezier(0.34, 1.36, 0.64, 1)',
+    usage: 'Sheets, switches and toasts: a small, gentle overshoot.',
+  },
+] as const satisfies readonly Token<string>[];
 
 /** Line width in px. Night Signal uses 1 px lines. */
 export const lineWidth = 1;

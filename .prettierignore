@@ -9,3 +9,4 @@ apps/admin/next-env.d.ts
 apps/brand/next-env.d.ts
 apps/admin/public/
 tools/demo/investor/index.html
+docs/design/design-2-board.html
