@@ -18,7 +18,15 @@ export const color = {
   error: dark.stop,
   done: dark.go,
   focus: dark.focus,
+  voltSoft: dark['brand-soft'],
+  data: dark.data,
+  dataSoft: dark['data-soft'],
+  doneSoft: dark['go-soft'],
+  errorSoft: dark['stop-soft'],
 } as const;
+
+/** Design 2.0 corners (P7.7): controls, cards, sheets. */
+export const radius = { control: 14, card: 18, sheet: 26, pill: 999 } as const;
 
 /** Big enough to tap with a glove: never under 44, main buttons 52. */
 export const touch = { min: 44, main: 52 } as const;

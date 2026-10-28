@@ -13,9 +13,12 @@ import {
   type TextInputProps,
   type TextStyle,
 } from 'react-native';
+import { glyphs, type GlyphName } from '@recall/design';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Svg, { Path, SvgXml } from 'react-native-svg';
 import { face, MONO, type Weight } from './fonts';
-import { color, touch } from './theme';
+import { LOCKUP_DARK } from './logo';
+import { color, radius, touch } from './theme';
 
 /** The rider's language, for the face every text is set in. */
 export const LangContext = createContext<RiderLanguage>('en');
@@ -52,15 +55,37 @@ export function Screen({ children }: { readonly children: ReactNode }) {
 
 export function Logo({ tagline }: { readonly tagline: string }) {
   return (
-    <View style={s.row} accessibilityRole="header">
-      <View style={s.mark} accessible={false}>
-        <View style={[s.bar, { height: 11, width: 4 }]} />
-        <View style={[s.bar, { height: 16, width: 7 }]} />
-        <View style={[s.bar, { height: 20, width: 28, borderRadius: 5 }]} />
-      </View>
-      <Text style={[s.wordmark, { fontFamily: face('en', 'extrabold') }]}>RECALL</Text>
+    <View style={{ gap: 6 }} accessibilityRole="header" accessibilityLabel="RECALL">
+      <SvgXml xml={LOCKUP_DARK} width={136} height={16} />
       <Words style={s.muted13}>{tagline}</Words>
     </View>
+  );
+}
+
+/** One of the shared icons (Design 2.0), drawn as strokes. Decorative: its words say what it is. */
+export function Icon({
+  name,
+  size = 22,
+  tint = color.text,
+}: {
+  readonly name: GlyphName;
+  readonly size?: number;
+  readonly tint?: string;
+}) {
+  return (
+    <Svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={tint}
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      accessible={false}
+    >
+      <Path d={glyphs[name]} />
+    </Svg>
   );
 }
 
@@ -120,7 +145,11 @@ export function MainButton({
       accessibilityState={{ disabled: off, busy: busy === true }}
       disabled={off}
       onPress={onPress}
-      style={({ pressed }) => [s.main, (pressed || off) && { opacity: 0.6 }]}
+      style={({ pressed }) => [
+        s.main,
+        pressed && { transform: [{ scale: 0.97 }] },
+        off && { opacity: 0.45 },
+      ]}
     >
       {busy ? (
         <ActivityIndicator color={color.onVolt} />
@@ -184,39 +213,36 @@ export function Field({
 
 export const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: color.ground },
-  body: { padding: 16, paddingTop: 20, gap: 16, flexGrow: 1 },
+  body: { padding: 20, paddingTop: 20, gap: 16, flexGrow: 1 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  mark: { flexDirection: 'row', alignItems: 'center', gap: 3 },
-  bar: { backgroundColor: color.volt, borderRadius: 3 },
-  wordmark: { color: color.text, fontSize: 20, letterSpacing: 0.5 },
-  title: { color: color.text, fontSize: 32, lineHeight: 40 },
+  title: { color: color.text, fontSize: 30, lineHeight: 36, letterSpacing: -0.6 },
   muted: { color: color.muted, fontSize: 16, lineHeight: 24 },
   muted13: { color: color.muted, fontSize: 13, lineHeight: 20 },
   label: { color: color.text, fontSize: 14 },
   alert: { color: color.error, fontSize: 15, lineHeight: 22 },
   main: {
-    minHeight: touch.main,
-    borderRadius: 6,
+    minHeight: 54,
+    borderRadius: radius.control,
     backgroundColor: color.volt,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 16,
   },
-  mainText: { color: color.onVolt, fontSize: 16 },
+  mainText: { color: color.onVolt, fontSize: 16.5 },
   link: {
     minHeight: touch.min,
     alignSelf: 'center',
     justifyContent: 'center',
     paddingHorizontal: 8,
   },
-  linkText: { color: color.text, fontSize: 14, textDecorationLine: 'underline' },
+  linkText: { color: color.muted, fontSize: 14.5 },
   linkOff: { color: color.quiet, textDecorationLine: 'none' },
   prefix: {
     minHeight: touch.main,
     paddingHorizontal: 14,
     borderWidth: 1,
     borderColor: color.line,
-    borderRadius: 6,
+    borderRadius: radius.control,
     justifyContent: 'center',
   },
   mono: { color: color.text, fontSize: 17, fontFamily: MONO },
@@ -226,7 +252,7 @@ export const s = StyleSheet.create({
     minHeight: touch.main,
     borderWidth: 1,
     borderColor: color.line,
-    borderRadius: 6,
+    borderRadius: radius.control,
     paddingHorizontal: 14,
     fontSize: 17,
     fontFamily: MONO,
@@ -235,8 +261,8 @@ export const s = StyleSheet.create({
   },
   card: {
     backgroundColor: color.raised,
-    borderRadius: 14,
-    padding: 16,
+    borderRadius: radius.card,
+    padding: 18,
     gap: 8,
     borderWidth: 1,
     borderColor: color.divider,

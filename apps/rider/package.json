@@ -14,9 +14,10 @@
   },
   "dependencies": {
     "@expo-google-fonts/anek-devanagari": "0.4.1",
-    "@expo-google-fonts/anek-latin": "0.4.2",
     "@expo-google-fonts/anek-telugu": "0.4.1",
     "@expo-google-fonts/ibm-plex-mono": "0.4.1",
+    "@expo-google-fonts/instrument-sans": "0.4.2",
+    "@expo-google-fonts/instrument-serif": "0.4.1",
     "@expo/metro-runtime": "~58.0.15",
     "@recall/design": "workspace:*",
     "@recall/domain": "workspace:*",
@@ -30,6 +31,7 @@
     "react-dom": "19.3.0",
     "react-native": "0.88.0",
     "react-native-safe-area-context": "~5.10.1",
+    "react-native-svg": "15.16.0",
     "react-native-web": "~0.21.4"
   },
   "devDependencies": {

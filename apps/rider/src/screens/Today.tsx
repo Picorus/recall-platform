@@ -10,11 +10,11 @@ import {
   type RiderLanguage,
 } from '@recall/domain';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { ApiError, call, type Me } from '../api';
 import { say, sayError, type Key } from '../i18n';
-import { color } from '../theme';
-import { Alert, Label, LinkButton, Muted, Screen, Title, Words, s } from '../ui';
+import { color, radius } from '../theme';
+import { Alert, Icon, Label, LinkButton, Muted, Screen, Title, Words, s } from '../ui';
 
 interface Day {
   readonly day: string;
@@ -56,11 +56,13 @@ export function hoursText(lang: RiderLanguage, seconds: number): string {
 
 const rupees = (p: number) => formatRupees(paise(p)).replace(/\.00$/, '');
 
-const STATE: Record<string, { key: Key; dot: string }> = {
-  moving: { key: 'screen.moving', dot: color.done },
-  stopped: { key: 'screen.stopped', dot: '#F5B83D' },
-  offline: { key: 'screen.offline', dot: color.error },
-  'at-hub': { key: 'screen.offline', dot: color.error },
+// The screen's state as a light: volt while it plays (the one volt thing on the page), a quiet
+// grey while the bike stands, red when it is off.
+const STATE: Record<string, { key: Key; dot: string; wash: string }> = {
+  moving: { key: 'screen.moving', dot: color.volt, wash: color.voltSoft },
+  stopped: { key: 'screen.stopped', dot: color.muted, wash: color.field },
+  offline: { key: 'screen.offline', dot: color.error, wash: color.errorSoft },
+  'at-hub': { key: 'screen.offline', dot: color.error, wash: color.errorSoft },
 };
 
 function Bars({ n }: { readonly n: number }) {
@@ -85,12 +87,23 @@ function Stat({ label, value }: { readonly label: string; readonly value: string
   return (
     <View style={{ flex: 1, gap: 2 }}>
       <Muted small>{label}</Muted>
-      <Words weight="extrabold" style={{ color: color.text, fontSize: 26, lineHeight: 34 }}>
+      <Words
+        weight="semibold"
+        style={{ color: color.text, fontSize: 26, lineHeight: 32, letterSpacing: -0.5 }}
+      >
         {value}
       </Words>
     </View>
   );
 }
+
+const initials = (name: string) =>
+  name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase())
+    .join('');
 
 export function Today({
   lang,
@@ -156,15 +169,32 @@ export function Today({
   const st = scr ? STATE[scr.state] : undefined;
   return (
     <Screen>
-      <View style={{ gap: 4 }}>
-        <Muted small>{say(lang, 'hello')}</Muted>
-        <Title>{me.name ?? say(lang, 'welcome')}</Title>
+      <View style={[s.row, { justifyContent: 'space-between', gap: 12 }]}>
+        <View style={{ gap: 2, flexShrink: 1 }}>
+          <Muted small>{say(lang, 'hello')}</Muted>
+          <Title>{me.name ?? say(lang, 'welcome')}</Title>
+        </View>
         {onProfile && (
-          <View style={{ alignSelf: 'flex-start' }}>
-            <LinkButton label={say(lang, 'profileLink')} onPress={onProfile} />
-          </View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={say(lang, 'profileLink')}
+            onPress={onProfile}
+            style={({ pressed }) => [t.avatar, pressed && { transform: [{ scale: 0.94 }] }]}
+          >
+            <Words weight="semibold" style={{ color: color.text, fontSize: 17 }}>
+              {initials(me.name ?? '') || '·'}
+            </Words>
+          </Pressable>
         )}
       </View>
+      {page && (
+        <View style={t.pill} accessibilityLabel={say(lang, 'earned')}>
+          <Words style={{ color: color.muted, fontSize: 14 }}>{say(lang, 'todayTitle')}</Words>
+          <Words weight="semibold" style={{ color: color.text, fontSize: 22, letterSpacing: -0.4 }}>
+            {rupees(page.today.earnedPaise)}
+          </Words>
+        </View>
+      )}
       {me.status === 'paused' && <Alert>{say(lang, 'status_paused')}</Alert>}
       {error !== '' && <Alert>{error}</Alert>}
       {error !== '' && page && <Muted small>{say(lang, 'asOf', { t: indiaClock(page.at) })}</Muted>}
@@ -176,14 +206,19 @@ export function Today({
             <Label>{say(lang, 'yourScreen')}</Label>
             {scr && st ? (
               <>
-                <View style={s.row}>
-                  <View
-                    style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: st.dot }}
-                    accessible={false}
-                  />
+                <View style={[s.row, { gap: 14 }]}>
+                  <View style={[t.orb, { backgroundColor: st.wash }]} accessible={false}>
+                    <View
+                      style={[
+                        t.light,
+                        { backgroundColor: st.dot, shadowColor: st.dot },
+                        scr.state === 'moving' && t.glow,
+                      ]}
+                    />
+                  </View>
                   <Words
                     weight="semibold"
-                    style={{ color: color.text, fontSize: 18, flexShrink: 1 }}
+                    style={{ color: color.text, fontSize: 20, lineHeight: 26, flexShrink: 1 }}
                   >
                     {say(lang, st.key)}
                   </Words>
@@ -272,8 +307,11 @@ export function Today({
             </View>
           )}
 
-          <View style={[s.card, { borderColor: color.volt }]}>
-            <Label>{say(lang, 'stopRuleTitle')}</Label>
+          <View style={[s.card, t.tip]}>
+            <View style={s.row}>
+              <Icon name="clock" size={20} tint={color.data} />
+              <Label>{say(lang, 'stopRuleTitle')}</Label>
+            </View>
             <Muted>{say(lang, 'stopRule')}</Muted>
           </View>
         </>
@@ -283,3 +321,38 @@ export function Today({
     </Screen>
   );
 }
+
+const t = {
+  avatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: color.field,
+    borderWidth: 1,
+    borderColor: color.line,
+  },
+  pill: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 10,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: radius.pill,
+    backgroundColor: color.raised,
+    borderWidth: 1,
+    borderColor: color.divider,
+  },
+  orb: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  light: { width: 12, height: 12, borderRadius: 6 },
+  glow: { shadowOpacity: 0.9, shadowRadius: 10, shadowOffset: { width: 0, height: 0 } },
+  tip: { backgroundColor: color.dataSoft, borderColor: color.dataSoft },
+} as const;
