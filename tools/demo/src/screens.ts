@@ -77,7 +77,21 @@ export function playsFor(
         }),
     });
   }
-  // And what each minute of the hour held (moving time: his pay's hours; most minutes moving).
+  out.push(...minutesFor(x.screen, x.area, x.startsAt));
+  return out;
+}
+
+/**
+ * What each minute of an hour held on one screen (moving time: his pay's hours; most minutes
+ * moving), for an hour he rode, booked or not.
+ */
+export function minutesFor(
+  screen: DemoScreen,
+  areaId: string,
+  startsAt: number,
+): { screen: DemoScreen; startAt: number; make: (a: AreaVersion) => Numbered }[] {
+  const x = { screen, area: areaId, startsAt };
+  const out: { screen: DemoScreen; startAt: number; make: (a: AreaVersion) => Numbered }[] = [];
   for (let k = 0; k < 60; k++) {
     const minute = x.startsAt + k * 60;
     const moving = 30 + ((k * 11 + x.screen.screenId.charCodeAt(6)) % 31);

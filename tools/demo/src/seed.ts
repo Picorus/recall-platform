@@ -27,7 +27,6 @@ import {
   setBookingAds,
   setBrandContact,
   setBrandTaxProfile,
-  setBusinessMode,
   setPortalMember,
   settleDue,
   uploadAd,
@@ -54,7 +53,7 @@ import {
 import { fakeMaps } from '@recall/adapters';
 import { generateKeyPairSync, sign, type KeyObject } from 'node:crypto';
 import type pg from 'pg';
-import { playsFor, sendHistory, type DemoScreen } from './screens.js';
+import { minutesFor, playsFor, sendHistory, type DemoScreen } from './screens.js';
 import {
   AGENCY,
   AGENCY_CLIENTS,
@@ -67,6 +66,10 @@ import {
 } from './world.js';
 
 const DAY = 86_400;
+/** Riders whose screens get a week of riding history outside campaigns (the rest ride live). */
+const RIDING_HISTORY_SCREENS = 60;
+/** India hours a rider usually rides (lunch and evening rushes). */
+const RIDING_HOURS = [9, 12, 13, 17, 18, 19, 20, 21] as const;
 const iso = (t: number) => new Date(t * 1000).toISOString();
 /** India's business date `days` from `now`'s (business days run 08:00–02:00). */
 const dayFrom = (now: number, days: number) =>
@@ -108,7 +111,8 @@ export async function seedDemo(
   await savePriceBook(pool, { ...PRICE_BOOK_V1, validFrom: iso(start) }, 'founder');
   const areas = launchAreas(iso(start)).map((a) => ({ ...a, draft: false }));
   for (const a of areas) await saveAreaVersion(pool, a, 'founder');
-  await setBusinessMode(pool, 'poc', founder, 'the POC is running (demo)', start);
+  // Regular business (Prateek, 28 Oct 2026): the demo shows the main business, riders paid ₹25 a
+  // moving hour + 25% of what their hours sold. The POC switch is in Settings, off.
   await saveSetting(
     pool,
     'company',
@@ -562,7 +566,18 @@ export async function seedDemo(
   for (const p of finished)
     deliver(p, p === first ? lineIdOf(p.id, 'hyd-hitech-city', last, 19) : undefined);
   for (const p of running) deliver(p);
-  await sendHistory(pool, played.map((x) => playsFor(x)).flat(), areas, log);
+  // Riders ride outside booked hours too (their ₹25 an hour counts every moving hour): the last
+  // week's usual riding hours for the first riders, where no campaign had their screen.
+  const riding: ReturnType<typeof minutesFor> = [];
+  for (const s of screens.slice(0, RIDING_HISTORY_SCREENS))
+    for (let back = 1; back <= 7; back++)
+      for (const hour of RIDING_HOURS) {
+        const startsAt = lineStartsAt({ date: dayFrom(now, -back), startHour: hour });
+        if (startsAt + 3600 > now || busy.has(`${s.screenId}|${startsAt}`)) continue;
+        busy.add(`${s.screenId}|${startsAt}`);
+        riding.push(...minutesFor(s, s.home, startsAt));
+      }
+  await sendHistory(pool, [...played.map((x) => playsFor(x)).flat(), ...riding], areas, log);
 
   // Steps the system takes as time passes: running, done; money closed hour by hour; make-ups and
   // refunds decided; reports built for finished campaigns; riders' pay for the month so far.
