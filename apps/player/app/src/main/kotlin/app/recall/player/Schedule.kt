@@ -38,6 +38,7 @@ object Schedule {
             DownKind.AREAS -> s.onAreas(text)
             DownKind.PLAN -> s.onPlans(text)
             DownKind.ASSIGN -> s.onAssign(text)
+            DownKind.POC -> s.onPoc(text)
             else -> return false
         }
         return true

@@ -36,6 +36,8 @@ class LocalScheduler(
         val plans: Map<String, HourPlan> = emptyMap(),
         val plansMade: Long = 0,
         val assigned: Map<String, Pair<Assignment, String>> = emptyMap(),
+        /** P7.8: the POC months' plans (the newest message wins, whole). */
+        val poc: PocPlanList = PocPlanList(0, emptyList()),
     )
 
     @Volatile private var state = State()
@@ -70,6 +72,9 @@ class LocalScheduler(
             } else {
                 log("schedule: kept plans refused: ${list.problem}")
             }
+        }
+        file("poc")?.let { text ->
+            PocPlans.parse(text).let { if (it.problem == null) s = s.copy(poc = it) else log("schedule: kept POC plans refused: ${it.problem}") }
         }
         file("assigned")?.let { text ->
             val kept = HashMap<String, Pair<Assignment, String>>()
@@ -142,6 +147,19 @@ class LocalScheduler(
         }
     }
 
+    /** The POC months' plans (down/poc, P7.8): the newest message wins, whole. Returns true when taken. */
+    fun onPoc(text: String): Boolean {
+        val p = PocPlans.parse(text)
+        if (p.problem != null) return refuse("POC plans", p.problem)
+        if (ahead(p.made)) return refuse("POC plans", "dated ahead")
+        synchronized(writing) {
+            if (p.made <= state.poc.made) return false
+            DiskFiles.writeAtomically(File(dir, "poc"), text)
+            state = state.copy(poc = p)
+        }
+        return true
+    }
+
     /** The cloud's pick for this screen (down/assign): per area-hour the newest wins. Returns true when taken. */
     fun onAssign(text: String): Boolean {
         val a = PlanMessages.assign(text)
@@ -200,6 +218,8 @@ class LocalScheduler(
     /** The plan and what this bike carries at `utcMs`; null outside every area or without a plan. */
     override fun at(utcMs: Long): Pair<HourPlan, Carry>? {
         val s = state
+        // P7.8: in a POC month's business hours, inside its zone, the POC rotation takes every brand spot.
+        pocAt(s, utcMs)?.let { return it }
         val (areaId, edge) = when (val p = place) {
             is Place.Inside -> p.areaId to false
             is Place.Edge -> p.areaId to true
@@ -217,6 +237,24 @@ class LocalScheduler(
         if (line == null && spot == null) return plan to given
         unmatchedCount.incrementAndGet()
         return plan to Carry(if (line != null) own.lineId else given.lineId, if (spot != null) own.spotId else given.spotId)
+    }
+
+    /** The POC hour at `utcMs` when a POC month plays then and the bike is in its zone; else null. */
+    private fun pocAt(s: State, utcMs: Long): Pair<HourPlan, Carry>? {
+        val t = Math.floorDiv(utcMs, 1000L)
+        val plan = s.poc.plans.firstOrNull { PocPlans.covers(it, t) } ?: return null
+        val inZone = when (val z = plan.zone) {
+            is PocZone.Circle -> where(t).takeIf { it.accuracyM != Where.NO_FIX_ACCURACY_M }
+                ?.let { Geo.distanceMeters(z.centre, LatLng(it.latE6 / 1e6, it.lngE6 / 1e6)) <= z.radiusM } ?: false
+            is PocZone.Areas -> when (val p = place) {
+                is Place.Inside -> p.areaId in z.areaIds
+                is Place.Edge -> z.withEdge && p.areaId in z.areaIds
+                Place.Outside -> false
+            }
+        }
+        if (!inZone) return null
+        val hour = PocPlans.hourOf(t)
+        return HourPlan("poc", hour, emptyList(), emptyList(), plan.recallAds, poc = PocCarry(plan, screenId)) to Carry(null, null)
     }
 
     private companion object {
