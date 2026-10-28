@@ -16,7 +16,7 @@
     "services:up": "docker compose -f infra/docker-compose.yml up -d --wait",
     "services:check": "sh infra/check-services.sh",
     "services:down": "docker compose -f infra/docker-compose.yml down",
-    "demo": "pnpm services:up && pnpm --filter @recall/demo start"
+    "demo": "pnpm install --frozen-lockfile --prefer-offline && pnpm services:up && pnpm --filter @recall/demo start"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

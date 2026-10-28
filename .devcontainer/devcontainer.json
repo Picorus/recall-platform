@@ -24,7 +24,10 @@
     "8333": { "onAutoForward": "ignore" }
   },
   // Once, when the codespace is made: the tools, then the two websites built.
-  "postCreateCommand": "corepack enable && pnpm install --frozen-lockfile && pnpm --filter @recall/admin build && pnpm --filter @recall/brand build",
+  // corepack may fail where pnpm is already installed, and must never stop for a "continue? [Y/n]"
+  // question; the install is tried again by `pnpm demo` if this step fails for any reason.
+  "containerEnv": { "COREPACK_ENABLE_DOWNLOAD_PROMPT": "0" },
+  "postCreateCommand": "(corepack enable || true) && pnpm install --frozen-lockfile && pnpm --filter @recall/admin build && pnpm --filter @recall/brand build",
   // Every time it is opened: the demo starts (a fresh one each time) in the terminal below.
   "postAttachCommand": "pnpm demo",
   "customizations": {

@@ -81,6 +81,7 @@ To see 15,500 bikes (the full fleet), use the investor demo page: it plays back 
 | You see | Do this |
 |---|---|
 | "port … is in use" | A demo is already running in another terminal. Close that terminal, or press Ctrl+C there, then type `pnpm demo`. |
+| "node_modules missing" or "tsx: not found" | Type `pnpm install`, then `pnpm demo`. (`pnpm demo` now does the install itself; this is for a codespace made before 28 Oct 2026.) |
 | "the database is not running" | Type `pnpm services:up`, then `pnpm demo`. |
 | A page says "Not from the admin site" or sign-in fails | Open the portals from the demo desk's buttons, not from an old bookmark (the address changes with each codespace). |
 | The demo desk tab did not open | Ports tab → **Demo desk (start here)** → globe icon. |
