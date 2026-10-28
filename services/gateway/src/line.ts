@@ -4,9 +4,11 @@
 // answered with "stored up to N", so the box can forget those. A message refused whole is recorded
 // and not answered: nothing is lost, the box keeps it and sends it again. Commands not yet answered
 // (P2.12) go again with every hello (the box says hello when its line opens and every 15 minutes).
+// P7.8: so does the POC months' plan (down/poc), which the box keeps and plays with no network.
 import {
   lastAppCode,
   pendingCommands,
+  pocPlans,
   recordHello,
   recordRefusal,
   storeUpload,
@@ -18,6 +20,7 @@ import {
   parseHello,
   parseUpload,
   parseUpTopic,
+  pocPlansText,
   timeText,
 } from '@recall/domain';
 import type { Pool } from 'pg';
@@ -73,8 +76,10 @@ export async function handleUp(
     const update = await (h.code !== null ? Promise.resolve(h.code) : lastAppCode(pool, screenId))
       .then((code) => updateFor(pool, screenId, code, nowMs))
       .catch(() => undefined);
+    const poc = await pocMessage(pool, nowMs).catch(() => undefined);
     return [
       { topic: downTopic(screenId, 'time'), payload: timeText(nowMs, h.mono) },
+      ...(poc ? [{ topic: downTopic(screenId, 'poc'), payload: poc }] : []),
       ...commands.map((payload) => ({ topic: downTopic(screenId, 'command'), payload })),
       ...(update ? [{ topic: downTopic(screenId, 'update'), payload: update }] : []),
     ];
@@ -87,4 +92,15 @@ export async function handleUp(
   }
   const stored = await storeUpload(pool, screenId, u.batch, u.oldestHeld, Math.floor(nowMs / 1000));
   return [{ topic: downTopic(screenId, 'ack'), payload: ackText(stored.ack) }];
+}
+
+/** The POC months' plan, made at most once a minute for every screen (it is the same for all). */
+let pocCache: { minute: number; text: string | undefined } | undefined;
+async function pocMessage(pool: Pool, nowMs: number): Promise<string | undefined> {
+  const minute = Math.floor(nowMs / 60_000);
+  if (pocCache?.minute === minute) return pocCache.text;
+  const plans = await pocPlans(pool, Math.floor(nowMs / 1000));
+  const text = plans.length > 0 ? pocPlansText(plans, nowMs) : undefined;
+  pocCache = { minute, text };
+  return text;
 }

@@ -24,6 +24,7 @@ import {
   can,
   DEFAULT_SIGN_IN_RULES,
   passwordProblem,
+  pocAlerts,
   STAFF_AREAS,
   STAFF_ROLES,
   type Need,
@@ -33,6 +34,8 @@ import {
 import {
   acceptInvite,
   addStaff,
+  pocMonthsSetting,
+  pocPhaseAt,
   changeAccess,
   endSession,
   ipRange,
@@ -67,6 +70,7 @@ import { handleDashboard } from './dashboard-api.js';
 import { handleSupport } from './support-api.js';
 import { handleAudit } from './audit-api.js';
 import { handleSettings } from './settings-api.js';
+import { handlePoc } from './poc-api.js';
 import { handleBrandPortal } from './brand-portal-api.js';
 import { handleRiderApp } from './rider-app-api.js';
 import {
@@ -380,7 +384,14 @@ export async function handleStaff(
   }
 
   if (method === 'GET' && path === '/staff/me') {
-    send(res, 200, { member: shown(await staffFor(pool, cfg, req, nowMs)) });
+    const me = await staffFor(pool, cfg, req, nowMs);
+    // P7.8: super admins see where the POC stands on every page (scheduled, starts, ends soon, over).
+    const now = Math.floor(nowMs / 1000);
+    const alerts =
+      me.access.role === 'super-admin'
+        ? pocAlerts(await pocPhaseAt(pool, now), await pocMonthsSetting(pool), now)
+        : [];
+    send(res, 200, { member: shown(me), alerts });
     return true;
   }
 
@@ -536,6 +547,7 @@ export function apiHandler(
       if (await handleSupport(pool, cfg, req, res, nowMs)) return;
       if (await handleAudit(pool, cfg, req, res, nowMs)) return;
       if (await handleSettings(pool, cfg, req, res, nowMs)) return;
+      if (await handlePoc(pool, cfg, req, res, nowMs)) return;
       throw new HttpError(404, 'Not found');
     })().catch((e: unknown) => {
       if (e instanceof HttpError)

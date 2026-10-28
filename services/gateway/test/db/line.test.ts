@@ -275,3 +275,33 @@ describe('gateway (P2.3.2): hellos and uploads', () => {
     ).toEqual(['done', 'expired']);
   });
 });
+
+describe('P7.8: the POC months go to every box with its hello', () => {
+  it('once the POC is switched on, a hello also brings its plan on down/poc', async () => {
+    const { setBusinessMode } = await import('@recall/db');
+    const { parsePocPlans } = await import('@recall/domain');
+    const at = (NOW + 600) * 1000;
+    const hello = () =>
+      handleUp(pool, `recall/v1/s/${box.screenId}/up/hello`, bytes(helloText('0.1.0', 1)), at);
+    expect((await hello()).some((r) => r.topic.endsWith('/down/poc'))).toBe(false);
+    const from = await setBusinessMode(
+      pool,
+      'poc',
+      { id: 'prateek', role: 'super-admin' },
+      'POC scheduled',
+      NOW,
+    );
+    // Made at most once a minute: a minute later it is there.
+    const replies = await handleUp(
+      pool,
+      `recall/v1/s/${box.screenId}/up/hello`,
+      bytes(helloText('0.1.0', 2)),
+      at + 60_000,
+    );
+    const poc = replies.find((r) => r.topic === `recall/v1/s/${box.screenId}/down/poc`);
+    const plans = parsePocPlans(poc?.payload ?? '');
+    expect('plans' in plans && plans.plans.map((p) => [p.startsAt, p.brands.length])).toEqual([
+      [from, 0],
+    ]);
+  });
+});
