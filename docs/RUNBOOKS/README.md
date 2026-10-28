@@ -12,3 +12,4 @@ Step-by-step "how to" for operations. One file per operation, added when the ope
 | [load-test.md](load-test.md) | Proving the cloud keeps up with the whole fleet |
 | [backup-restore.md](backup-restore.md) | Backups, restoring, and undoing a bad release in one step |
 | [security.md](security.md) | A lost or stolen screen; the limits in place; what to do before going live |
+| [../DEMO.md](../DEMO.md) | The live demo (`pnpm demo`, or a Codespace) and the guides for showing each app |

@@ -8,3 +8,4 @@ packages/domain/test-vectors/
 apps/admin/next-env.d.ts
 apps/brand/next-env.d.ts
 apps/admin/public/
+tools/demo/investor/index.html

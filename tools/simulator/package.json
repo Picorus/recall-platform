@@ -11,7 +11,8 @@
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
     "start": "tsx src/cli.ts",
-    "schedule": "tsx src/schedule-cli.ts"
+    "schedule": "tsx src/schedule-cli.ts",
+    "frames": "tsx src/frames-cli.ts"
   },
   "dependencies": {
     "@recall/domain": "workspace:*"
