@@ -451,6 +451,34 @@ describe('the screens and the plays (P7.8.2)', () => {
   });
 });
 
+describe('a payment that comes too late (P7.8.1)', () => {
+  it('news of a payment long after the month started is owed back, never kept', async () => {
+    const link = await sendPocForPayment(
+      pool,
+      payments,
+      'poc/alpha/2027-09',
+      SALES,
+      ON + 2 * 86_400,
+    );
+    const late = pocMonthWindow('2027-09').startsAt + 3 * 86_400;
+    expect(
+      await applyLinkStatus(
+        pool,
+        link.linkId,
+        { state: 'paid', paymentId: 'pay_days_late', paidAt: late, amountPaise: link.amountPaise },
+        late,
+      ),
+    ).toBe('paid-late');
+    expect((await brandPocPage(pool, 'alpha', late))?.months.map((m) => m.state)).toEqual([
+      'paid',
+      'missed',
+      'to-pay',
+    ]);
+    const back = await accountTotals(pool, 'refunds-payable', { party: 'alpha' });
+    expect(back.credit - back.debit).toBe(29_500_000);
+  });
+});
+
 describe('earning a month as it runs', () => {
   it('day by day: the whole fee by the end of the month, never twice, the books balanced', async () => {
     await closeEarnings(pool, ist('2027-08-02T02:00:00'));
@@ -527,6 +555,7 @@ describe('switching back (Prateek, 28 Oct 2026): by hand, never early by mistake
 });
 
 describe('ending early on purpose', () => {
+  // The days after an early end never played: they stay held (for Prateek to decide), never earned.
   let db2: Awaited<ReturnType<typeof freshDatabase>>;
   beforeAll(async () => {
     db2 = await freshDatabase();
@@ -536,7 +565,50 @@ describe('ending early on purpose', () => {
   });
 
   it('with early: true the switch back counts from that business day; then never again', async () => {
-    await setBusinessMode(db2.pool, 'poc', SUPER, 'POC on', ON);
+    const p2 = db2.pool;
+    await savePriceBook(p2, PRICE_BOOK_V1, 'prateek');
+    await createAccount(
+      p2,
+      {
+        brandId: 'early',
+        kind: 'brand',
+        details: { name: 'Early', agencyId: null, referredBy: null, active: true },
+        by: SALES,
+        reason: 'test',
+      },
+      ON - 86_400,
+    );
+    await setBusinessMode(p2, 'poc', SUPER, 'POC on', ON);
+    const early = [] as string[];
+    for (const k of [1, 2]) {
+      const adId = `AD-00000000B${k}`;
+      await p2.query(
+        `INSERT INTO ads (ad_id, brand_id, name, file_key, bytes, kind, checks, outcome, uploaded_by, uploaded_at)
+         VALUES ($1, 'early', 'ad', $2, 1, 'png', '[]', 'pass', 'test', now())`,
+        [adId, String(k).repeat(64)],
+      );
+      await p2.query(
+        `INSERT INTO ad_reviews (ad_id, decision, checklist, reviewed_by, reviewed_at)
+         VALUES ($1, 'approved', '{}', 'r', now())`,
+        [adId],
+      );
+      early.push(adId);
+    }
+    await addPocBrand(
+      p2,
+      { brandId: 'early', firstMonth: '2027-09', months: 1, adIds: early, reason: 'September' },
+      SALES,
+      ON,
+    );
+    const link = await sendPocForPayment(p2, payments, 'poc/early/2027-09', SALES, ON);
+    expect(
+      await applyLinkStatus(
+        p2,
+        link.linkId,
+        { state: 'paid', paymentId: 'pay_early', paidAt: ON + 60, amountPaise: link.amountPaise },
+        ON + 60,
+      ),
+    ).toBe('paid');
     const t = ist('2027-09-15T12:00:00');
     expect(
       await setBusinessMode(db2.pool, 'regular', SUPER, 'stopping early', t, { early: true }),
@@ -548,5 +620,46 @@ describe('ending early on purpose', () => {
     await expect(
       setBusinessMode(db2.pool, 'poc', SUPER, 'POC again', t + 86_400 * 30),
     ).rejects.toThrow(/POC has ended/);
+    // September earned for its 14 POC days only; the other 16 stay held.
+    await closeEarnings(p2, pocMonthWindow('2027-09').endsAt + 3600);
+    const rev = await accountTotals(p2, 'revenue', { ref: 'poc/early/2027-09' });
+    expect(rev.credit - rev.debit).toBe(Math.floor((25_000_000 * 14) / 30));
+    const held = await accountTotals(p2, 'campaign-held', { ref: 'poc/early/2027-09' });
+    expect(held.credit - held.debit).toBe(25_000_000 - Math.floor((25_000_000 * 14) / 30));
+  });
+});
+
+describe('the most brands while the POC runs', () => {
+  let db3: Awaited<ReturnType<typeof freshDatabase>>;
+  beforeAll(async () => {
+    db3 = await freshDatabase();
+  }, 120_000);
+  afterAll(async () => {
+    await db3.drop();
+  });
+
+  it('cannot change while the POC runs (it sets every bike’s rotation)', async () => {
+    // Switched on long ago: running now.
+    await setBusinessMode(
+      db3.pool,
+      'poc',
+      SUPER,
+      'POC on',
+      Date.parse('2026-01-15T06:00:00Z') / 1000,
+    );
+    await expect(
+      saveSetting(db3.pool, 'poc', { ...DEFAULT_POC_RULES, maxBrands: 30 }, SUPER, 'fewer', 0),
+    ).rejects.toThrow(/cannot change while the POC runs/);
+    // The fee can: a month keeps the fee it was added at.
+    expect(
+      await saveSetting(
+        db3.pool,
+        'poc',
+        { ...DEFAULT_POC_RULES, feePaise: 30_000_000 },
+        SUPER,
+        'dearer',
+        0,
+      ),
+    ).toBe(1);
   });
 });

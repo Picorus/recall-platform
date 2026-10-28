@@ -8,6 +8,7 @@
 // ledger entries and every play the screens sign for it.
 import type { LinkStatus, PaymentsAdapter } from '@recall/adapters';
 import {
+  addMonths,
   businessMonthAt,
   DEFAULT_SPOT_RULES,
   indiaHourOf,
@@ -44,12 +45,22 @@ import { setting } from './settings.js';
 type Q = Pick<PoolClient, 'query'>;
 const secs = (d: Date) => Math.floor(d.getTime() / 1000);
 
+/**
+ * Plays of POC months that count, leaving out plays a revoked key signed after it was given up (as
+ * plays.ts playsOf), for `FROM_PLAYS`.
+ */
+export const COUNTED = `p.counts <> 'no' AND (r.key_id IS NULL OR (p.start_at < r.plays_until AND p.received_at < r.revoked_at))`;
+export const FROM_PLAYS = `FROM plays p LEFT JOIN screen_key_revocations r
+                     ON r.screen_id = p.screen_id AND r.key_id = p.key_id`;
+
 /** RECALL's own ads are the approved ads of this account (opened by staff like a brand's). */
 export const RECALL_OWN_ACCOUNT = 'recall';
 /** A link must work at least this long (as for bookings). */
 const MIN_LINK_SECONDS = 15 * 60;
 /** A link that ran out is acted on this long after its end: a payment started in time may finish. */
 const EXPIRY_GRACE_SECONDS = 2 * 60;
+/** News of a payment taken before a month started may reach us this long after its start. */
+const PAID_NEWS_GRACE_SECONDS = 30 * 60;
 const AD_ID = /^AD-[0-9A-F]{10}$/;
 
 const MONTHS = [
@@ -182,11 +193,7 @@ export async function addPocBrand(
         : 'Switch the business to POC first (Settings): POC brands join a scheduled or running POC',
       { code: 'poc-off' },
     );
-  const lastMonth = (() => {
-    let m = b.firstMonth;
-    for (let k = 1; k < b.months; k++) m = nextMonth(m);
-    return m;
-  })();
+  const lastMonth = addMonths(b.firstMonth, b.months - 1);
   if (pocMonthWindow(b.firstMonth).startsAt < phase.startsAt)
     throw new Refusal(
       `The POC starts in ${monthName(calendarMonth(phase.startsAt))}: a brand's first month is that one or later`,
@@ -205,11 +212,7 @@ export async function addPocBrand(
   const book = priceBookAt(await priceBooks(pool), isoAt(now));
   if (!book) throw new Refusal('No price book in force');
   const money = pocMonthMoney(rules.feePaise, book.gstBp);
-  const months = Array.from({ length: b.months }, (_, i) => {
-    let m = b.firstMonth;
-    for (let k = 0; k < i; k++) m = nextMonth(m);
-    return m;
-  });
+  const months = Array.from({ length: b.months }, (_, i) => addMonths(b.firstMonth, i));
   return inTransaction(pool, async (c) => {
     await c.query("SELECT pg_advisory_xact_lock(hashtext('poc'))");
     const there = await c.query('SELECT 1 FROM poc_brands WHERE brand_id = $1', [b.brandId]);
@@ -519,6 +522,23 @@ export async function applyPocLinkStatus(
     const m = await c.query<MonthRow>('SELECT * FROM poc_months WHERE ref = $1', [l.ref]);
     const row = m.rows[0];
     if (!row) throw new Error(`No POC month ${l.ref}`);
+    // A month is paid before it starts (links stop then): news of a payment may come a little
+    // later, never days later; and a link we recorded as run out or stopped takes no money.
+    const ended = await c.query(
+      `SELECT 1 FROM payment_link_events WHERE link_id = $1 AND state IN ('expired', 'cancelled')`,
+      [linkId],
+    );
+    if (ended.rowCount || now > pocMonthWindow(row.month).startsAt + PAID_NEWS_GRACE_SECONDS) {
+      const out = await moneyBack(
+        c,
+        l,
+        'paid-late',
+        paid,
+        ended.rowCount ? 'paid on a link that had run out' : 'paid after the POC month started',
+        now,
+      );
+      return out === 'already' ? 'already' : 'paid-late';
+    }
     await c.query(
       `INSERT INTO payment_link_events (link_id, state, payment_id, amount_paise, at)
        VALUES ($1, 'paid', $2, $3, to_timestamp($4))`,
@@ -587,8 +607,17 @@ export async function expirePocLinks(
     try {
       await payments.cancelLink(x.link_id).catch(() => undefined);
       const s = await payments.status(x.link_id).catch((): LinkStatus => ({ state: 'expired' }));
-      // Stopped by us because it ran out: recorded as run out, unless it was paid meanwhile.
-      await applyPocLinkStatus(pool, x.link_id, s.state === 'paid' ? s : { state: 'expired' }, now);
+      // Stopped by us because it ran out: recorded as run out, unless it was paid meanwhile. A
+      // payment that could not be kept (wrong amount, a second one) does not end the link: it is
+      // recorded as run out too, so it is never picked up again.
+      const out = await applyPocLinkStatus(
+        pool,
+        x.link_id,
+        s.state === 'paid' ? s : { state: 'expired' },
+        now,
+      );
+      if (out !== 'paid' && out !== 'expired')
+        await applyPocLinkStatus(pool, x.link_id, { state: 'expired' }, now);
       n += 1;
     } catch (e) {
       log(`payments: could not expire POC link ${x.link_id}: ${(e as Error).message}`);
@@ -621,9 +650,14 @@ export async function earnPocMonths(c: Q, now: number): Promise<number> {
     [calendarMonth(now)],
   );
   let posted = 0;
+  const changes = await businessModes(c);
   for (const m of r.rows) {
     const done = new Set(m.done);
     for (const date of pocDaysOver(m.month, now)) {
+      // Only a day the POC was on (it played): a day after the POC was ended early stays held, for
+      // Prateek to decide (DECISIONS, 29 Oct 2026).
+      const dayStart = pocMonthWindow(m.month).startsAt + 86_400 * (Number(date.slice(8)) - 1);
+      if (modeAt(changes, dayStart) !== 'poc') continue;
       // Dated the day itself (23:59:59 India time): the month's revenue stays in its month.
       const dayEnd =
         pocMonthWindow(m.month).startsAt - 8 * 3600 - 1 + 86_400 * Number(date.slice(8));
@@ -761,9 +795,9 @@ export function pocJudge(c: Q, screenId: string) {
       if (counted === undefined) {
         const hour = indiaHourOf(startAt);
         const r = await c.query<{ n: string }>(
-          `SELECT count(*) AS n FROM plays
-            WHERE screen_id = $1 AND line_id = $2 AND counts <> 'no'
-              AND start_at >= to_timestamp($3) AND start_at < to_timestamp($4)`,
+          `SELECT count(*) AS n ${FROM_PLAYS}
+            WHERE p.screen_id = $1 AND p.line_id = $2 AND ${COUNTED}
+              AND p.start_at >= to_timestamp($3) AND p.start_at < to_timestamp($4)`,
           [screenId, ref, hour, hour + 3600],
         );
         counted = Number(r.rows[0]?.n ?? 0);
@@ -866,10 +900,10 @@ async function monthViews(c: Q, brandIds: readonly string[], now: number) {
 async function playsByRef(c: Q, refs: readonly string[], from: number, to: number) {
   if (refs.length === 0) return new Map<string, number>();
   const r = await c.query<{ line_id: string; n: string }>(
-    `SELECT line_id, count(*) AS n FROM plays
-      WHERE line_id = ANY($1) AND counts <> 'no'
-        AND start_at >= to_timestamp($2) AND start_at < to_timestamp($3)
-      GROUP BY line_id`,
+    `SELECT p.line_id, count(*) AS n ${FROM_PLAYS}
+      WHERE p.line_id = ANY($1) AND ${COUNTED}
+        AND p.start_at >= to_timestamp($2) AND p.start_at < to_timestamp($3)
+      GROUP BY p.line_id`,
     [refs, from, to],
   );
   return new Map(r.rows.map((x) => [x.line_id, Number(x.n)]));

@@ -6,6 +6,7 @@
 // (P2.12) go again with every hello (the box says hello when its line opens and every 15 minutes).
 // P7.8: so does the POC months' plan (down/poc), which the box keeps and plays with no network.
 import {
+  businessModes,
   lastAppCode,
   pendingCommands,
   pocPlans,
@@ -100,7 +101,10 @@ async function pocMessage(pool: Pool, nowMs: number): Promise<string | undefined
   const minute = Math.floor(nowMs / 60_000);
   if (pocCache?.minute === minute) return pocCache.text;
   const plans = await pocPlans(pool, Math.floor(nowMs / 1000));
-  const text = plans.length > 0 ? pocPlansText(plans, nowMs) : undefined;
+  // Once a POC was ever switched on, the list goes even when empty: a box must be told when the
+  // POC's plans are over (the newest message replaces what it holds).
+  const ever = plans.length > 0 || (await businessModes(pool)).some((c) => c.mode === 'poc');
+  const text = ever ? pocPlansText(plans, nowMs) : undefined;
   pocCache = { minute, text };
   return text;
 }

@@ -39,7 +39,11 @@ export async function pocMonthsSetting(c: Pick<PoolClient, 'query'>): Promise<nu
   const r = await c.query<{ value: { pocMonths?: number } }>(
     "SELECT value FROM settings WHERE key = 'poc' ORDER BY version DESC LIMIT 1",
   );
-  return r.rows[0]?.value.pocMonths ?? DEFAULT_POC_RULES.pocMonths;
+  const n = r.rows[0]?.value.pocMonths;
+  // Saved settings are checked (checkPocRules); anything else falls back to the default.
+  return typeof n === 'number' && Number.isSafeInteger(n) && n >= 1 && n <= 12
+    ? n
+    : DEFAULT_POC_RULES.pocMonths;
 }
 
 /**

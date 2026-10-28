@@ -134,6 +134,8 @@ export async function saveSetting<K extends SettingKey>(
       if (missing.length > 0)
         throw new Refusal(`Pay zone: no published area ${missing.join(', ')}`);
     }
+    if (key === 'poc')
+      await checkPocChange(c, now.value as Settings['poc'], next as Settings['poc']);
     await c.query(
       `INSERT INTO settings (key, version, value, saved_by, reason)
        VALUES ($1, $2, $3::jsonb, $4, $5)`,
@@ -141,4 +143,30 @@ export async function saveSetting<K extends SettingKey>(
     );
     return now.version + 1;
   });
+}
+
+/**
+ * P7.8: the most brands sets every bike's rotation (slots, and the 5 plays each): it cannot change
+ * while the POC runs (screens and counting would disagree mid-hour), and never below the brands a
+ * month already has (a paid brand would drop out of the plan).
+ */
+async function checkPocChange(
+  c: Q,
+  before: Settings['poc'],
+  after: Settings['poc'],
+): Promise<void> {
+  if (before.maxBrands === after.maxBrands) return;
+  const on = await c.query<{ mode: string }>(
+    `SELECT mode FROM business_modes WHERE from_at <= now() ORDER BY from_at DESC LIMIT 1`,
+  );
+  if (on.rows[0]?.mode === 'poc')
+    throw new Refusal(
+      'The most brands cannot change while the POC runs: it sets every bike’s rotation',
+    );
+  const most = await c.query<{ month: string; n: string }>(
+    `SELECT month, count(*) AS n FROM poc_months GROUP BY month ORDER BY count(*) DESC LIMIT 1`,
+  );
+  const m = most.rows[0];
+  if (m && Number(m.n) > after.maxBrands)
+    throw new Refusal(`${m.month} already has ${m.n} POC brands: the most cannot go below that`);
 }

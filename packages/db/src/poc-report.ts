@@ -12,6 +12,7 @@ import {
   type Street,
 } from '@recall/domain';
 import type { PoolClient } from 'pg';
+import { COUNTED, FROM_PLAYS } from './poc.js';
 
 type Q = Pick<PoolClient, 'query'>;
 
@@ -36,11 +37,6 @@ export interface PocReport {
   readonly people: PeopleEstimate;
 }
 
-/** Plays of POC months that count, leaving out plays a revoked key signed after it was given up. */
-const COUNTED = `p.counts <> 'no' AND (r.key_id IS NULL OR (p.start_at < r.plays_until AND p.received_at < r.revoked_at))`;
-const FROM_PLAYS = `FROM plays p LEFT JOIN screen_key_revocations r
-                     ON r.screen_id = p.screen_id AND r.key_id = p.key_id`;
-
 /**
  * A POC brand's numbers for one month (P7.8.3): plays, different bikes, bike-hours (a bike with at
  * least one counted play in an India hour), by business day; the busiest streets (when a maps
@@ -63,7 +59,7 @@ export async function pocReport(
   const days = await c.query<{ day: string; plays: string; bikes: string; bike_hours: string }>(
     `SELECT ((p.start_at AT TIME ZONE 'Asia/Kolkata') - interval '2 hours')::date::text AS day,
             count(*) AS plays, count(DISTINCT p.screen_id) AS bikes,
-            count(DISTINCT (p.screen_id, date_trunc('hour', p.start_at - interval '30 minutes')))
+            count(DISTINCT (p.screen_id, floor((extract(epoch FROM p.start_at) - 1800) / 3600)))
               AS bike_hours
        ${FROM_PLAYS} WHERE p.line_id = $1 AND ${COUNTED}
       GROUP BY 1 ORDER BY 1`,
@@ -77,7 +73,7 @@ export async function pocReport(
     people: string;
   }>(
     `SELECT p.line_id, count(*) AS plays, count(DISTINCT p.screen_id) AS bikes,
-            count(DISTINCT (p.screen_id, date_trunc('hour', p.start_at - interval '30 minutes')))
+            count(DISTINCT (p.screen_id, floor((extract(epoch FROM p.start_at) - 1800) / 3600)))
               AS bike_hours,
             coalesce(sum(least(p.people, $2)), 0) AS people
        ${FROM_PLAYS} WHERE p.line_id = ANY($1) AND ${COUNTED}
@@ -100,11 +96,20 @@ export async function pocReport(
       lng: (Number(x.gx) * 2000) / 1e6,
       plays: Number(x.n),
     }));
+    // All at once, each given at most 3 seconds (a slow maps service never holds up the page).
+    const within = <T>(p: Promise<T>) =>
+      Promise.race([
+        p,
+        new Promise<undefined>((ok) => setTimeout(() => ok(undefined), 3_000).unref()),
+      ]);
+    const found = await Promise.all(
+      heat.map((h) => within(maps.streetAt(h.lat, h.lng)).catch(() => undefined)),
+    );
     const names = new Map<string, string>();
-    for (const h of heat) {
-      const name = await maps.streetAt(h.lat, h.lng).catch(() => undefined);
+    heat.forEach((h, i) => {
+      const name = found[i];
       if (name) names.set(h.cell, name);
-    }
+    });
     streets = busiestStreets(heat, names, 5);
   }
   return {
