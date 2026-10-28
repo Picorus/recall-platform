@@ -73,7 +73,9 @@ export default function HelpPage() {
     <Shell me={me}>
       <div className="row" style={{ justifyContent: 'space-between' }}>
         <h1>Help</h1>
-        <Link href={`/campaigns?brand=${encodeURIComponent(brand)}`}>Back to campaigns</Link>
+        <Link className="back-link" href={`/campaigns?brand=${encodeURIComponent(brand)}`}>
+          Back to campaigns
+        </Link>
       </div>
       {error && (
         <p className="error" role="alert">
@@ -167,12 +169,6 @@ export default function HelpPage() {
                   <li key={r}>{r}</li>
                 ))}
               </ul>
-            </section>
-            <section className="rc-card stack" aria-label="Your account">
-              <h2>Your account</h2>
-              <Link href={`/business?brand=${encodeURIComponent(brand)}`}>Business details</Link>
-              <Link href={`/team?brand=${encodeURIComponent(brand)}`}>Team</Link>
-              <Link href={`/invoices?brand=${encodeURIComponent(brand)}`}>Invoices</Link>
             </section>
           </aside>
         </div>

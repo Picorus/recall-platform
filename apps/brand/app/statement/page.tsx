@@ -57,7 +57,9 @@ export default function StatementPage() {
     <Shell me={me}>
       <div className="row" style={{ justifyContent: 'space-between' }}>
         <h1>Statement</h1>
-        <Link href={`/campaigns?brand=${encodeURIComponent(brand)}`}>Back</Link>
+        <Link className="back-link" href={`/campaigns?brand=${encodeURIComponent(brand)}`}>
+          Back
+        </Link>
       </div>
       {error && (
         <p className="error" role="alert">

@@ -6,6 +6,8 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { api, ApiError, type Campaign, type Campaigns } from '../../lib/api';
 import { daysText, rupees } from '../../lib/format';
+import { Icon } from '../../lib/icons';
+import { areaPhoto } from '../../lib/photos';
 import { Shell, useMe } from '../../lib/session';
 
 type Tab = 'scheduled' | 'running' | 'done';
@@ -68,19 +70,10 @@ export default function CampaignsPage() {
       )}
       {page && (
         <>
-          <div className="row" style={{ justifyContent: 'space-between' }}>
+          <header className="page-head">
+            <p className="eyebrow">Campaigns</p>
             <h1>{page.account.name}</h1>
-            <div className="row">
-              <Link className="rc-button rc-button--primary" href={`/book?${q}`}>
-                Book
-              </Link>
-              <Link href={`/invoices?${q}`}>Invoices</Link>
-              <Link href={`/team?${q}`}>Team</Link>
-              <Link href={`/help?${q}`}>Help</Link>
-              <Link href={`/business?${q}`}>Business details</Link>
-              {page.account.kind === 'agency' && <Link href={`/statement?${q}`}>Statement</Link>}
-            </div>
-          </div>
+          </header>
           {page.account.via && (
             <p className="muted">
               You book for {page.account.name} through {page.account.via.name}.
@@ -111,13 +104,12 @@ export default function CampaignsPage() {
               )}
             </section>
           )}
-          <div className="row" role="tablist" aria-label="Campaigns">
+          <div className="rc-segmented" role="tablist" aria-label="Campaigns">
             {TABS.map(([t, label]) => (
               <button
                 key={t}
                 type="button"
                 role="tab"
-                className="rc-chip"
                 aria-selected={tab === t}
                 aria-pressed={tab === t}
                 onClick={() => setTab(t)}
@@ -127,71 +119,104 @@ export default function CampaignsPage() {
             ))}
           </div>
           {page.campaigns.length === 0 && (
-            <section className="rc-card stack">
-              <h2>No campaigns yet</h2>
-              <p>Pick your areas, hours and days, and see the price as you go.</p>
-              <Link className="rc-button rc-button--primary" href={`/book?${q}`}>
-                Book your first campaign
-              </Link>
+            <section className="first-camp">
+              <img src={areaPhoto('Hitech City')} alt="" />
+              <div className="stack">
+                <h2 className="display">No campaigns yet</h2>
+                <p className="lede">
+                  Pick your areas, hours and days, and see the price as you go.
+                </p>
+                <Link className="rc-button rc-button--primary rc-button--large" href={`/book?${q}`}>
+                  Book your first campaign
+                </Link>
+              </div>
             </section>
           )}
           {page.campaigns.length > 0 && shown.length === 0 && (
             <p className="muted">Nothing here.</p>
           )}
-          <ul className="plain" aria-label={TABS.find(([t]) => t === tab)?.[1]}>
+          <ul
+            className="camps rc-stagger"
+            key={tab}
+            aria-label={TABS.find(([t]) => t === tab)?.[1]}
+          >
             {shown.map((c) => (
-              <li
-                key={c.bookingId}
-                className="rc-card stack"
-                aria-label={`Campaign ${c.bookingId}`}
-              >
-                <div className="row" style={{ justifyContent: 'space-between' }}>
-                  <b>{daysText(c.firstDay, c.lastDay)}</b>
-                  <span className={`rc-chip ${STAGE[c.stage].chip}`}>
-                    <span className="rc-chip__dot" />
-                    {c.trial ? 'Free week · ' : ''}
-                    {STAGE[c.stage].word}
-                  </span>
-                </div>
-                <p>{c.areas.join(', ')}</p>
-                <dl className="facts">
-                  <dt>Days</dt>
-                  <dd>{c.days}</dd>
-                  <dt>Bike-hours</dt>
-                  <dd>{c.bikeHours.toLocaleString('en-IN')}</dd>
-                  <dt>Plays promised</dt>
-                  <dd>{c.playsPromised.toLocaleString('en-IN')}</dd>
-                  <dt>Total</dt>
-                  <dd>{c.trial ? 'Free' : `${rupees(c.totalPaise)} with GST`}</dd>
-                </dl>
-                {c.note && <p className="muted">{c.note}</p>}
-                <div className="row">
-                  <span className="mono muted">{c.bookingId}</span>
-                  {c.stage === 'to-pay' && (
-                    <Link
-                      className="rc-button rc-button--primary"
-                      href={`/pay?${q}&booking=${encodeURIComponent(c.bookingId)}`}
-                    >
-                      Review and pay
-                    </Link>
+              <li key={c.bookingId} className="camp" aria-label={`Campaign ${c.bookingId}`}>
+                <div className="camp__pic">
+                  <img src={areaPhoto(c.areas[0] ?? '')} alt="" loading="lazy" />
+                  {c.stage === 'running' && (
+                    <span className="camp__live">
+                      <i />
+                      Playing now
+                    </span>
                   )}
-                  {page.account.kind === 'brand' &&
-                    (c.stage === 'to-pay' || c.stage === 'scheduled') && (
-                      <Link href={`/ads?${q}&booking=${encodeURIComponent(c.bookingId)}`}>
-                        Your ads
+                </div>
+                <div className="camp__body">
+                  <div className="camp__head">
+                    <div>
+                      <h3>{c.areas.join(', ')}</h3>
+                      <b className="camp__when">{daysText(c.firstDay, c.lastDay)}</b>
+                    </div>
+                    <span className={`rc-chip ${STAGE[c.stage].chip}`}>
+                      <span className="rc-chip__dot" />
+                      {c.trial ? 'Free week · ' : ''}
+                      {STAGE[c.stage].word}
+                    </span>
+                  </div>
+                  <dl className="camp__nums rc-num">
+                    <div>
+                      <dt>Days</dt>
+                      <dd>{c.days}</dd>
+                    </div>
+                    <div>
+                      <dt>Bike-hours</dt>
+                      <dd>{c.bikeHours.toLocaleString('en-IN')}</dd>
+                    </div>
+                    <div>
+                      <dt>Plays promised</dt>
+                      <dd>{c.playsPromised.toLocaleString('en-IN')}</dd>
+                    </div>
+                    <div>
+                      <dt>Total</dt>
+                      <dd>{c.trial ? 'Free' : `${rupees(c.totalPaise)} with GST`}</dd>
+                    </div>
+                  </dl>
+                  {c.note && <p className="muted">{c.note}</p>}
+                  <div className="camp__acts">
+                    {c.stage === 'to-pay' && (
+                      <Link
+                        className="rc-button rc-button--primary rc-button--small"
+                        href={`/pay?${q}&booking=${encodeURIComponent(c.bookingId)}`}
+                      >
+                        Review and pay
                       </Link>
                     )}
-                  {c.report && (
+                    {c.report && (
+                      <Link
+                        className="rc-button rc-button--strong rc-button--small"
+                        href={`/campaigns/${encodeURIComponent(c.bookingId)}/report`}
+                      >
+                        See the report
+                      </Link>
+                    )}
+                    {page.account.kind === 'brand' &&
+                      (c.stage === 'to-pay' || c.stage === 'scheduled') && (
+                        <Link
+                          className="rc-button rc-button--secondary rc-button--small"
+                          href={`/ads?${q}&booking=${encodeURIComponent(c.bookingId)}`}
+                        >
+                          <Icon name="image" size={16} />
+                          Your ads
+                        </Link>
+                      )}
                     <Link
-                      className="rc-button rc-button--primary"
-                      href={`/campaigns/${encodeURIComponent(c.bookingId)}/report`}
+                      className="rc-button rc-button--quiet rc-button--small"
+                      href={`/book?${q}&again=${encodeURIComponent(c.bookingId)}`}
                     >
-                      See the report
+                      Book again
                     </Link>
-                  )}
-                  <Link href={`/book?${q}&again=${encodeURIComponent(c.bookingId)}`}>
-                    Book again
-                  </Link>
+                    <span className="mono camp__id">{c.bookingId}</span>
+                  </div>
                 </div>
               </li>
             ))}

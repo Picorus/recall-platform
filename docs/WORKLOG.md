@@ -2,6 +2,16 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 28 Oct 2026 · P7.7.2 · Design 2.0, the brand portal
+- **Frame**: a white top bar with the RECALL logo (the brand's own file), the pages a business moves between (Campaigns, Invoices, Team, Statement for agencies, Help), the volt Book button and an account menu (business details, switch business, set up another, sign out). Pages fade in.
+- **Sign in**: the form beside the night picture of a lit RECALL screen; Mobile number / Email as a segmented control.
+- **Campaigns**: each campaign is a card with the night picture of its area, "Playing now" when running, the numbers in a row and its actions; tabs as a segmented control; a first-campaign welcome with a picture.
+- **Book**: areas are picture cards you tick (keyboard and screen readers as before), hours are tiles (peak shaded, chosen in ink), numbered steps, the total large at the top of the summary; on a phone the total stays in a bar at the bottom.
+- **Report**: a night-picture cover; Share on WhatsApp with its icon. All "Back" links share one quiet style. Help no longer repeats the account links (they are in the top bar).
+- Removed the area outline drawing (`lib/area-map.ts`) the booking page no longer uses.
+- Tests: the brand portal in a browser (5 journeys) passes; one step now opens the account menu before signing out. `pnpm -s check` green.
+- Next: P7.7.3, the rider app.
+
 ## 28 Oct 2026 · P7.7.1 · Design 2.0, the shared kit
 - **Design board** (published page "RECALL Design 2.0"): working prototypes of the new rider app (like Uber Driver), brand portal (like Airbnb) and staff portal (like Stripe), the system underneath, motion and pictures. Prateek approved it; his two notes (pictures looked pixelated, grey text looked off) are fixed: pictures redrawn at 2,560 px as WebP, text greys made warmer and a font setting that swapped letter shapes removed.
 - **Tokens** (`packages/design/src/tokens.ts`): Instrument Sans and Serif (Anek kept for Telugu and Devanagari), corners 10 / 16 / 24, three shadow steps, motion durations and easings, warmer `ink-muted` / `ink-subtle` / `line-strong`, white `surface-1` on paper. All contrast promises still hold (secondary text now 8.6:1 or more).

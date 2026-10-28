@@ -49,7 +49,9 @@ export default function InvoicesPage() {
     <Shell me={me}>
       <div className="row" style={{ justifyContent: 'space-between' }}>
         <h1>Invoices</h1>
-        <Link href={`/campaigns?${q}`}>Back to campaigns</Link>
+        <Link className="back-link" href={`/campaigns?${q}`}>
+          Back to campaigns
+        </Link>
       </div>
       {error && (
         <p className="error" role="alert">

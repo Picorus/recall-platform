@@ -112,7 +112,9 @@ export default function PayPage() {
     <Shell me={me}>
       <div className="row" style={{ justifyContent: 'space-between' }}>
         <h1>Review and pay</h1>
-        <Link href={back}>Back to campaigns</Link>
+        <Link className="back-link" href={back}>
+          Back to campaigns
+        </Link>
       </div>
       {error && (
         <p className="error" role="alert">
