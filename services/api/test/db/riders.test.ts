@@ -129,7 +129,7 @@ describe('rider routes (P3.11.1)', () => {
         await post(omar, '/riders/RD-000001/bank', {
           kind: 'bank',
           accountNumber: '1234 5678 9012',
-          ifsc: 'hdfc0001234',
+          ifsc: ' hdfc 0001234 ',
           name: 'Ravi Kumar',
         })
       ).body,

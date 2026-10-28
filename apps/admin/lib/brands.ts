@@ -21,10 +21,13 @@ export function matches(a: AccountRow, query: string): boolean {
   const q = query.trim().toLowerCase();
   if (q === '') return true;
   const digits = q.replace(/\D/g, '');
+  // Ids, emails and GSTINs have no spaces: "36 AAPFU" finds one too.
+  const bare = q.replace(/\s/g, '');
   return (
     [a.name, a.brandId, a.email ?? '', a.gstin ?? '', a.agencyName ?? ''].some((x) =>
       x.toLowerCase().includes(q),
     ) ||
+    [a.brandId, a.email ?? '', a.gstin ?? ''].some((x) => x.toLowerCase().includes(bare)) ||
     (digits.length >= 4 && (a.phone ?? '').includes(digits))
   );
 }

@@ -30,6 +30,9 @@ describe('fleet map words and filters', () => {
     expect(shown(s({}), { states: all, area: 'hyd-kondapur', search: '' })).toBe(false);
     expect(shown(s({}), { states: all, area: 'hyd-madhapur', search: 'ts09 ea' })).toBe(true);
     expect(shown(s({}), { states: all, area: '', search: '567m' })).toBe(true);
+    // Spaces and dashes do not count.
+    expect(shown(s({}), { states: all, area: '', search: ' scr 1234 ' })).toBe(true);
+    expect(shown(s({}), { states: all, area: '', search: 'TS-09 EA-1234' })).toBe(true);
     expect(shown(s({}), { states: all, area: '', search: 'KA01' })).toBe(false);
     expect(shown(s({ position: null }), { states: all, area: 'hyd-madhapur', search: '' })).toBe(
       false,

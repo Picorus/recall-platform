@@ -111,6 +111,25 @@ export function showMobile(phone: string): string {
   return /^\+91\d{10}$/.test(phone) ? `+91 ${phone.slice(3, 8)} ${phone.slice(8)}` : phone;
 }
 
+/**
+ * A mobile number as it is typed, grouped so it reads easily: "9848000001" → "98480 00001",
+ * "+919848000001" → "+91 98480 00001". Only for showing in the box: what is sent is read again
+ * (spaces dropped), so the grouping never changes the number.
+ */
+export function groupMobile(typed: string): string {
+  let digits = typed.replace(/\D/g, '');
+  let lead: string;
+  if (/^\s*\+/.test(typed)) {
+    lead = `+${digits.slice(0, 2)}`;
+    digits = digits.slice(2);
+  } else {
+    lead = /^(0091|91|0)(?=\d{10}$)/.exec(digits)?.[1] ?? '';
+    digits = digits.slice(lead.length);
+  }
+  const num = digits.length > 5 ? `${digits.slice(0, 5)} ${digits.slice(5)}` : digits;
+  return [lead, num].filter((x) => x !== '').join(' ');
+}
+
 /** The SMS that carries a sign-in code, in the rider's language. */
 export function riderCodeSms(language: RiderLanguage, code: string, minutes = 10): string {
   switch (language) {

@@ -162,7 +162,7 @@ export async function handleCalendar(
 
   if (path === '/holds') {
     const reason = reasonOf(b);
-    const brandId = str(b, 'brandId', 64).trim();
+    const brandId = str(b, 'brandId', 64).replace(/\s/g, '');
     if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(brandId))
       throw new HttpError(400, 'Brand id: lower case letters, digits and dashes');
     // Holds are for a brand account (opened on the Brands page), so a typo cannot block bikes.

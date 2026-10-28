@@ -31,7 +31,7 @@ function Line({ label, value }: { readonly label: string; readonly value: string
   return (
     <View style={[s.row, { justifyContent: 'space-between', minHeight: 30 }]}>
       <Words style={{ color: color.text, fontSize: 15, flexShrink: 1 }}>{label}</Words>
-      <Words style={[s.mono, { fontSize: 15 }]}>{value}</Words>
+      <Words style={[s.figures, { fontSize: 15 }]}>{value}</Words>
     </View>
   );
 }

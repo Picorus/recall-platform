@@ -5,6 +5,7 @@ import Link from 'next/link';
 import QRCode from 'qrcode';
 import { useEffect, useState, type FormEvent } from 'react';
 import { api, ApiError } from '../../lib/api';
+import { sixDigits, tidyBox } from '../../lib/format';
 
 interface Invite {
   readonly email: string;
@@ -110,12 +111,12 @@ export default function AcceptInvite() {
         <label className="rc-field">
           <span className="rc-field__label">The 6-digit code the app shows</span>
           <input
-            className="rc-input"
+            className="rc-input rc-input--code"
             name="code"
             inputMode="numeric"
             autoComplete="one-time-code"
-            pattern="[0-9 ]{6,7}"
-            maxLength={7}
+            pattern="[0-9]{6}"
+            onChange={tidyBox(sixDigits)}
             required
           />
         </label>

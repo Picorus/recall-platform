@@ -47,14 +47,21 @@ describe('settings (P3.17)', () => {
 
   it('support: +91 numbers, days 1 to 7, closing after opening', () => {
     const s = {
-      phones: [{ label: 'Riders', phone: '+91 98480 12345', whatsapp: true }],
+      phones: [
+        { label: 'Riders', phone: '+91 98480 12345', whatsapp: true },
+        // No +91, stray spaces: kept as +91 and 10 digits.
+        { label: 'Brands', phone: ' 90000 11111 ', whatsapp: false },
+      ],
       days: [6, 1, 2],
       opens: '10:00',
       closes: '19:00',
     };
     expect(checkSetting('support', s)).toEqual({
       ...s,
-      phones: [{ label: 'Riders', phone: '+919848012345', whatsapp: true }],
+      phones: [
+        { label: 'Riders', phone: '+919848012345', whatsapp: true },
+        { label: 'Brands', phone: '+919000011111', whatsapp: false },
+      ],
       days: [1, 2, 6],
     });
     expect(() =>
@@ -151,6 +158,9 @@ describe('settings (P3.17)', () => {
       address: 'Plot 1, Madhapur, Hyderabad 500081, Telangana',
     });
     expect(co.gstin).toBe('36AABCU9603R1ZO');
+    expect(checkSetting('company', { ...co, gstin: ' 36 aabcu 9603 r1zo ' }).gstin).toBe(
+      '36AABCU9603R1ZO',
+    );
     expect(companySet(co)).toBe(true);
     expect(() => checkSetting('company', { ...co, gstin: '36AABCU9603R1ZX' })).toThrow(
       'Company GSTIN',

@@ -142,7 +142,7 @@ export default function MakeAd({
             className="rc-input mono"
             value={t.code}
             maxLength={16}
-            onChange={(e) => set({ code: e.target.value.toUpperCase() })}
+            onChange={(e) => set({ code: e.target.value.replace(/\s/g, '').toUpperCase() })}
             placeholder="CHAI30"
           />
         </label>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { actionsFor, certificateSoon, stageText } from '../../lib/screens';
+import { actionsFor, certificateSoon, screenMatches, stageText } from '../../lib/screens';
 
 describe('Screens page words', () => {
   it('the rollout in words', () => {
@@ -21,5 +21,15 @@ describe('Screens page words', () => {
     expect(actionsFor('in-stock')).toEqual(['to-repair', 'retired', 'lost']);
     expect(actionsFor('in-repair')).toEqual(['repaired', 'retired', 'lost']);
     expect(actionsFor('retired')).toEqual([]);
+  });
+});
+
+describe('the screen search box', () => {
+  it('screen id, plate or serial; spaces, dashes and small letters do not count', () => {
+    const r = { screenId: 'SCR-7K3M9QX4', bike: 'TS09EA1234', serial: 'RK-0042' };
+    for (const q of ['', 'SCR-7K3M', ' scr 7k3m ', '9qx4', 'ts 09 ea', 'TS-09-EA-1234', 'rk 0042'])
+      expect(screenMatches(r, q), q).toBe(true);
+    for (const q of ['SCR-9', 'KA01', 'rk 0043']) expect(screenMatches(r, q), q).toBe(false);
+    expect(screenMatches({ ...r, bike: null }, 'ts09')).toBe(false);
   });
 });

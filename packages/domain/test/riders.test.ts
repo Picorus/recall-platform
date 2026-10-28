@@ -4,9 +4,12 @@ import { describe, expect, it } from 'vitest';
 import {
   approvalChecklist,
   namesMatch,
+  accountNumberOf,
+  ifscOf,
   phoneOf,
   plateOf,
   riderIdOf,
+  upiIdOf,
   riderProblems,
   riderStepProblem,
   RIDER_ID,
@@ -47,6 +50,11 @@ describe('riders (P3.11.1)', () => {
     for (const p of ['12345', '5848012345', '+1 415 555 0100', '98480123456'])
       expect(phoneOf(p), p).toBeNull();
     expect(plateOf('ts 09 ea 1234')).toBe('TS09EA1234');
+    // Payout details pasted with stray spaces (checkDestination checks the rest).
+    expect(upiIdOf(' ravi @okaxis ')).toBe('ravi@okaxis');
+    expect(ifscOf(' sbin 0001234 ')).toBe('SBIN0001234');
+    expect(ifscOf('SBIN-0001234')).toBe('SBIN0001234');
+    expect(accountNumberOf(' 1234 5678-9012 ')).toBe('123456789012');
     expect(plateOf('22 BH 1234 AA')).toBe('22BH1234AA');
     expect(plateOf('TS')).toBeNull();
     expect(plateOf('1234')).toBeNull();

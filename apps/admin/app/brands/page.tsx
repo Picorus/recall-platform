@@ -8,7 +8,7 @@ import { Info } from '@recall/web-ui';
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { api, ApiError, type Member } from '../../lib/api';
 import { idFromName, matches, phoneText, STEP_NAMES, type AccountRow } from '../../lib/brands';
-import { clock, dayOfIndia, rupees } from '../../lib/format';
+import { clock, dayOfIndia, groupMobile, noSpaces, rupees, tidyBox } from '../../lib/format';
 import { Shell, useMember } from '../../lib/session';
 import BookingPanel from './booking-panel';
 import NewBooking from './new-booking';
@@ -281,6 +281,7 @@ export default function BrandsPage() {
                 key={idFromName(newName)}
                 defaultValue={idFromName(newName)}
                 pattern="[a-z0-9][a-z0-9-]*"
+                onChange={tidyBox(noSpaces)}
                 maxLength={64}
                 required
               />
@@ -298,7 +299,12 @@ export default function BrandsPage() {
             </label>
             <label className="rc-field">
               <span className="rc-field__label">Referred by (app id, if any)</span>
-              <input className="rc-input" name="referredBy" pattern="[a-z0-9][a-z0-9-]*" />
+              <input
+                className="rc-input"
+                name="referredBy"
+                pattern="[a-z0-9][a-z0-9-]*"
+                onChange={tidyBox(noSpaces)}
+              />
             </label>
           </div>
           <label className="rc-field">
@@ -402,6 +408,7 @@ export default function BrandsPage() {
                     name="referredBy"
                     defaultValue={a.referredBy ?? ''}
                     pattern="[a-z0-9][a-z0-9-]*"
+                    onChange={tidyBox(noSpaces)}
                   />
                 </label>
               </div>
@@ -433,7 +440,9 @@ export default function BrandsPage() {
                 <input
                   className="rc-input"
                   name="phone"
-                  defaultValue={page.contact?.phone ?? ''}
+                  type="tel"
+                  defaultValue={groupMobile(page.contact?.phone ?? '')}
+                  onChange={tidyBox(groupMobile)}
                   disabled={!isSales(me)}
                 />
               </label>
@@ -483,6 +492,7 @@ export default function BrandsPage() {
                   className="rc-input mono"
                   name="gstin"
                   defaultValue={page.tax?.gstin ?? ''}
+                  onChange={tidyBox(noSpaces)}
                   disabled={!mayTax(me)}
                 />
               </label>
@@ -493,6 +503,7 @@ export default function BrandsPage() {
                   name="stateCode"
                   defaultValue={page.tax?.stateCode ?? '36'}
                   pattern="\d{2}"
+                  onChange={tidyBox(noSpaces)}
                   disabled={!mayTax(me)}
                   required
                 />

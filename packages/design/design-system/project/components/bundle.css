@@ -226,6 +226,17 @@
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
+.rc-input--code {
+  /* one box for a 6-digit code: big digits that stand apart ("4 8 2 9 1 5"); the value stays
+     "482915" */
+  font: 600 1.375rem/28px var(--font-mono);
+  letter-spacing: 0.45em;
+  font-variant-numeric: tabular-nums;
+}
+.rc-input--code::placeholder {
+  font: 400 15.5px/28px var(--font-body);
+  letter-spacing: normal;
+}
 .rc-input:focus-visible {
   /* the field lights up: ink edge and a soft volt glow (focus is never colour alone) */
   outline: none;

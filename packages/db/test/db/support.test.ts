@@ -162,7 +162,8 @@ describe('support (P3.15)', () => {
       pool,
       {
         channel: 'phone',
-        contact: '+919000011111',
+        // Typed with stray spaces and no +91: kept as +91 and 10 digits.
+        contact: ' 90000 11111 ',
         subject: 'Wants to join as a rider',
         note: 'Asked about pay; told him ₹2,000 a month in the POC.',
       },
@@ -170,6 +171,23 @@ describe('support (P3.15)', () => {
       NOW + 1000,
     );
     expect((await supportThread(pool, id))?.party).toBeNull();
+    expect(
+      (await pool.query('SELECT contact FROM support_threads WHERE thread_id = $1', [id])).rows,
+    ).toEqual([{ contact: '+919000011111' }]);
+    const mail = await openThread(
+      pool,
+      {
+        channel: 'email',
+        contact: ' Ops @Chai.in ',
+        subject: 'Invoice copy',
+        note: 'Wants a copy',
+      },
+      SUNITA,
+      NOW + 1000,
+    );
+    expect(
+      (await pool.query('SELECT contact FROM support_threads WHERE thread_id = $1', [mail])).rows,
+    ).toEqual([{ contact: 'ops@chai.in' }]);
     await expect(replyThread(pool, fakeMessages(), id, 'Hi', SUNITA, NOW + 1001)).rejects.toThrow(
       'call or a visit',
     );

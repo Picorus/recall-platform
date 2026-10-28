@@ -269,13 +269,13 @@ export function Today({
             </View>
             {page.week.days.map((d) => (
               <View key={d.day} style={[s.row, { justifyContent: 'space-between', minHeight: 28 }]}>
-                <Words style={[s.mono, { fontSize: 14, color: color.muted }]}>
+                <Words style={[s.figures, { fontSize: 14, color: color.muted }]}>
                   {`${d.day.slice(8, 10)}/${d.day.slice(5, 7)}`}
                 </Words>
                 <Words style={{ color: color.text, fontSize: 14 }}>
                   {hoursText(lang, d.countedSeconds)}
                 </Words>
-                <Words style={[s.mono, { fontSize: 14, color: color.text }]}>
+                <Words style={[s.figures, { fontSize: 14, color: color.text }]}>
                   {rupees(d.earnedPaise)}
                 </Words>
               </View>

@@ -26,11 +26,12 @@ export interface Book {
   readonly playsPerBikeHour: number;
 }
 
-/** "300", "₹1,500.50" → paise; anything else is a problem in words. */
+/** "300", "₹1,500.50", "₹ 1 500" → paise; anything else is a problem in words. */
 export function readRupees(text: string): number | { problem: string } {
   // Plain digits, Indian grouping (1,50,000) or Western grouping (150,000); never a stray comma.
-  const m = /^₹?\s*(\d+|\d{1,2}(?:,\d{2})*,\d{3}|\d{1,3}(?:,\d{3})+)(?:\.(\d{1,2}))?$/.exec(
-    text.trim(),
+  // Spaces anywhere are dropped first.
+  const m = /^₹?(\d+|\d{1,2}(?:,\d{2})*,\d{3}|\d{1,3}(?:,\d{3})+)(?:\.(\d{1,2}))?$/.exec(
+    text.replace(/\s/g, ''),
   );
   if (!m) return { problem: `"${text}" is not an amount in rupees` };
   const whole = Number((m[1] ?? '').replaceAll(',', ''));
@@ -39,15 +40,16 @@ export function readRupees(text: string): number | { problem: string } {
   return paise;
 }
 
-/** "8", "12.5%", "0.05" → basis points. */
+/** "8", "12.5 %", "0.05" → basis points (spaces anywhere are dropped). */
 export function readPercent(text: string): number | { problem: string } {
-  const m = /^(\d{1,3})(?:\.(\d{1,2}))?\s*%?$/.exec(text.trim());
+  const m = /^(\d{1,3})(?:\.(\d{1,2}))?%?$/.exec(text.replace(/\s/g, ''));
   if (!m) return { problem: `"${text}" is not a percent` };
   return Number(m[1]) * 100 + Number((m[2] ?? '').padEnd(2, '0'));
 }
 
+/** "12", "1 200" → a whole number (spaces anywhere are dropped). */
 export function readWhole(text: string): number | { problem: string } {
-  const t = text.trim();
+  const t = text.replace(/\s/g, '');
   if (!/^\d{1,6}$/.test(t)) return { problem: `"${text}" is not a whole number` };
   return Number(t);
 }

@@ -16,7 +16,7 @@ import {
   type Cell,
   type HoldView,
 } from '../../lib/calendar';
-import { clock, dayName, dayOfIndia, rupees } from '../../lib/format';
+import { clock, dayName, dayOfIndia, noSpaces, rupees, tidyBox } from '../../lib/format';
 import { hourLabel, START_HOURS } from '../../lib/prices';
 import { Shell, useMember } from '../../lib/session';
 
@@ -130,7 +130,7 @@ export default function CalendarPage() {
     e.preventDefault();
     if (!picked) return;
     const f = new FormData(e.currentTarget);
-    const text = String(f.get('limit') ?? '').trim();
+    const text = noSpaces(String(f.get('limit') ?? ''));
     if (text !== '' && !/^\d{1,6}$/.test(text))
       return setError('The limit is a whole number of bikes.');
     void call(async () => {
@@ -149,11 +149,11 @@ export default function CalendarPage() {
     const f = new FormData(e.currentTarget);
     const until = indiaToUtc(String(f.get('endDate') ?? ''), String(f.get('endTime') ?? ''));
     if (until === null) return setError('Give the end as a date and a time (India time).');
-    const bikes = String(f.get('bikes') ?? '');
+    const bikes = noSpaces(String(f.get('bikes') ?? ''));
     if (!/^\d{1,6}$/.test(bikes)) return setError('Bikes must be a whole number.');
     void call(async () => {
       const r = await api<{ holdId: string }>('/holds', {
-        brandId: String(f.get('brand') ?? '').trim(),
+        brandId: noSpaces(String(f.get('brand') ?? '')),
         areaId: area,
         dates: days.filter((d) => week?.days.includes(d)),
         hours,
@@ -352,7 +352,13 @@ export default function CalendarPage() {
               <form className="stack" onSubmit={hold} aria-label="Hold">
                 <label className="rc-field">
                   <span className="rc-field__label">Brand id (e.g. chai-co)</span>
-                  <input className="rc-input" name="brand" pattern="[a-z0-9][a-z0-9-]*" required />
+                  <input
+                    className="rc-input"
+                    name="brand"
+                    pattern="[a-z0-9][a-z0-9-]*"
+                    onChange={tidyBox(noSpaces)}
+                    required
+                  />
                 </label>
                 <fieldset className="areas">
                   <legend>Days</legend>

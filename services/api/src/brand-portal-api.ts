@@ -140,7 +140,8 @@ function templateOf(b: Record<string, unknown>): AdTemplate {
   const out = {
     headline: text('headline', 60),
     offer: text('offer', 80),
-    code: text('code', 32).trim().toUpperCase(),
+    // A promo code never has a space ("chai 30" → "CHAI30").
+    code: text('code', 32).replace(/\s/g, '').toUpperCase(),
     qr: text('qr', 300).trim(),
     colour: text('colour', 7),
     theme: text('theme', 10) as AdTemplate['theme'],

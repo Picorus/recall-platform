@@ -386,7 +386,8 @@ function BankStep({
         <Field
           label={say(lang, 'vpa')}
           value={vpa}
-          onChangeText={setVpa}
+          // UPI ids, account numbers and IFSCs never have a space (pasted from WhatsApp often do).
+          onChangeText={(t) => setVpa(t.replace(/\s/g, ''))}
           autoCapitalize="none"
           maxLength={100}
           placeholder="name@okaxis"
@@ -396,17 +397,17 @@ function BankStep({
           <Field
             label={say(lang, 'accountNumber')}
             value={accountNumber}
-            onChangeText={setAccount}
+            onChangeText={(t) => setAccount(t.replace(/\s/g, ''))}
             keyboardType="number-pad"
             inputMode="numeric"
-            maxLength={20}
+            maxLength={30}
           />
           <Field
             label={say(lang, 'ifsc')}
             value={ifsc}
-            onChangeText={setIfsc}
+            onChangeText={(t) => setIfsc(t.replace(/\s/g, ''))}
             autoCapitalize="characters"
-            maxLength={11}
+            maxLength={20}
           />
         </>
       )}

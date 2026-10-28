@@ -92,7 +92,10 @@ import {
 } from '@recall/db';
 import {
   MAX_DOCUMENT_BYTES,
+  accountNumberOf,
+  ifscOf,
   indiaMobile,
+  upiIdOf,
   RIDER_LANGUAGES,
   showMobile,
   supportOpenAt,
@@ -561,12 +564,12 @@ export async function handleRiderApp(
     const name = str(b, 'name', 120).trim();
     const to: PayoutDestination =
       b.kind === 'upi'
-        ? { kind: 'upi', vpa: str(b, 'vpa', 256).trim(), name }
+        ? { kind: 'upi', vpa: upiIdOf(str(b, 'vpa', 256)), name }
         : b.kind === 'bank'
           ? {
               kind: 'bank',
-              accountNumber: str(b, 'accountNumber', 30).replace(/[\s-]/g, ''),
-              ifsc: str(b, 'ifsc', 20).trim().toUpperCase(),
+              accountNumber: accountNumberOf(str(b, 'accountNumber', 30)),
+              ifsc: ifscOf(str(b, 'ifsc', 20)),
               name,
             }
           : (() => {

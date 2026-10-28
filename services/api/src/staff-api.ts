@@ -333,7 +333,7 @@ export async function handleStaff(
     const b = await jsonBody(req);
     const email = str(b, 'email', 254);
     const password = str(b, 'password', 200);
-    const code = str(b, 'code', 10).replace(/\s/g, '');
+    const code = str(b, 'code', 20).replace(/\s/g, '');
     const token = newToken();
     const ip = callerIp(req.headers['x-forwarded-for'], req.socket.remoteAddress, cfg.proxyHops);
     const r = await signIn(pool, {
@@ -399,7 +399,7 @@ export async function handleStaff(
     const b = await jsonBody(req);
     const hash = tokenHash(str(b, 'token', 100));
     const password = str(b, 'password', 200);
-    const code = str(b, 'code', 10).replace(/\s/g, '');
+    const code = str(b, 'code', 20).replace(/\s/g, '');
     const inv = await openInvite(pool, hash, nowMs);
     const secret = inv && unsealed(cfg, inv.totpSealed, log);
     if (!inv || !secret) throw new HttpError(404, INVITE_GONE);

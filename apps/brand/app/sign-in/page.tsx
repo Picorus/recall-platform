@@ -9,6 +9,8 @@ import { api, ApiError, type Me } from '../../lib/api';
 import { heroPhoto } from '../../lib/photos';
 import {
   backTo,
+  codeAsTyped,
+  groupMobile,
   looksLikeCode,
   looksLikeEmail,
   looksLikeMobile,
@@ -148,7 +150,10 @@ export default function SignIn() {
                 className="rc-input"
                 name="address"
                 value={typed}
-                onChange={(e) => setTyped(e.target.value)}
+                // A number shows grouped as typed ("98480 12345"); what is sent is read again.
+                onChange={(e) =>
+                  setTyped(way === 'phone' ? groupMobile(e.target.value) : e.target.value)
+                }
                 {...(way === 'phone'
                   ? {
                       type: 'tel',
@@ -201,13 +206,12 @@ export default function SignIn() {
             <label className="rc-field">
               <span className="rc-field__label">Code</span>
               <input
-                className="rc-input"
+                className="rc-input rc-input--code"
                 name="code"
                 value={code}
-                onChange={(e) => setCode(e.target.value)}
+                onChange={(e) => setCode(codeAsTyped(e.target.value))}
                 inputMode="numeric"
                 autoComplete="one-time-code"
-                maxLength={7}
                 autoFocus
                 required
               />

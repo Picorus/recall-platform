@@ -16,6 +16,17 @@ export const LIFE_CHIP: Record<ScreenLife, string> = {
   retired: 'rc-chip--stop',
 };
 
+/** Does a screen match the search box? Spaces, dashes and small letters do not count ("scr 7k3m",
+ * "TS 09-EA"). */
+export function screenMatches(
+  r: { readonly screenId: string; readonly bike: string | null; readonly serial: string },
+  search: string,
+): boolean {
+  const bare = (t: string) => t.toUpperCase().replace(/[\s-]/g, '');
+  const q = bare(search);
+  return !q || [r.screenId, r.bike ?? '', r.serial].some((x) => bare(x).includes(q));
+}
+
 /** The rollout's stage in words: 1% → 10% → all screens (P2.13). */
 export function stageText(state: string, stage: number): string {
   const share = ['1% of screens', '10% of screens', 'all screens'][stage] ?? 'all screens';

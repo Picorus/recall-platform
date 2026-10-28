@@ -1,6 +1,9 @@
+import { groupMobile as domainGroup } from '@recall/domain';
 import { describe, expect, it } from 'vitest';
 import {
   backTo,
+  codeAsTyped,
+  groupMobile,
   looksLikeCode,
   looksLikeEmail,
   looksLikeMobile,
@@ -15,11 +18,39 @@ describe('brand sign-in page checks (P5.1)', () => {
       expect(looksLikeMobile(bad)).toBe(false);
   });
 
+  it('a mobile number shows grouped as typed, as @recall/domain groups it', () => {
+    expect(groupMobile('9848012345')).toBe('98480 12345');
+    expect(groupMobile('+91 9848012345')).toBe('+91 98480 12345');
+    expect(looksLikeMobile(groupMobile('9848012345'))).toBe(true);
+    for (const t of [
+      '',
+      '98',
+      '98480',
+      '984801',
+      ' 98480-12345 ',
+      '+9',
+      '+91',
+      '+91 98480 1',
+      '0091 9848012345',
+      '09848012345',
+      '919848012345',
+      '98480123456',
+      'ab 12',
+    ])
+      expect(groupMobile(t), t).toBe(domainGroup(t));
+  });
+
   it('an email address and a 6-digit code', () => {
     expect(looksLikeEmail(' Media@Adwise.in ')).toBe(true);
     expect(looksLikeEmail('media@adwise')).toBe(false);
+    expect(looksLikeEmail(' media @ adwise .in ')).toBe(true);
+    expect(looksLikeEmail('media team@adwise.in')).toBe(false);
     expect(looksLikeCode('123 456')).toBe(true);
     expect(looksLikeCode('12345')).toBe(false);
+    // The code box keeps the digits of a pasted "123 456" or an autofilled "123456 ".
+    expect(codeAsTyped(' 123 456 ')).toBe('123456');
+    expect(codeAsTyped('123456 ')).toBe('123456');
+    expect(codeAsTyped('1234567')).toBe('123456');
   });
 
   it('time left on a code', () => {

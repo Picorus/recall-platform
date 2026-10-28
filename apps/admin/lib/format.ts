@@ -2,6 +2,41 @@
 
 const IST = 'Asia/Kolkata';
 
+/** A code, number or id as typed or pasted, without spaces ("SBIN 0001234 " → "SBIN0001234"). */
+export const noSpaces = (text: string): string => text.replace(/\s/g, '');
+
+/**
+ * The same as groupMobile in @recall/domain (a test checks they agree). A mobile number as it is
+ * typed, grouped so it reads easily: "9848000001" → "98480 00001",
+ * "+919848000001" → "+91 98480 00001". Only for showing in the box: what is sent is read again
+ * (spaces dropped), so the grouping never changes the number.
+ */
+export function groupMobile(typed: string): string {
+  let digits = typed.replace(/\D/g, '');
+  let lead: string;
+  if (/^\s*\+/.test(typed)) {
+    lead = `+${digits.slice(0, 2)}`;
+    digits = digits.slice(2);
+  } else {
+    lead = /^(0091|91|0)(?=\d{10}$)/.exec(digits)?.[1] ?? '';
+    digits = digits.slice(lead.length);
+  }
+  const num = digits.length > 5 ? `${digits.slice(0, 5)} ${digits.slice(5)}` : digits;
+  return [lead, num].filter((x) => x !== '').join(' ');
+}
+
+/** A 6-digit code as typed or pasted ("123 456", " 123456 "): its digits, at most 6. */
+export const sixDigits = (text: string): string => text.replace(/\D/g, '').slice(0, 6);
+
+/** For a box not tied to state that takes a code or id: `tidy` runs as it is typed or pasted. */
+export const tidyBox =
+  (tidy: (text: string) => string) =>
+  (e: { readonly currentTarget: { value: string } }): void => {
+    const box = e.currentTarget;
+    const v = tidy(box.value);
+    if (v !== box.value) box.value = v;
+  };
+
 /** "₹1,35,000" or "₹225.50" from whole paise (never a float on the way). */
 export function rupees(paise: number): string {
   const neg = paise < 0;

@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { ApiError, call } from '../api';
 import { say, sayError } from '../i18n';
-import { Alert, Field, LinkButton, MainButton, Muted, Screen, Title } from '../ui';
+import { Alert, Field, LinkButton, MainButton, Muted, s, Screen, Title } from '../ui';
 import type { CodeSent } from './SignIn';
 
 const RESEND_AFTER_S = 30;
@@ -75,11 +75,14 @@ export function Code({
         label={say(lang, 'code')}
         value={code}
         onChangeText={(t) => setCode(t.replace(/\D/g, '').slice(0, 6))}
+        // Big digits that stand apart ("4 8 2 9 1 5"); the code itself stays "482915".
+        style={[s.input, s.code]}
         keyboardType="number-pad"
         inputMode="numeric"
         autoComplete="one-time-code"
         textContentType="oneTimeCode"
-        maxLength={6}
+        // Room for a pasted "123 456": the box keeps only its 6 digits.
+        maxLength={12}
         autoFocus
         onSubmitEditing={check}
       />

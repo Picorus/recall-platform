@@ -7,7 +7,7 @@ import type { GeoJSONSource, Map as MapLibre, MapMouseEvent } from 'maplibre-gl'
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { api, ApiError, type Member } from '../../lib/api';
 import { cornersText, parseCorners, type Corner } from '../../lib/areas';
-import { count, dayOfIndia, clock } from '../../lib/format';
+import { count, dayOfIndia, clock, noSpaces, tidyBox } from '../../lib/format';
 import { mapColours, newMap } from '../../lib/map';
 import { Shell, useMember } from '../../lib/session';
 
@@ -280,7 +280,7 @@ export default function AreasEditor({ styleUrl }: { readonly styleUrl: string })
     void call(async () => {
       if (open === 'new') {
         await api('/areas', {
-          areaId: String(f.get('areaId') ?? ''),
+          areaId: noSpaces(String(f.get('areaId') ?? '')),
           name: String(f.get('name') ?? ''),
           city: String(f.get('city') ?? ''),
           ring: r.ring,
@@ -360,6 +360,7 @@ export default function AreasEditor({ styleUrl }: { readonly styleUrl: string })
                     className="rc-input"
                     name="areaId"
                     pattern="[a-z0-9]+(-[a-z0-9]+)*"
+                    onChange={tidyBox(noSpaces)}
                     required
                   />
                 </label>
