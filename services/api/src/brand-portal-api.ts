@@ -16,6 +16,8 @@
 //   GET  /portal/campaigns?brand=<id>       its campaigns: Scheduled, Running, Done (To pay, Cancelled)
 //                                           (P7.7.7: and its paid bike-hours by month, for a chart)
 // P5.4:
+//   GET  /portal/areas                      the areas that are on now, in their published shapes
+//                                           (id, name, version, ring, edge metres, km²), for our map
 //   GET  /portal/book-form?brand=<id>[&again=<booking>]  areas, hours, picks, limits (and the plan
 //                                           of an earlier booking, for "Book again")
 //   POST /portal/quote?brand=<id>    { plan }  the live price and what stops it
@@ -89,6 +91,7 @@ import {
   portalAccounts,
   Refusal,
   setting,
+  areasOnAt,
   type BrandSession,
 } from '@recall/db';
 import {
@@ -118,6 +121,7 @@ import {
   priceBookAt,
   isoAt,
   supportOpenAt,
+  ringAreaSqm,
   type BrandMemberRole,
 } from '@recall/domain';
 import { renderReportHtml, renderReportPdf, renderTaxDocumentsPdf } from '@recall/workers';
@@ -178,6 +182,9 @@ async function oneUpload(address: string, now: number, use: () => Promise<void>)
 
 /** People whose booking is being saved now. */
 const saving = new Set<string>();
+
+/** Times each person loaded our areas map this hour. */
+const areaLooks = new Map<string, { readonly hour: number; n: number }>();
 
 /** Price checks each person made this hour (the live summary asks on every change). */
 const quotes = new Map<string, { readonly hour: number; n: number }>();
@@ -379,6 +386,25 @@ export async function handleBrandPortal(
       address: me.address,
       shown: shown(me.address),
       accounts: await portalAccounts(pool, me.address),
+    });
+    return true;
+  }
+  if (path === '/portal/areas' && method === 'GET') {
+    // The map draws on every page that shows it: a few hundred an hour each is plenty.
+    if (!tryOnce(areaLooks, me.address, now, 600))
+      throw new HttpError(429, 'Too many map loads: wait a minute');
+    const areas = await areasOnAt(pool, new Date(now * 1000).toISOString());
+    send(res, 200, {
+      at: now,
+      areas: areas.map((a) => ({
+        areaId: a.areaId,
+        name: a.name,
+        version: a.version,
+        ring: a.ring.map((p) => ({ lat: p.lat, lng: p.lng })),
+        edgeMeters: a.edgeMeters,
+        // Size in km², two decimals: what the map says on a tap.
+        sqKm: Math.round(ringAreaSqm(a.ring) / 10_000) / 100,
+      })),
     });
     return true;
   }

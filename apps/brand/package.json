@@ -10,11 +10,14 @@
     "start": "next start -p 3000",
     "typecheck": "tsc -p tsconfig.json && tsc -p test/e2e/tsconfig.json",
     "test": "vitest run --passWithNoTests test/unit",
-    "test:e2e": "vitest run test/e2e"
+    "test:e2e": "vitest run test/e2e",
+    "prebuild": "node scripts/copy-map-worker.mjs",
+    "predev": "node scripts/copy-map-worker.mjs"
   },
   "dependencies": {
     "@recall/design": "workspace:*",
     "@recall/web-ui": "workspace:*",
+    "maplibre-gl": "6.13.0",
     "next": "16.4.1",
     "react": "19.3.0",
     "react-dom": "19.3.0"

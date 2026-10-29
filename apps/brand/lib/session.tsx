@@ -30,6 +30,7 @@ export function useMe(): Me | undefined {
 /** The pages a business moves between, in the top bar (Design 2.0: like a booking site, few and plain). */
 const NAV = [
   ['/campaigns', 'Campaigns'],
+  ['/areas', 'Our areas'],
   ['/invoices', 'Invoices'],
   ['/team', 'Team'],
   ['/statement', 'Statement'],

@@ -253,7 +253,7 @@ The brand portal is the 9-screen simple product from rulebook v5.4: pick, pay, u
 2. **P5.2 Your business.** GST number (filled from the GST record), name, type, invoice email. One free week offered to new businesses.
 3. **P5.3 My campaigns.** Every booking with one of Scheduled, Running or Done; "Book again" on each.
 4. **P5.4 Book.**
-   1. **P5.4.1** Areas picked on our map (RECALL-drawn shapes only).
+   1. **P5.4.1** Areas picked on our map (RECALL-drawn shapes only). The map draws the areas in, highlights the ones picked, and says each area's name and size; an "Our areas" page shows the same map (Prateek, 29 Oct 2026).
    2. **P5.4.2** Hours as single hours or ready-made picks (morning rush, lunch, evening rush, dinner, late night), price band shown on each.
    3. **P5.4.3** Days and number of weeks (start at least 15 days after booking; sooner only through RECALL's team); 5 to 100 bikes.
    4. **P5.4.4** Optional monthly repeat: 6 months 8% off, 12 months 12% off.

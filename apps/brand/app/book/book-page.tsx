@@ -17,6 +17,7 @@ import {
 } from '../../lib/api';
 import { daysText, rupees } from '../../lib/format';
 import { Icon } from '../../lib/icons';
+import { AreasMap, useOurAreas } from '../../lib/areas-map';
 import { areaPhoto } from '../../lib/photos';
 import { Shell, useMe } from '../../lib/session';
 
@@ -24,8 +25,10 @@ const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const toggle = <T,>(list: readonly T[], x: T) =>
   list.includes(x) ? list.filter((y) => y !== x) : [...list, x];
 
-export default function BookPage() {
+export default function BookPage({ styleUrl }: { readonly styleUrl: string }) {
   const me = useMe();
+  // P5.4.1: our areas on the map, the picked ones standing out.
+  const ours = useOurAreas();
   const router = useRouter();
   const [brand, setBrand] = useState('');
   const [account, setAccount] = useState<Account>();
@@ -125,6 +128,16 @@ export default function BookPage() {
               <span className="step__n">1</span>Areas
             </h2>
             <p className="muted">Tap the areas where your ads should play.</p>
+            {ours.areas && ours.areas.length > 0 && (
+              <AreasMap
+                areas={ours.areas}
+                styleUrl={styleUrl}
+                picked={plan.areaIds}
+                canPick={(id) => form.areas.some((a) => a.areaId === id)}
+                onPick={(id) => set({ areaIds: toggle(plan.areaIds, id) })}
+                label="Map of our areas: the ones you picked stand out"
+              />
+            )}
             <div className="area-cards" role="group" aria-label="Areas to pick">
               {form.areas.map((a) => {
                 const on = plan.areaIds.includes(a.areaId);
