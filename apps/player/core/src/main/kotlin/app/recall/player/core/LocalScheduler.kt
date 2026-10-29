@@ -7,6 +7,9 @@
 //    earlier this hour (so GPS wobbling along a border never switches the brand); a bike that just
 //    stays near an area carries nothing (edge plays count only up to a share of a line, P1.5.3, and
 //    the cloud only assigns bikes inside). Outside every area: the screen is blank (OurZone, P2.5).
+//    The hold lags the bike: while its latest position would not count for the held area's line (it
+//    has crossed into a neighbour, P1.1.7, or gone past the edge zone), RECALL's own ads, not the line;
+//    the same for a POC month's zone. The screen is never blanked by the lag.
 //  - In an area-hour with the cloud's assignment, the bike carries that (the newest for that
 //    area-hour, kept: a bike coming back carries the same again). Without one, or for a part of it
 //    the plan the box holds does not know, the screen's own pick (P1.4.3).
@@ -42,6 +45,8 @@ class LocalScheduler(
 
     @Volatile private var state = State()
     @Volatile private var place: Place = Place.Outside
+    /** The latest good position (its second, where): where a play starting now would be judged. */
+    @Volatile private var lastFix: Pair<Long, LatLng>? = null
     /** Area-hours this bike has been inside (so it may keep carrying there in the edge zone). */
     private val wasInside = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private val writing = Any()
@@ -187,6 +192,7 @@ class LocalScheduler(
     fun onSecond(second: Second) {
         val p = second.place
         place = p
+        second.position?.let { lastFix = second.t to it }
         seen[second.t] = Where.of(second.position, second.accuracyM, p)
         seen.headMap(second.t - KEEP_SECONDS).clear()
         if (p is Place.Inside) planFor(state, p.areaId, second.t * 1000)?.let { wasInside += key(p.areaId, it.startsAt) }
@@ -255,6 +261,13 @@ class LocalScheduler(
         val plan = planFor(s, areaId, utcMs) ?: return null
         val k = key(areaId, plan.startsAt)
         if (edge && k !in wasInside) return null
+        // The held place lags the bike by the 15-second hold (no flicker along a border). Where the
+        // bike is now would not count for this area's line (it has crossed into a neighbour, or gone
+        // beyond the edge zone): RECALL's own ads until the hold catches up, never a wasted brand
+        // play the cloud would judge "inside another area" (review, 29 Oct 2026).
+        val now = fixAt(Math.floorDiv(utcMs, 1000L))
+        val known = s.areas.areas.any { it.areaId == areaId && it.active }
+        if (known && now != null && !Areas.lineCount(now, areaId, s.areas.areas).counts) return plan to Carry(null, null)
         val own by lazy { Fallback.pick(plan, screenId) }
         val given = s.assigned[k]?.first?.carry ?: return plan to own
         // A part of the assignment the plan held here does not know (a newer revision not yet here):
@@ -288,6 +301,16 @@ class LocalScheduler(
         }
     }
 
+    /** The latest good position at second `t` if it is recent (a play starting then is judged there). */
+    private fun fixAt(t: Long): LatLng? = lastFix?.takeIf { (s, _) -> s <= t && t - s <= FRESH_FIX_SECONDS }?.second
+
+    /** Inside a POC zone at this position and the place the cloud finds there (its inPayZone). */
+    private fun inPocZoneHere(zone: PocZone, at: LatLng, here: Place): Boolean = when (val z = zone) {
+        is PocZone.Circle -> Geo.distanceMeters(z.centre, at) <= z.radiusM
+        is PocZone.Areas -> PayZone.Areas(z.areaIds.toSet(), z.withEdge).counts(at, here)
+        is PocZone.AllAreas -> PayZone.AllAreas(z.withEdge).counts(at, here)
+    }
+
     /** The POC hour at `utcMs` when a POC month plays then (outside its zone: RECALL's ads only); else null. */
     private fun pocAt(s: State, utcMs: Long): Pair<HourPlan, Carry>? {
         val t = Math.floorDiv(utcMs, 1000L)
@@ -295,8 +318,14 @@ class LocalScheduler(
         val inZone = inPocZone(plan.zone, t)
         val hour = PocPlans.hourOf(t)
         // Outside the POC zone in a POC hour the screen is blank (blankAt); with OurZone flipped, only
-        // RECALL's own ads, never an area plan (Prateek, 29 Oct 2026).
-        if (!inZone) return HourPlan("poc-outside", hour, emptyList(), emptyList(), plan.recallAds) to Carry(null, null)
+        // RECALL's own ads, never an area plan (Prateek, 29 Oct 2026). In the zone by the held place
+        // but not where the bike is now (the hold lags it, review 29 Oct 2026): RECALL's own ads, as
+        // the cloud would not count a POC play there; the screen is not blanked by the lag.
+        val now = fixAt(t)
+        // (Without an areas list the box cannot place a position: the held place decides.)
+        val zoneNow = now == null || (plan.zone !is PocZone.Circle && s.areas.areas.isEmpty()) ||
+            inPocZoneHere(plan.zone, now, Areas.locate(now, s.areas.areas))
+        if (!inZone || !zoneNow) return HourPlan("poc-outside", hour, emptyList(), emptyList(), plan.recallAds) to Carry(null, null)
         return HourPlan("poc", hour, emptyList(), emptyList(), plan.recallAds, poc = PocCarry(plan, screenId)) to Carry(null, null)
     }
 
@@ -306,6 +335,8 @@ class LocalScheduler(
         const val KEEP_SECONDS = 120L
         /** A fix this many seconds from a play's start still gives its position. */
         const val NEAR_SECONDS = 5L
+        /** A position older than this does not decide what the bike carries (the held place does). */
+        const val FRESH_FIX_SECONDS = 10L
         /** How far ahead of the trusted time a cloud message may be dated (the cloud's clock may be a little ahead). */
         const val AHEAD_MS = 5 * 60_000L
     }

@@ -387,3 +387,40 @@ export function locate(point: LatLng, areas: readonly AreaVersion[]): Place {
       }
     : { kind: 'outside' };
 }
+
+/** What a position counts as for one area's booking line (P1.5.3 with P1.1.7). */
+export type LineCount = 'inside' | 'edge' | 'inside another area' | 'outside';
+
+/**
+ * What a position counts as for `areaId`'s line: inside it; in its edge zone where that zone lies
+ * outside every area (it may overlap a neighbour's edge zone); inside another area (never this
+ * line's, though its edge zone may reach in); or outside. `areas`: the areas that are on, in the
+ * versions in force. The cloud judges plays by this (judgePlay); the screen stops carrying a line
+ * where it would not count (Kotlin `Areas.lineCount`, shared cases in test-vectors/areas-locate.json).
+ */
+export function lineCount(point: LatLng, areaId: string, areas: readonly AreaVersion[]): LineCount {
+  const area = areas.find((a) => a.areaId === areaId && a.active);
+  if (!area) return 'outside';
+  const where = locate(point, areas);
+  if (where.kind === 'inside') return where.areaId === areaId ? 'inside' : 'inside another area';
+  const own = locate(point, [area]);
+  return own.kind === 'outside' ? 'outside' : own.kind;
+}
+
+/**
+ * The screen's rule (review of 29 Oct 2026), mirrored here for tests: the area whose booking a bike
+ * carries. The screen acts on its held place (the 15-second hold, so a bike on a border never
+ * flickers between brands), but while its latest position would not count for that area's line (it
+ * has crossed into a neighbour, or gone beyond the edge zone) it shows RECALL's own ads instead, so
+ * no brand play is wasted. Undefined: no brand line (RECALL's own ads, or blank outside our zone).
+ */
+export function carriedArea(
+  held: Place,
+  position: LatLng | undefined,
+  areas: readonly AreaVersion[],
+): string | undefined {
+  if (held.kind === 'outside') return undefined;
+  if (!position) return held.areaId;
+  const c = lineCount(position, held.areaId, areas);
+  return c === 'inside' || c === 'edge' ? held.areaId : undefined;
+}

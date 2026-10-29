@@ -64,4 +64,28 @@ object Areas {
         }
         return best?.let { Place.Edge(it.areaId, it.version, bestMeters) } ?: Place.Outside
     }
+
+    /** What a position counts as for one area's booking line: the cloud's lineCount (P1.5.3, P1.1.7). */
+    enum class LineCount(val word: String) {
+        INSIDE("inside"),
+        EDGE("edge"),
+        INSIDE_ANOTHER("inside another area"),
+        OUTSIDE("outside"),
+        ;
+
+        /** A brand play here would count for that line (edge plays up to their share). */
+        val counts get() = this == INSIDE || this == EDGE
+    }
+
+    /**
+     * What `point` counts as for `areaId`'s line, exactly as the cloud judges a play: inside it; in its
+     * edge zone where that lies outside every area; inside another area (never this line's, though the
+     * edge zone may reach in, as neighbours share borders); or outside. Shared cases: areas-locate.json.
+     */
+    fun lineCount(point: LatLng, areaId: String, areas: List<AreaVersion>): LineCount {
+        val area = areas.firstOrNull { it.areaId == areaId && it.active } ?: return LineCount.OUTSIDE
+        val where = locate(point, areas)
+        if (where is Place.Inside) return if (where.areaId == areaId) LineCount.INSIDE else LineCount.INSIDE_ANOTHER
+        return if (locate(point, listOf(area)) is Place.Outside) LineCount.OUTSIDE else LineCount.EDGE
+    }
 }

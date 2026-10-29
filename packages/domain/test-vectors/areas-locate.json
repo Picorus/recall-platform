@@ -173,140 +173,300 @@
    "lat": 17.405,
    "lng": 78.41,
    "place": "inside:hyd-a@1",
-   "metersOutside": null
+   "metersOutside": null,
+   "lines": {
+    "hyd-d": "inside another area",
+    "hyd-b": "inside another area",
+    "hyd-s2": "inside another area",
+    "hyd-a": "inside",
+    "hyd-c": "inside another area",
+    "hyd-s1": "inside another area"
+   }
   },
   {
    "name": "on the border a and c share (east to west)",
    "lat": 17.41,
    "lng": 78.405,
    "place": "inside:hyd-a@1",
-   "metersOutside": null
+   "metersOutside": null,
+   "lines": {
+    "hyd-d": "inside another area",
+    "hyd-b": "inside another area",
+    "hyd-s2": "inside another area",
+    "hyd-a": "inside",
+    "hyd-c": "inside another area",
+    "hyd-s1": "inside another area"
+   }
   },
   {
    "name": "the corner all four boxes share",
    "lat": 17.41,
    "lng": 78.41,
    "place": "inside:hyd-a@1",
-   "metersOutside": null
+   "metersOutside": null,
+   "lines": {
+    "hyd-d": "inside another area",
+    "hyd-b": "inside another area",
+    "hyd-s2": "inside another area",
+    "hyd-a": "inside",
+    "hyd-c": "inside another area",
+    "hyd-s1": "inside another area"
+   }
   },
   {
    "name": "on the border b and d share",
    "lat": 17.41,
    "lng": 78.415,
    "place": "inside:hyd-b@3",
-   "metersOutside": null
+   "metersOutside": null,
+   "lines": {
+    "hyd-d": "inside another area",
+    "hyd-b": "inside",
+    "hyd-s2": "inside another area",
+    "hyd-a": "inside another area",
+    "hyd-c": "inside another area",
+    "hyd-s1": "inside another area"
+   }
   },
   {
    "name": "on the border c and d share",
    "lat": 17.415,
    "lng": 78.41,
    "place": "inside:hyd-c@1",
-   "metersOutside": null
+   "metersOutside": null,
+   "lines": {
+    "hyd-d": "inside another area",
+    "hyd-b": "inside another area",
+    "hyd-s2": "inside another area",
+    "hyd-a": "inside another area",
+    "hyd-c": "inside",
+    "hyd-s1": "inside another area"
+   }
   },
   {
    "name": "half way along the slanted border",
    "lat": 17.44,
    "lng": 78.41000000000001,
    "place": "inside:hyd-s1@1",
-   "metersOutside": null
+   "metersOutside": null,
+   "lines": {
+    "hyd-d": "inside another area",
+    "hyd-b": "inside another area",
+    "hyd-s2": "inside another area",
+    "hyd-a": "inside another area",
+    "hyd-c": "inside another area",
+    "hyd-s1": "inside"
+   }
   },
   {
    "name": "37% along the slanted border (not exact in floating point)",
    "lat": 17.4374,
    "lng": 78.40740000000001,
    "place": "inside:hyd-s1@1",
-   "metersOutside": null
+   "metersOutside": null,
+   "lines": {
+    "hyd-d": "inside another area",
+    "hyd-b": "inside another area",
+    "hyd-s2": "inside another area",
+    "hyd-a": "inside another area",
+    "hyd-c": "inside another area",
+    "hyd-s1": "inside"
+   }
   },
   {
    "name": "0.5 mm off the slanted border, towards s2",
    "lat": 17.44220000317958,
    "lng": 78.41219999666778,
    "place": "inside:hyd-s1@1",
-   "metersOutside": null
+   "metersOutside": null,
+   "lines": {
+    "hyd-d": "inside another area",
+    "hyd-b": "inside another area",
+    "hyd-s2": "inside another area",
+    "hyd-a": "inside another area",
+    "hyd-c": "inside another area",
+    "hyd-s1": "inside"
+   }
   },
   {
    "name": "2 mm off the slanted border, inside s2",
    "lat": 17.44220001271832,
    "lng": 78.41219998667107,
    "place": "inside:hyd-s2@1",
-   "metersOutside": null
+   "metersOutside": null,
+   "lines": {
+    "hyd-d": "inside another area",
+    "hyd-b": "inside another area",
+    "hyd-s2": "inside",
+    "hyd-a": "inside another area",
+    "hyd-c": "inside another area",
+    "hyd-s1": "inside another area"
+   }
   },
   {
    "name": "2 mm off the slanted border, inside s1",
    "lat": 17.44219998728168,
    "lng": 78.41220001332896,
    "place": "inside:hyd-s1@1",
-   "metersOutside": null
+   "metersOutside": null,
+   "lines": {
+    "hyd-d": "inside another area",
+    "hyd-b": "inside another area",
+    "hyd-s2": "inside another area",
+    "hyd-a": "inside another area",
+    "hyd-c": "inside another area",
+    "hyd-s1": "inside"
+   }
   },
   {
    "name": "5 m inside b, in a’s edge zone",
    "lat": 17.405,
    "lng": 78.4100471249323,
    "place": "inside:hyd-b@3",
-   "metersOutside": null
+   "metersOutside": null,
+   "lines": {
+    "hyd-d": "inside another area",
+    "hyd-b": "inside",
+    "hyd-s2": "inside another area",
+    "hyd-a": "inside another area",
+    "hyd-c": "inside another area",
+    "hyd-s1": "inside another area"
+   }
   },
   {
    "name": "5 m inside a, in b’s edge zone",
    "lat": 17.405,
    "lng": 78.40995287506769,
    "place": "inside:hyd-a@1",
-   "metersOutside": null
+   "metersOutside": null,
+   "lines": {
+    "hyd-d": "inside another area",
+    "hyd-b": "inside another area",
+    "hyd-s2": "inside another area",
+    "hyd-a": "inside",
+    "hyd-c": "inside another area",
+    "hyd-s1": "inside another area"
+   }
   },
   {
    "name": "on a’s outer border (no neighbour there)",
    "lat": 17.405,
    "lng": 78.4,
    "place": "inside:hyd-a@1",
-   "metersOutside": null
+   "metersOutside": null,
+   "lines": {
+    "hyd-d": "inside another area",
+    "hyd-b": "inside another area",
+    "hyd-s2": "inside another area",
+    "hyd-a": "inside",
+    "hyd-c": "inside another area",
+    "hyd-s1": "inside another area"
+   }
   },
   {
    "name": "50 m east of b (its edge zone is 200 m)",
    "lat": 17.405,
    "lng": 78.42047124932304,
    "place": "edge:hyd-b@3",
-   "metersOutside": 50.001404
+   "metersOutside": 50.001404,
+   "lines": {
+    "hyd-d": "outside",
+    "hyd-b": "edge",
+    "hyd-s2": "outside",
+    "hyd-a": "outside",
+    "hyd-c": "outside",
+    "hyd-s1": "outside"
+   }
   },
   {
    "name": "250 m east of b (beyond its edge zone)",
    "lat": 17.405,
    "lng": 78.4223562466152,
    "place": "outside",
-   "metersOutside": null
+   "metersOutside": null,
+   "lines": {
+    "hyd-d": "outside",
+    "hyd-b": "outside",
+    "hyd-s2": "outside",
+    "hyd-a": "outside",
+    "hyd-c": "outside",
+    "hyd-s1": "outside"
+   }
   },
   {
    "name": "100 m south of where a and b meet: as near to both, the smaller id",
    "lat": 17.399100678987363,
    "lng": 78.41,
    "place": "edge:hyd-a@1",
-   "metersOutside": 100.000072
+   "metersOutside": 100.000072,
+   "lines": {
+    "hyd-d": "outside",
+    "hyd-b": "edge",
+    "hyd-s2": "outside",
+    "hyd-a": "edge",
+    "hyd-c": "outside",
+    "hyd-s1": "outside"
+   }
   },
   {
    "name": "100 m south of b, nearer b than a",
    "lat": 17.399100678987363,
    "lng": 78.412,
    "place": "edge:hyd-b@3",
-   "metersOutside": 100.000072
+   "metersOutside": 100.000072,
+   "lines": {
+    "hyd-d": "outside",
+    "hyd-b": "edge",
+    "hyd-s2": "outside",
+    "hyd-a": "edge",
+    "hyd-c": "outside",
+    "hyd-s1": "outside"
+   }
   },
   {
    "name": "inside the area that is off, inside a",
    "lat": 17.405,
    "lng": 78.405,
    "place": "inside:hyd-a@1",
-   "metersOutside": null
+   "metersOutside": null,
+   "lines": {
+    "hyd-d": "inside another area",
+    "hyd-b": "inside another area",
+    "hyd-s2": "inside another area",
+    "hyd-a": "inside",
+    "hyd-c": "inside another area",
+    "hyd-s1": "inside another area"
+   }
   },
   {
    "name": "between the boxes and the triangles, 50 m below s1",
    "lat": 17.429550339493684,
    "lng": 78.41,
    "place": "edge:hyd-s1@1",
-   "metersOutside": 50.000036
+   "metersOutside": 50.000036,
+   "lines": {
+    "hyd-d": "outside",
+    "hyd-b": "outside",
+    "hyd-s2": "outside",
+    "hyd-a": "outside",
+    "hyd-c": "outside",
+    "hyd-s1": "edge"
+   }
   },
   {
    "name": "far away",
    "lat": 17.3,
    "lng": 78.3,
    "place": "outside",
-   "metersOutside": null
+   "metersOutside": null,
+   "lines": {
+    "hyd-d": "outside",
+    "hyd-b": "outside",
+    "hyd-s2": "outside",
+    "hyd-a": "outside",
+    "hyd-c": "outside",
+    "hyd-s1": "outside"
+   }
   }
  ]
 }

@@ -56,6 +56,17 @@ class AreasLocateTest {
     }
 
     @Test
+    fun `what each point counts as for each area's line is the cloud's`() {
+        for (c in cases) {
+            val name = c.getValue("name").jsonPrimitive.content
+            val p = LatLng(num(c, "lat"), num(c, "lng"))
+            val lines = c.getValue("lines").jsonObject
+            assertEquals(areas.count { it.active }, lines.size, name)
+            for ((id, word) in lines) assertEquals(word.jsonPrimitive.content, Areas.lineCount(p, id, areas).word, "$name, $id")
+        }
+    }
+
+    @Test
     fun `the same answer whatever order the areas come in`() {
         for (c in cases) {
             val p = LatLng(num(c, "lat"), num(c, "lng"))

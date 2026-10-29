@@ -1,7 +1,7 @@
 // P1.5: play counting and proof. Hard rule 1: the screen is the truth for plays; each play is signed
 // on the screen with its own key, and the cloud never invents one. The cloud checks every play,
 // re-checks where it happened against the real area shape, and counts what the promise allows.
-import { locate, placeKey, publishedAt, type AreaVersion } from './areas.js';
+import { lineCount, locate, placeKey, publishedAt, type AreaVersion } from './areas.js';
 import { isPocRef, pocPlayProblem, type PocPlayContext } from './poc.js';
 
 /** Settings for checking and counting plays (in the price book, versioned). */
@@ -198,16 +198,11 @@ export function judgePlay(
   // Inside the line's own area, or in its edge zone where that zone lies outside every area (even
   // where it overlaps a neighbour's edge zone). Neighbours may share a border (P1.1.7), so an edge
   // zone reaches into the neighbour: a play inside another area is never this line's edge play.
-  const area = published(line.areaId);
-  if (!area?.active) return no("outside the line's area");
-  const where = locate(point, inForce);
-  if (where.kind === 'inside')
-    return where.areaId === line.areaId
-      ? { count: { counts: 'inside', lineId: line.lineId }, cloudPlace }
-      : no('inside another area');
-  const place = locate(point, [area]);
-  if (place.kind === 'outside') return no("outside the line's area");
-  return { count: { counts: place.kind, lineId: line.lineId }, cloudPlace };
+  // The same rule the screen uses to stop carrying a line (lineCount, Areas.lineCount).
+  const counts = lineCount(point, line.areaId, inForce);
+  if (counts === 'inside another area') return no('inside another area');
+  if (counts === 'outside') return no("outside the line's area");
+  return { count: { counts, lineId: line.lineId }, cloudPlace };
 }
 
 // ---------------------------------------------------------------- P1.5.3–4 counting per line

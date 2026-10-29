@@ -10,6 +10,7 @@ import { buildAreaIndex, locateIndexed } from '../src/area-index.js';
 import {
   checkArea,
   createArea,
+  lineCount,
   locate,
   neighboursOf,
   ON_BORDER_M,
@@ -318,6 +319,10 @@ describe('where a point on a shared border belongs (P1.1.7)', () => {
     return {
       place: placeKey(place),
       metersOutside: place.kind === 'edge' ? Math.round(place.metersOutside * 1e6) / 1e6 : null,
+      // What it counts as for each area's line (lineCount): the screen stops carrying a line elsewhere.
+      lines: Object.fromEntries(
+        AREAS.filter((a) => a.active).map((a) => [a.areaId, lineCount(p, a.areaId, AREAS)]),
+      ),
     };
   };
   const vectors = {
@@ -367,6 +372,25 @@ describe('where a point on a shared border belongs (P1.1.7)', () => {
       'edge:hyd-s1@1',
       'outside',
     ]);
+  });
+
+  it('what each point counts as for each line: inside another area is never an edge play', () => {
+    const lines = Object.fromEntries(vectors.cases.map((c) => [c.name, c.lines]));
+    expect(lines['5 m inside b, in a’s edge zone']).toMatchObject({
+      'hyd-a': 'inside another area',
+      'hyd-b': 'inside',
+    });
+    expect(
+      lines['100 m south of where a and b meet: as near to both, the smaller id'],
+    ).toMatchObject({ 'hyd-a': 'edge', 'hyd-b': 'edge', 'hyd-c': 'outside' });
+    expect(lines['on the border a and b share (north to south)']).toMatchObject({
+      'hyd-a': 'inside',
+      'hyd-b': 'inside another area',
+    });
+    for (const c of vectors.cases)
+      for (const [id, v] of Object.entries(c.lines))
+        if (c.place.startsWith('inside:') && !c.place.startsWith(`inside:${id}@`))
+          expect(v).toBe('inside another area');
   });
 
   it('the shapes in the cases touch and never overlap', () => {
