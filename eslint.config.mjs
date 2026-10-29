@@ -6,6 +6,8 @@ export default tseslint.config(
   {
     ignores: [
       '**/node_modules/',
+      // Helpers' separate working copies (Claude Code worktrees), never part of the repo.
+      '.claude/',
       '**/dist/',
       '**/dist-e2e/',
       '**/dist-demo/',

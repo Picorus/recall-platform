@@ -10,3 +10,5 @@ apps/brand/next-env.d.ts
 apps/admin/public/
 tools/demo/investor/index.html
 docs/design/design-2-board.html
+# Helpers' separate working copies (Claude Code worktrees).
+.claude/
