@@ -43,10 +43,13 @@ listeners.ssl.default {
 }
 # On the TLS port the user name is the certificate's fingerprint, so a screen cannot choose it.
 # No retained messages from screens: nothing of theirs is kept on the broker to replay later.
+# A screen sends at most 300 KB in one message (its uploads are smaller still, MAX_UP_BYTES); the
+# gateway's messages to screens may be up to 1 MB (a file list of 600 ads, a POC plan: review S2).
 zones.screens {
-  mqtt { peer_cert_as_username = md5, peer_cert_as_clientid = disabled, retain_available = false }
+  mqtt { peer_cert_as_username = md5, peer_cert_as_clientid = disabled, retain_available = false,
+         max_packet_size = 300KB }
 }
-mqtt { max_packet_size = 300KB }
+mqtt { max_packet_size = 1MB }
 
 authentication = [{
   mechanism = password_based

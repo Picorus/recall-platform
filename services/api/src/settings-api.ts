@@ -10,6 +10,13 @@ import {
   areaRecords,
   businessModeHistory,
   canSwitch,
+  cancelScheduledPoc,
+  owePocMonthsBack,
+  stopPocLinks,
+  businessModes,
+  pocPhaseAt,
+  pocMonthsSetting,
+  EarlyEnd,
   Refusal,
   saveSetting,
   setBusinessMode,
@@ -18,7 +25,7 @@ import {
 } from '@recall/db';
 import {
   modeAt,
-  pocEndedAt,
+  pocAlerts,
   pocStartsFrom,
   SETTING_KEYS,
   switchCountsFrom,
@@ -76,12 +83,18 @@ export async function handleSettings(
         )
       ).rows.map((x) => [x.id, x.name]),
     );
+    const phase = await pocPhaseAt(pool, now);
+    const months = await pocMonthsSetting(pool);
     const business = {
-      mode: modeAt(history, now),
+      mode: modeAt(await businessModes(pool), now),
       // A switch already made that has not started yet (counts from a later day).
-      next: history.find((h) => h.from > now) ?? null,
-      canSwitch: me.access.role === 'super-admin' && (await canSwitch(pool)),
-      pocEnded: pocEndedAt(history) !== undefined,
+      next: history.find((h) => h.from > now && !h.cancelled) ?? null,
+      canSwitch: me.access.role === 'super-admin' && (await canSwitch(pool, now)),
+      // P7.8: the POC is scheduled, running or ended (by itself after its months, or by hand).
+      poc: phase,
+      pocMonths: months,
+      alerts: pocAlerts(phase, months, now),
+      pocEnded: phase.phase === 'ended',
       pocFrom: pocStartsFrom(now),
       regularFrom: switchCountsFrom(now),
       history: history.map((h) => ({ ...h, setBy: setters.get(h.setBy) ?? h.setBy })),
@@ -100,6 +113,35 @@ export async function handleSettings(
       connections: cfg.connections ?? [],
       business,
     });
+    return true;
+  }
+
+  // P7.8 (Prateek, 29 Oct 2026): a super admin cancels a POC scheduled and not started, with why.
+  if (path === '/settings/business/cancel') {
+    if (method !== 'POST') throw new HttpError(405, 'Not allowed');
+    const origin = req.headers.origin;
+    if (!origin || !cfg.origins.includes(origin))
+      throw new HttpError(403, 'Not from the admin site');
+    const me = await staffFor(pool, cfg, req, nowMs);
+    if (me.access.role !== 'super-admin')
+      throw new HttpError(403, 'Only a super admin cancels the POC');
+    const reason = str(await jsonBody(req), 'reason', 300).trim();
+    if (reason.length < 5) throw new HttpError(400, 'Say why (a few words)');
+    try {
+      const from = await cancelScheduledPoc(pool, { id: me.id, role: me.access.role }, reason, now);
+      // Its months' payment links are stopped (money taken anyway is owed back), and months already
+      // paid for it never ran: owed back. Both are tried again by the payments job if this fails.
+      if (cfg.payments)
+        await stopPocLinks(pool, cfg.payments, now).catch((e: unknown) =>
+          console.error(`payments: stopping cancelled POC links: ${(e as Error).message}`),
+        );
+      const owed = await owePocMonthsBack(pool, now);
+      send(res, 200, { cancelled: from, owedBack: owed });
+    } catch (e) {
+      if (e instanceof Error && /No POC is scheduled|has started/.test(e.message))
+        throw new HttpError(400, e.message);
+      throw e;
+    }
     return true;
   }
 
@@ -123,9 +165,13 @@ export async function handleSettings(
         { id: me.id, role: me.access.role },
         reason,
         now,
+        // P7.8: ending the POC before its planned end needs the super admin's confirmation.
+        { early: b.early === true },
       );
       send(res, 200, { mode, from });
     } catch (e) {
+      if (e instanceof EarlyEnd)
+        throw new HttpError(409, e.message, { code: 'poc-early', n: e.days });
       // The switch's own rules (one switch at a time, the POC runs once): said in its words.
       if (e instanceof Error && /already set|already on|POC has ended/.test(e.message))
         throw new HttpError(400, e.message);

@@ -30,6 +30,7 @@ export function useMe(): Me | undefined {
 /** The pages a business moves between, in the top bar (Design 2.0: like a booking site, few and plain). */
 const NAV = [
   ['/campaigns', 'Campaigns'],
+  ['/poc', 'POC'],
   ['/invoices', 'Invoices'],
   ['/team', 'Team'],
   ['/statement', 'Statement'],
@@ -73,17 +74,19 @@ export function Shell({ me, children }: { readonly me: Me; readonly children: Re
           </Link>
           {account && (
             <nav className="appnav" aria-label="Main">
-              {NAV.filter(([href]) => href !== '/statement' || account.kind === 'agency').map(
-                ([href, label]) => (
-                  <Link
-                    key={href}
-                    href={`${href}?${q}`}
-                    aria-current={path.startsWith(href) ? 'page' : undefined}
-                  >
-                    {label}
-                  </Link>
-                ),
-              )}
+              {NAV.filter(
+                ([href]) =>
+                  (href !== '/statement' || account.kind === 'agency') &&
+                  (href !== '/poc' || account.poc === true),
+              ).map(([href, label]) => (
+                <Link
+                  key={href}
+                  href={`${href}?${q}`}
+                  aria-current={path.startsWith(href) ? 'page' : undefined}
+                >
+                  {label}
+                </Link>
+              ))}
             </nav>
           )}
           <div className="appbar__end">

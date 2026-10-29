@@ -7,6 +7,7 @@
 // Each spot is confirmed (ScreenReports.started) only once its first frame or picture is on screen,
 // within half a second of its swap; later than that it is reported as a late start and does not count.
 // A layer still loading, or whose file failed, shows RECALL's slate, never what it held before.
+// A blank spot (outside our zone, P2.5) is a black frame: no file, nothing to load, not a play.
 // A file the player cannot read is reported as the file's fault (the store checks it again and
 // downloads it again only if it is really damaged); a box problem is reported as the screen's.
 //
@@ -137,6 +138,8 @@ class Screen(
             scaleType = ImageView.ScaleType.FIT_CENTER
             setBackgroundColor(MIDNIGHT)
         }
+        /** Outside our zone (P2.5): a black frame, nothing else. */
+        private val black = View(context).apply { setBackgroundColor(Color.BLACK) }
         private val slate = TextView(context).apply {
             text = context.getString(R.string.app_name)
             setTextColor(VOLT)
@@ -155,8 +158,8 @@ class Screen(
         private var confirmed = false
 
         init {
-            // Bottom to top: video, picture, slate.
-            listOf(texture, picture, slate).forEach { view.addView(it, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT)) }
+            // Bottom to top: video, picture, slate, black.
+            listOf(texture, picture, slate, black).forEach { view.addView(it, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT)) }
             only(slate)
         }
 
@@ -171,6 +174,12 @@ class Screen(
             picture.setImageDrawable(null)
             // Until this spot's own picture or frame is ready: the slate, never what was here before.
             only(slate)
+            if (next.blank) {
+                // Outside our zone: black, no file (not a play: the conductor never hands it on).
+                only(black)
+                ready = true
+                return
+            }
             val file = next.file
             if (file == null) {
                 ready = true
@@ -287,6 +296,7 @@ class Screen(
         private fun only(v: View) {
             picture.visibility = if (v === picture) View.VISIBLE else View.INVISIBLE
             slate.visibility = if (v === slate) View.VISIBLE else View.INVISIBLE
+            black.visibility = if (v === black) View.VISIBLE else View.INVISIBLE
         }
 
         /**

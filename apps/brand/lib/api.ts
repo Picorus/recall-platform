@@ -46,6 +46,8 @@ export interface Account {
   readonly role: 'owner' | 'booker';
   /** P5.10: a brand reached through the person's agency. */
   readonly via: { readonly agencyId: string; readonly name: string } | null;
+  /** P7.8: on the POC package (its menu shows "POC"). */
+  readonly poc?: boolean;
 }
 
 export interface Me {

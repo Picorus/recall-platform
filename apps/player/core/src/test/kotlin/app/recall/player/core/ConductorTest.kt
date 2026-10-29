@@ -290,6 +290,27 @@ class ConductorTest {
     }
 
     @Test
+    fun `outside our zone the screen is blank - a black frame with no file, never handed on as a play`() {
+        // Stopped just after the fourth spot ended.
+        val time = Time(h0, stopAt = 60_001)
+        val screen = Screen()
+        val played = mutableListOf<Played>()
+        // Outside for the first 30 s, then back in the area.
+        val plans = object : PlanSource {
+            override fun at(utcMs: Long) = (plan to carry).takeIf { utcMs >= h0 + 30_000 }
+            override fun blankAt(utcMs: Long) = utcMs < h0 + 30_000
+        }
+        conductor(time, screen, plans = plans, played = played).first.run()
+        val shown = screen.shows().map { it.third }
+        assertEquals(listOf(true, true, false, false), shown.take(4).map { it.blank })
+        assertTrue(shown.take(2).all { it.file == null && it.planned == null && it.shows == SpotChoice.BLANK })
+        // Only the spots in the area are handed on (and they count); the blank ones are not reported.
+        assertTrue(played.none { it.spot.blank })
+        assertEquals(listOf(2, 3), played.take(2).map { it.spot.index })
+        assertTrue(played.take(2).all { it.counts })
+    }
+
+    @Test
     fun `the next hour starts again at spot 0 of its own plan`() {
         val next = plan.copy(startsAt = hour + 3600, lines = listOf(PlanLine("L2", "paid", listOf("n1"))))
         val time = Time(h0 + 3_600_000 - 30_000, stopAt = 60_000)

@@ -9,6 +9,7 @@
 // get, and the gap is made up later (P1.6). With no RECALL ad either, the screen shows its slate.
 // Without a trusted time the screen still shows RECALL's ads (it never goes dark), but nothing is
 // counted: a play needs a time nobody on the bike can change.
+// Outside our zone (OurZone, P2.5) the spot is blank: a black frame, no file, never a play.
 package app.recall.player.core
 
 import java.io.File
@@ -16,6 +17,9 @@ import java.io.File
 /** The plan and what the bike carries at a time (P2.6, the local scheduler); null: none. */
 fun interface PlanSource {
     fun at(utcMs: Long): Pair<HourPlan, Carry>?
+
+    /** Outside our zone at `utcMs`: the screen is blank (OurZone, P2.5). */
+    fun blankAt(utcMs: Long): Boolean = false
 }
 
 data class Spot(
@@ -33,6 +37,9 @@ data class Spot(
 ) {
     /** A play by trusted time: the only kind the signed play log (P2.7) records. */
     val timed: Boolean get() = startUtc != null
+
+    /** Outside our zone: a black frame, no file; not a play and not reported (P2.5). */
+    val blank: Boolean get() = shows?.kind == SpotChoice.BLANK.kind
 }
 
 class Playout(
@@ -53,6 +60,8 @@ class Playout(
         // grid from 1970 lines up with every plan.
         val start = Math.floorDiv(utcMs, spotMs) * spotMs
         val end = start + spotMs
+        // Outside our zone: blank (a check that fails is not blank: the screen never goes dark by mistake).
+        if (runCatching { plans.blankAt(start) }.getOrDefault(false)) return Spot(start, end, null, null, null, SpotChoice.BLANK, null)
         // A plan that cannot be read, or is off the grid, is no plan: RECALL's ads, never a dark screen.
         val planned = runCatching { plans.at(start) }.onFailure { log("play: no plan: ${it.message}") }.getOrNull()
             ?.takeIf { (plan, _) ->

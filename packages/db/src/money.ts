@@ -48,11 +48,15 @@ export async function paymentsIn(
     amount: string;
     state: PaymentIn['state'];
   }>(
-    `SELECT e.payment_id, e.at, l.booking_id, b.brand_id, ${BRAND_NAME('b.brand_id')} AS brand_name,
+    `SELECT e.payment_id, e.at, coalesce(l.booking_id, l.poc_ref) AS booking_id,
+            coalesce(b.brand_id, m.brand_id) AS brand_id,
+            ${BRAND_NAME('coalesce(b.brand_id, m.brand_id)')} AS brand_name,
             coalesce(e.amount_paise, l.amount_paise) AS amount, e.state
        FROM payment_link_events e
        JOIN payment_links l USING (link_id)
-       JOIN bookings b ON b.booking_id = l.booking_id
+       -- A link is for a booking or (P7.8) for a POC month.
+       LEFT JOIN bookings b ON b.booking_id = l.booking_id
+       LEFT JOIN poc_months m ON m.ref = l.poc_ref
       WHERE e.payment_id IS NOT NULL
         AND e.at >= to_timestamp($1) AND e.at < to_timestamp($2)
       ORDER BY e.at DESC, e.id DESC LIMIT 501`,
@@ -105,7 +109,8 @@ export async function gstDocuments(
     gst: string;
     total: string;
   }>(
-    `SELECT doc_no, kind, issued_at, against_doc, booking_id, brand_id, legal_name, gstin,
+    `SELECT doc_no, kind, issued_at, against_doc, coalesce(booking_id, poc_ref) AS booking_id,
+            brand_id, legal_name, gstin,
             taxable_paise AS taxable, cgst_paise + sgst_paise + igst_paise AS gst,
             total_paise AS total
        FROM gst_documents WHERE issued_at >= to_timestamp($1) AND issued_at < to_timestamp($2)

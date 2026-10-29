@@ -15,7 +15,7 @@ export type UpKind = (typeof UP_KINDS)[number];
 /**
  * What the cloud sends to a screen: `files` the ad files to keep (P2.4, ad-files.ts); `areas`, `plan`
  * and `assign` what to play where (P2.6, screen-plan.ts); `command` remote commands (P2.12); `update`
- * a new player version to install (P2.13).
+ * a new player version to install (P2.13); `poc` the POC months' plans (P7.8, poc.ts).
  */
 export const DOWN_KINDS = [
   'ack',
@@ -26,6 +26,7 @@ export const DOWN_KINDS = [
   'assign',
   'command',
   'update',
+  'poc',
 ] as const;
 export type DownKind = (typeof DOWN_KINDS)[number];
 

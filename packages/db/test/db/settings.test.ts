@@ -75,7 +75,7 @@ describe('settings (P3.17)', () => {
     await expect(
       saveSetting(
         pool,
-        'payZone',
+        'regularZone',
         { kind: 'areas', areaIds: ['hyd-nowhere'], withEdge: false },
         PRATEEK,
         'after the POC',
@@ -87,6 +87,13 @@ describe('settings (P3.17)', () => {
     );
     // The database refuses edits and gaps too.
     await expect(pool.query("UPDATE settings SET reason = 'changed'")).rejects.toThrow();
+    // P1.7.5: the old single pay zone is history only (pocZone and regularZone replace it).
+    await expect(
+      pool.query(
+        `INSERT INTO settings (key, version, value, saved_by, reason)
+         VALUES ('payZone', 1, '{}', 'prateek', 'the old key')`,
+      ),
+    ).rejects.toThrow('replaced by pocZone and regularZone');
     await expect(
       pool.query(
         `INSERT INTO settings (key, version, value, saved_by, reason)

@@ -33,14 +33,32 @@ sealed interface PayZone {
         }
     }
 
+    /** Any area that is on (regular business, Prateek 28 Oct 2026): not its edge zone unless `withEdge`. */
+    data class AllAreas(val withEdge: Boolean) : PayZone {
+        override fun counts(position: LatLng?, place: Place) = when (place) {
+            Place.Outside -> false
+            is Place.Edge -> withEdge
+            is Place.Inside -> true
+        }
+    }
+
     companion object {
+        /** Regular business: inside any area that is on, not its edge zone. */
+        val REGULAR = AllAreas(withEdge = false)
+
         /** POC: within 15 km of Hitech City (Cyber Towers). */
         val POC = Circle(LatLng(17.4504, 78.381), 15_000.0)
     }
 }
 
-/** Builds the minute summaries and live positions from the tracker's seconds. Not thread-safe. */
-class Minutes(private val zone: PayZone = PayZone.POC) {
+/**
+ * Builds the minute summaries and live positions from the tracker's seconds. Not thread-safe.
+ * `zoneAt`: the pay zone each second is marked against (review m1: the POC month's zone from the
+ * cloud's down/poc, LocalScheduler.payZoneAt; else the POC circle).
+ */
+class Minutes(private val zoneAt: (Long) -> PayZone) {
+    constructor(zone: PayZone = PayZone.POC) : this({ _: Long -> zone })
+
     private var minute: Long? = null
     private var secondsAt = LinkedHashMap<String, Long>()
     private var clockSeconds = 0L
@@ -84,7 +102,7 @@ class Minutes(private val zone: PayZone = PayZone.POC) {
             clockSeconds++
             clockAt.merge(key, 1, Long::plus)
             // Without a fix this second, the last known position decides (a short GPS gap).
-            if (zone.counts(p ?: last?.first, s.place)) payClockSeconds++
+            if (zoneAt(s.t).counts(p ?: last?.first, s.place)) payClockSeconds++
         }
         if (s.moving) movingSeconds++
         plays += playsNow

@@ -60,6 +60,8 @@ function scenario(): (GpsFix | null)[] {
 const round7 = (x: number) => Math.round(x * 1e7) / 1e7;
 const playsAt = (i: number) => (i % 15 === 0 ? 1 : 0);
 const SMALL_ZONE: PayZone = { kind: 'circle', centre: { lat: 17.447, lng: 78.378 }, radiusM: 500 };
+/** Regular business (Prateek, 28 Oct 2026): inside any area that is on, not its edge zone. */
+const AREAS_ZONE: PayZone = { kind: 'allAreas', withEdge: false };
 
 function expected(input: (GpsFix | null)[]) {
   const areas = launchAreas();
@@ -67,6 +69,8 @@ function expected(input: (GpsFix | null)[]) {
   let b: MinuteBuilder = EMPTY_MINUTE;
   // The same ride scored against a small pay zone it leaves (500 m round its start).
   let small: MinuteBuilder = EMPTY_MINUTE;
+  let inAreas: MinuteBuilder = EMPTY_MINUTE;
+  const areasZoneMinutes: Report[] = [];
   const seconds: unknown[] = [];
   const reports: Report[] = [];
   const zoneMinutes: Report[] = [];
@@ -91,7 +95,11 @@ function expected(input: (GpsFix | null)[]) {
     const z = addSecond(small, sec, playsAt(i), 0, SMALL_ZONE);
     small = z.builder;
     zoneMinutes.push(...z.reports.filter((r) => r.kind === 'minute'));
+    const za = addSecond(inAreas, sec, playsAt(i), 0, AREAS_ZONE);
+    inAreas = za.builder;
+    areasZoneMinutes.push(...za.reports.filter((r) => r.kind === 'minute'));
   });
+  areasZoneMinutes.push(...flushMinute(inAreas));
   reports.push(...flushMinute(b));
   zoneMinutes.push(...flushMinute(small));
   return {
@@ -100,6 +108,8 @@ function expected(input: (GpsFix | null)[]) {
     lives: reports.filter((r) => r.kind === 'live'),
     zone: SMALL_ZONE,
     zoneMinutes,
+    areasZone: AREAS_ZONE,
+    areasZoneMinutes,
   };
 }
 
@@ -153,6 +163,12 @@ describe('shared screen test cases', () => {
     const zm = vectors.expected.zoneMinutes as { payClockSeconds: number; clockSeconds: number }[];
     expect(zm.some((m) => m.payClockSeconds < m.clockSeconds)).toBe(true);
     expect(zm.some((m) => m.payClockSeconds > 0)).toBe(true);
+    // In regular business only seconds inside an area count: some minutes partly, some fully.
+    const za = vectors.expected.areasZoneMinutes as {
+      payClockSeconds: number;
+      clockSeconds: number;
+    }[];
+    expect(za.some((m) => m.payClockSeconds > 0 && m.payClockSeconds < m.clockSeconds)).toBe(true);
     const ms = vectors.expected.minutes as { plays: number; distanceM: number }[];
     expect(ms.every((m) => m.plays <= 4 && m.distanceM <= 3000)).toBe(true);
     expect(ms.reduce((n, m) => n + m.plays, 0)).toBe(87);

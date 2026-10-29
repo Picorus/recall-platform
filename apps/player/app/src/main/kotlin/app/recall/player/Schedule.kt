@@ -1,7 +1,7 @@
 // P2.6.3: the box's local scheduler, one per app process (files/schedule). The line hands it the
 // cloud's areas, plans and assignments; playback asks it what to play (Playback.plans). The area comes
 // from the GPS tracker (P2.6.1), fed every second by the GPS service (P2.8); until then the box counts
-// as outside every area and plays RECALL's own ads.
+// as outside every area: blank (outside our zone, P2.5), until a position puts it in one.
 package app.recall.player
 
 import android.content.Context
@@ -38,6 +38,7 @@ object Schedule {
             DownKind.AREAS -> s.onAreas(text)
             DownKind.PLAN -> s.onPlans(text)
             DownKind.ASSIGN -> s.onAssign(text)
+            DownKind.POC -> s.onPoc(text)
             else -> return false
         }
         return true

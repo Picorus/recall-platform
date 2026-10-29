@@ -36,6 +36,8 @@ import {
 } from '@recall/domain';
 import type { Pool, PoolClient } from 'pg';
 import { allAreaVersions } from './areas.js';
+import { pocPhaseAt } from './business-mode.js';
+import { Refusal } from './refusal.js';
 import { issueGstDocument } from './gst.js';
 import { postEntry } from './ledger.js';
 import { forecastLimits } from './supply.js';
@@ -336,6 +338,36 @@ export async function createBooking(pool: Pool, b: NewBooking, now: number): Pro
     await lockInventory(c);
     const book = priceBookAt(await priceBooks(c), isoAt(now));
     if (!book) throw new Error('No price book in force');
+    // P7.8 (Prateek, 29 Oct 2026): while the POC is scheduled or running it uses every bike-hour
+    // of its months: no new area booking for hours in them (bookings made before stay as they are).
+    // Review m2: the POC ends only by the super admin's switch, so once its planned end has passed
+    // and it is still on, every hour from now on is the POC's until that switch.
+    const poc = await pocPhaseAt(c, now);
+    if (poc.phase === 'scheduled' || poc.phase === 'running') {
+      const over = now >= poc.plannedEnd;
+      const inPoc = b.request.lines.find((l) => {
+        const t = lineStartsAt(l);
+        return t >= poc.startsAt && (over || t < poc.plannedEnd);
+      });
+      if (inPoc && over)
+        throw new Refusal(
+          'The POC is still on (its planned end has passed): area bookings open again once a super admin switches the business back to regular business',
+          { code: 'poc-hours' },
+        );
+      if (inPoc) {
+        const day = (t: number) =>
+          new Date((t + 19_800) * 1000).toLocaleDateString('en-GB', {
+            day: 'numeric',
+            month: 'short',
+            year: 'numeric',
+            timeZone: 'UTC',
+          });
+        throw new Refusal(
+          `The POC uses every bike-hour from ${day(poc.startsAt)}; area bookings open again when regular business starts (planned ${day(poc.plannedEnd)})`,
+          { code: 'poc-hours' },
+        );
+      }
+    }
     const areas = await allAreaVersions(c);
     if (b.holdId !== undefined) {
       // Only the hold's own brand can book against it, and only while it lasts.

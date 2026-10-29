@@ -387,3 +387,72 @@ describe('rider pay after the POC (P1.7.5)', () => {
     expect(t.debit).toBe(t.credit);
   });
 });
+
+describe('the pay zone by business mode (P1.7.5, Prateek 28 Oct 2026)', () => {
+  const SCREEN = 'scr-z';
+  const RIDER = 'R-ZZZ';
+  /** `n` minutes from `from`, each with 60 moving seconds at these places (seconds each). */
+  async function minutesAt(from: number, n: number, clockAt: Record<string, number>, pay: number) {
+    const r = await pool.query<{ n: string }>(
+      'SELECT coalesce(max(seq), 0) AS n FROM screen_reports WHERE screen_id = $1',
+      [SCREEN],
+    );
+    const seq = Number(r.rows[0]?.n ?? 0);
+    await pool.query(
+      `INSERT INTO screen_reports (screen_id, seq, kind, made_at, body)
+       SELECT $1, $2 + g, 'minute', to_timestamp($3 + (g - 1) * 60), '{}'::jsonb
+         FROM generate_series(1, $4) g`,
+      [SCREEN, seq, from, n],
+    );
+    await pool.query(
+      `INSERT INTO minute_summaries (screen_id, minute, seq, clock_s, pay_clock_s, moving_s,
+         distance_m, plays, people, seconds_at, clock_at)
+       SELECT $1, to_timestamp($3 + (g - 1) * 60), $2 + g, 60, $5, 60, 400, 0, 0, $6, $6
+         FROM generate_series(1, $4) g`,
+      [SCREEN, seq, from, n, pay, JSON.stringify(clockAt)],
+    );
+  }
+  const hour = (day: string, h: number) => eightAm(day) + (h - 8) * 3600;
+
+  beforeAll(async () => {
+    await pool.query('INSERT INTO screen_inboxes (screen_id) VALUES ($1)', [SCREEN]);
+    await assignScreen(pool, SCREEN, RIDER, eightAm('2027-08-01'), 'fitter');
+    // 31 Aug, the POC's last day: an hour outside every area but inside the 15 km circle.
+    await minutesAt(hour('2027-08-31', 22), 60, { outside: 60 }, 60);
+    // 1 Sep, regular business from the start of the day: the same ride counts nothing.
+    await minutesAt(hour('2027-09-01', 10), 60, { outside: 60 }, 60);
+    // October: an hour outside every area, an hour in Madhapur's edge zone, then two hours inside
+    // Madhapur (no booking plays there in October).
+    await minutesAt(hour('2027-10-05', 10), 60, { outside: 60 }, 60);
+    await minutesAt(hour('2027-10-05', 11), 60, { 'edge:hyd-madhapur@1': 60 }, 60);
+    await minutesAt(hour('2027-10-06', 10), 120, { [PLACE]: 60 }, 60);
+  }, 60_000);
+
+  it('the POC counts its circle, even outside every area', async () => {
+    const aug = await pocBonusList(pool, '2027-08');
+    expect(aug.find((r) => r.riderId === RIDER)?.countedSeconds).toBe(3600);
+  });
+
+  it('the switch day: from regular business on, a minute outside all areas pays nothing', async () => {
+    const r = await accrueRiderPay(pool, '2027-09', eightAm('2027-09-05'));
+    expect(r.pay.find((p) => p.riderId === RIDER)).toMatchObject({ countedSeconds: 0, hourly: 0 });
+  });
+
+  it('regular business: outside every area and in an edge zone 0; inside an unbooked area ₹25/h only', async () => {
+    const r = await accrueRiderPay(pool, '2027-10', eightAm('2027-10-10'));
+    expect(r.failed).toEqual([]);
+    // Two hours inside Madhapur: ₹50, and no share (nothing sold there).
+    expect(r.pay.find((p) => p.riderId === RIDER)).toMatchObject({
+      countedSeconds: 7200,
+      hourly: 5_000,
+      soldPaise: 0,
+      sold: 0,
+      gross: 5_000,
+    });
+  });
+
+  it('the whole ledger still balances', async () => {
+    const t = await trialBalance(pool);
+    expect(t.debit).toBe(t.credit);
+  });
+});

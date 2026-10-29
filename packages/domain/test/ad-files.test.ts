@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   adFilesText,
   MAX_AD_FILES,
+  MAX_AD_LIST_BYTES,
   MAX_KEEP_SECONDS,
   parseAdFiles,
   type AdFile,
@@ -11,6 +12,8 @@ import {
 import { downTopic, topicAllowed } from '../src/screen-link.js';
 
 interface Vectors {
+  maxFiles: number;
+  maxListBytes: number;
   list: { made: number; files: AdFile[]; text: string };
   refused: { text: string; problem: string }[];
 }
@@ -54,6 +57,18 @@ describe('ad file lists (P2.4): the shared cases the Kotlin player also passes',
     expect(() => adFilesText([file()], 1.5)).toThrow(/list time/);
     const many = Array.from({ length: MAX_AD_FILES + 1 }, (_, i) => file({ ad: `A${i}` }));
     expect(text(many)).toThrow(/at most/);
+    // Review S2: 600 files fit (a full POC is 200 alone), as the box reads them; 1 MB at most.
+    expect(V.maxFiles).toBe(MAX_AD_FILES);
+    expect(V.maxListBytes).toBe(MAX_AD_LIST_BYTES);
+    expect(MAX_AD_FILES).toBe(600);
+    const full = adFilesText(many.slice(0, MAX_AD_FILES), MADE);
+    expect('files' in parseAdFiles(full) && parseAdFiles(full)).toMatchObject({ made: MADE });
+    const long = (n: number) =>
+      Array.from({ length: n }, (_, i) =>
+        file({ ad: `A${i}`, url: `https://files.recall.example/${'x'.repeat(2000)}` }),
+      );
+    expect(text(long(MAX_AD_FILES))).toThrow(/too big/);
+    expect(parseAdFiles(' '.repeat(MAX_AD_LIST_BYTES + 1))).toEqual({ problem: 'too big' });
   });
 
   it('property: every list reads back exactly as written', () => {

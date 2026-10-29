@@ -88,7 +88,12 @@ object Playback {
         val log: (String) -> Unit = { m -> Log.i("RecallPlay", m) }
         val counted = mark ?: PlayedMark(markFile(activity).load()).also { mark = it }
         thread = PlaybackThread(SystemClock::elapsedRealtime, { waiter, mark ->
-            val playout = Playout({ t -> plans.at(t) }, { ad -> Ads.store?.file(ad) }, log = log)
+            // Always the scheduler in force now (it is set once the line has started it).
+            val now = object : PlanSource {
+                override fun at(utcMs: Long) = plans.at(utcMs)
+                override fun blankAt(utcMs: Long) = plans.blankAt(utcMs)
+            }
+            val playout = Playout(now, { ad -> Ads.store?.file(ad) }, log = log)
             Conductor(
                 playout = playout,
                 renderer = s,

@@ -126,17 +126,21 @@ function drawOne(page: PDFPage, d: TaxDocument, font: PDFFont, bold: PDFFont) {
   right('Amount', cols[2] ?? M, 9, bold);
   y -= 18;
   const what =
-    d.kind === 'invoice'
-      ? `Advertising on RECALL moving screens: booking ${d.bookingId}`
-      : `Refund for plays not delivered: booking ${d.bookingId}`;
+    d.pocMonth !== undefined
+      ? `RECALL POC package, ${d.pocMonth}: advertising on RECALL moving screens`
+      : d.kind === 'invoice'
+        ? `Advertising on RECALL moving screens: booking ${d.bookingId}`
+        : `Refund for plays not delivered: booking ${d.bookingId}`;
   at(what, cols[0] ?? M, 10);
   at(d.sac, cols[1] ?? M, 10);
   right(rs(d.taxablePaise), cols[2] ?? M, 10);
   y -= 13;
   at(
-    d.kind === 'invoice'
-      ? `${d.bikeHours.toLocaleString('en-IN')} bike-hours, ${dayText(d.firstDay)} to ${dayText(d.lastDay)}`
-      : `Reduces invoice ${d.againstDoc ?? ''}: the campaign of ${dayText(d.firstDay)} to ${dayText(d.lastDay)}`,
+    d.pocMonth !== undefined
+      ? `Fixed monthly fee, paid in advance: ${dayText(d.firstDay)} to ${dayText(d.lastDay)} (no plays promised)`
+      : d.kind === 'invoice'
+        ? `${d.bikeHours.toLocaleString('en-IN')} bike-hours, ${dayText(d.firstDay)} to ${dayText(d.lastDay)}`
+        : `Reduces invoice ${d.againstDoc ?? ''}: the campaign of ${dayText(d.firstDay)} to ${dayText(d.lastDay)}`,
     cols[0] ?? M,
     9,
     font,

@@ -255,7 +255,14 @@ describe('brand portal sign-in routes (P5.1)', () => {
     );
     expect(made).toMatchObject({ status: 200, body: { brandId: 'irani-chai' } });
     expect((await call('/portal/me', undefined, { cookie: s.session })).body.accounts).toEqual([
-      { brandId: 'irani-chai', name: 'Irani Chai', kind: 'brand', role: 'owner', via: null },
+      {
+        brandId: 'irani-chai',
+        name: 'Irani Chai',
+        kind: 'brand',
+        role: 'owner',
+        via: null,
+        poc: false,
+      },
     ]);
     expect(
       await call('/portal/business?brand=irani-chai', undefined, { cookie: s.session }),
@@ -763,13 +770,21 @@ describe('brand portal sign-in routes (P5.1)', () => {
     const ag = await signIn('ops@adwise.in', 'email');
     const me = await call('/portal/me', undefined, { cookie: ag.session });
     expect(me.body.accounts).toEqual([
-      { brandId: 'adwise-x', name: 'Adwise X', kind: 'agency', role: 'owner', via: null },
+      {
+        brandId: 'adwise-x',
+        name: 'Adwise X',
+        kind: 'agency',
+        role: 'owner',
+        via: null,
+        poc: false,
+      },
       {
         brandId: 'dosa-co',
         name: 'Dosa Co',
         kind: 'brand',
         role: 'booker',
         via: { agencyId: 'adwise-x', name: 'Adwise X' },
+        poc: false,
       },
     ]);
     // Books and sees the brand's campaigns; cannot change the brand's own team.

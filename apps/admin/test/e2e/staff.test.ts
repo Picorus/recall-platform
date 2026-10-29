@@ -1205,3 +1205,80 @@ it('the Audit log: every change, searched and paged', async () => {
   }
   expect(errors).toEqual([]);
 }, 120_000);
+
+it('the POC (P7.8): switched on in Settings (scheduled), a brand added with its ads, a payment link', async () => {
+  const page = await browser.newPage();
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  shift += 30_000;
+  await page.goto(`${SITE}/sign-in`);
+  await page.getByLabel('Email').fill('prateek@recall.in');
+  await page.getByLabel('Password').fill(PW);
+  await page.getByLabel('Code from your authenticator app').fill(totpCode(SECRET.value, step()));
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.getByText('Prateek · Super admin').waitFor();
+  await page.getByRole('link', { name: 'Settings' }).click();
+  const card = page.getByRole('region', { name: 'POC or regular business' });
+  await card.getByRole('button', { name: /^Switch to POC from / }).click();
+  await card.getByLabel('Why (kept with the switch)').fill('POC with 40 brands');
+  await card.getByRole('button', { name: 'Yes, switch to POC' }).click();
+  // Scheduled until its 1st, with its planned end and a countdown.
+  await card.getByText(/^POC scheduled: starts /).waitFor();
+  await card.getByText(/^3 months, ends /).waitFor();
+  await card.getByText(/\(in \d+ days\)/).waitFor();
+  if (process.env.SCREENSHOT_DIR)
+    await card.screenshot({ path: `${process.env.SCREENSHOT_DIR}/staff-poc-switch.png` });
+
+  // A brand with two approved ads (written straight in: uploads and review have their own tests).
+  await createAccount(
+    db.pool,
+    {
+      brandId: 'poc-tea',
+      kind: 'brand',
+      details: { name: 'POC Tea', agencyId: null, referredBy: null, active: true },
+      by: 'Sana',
+      reason: 'POC brand',
+    },
+    Math.floor(clock() / 1000) - 60,
+  );
+  for (const k of [1, 2]) {
+    await db.pool.query(
+      `INSERT INTO ads (ad_id, brand_id, name, file_key, bytes, kind, checks, outcome, uploaded_by, uploaded_at)
+       VALUES ($1, 'poc-tea', $2, $3, 1000, 'png', '[]', 'pass', 'Sana', now())`,
+      [`AD-00000000E${k}`, `Tea ad ${k}`, String(k + 4).repeat(64)],
+    );
+    await db.pool.query(
+      `INSERT INTO ad_reviews (ad_id, decision, checklist, reviewed_by, reviewed_at)
+       VALUES ($1, 'approved', '{}', 'Prateek', now())`,
+      [`AD-00000000E${k}`],
+    );
+  }
+  await page.getByRole('link', { name: 'POC', exact: true }).click();
+  await page.getByRole('heading', { name: 'POC', exact: true }).waitFor();
+  // Every page tells a super admin where the POC stands.
+  await page
+    .getByLabel('POC alerts')
+    .getByText(/^POC scheduled/)
+    .waitFor();
+  await page.getByText('Scheduled', { exact: true }).waitFor();
+  await page.getByText('Bikes with a screen').waitFor();
+  const add = page.getByRole('form', { name: 'Add a POC brand' });
+  await add.getByLabel('Brand').selectOption('poc-tea');
+  await add.getByLabel(/Tea ad 1/).check();
+  await add.getByLabel(/Tea ad 2/).check();
+  await add.getByLabel('Why (kept with it)').fill('signed for 3 months');
+  await add.getByRole('button', { name: 'Add to the POC' }).click();
+  const row = page.getByRole('table', { name: 'POC brands' }).getByRole('row', { name: /POC Tea/ });
+  await expect.poll(() => row.getByText(/: To pay$/).count()).toBe(3);
+  await row.getByText('2 of 2 approved').waitFor();
+  await row.getByRole('button', { name: 'Send link' }).first().click();
+  await page.getByText(/^Payment link for poc\/poc-tea\//).waitFor();
+  await row.getByText(/: Link sent$/).waitFor();
+  if (process.env.SCREENSHOT_DIR) {
+    await page.setViewportSize({ width: 1280, height: 1400 });
+    await page.mouse.wheel(0, -10_000);
+    await page.screenshot({ path: `${process.env.SCREENSHOT_DIR}/staff-poc.png` });
+  }
+  expect(errors).toEqual([]);
+  await page.close();
+}, 120_000);

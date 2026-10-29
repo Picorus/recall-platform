@@ -16,8 +16,8 @@ export function useMember(): Member | undefined {
   const router = useRouter();
   const [member, setMember] = useState<Member>();
   useEffect(() => {
-    api<{ member: Member }>('/staff/me')
-      .then((r) => setMember(r.member))
+    api<{ member: Member; alerts?: Member['alerts'] }>('/staff/me')
+      .then((r) => setMember({ ...r.member, alerts: r.alerts ?? [] }))
       .catch((e: unknown) => {
         if (e instanceof ApiError && e.status === 401) router.replace('/sign-in');
       });
@@ -53,6 +53,7 @@ const MENU: readonly (readonly [string, readonly Item[]])[] = [
         icon: 'megaphone',
         areas: ['sales', 'finance', 'support'],
       },
+      { href: '/poc', label: 'POC', icon: 'users', areas: ['sales', 'finance'] },
       { href: '/calendar', label: 'Calendar', icon: 'calendar', areas: ['operations', 'sales'] },
       { href: '/prices', label: 'Prices', icon: 'receipt', areas: ['sales', 'finance'] },
       { href: '/areas', label: 'Areas', icon: 'map', areas: ['operations', 'sales'] },
@@ -204,7 +205,23 @@ export function Shell({
           <Icon name="forward" size={14} />
           <b>{here?.label ?? 'Staff'}</b>
         </header>
-        <main className="frame__page rc-enter">{children}</main>
+        <main className="frame__page rc-enter">
+          {/* P7.8: the POC's alerts for super admins, on every page but Settings (its own card). */}
+          {(member.alerts?.length ?? 0) > 0 && path !== '/settings' && (
+            <div className="side-banners" aria-label="POC alerts">
+              {member.alerts?.map((a) => (
+                <p
+                  key={a.kind}
+                  className={`banner${a.kind === 'months-over' ? ' banner--warn' : ''}`}
+                  role="status"
+                >
+                  {a.text} <Link href="/settings">Settings</Link>
+                </p>
+              ))}
+            </div>
+          )}
+          {children}
+        </main>
       </div>
       {jump && <Jump items={all} onClose={() => setJump(false)} />}
     </div>

@@ -17,6 +17,7 @@ import {
   riderPay,
   riderPayAccrued,
   soldShares,
+  type PayZone,
   type PriceBook,
   type RiderPay,
 } from '@recall/domain';
@@ -26,6 +27,7 @@ import { businessModes } from './business-mode.js';
 import { postEntry } from './ledger.js';
 import { inTransaction, paidForLine, type OpenLine } from './makeups.js';
 import { countedPlaysFor } from './plays.js';
+import { payZoneAt } from './pay-zone.js';
 import { minutesOf } from './screen-reports.js';
 
 const RIDER = /^[A-Za-z0-9-]{3,40}$/;
@@ -185,6 +187,8 @@ async function hoursOf(
   capHours: number,
   /** Only minutes starting at moments this keeps (e.g. under one business mode). */
   keep: (t: number) => boolean,
+  /** The pay zone at each moment (by business mode, P1.7.5). */
+  zoneAt: (t: number) => PayZone,
 ) {
   const { start, end } = monthBounds(month);
   const minutes = [];
@@ -195,7 +199,9 @@ async function hoursOf(
     for (const m of await minutesOf(c, s.screenId, from, to))
       if (m.minute >= s.from && m.minute < s.to && keep(m.minute)) minutes.push(m);
   }
-  const days = new Map([...dailyTotals(minutes)].filter(([day]) => day.startsWith(month)));
+  const days = new Map(
+    [...dailyTotals(minutes, undefined, zoneAt)].filter(([day]) => day.startsWith(month)),
+  );
   const [m] = monthlyHours(days, { ...DEFAULT_MOVING_HOUR_RULES, monthlyCapHours: capHours });
   return { countedSeconds: m?.countedSeconds ?? 0, paidSeconds: m?.paidSeconds ?? 0 };
 }
@@ -258,6 +264,7 @@ export async function accrueRiderPay(
     const changes = await businessModes(c);
     const isPoc = (t: number) => modeAt(changes, t) === 'poc';
     const isRegular = (t: number) => !isPoc(t);
+    const zoneAt = await payZoneAt(c, changes);
     const pocMonth = pocMonthOf(pocFirstMonth(changes), month);
     const days = daysOf(month, now);
     // Up to two days after the month: a last-day line's make-up plays the next day (to 02:00).
@@ -281,7 +288,7 @@ export async function accrueRiderPay(
     for (const riderId of riders) {
       await c.query('SAVEPOINT rider');
       try {
-        const h = await hoursOf(c, riderId, month, all, rules.monthlyCapHours, isRegular);
+        const h = await hoursOf(c, riderId, month, all, rules.monthlyCapHours, isRegular, zoneAt);
         const soldPaise = sold.get(riderId) ?? 0;
         const mine = all.filter((s) => s.riderId === riderId);
         // A POC day he held a screen (the mode at the start of the business day).
@@ -371,6 +378,7 @@ export async function pocBonusList(
     isPoc(start) || changes.some((x) => x.mode === 'poc' && x.from < end && x.from > start);
   if (!pocInMonth) throw new Error(`${month} is not a POC month`);
   const all = await stretches(c, start - 3600, end + 3600);
+  const zoneAt = await payZoneAt(c, changes);
   const given = await c.query<{ ref: string }>(
     "SELECT ref FROM ledger_entries WHERE kind = 'poc-bonus' AND ref LIKE '%/' || $1",
     [month],
@@ -379,7 +387,15 @@ export async function pocBonusList(
   const out: PocBonusRow[] = [];
   const riders = all.filter((s) => s.from < end && s.to > start).map((s) => s.riderId);
   for (const riderId of [...new Set(riders)].sort()) {
-    const { countedSeconds } = await hoursOf(c, riderId, month, all, rules.monthlyCapHours, isPoc);
+    const { countedSeconds } = await hoursOf(
+      c,
+      riderId,
+      month,
+      all,
+      rules.monthlyCapHours,
+      isPoc,
+      zoneAt,
+    );
     out.push({
       riderId,
       countedSeconds,

@@ -22,6 +22,7 @@ export const MONEY_AND_PLAYS = [
   'partners',
   'payouts',
   'plays',
+  'poc',
   'rider-earnings',
   'rider-pay',
   'rider-payouts',

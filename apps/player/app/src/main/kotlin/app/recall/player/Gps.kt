@@ -18,6 +18,7 @@ import android.os.SystemClock
 import android.util.Log
 import app.recall.player.core.GpsLoop
 import app.recall.player.core.LocalScheduler
+import app.recall.player.core.Minutes
 import app.recall.player.core.Outbox
 import java.io.File
 
@@ -38,6 +39,8 @@ object Gps {
             },
             areas = scheduler::areas,
             onSecond = scheduler::onSecond,
+            // Seconds are marked against the POC month's zone the cloud sent (review m1).
+            minutes = Minutes(scheduler::payZoneAt),
             // The minute in progress, kept: the box loses power whenever the bike is switched off.
             keep = File(app.filesDir, "gps-minute"),
             log = log,

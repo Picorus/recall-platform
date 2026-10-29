@@ -19,6 +19,7 @@ import { issueGstDocument } from './gst.js';
 import { postEntry } from './ledger.js';
 import { inTransaction, paidForLine, refundedOnBooking, type OpenLine } from './makeups.js';
 import { COUNTING, lineTotalsFor } from './plays.js';
+import { earnPocMonths } from './poc.js';
 
 type Line = OpenLine & { readonly brand_id: string; readonly state: string };
 
@@ -244,6 +245,15 @@ export async function closeEarnings(
         await c.query('ROLLBACK TO SAVEPOINT cut');
         failed.push({ lineId: b.booking_id, error: e instanceof Error ? e.message : String(e) });
       }
+    }
+    // P7.8: POC months are earned day by day as they run.
+    await c.query('SAVEPOINT poc');
+    try {
+      posted += await earnPocMonths(c, now);
+      await c.query('RELEASE SAVEPOINT poc');
+    } catch (e) {
+      await c.query('ROLLBACK TO SAVEPOINT poc');
+      failed.push({ lineId: 'poc', error: e instanceof Error ? e.message : String(e) });
     }
     return { posted, failed };
   });

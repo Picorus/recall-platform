@@ -48,20 +48,27 @@ data class HourPlan(
     val startHour: Int = 0,
     /** Goes up each time the plan is re-sent (a make-up opened): screens keep the highest. */
     val revision: Long = 1,
+    /** P7.8: an hour of a POC month: every brand spot from the rotation (no lines, no demands). */
+    val poc: PocCarry? = null,
 )
 
 /** What the bike carries in this area-hour: its line, and what fills its RECALL spots (null: RECALL's). */
 data class Carry(val lineId: String?, val spotId: String?)
 
-/** What a spot shows: a brand's ad, a make-up or aggregator ad, or RECALL's own. */
+/** What a spot shows: a brand's ad, a make-up or aggregator ad, RECALL's own, or nothing (blank). */
 data class SpotChoice(
-    /** "brand", "make-up", "aggregator" or "recall". */
+    /** "brand", "make-up", "aggregator", "recall" or "blank" (outside our zone, P2.5). */
     val kind: String,
     /** The booking line (brand), the make-up or aggregator id; null for RECALL's own. */
     val id: String?,
     /** The ad; "" when the plan has none to give. */
     val ad: String,
-)
+) {
+    companion object {
+        /** Outside our zone (OurZone): a black frame, no file. */
+        val BLANK = SpotChoice("blank", null, "")
+    }
+}
 
 object Spots {
     private fun <T> nth(xs: List<T>, i: Int): T? = xs.getOrNull(i % maxOf(1, xs.size))
@@ -69,6 +76,7 @@ object Spots {
     /** The ad for spot `index` of the hour on a bike carrying `carry` (ads take turns). */
     fun spotAt(plan: HourPlan, carry: Carry, index: Int, rules: SpotRules = SpotRules()): SpotChoice {
         require(index >= 0) { "spot $index: spots count from 0" }
+        plan.poc?.let { return PocPlans.spotAt(it.plan, it.screenId, plan.startsAt, index, rules) }
         val recall = SpotChoice("recall", null, nth(plan.recallAds, index) ?: "")
         val group = rules.brandPlaysPerRecallSpot + 1
         if (rules.isRecallSpot(index)) {

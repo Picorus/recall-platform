@@ -117,5 +117,7 @@
       "text": "{\"v\":1,\"made\":1789990000000,\"files\":[{\"ad\":\"A\",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"bytes\":1,\"url\":\"https://x/y\",\"keepUntil\":1},{\"ad\":\"B\",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"bytes\":2,\"url\":\"https://x/y\",\"keepUntil\":1}]}",
       "problem": "one file with two sizes"
     }
-  ]
+  ],
+  "maxFiles": 600,
+  "maxListBytes": 1048576
 }

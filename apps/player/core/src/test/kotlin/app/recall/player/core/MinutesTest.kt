@@ -53,6 +53,10 @@ class MinutesTest {
             PayZone.Circle(z.getValue("centre").jsonObject.let { LatLng(num(it, "lat"), num(it, "lng")) }, num(z, "radiusM"))
         }
         val small = Minutes(zone)
+        // Regular business (P1.7.5): only seconds inside an area that is on count.
+        assertEquals(mapOf("kind" to "allAreas", "withEdge" to "false"), expected.getValue("areasZone").jsonObject.mapValues { it.value.jsonPrimitive.content })
+        val inAreas = Minutes(PayZone.REGULAR)
+        val areasReports = mutableListOf<JsonObject>()
         val reports = mutableListOf<JsonObject>()
         val zoneReports = mutableListOf<JsonObject>()
         input.forEachIndexed { i, raw ->
@@ -63,9 +67,12 @@ class MinutesTest {
             val plays = if (i % 15 == 0) 1L else 0L
             reports += minutes.add(s, plays)
             zoneReports += small.add(s, plays)
+            areasReports += inAreas.add(s, plays)
         }
         reports += minutes.flush()
         zoneReports += small.flush()
+        areasReports += inAreas.flush()
+        assertEquals(expected.getValue("areasZoneMinutes").jsonArray.map { it.jsonObject }, areasReports.filter { it.getValue("kind").jsonPrimitive.content == "minute" }, "regular business: inside areas only")
         assertEquals(expected.getValue("zoneMinutes").jsonArray.map { it.jsonObject }, zoneReports.filter { it.getValue("kind").jsonPrimitive.content == "minute" }, "a pay zone the ride leaves")
         val kind = { o: JsonObject -> o.getValue("kind").jsonPrimitive.content }
         val wantMinutes = expected.getValue("minutes").jsonArray.map { it.jsonObject }
@@ -122,5 +129,8 @@ class MinutesTest {
         assertFalse(areasZone.counts(null, edge))
         assertTrue(areasZone.copy(withEdge = true).counts(null, edge))
         assertFalse(areasZone.counts(null, Place.Outside))
+        assertTrue(PayZone.REGULAR.counts(null, Place.Inside("hyd-kondapur", 2)))
+        assertFalse(PayZone.REGULAR.counts(LatLng(17.45, 78.39), edge), "the edge zone does not count")
+        assertFalse(PayZone.REGULAR.counts(LatLng(17.45, 78.39), Place.Outside), "outside every area: nothing")
     }
 }

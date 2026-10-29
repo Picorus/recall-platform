@@ -60,7 +60,7 @@ async function monthNumbers(c: Q, month: string, now: number): Promise<MonthNumb
     ),
     c.query<{ money_in: string; revenue: string; refunds: string; refunds_paise: string }>(
       `SELECT
-         coalesce(sum(p.debit) FILTER (WHERE e.kind = 'booking-paid'
+         coalesce(sum(p.debit) FILTER (WHERE e.kind IN ('booking-paid', 'poc-paid')
                                          AND p.account = 'payment-clearing'), 0) AS money_in,
          coalesce(sum(p.credit - p.debit) FILTER (WHERE p.account = 'revenue'), 0) AS revenue,
          count(DISTINCT e.entry_id) FILTER (WHERE e.kind = 'refund-approved') AS refunds,
@@ -206,7 +206,7 @@ export async function businessTrends(c: Q, now: number, days = 30): Promise<Busi
     ),
     c.query<{ day: string; money_in: string; revenue: string }>(
       `SELECT ${DAY_SQL('e.at')}::text AS day,
-              coalesce(sum(p.debit) FILTER (WHERE e.kind = 'booking-paid'
+              coalesce(sum(p.debit) FILTER (WHERE e.kind IN ('booking-paid', 'poc-paid')
                                               AND p.account = 'payment-clearing'), 0) AS money_in,
               coalesce(sum(p.credit - p.debit) FILTER (WHERE p.account = 'revenue'), 0) AS revenue
          FROM ledger_entries e JOIN ledger_postings p USING (entry_id)

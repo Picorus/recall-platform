@@ -21,7 +21,10 @@ data class AdFileList(val made: Long, val files: List<AdFile>, val problem: Stri
 object AdFiles {
     /** Largest ad file (a 15-second video for the screen is a few MB). */
     const val MAX_BYTES = 64L * 1024 * 1024
-    const val MAX_FILES = 200
+    /** Most files in one list (as the cloud's MAX_AD_FILES; review S2). */
+    const val MAX_FILES = 600
+    /** Largest list text read, bytes (as the cloud's MAX_AD_LIST_BYTES). */
+    const val MAX_LIST_BYTES = 1024 * 1024
     /** No file is kept longer than this past the list's own time (a wrong date cannot lock storage). */
     const val MAX_KEEP_SECONDS = 400L * 24 * 3600
     private const val MAX_SAFE = (1L shl 53) - 1
@@ -33,6 +36,7 @@ object AdFiles {
     private val FIELDS = setOf("ad", "sha256", "bytes", "url", "keepUntil")
 
     fun parse(text: String): AdFileList {
+        if (text.toByteArray().size > MAX_LIST_BYTES) return refused("too big")
         val x = runCatching { Json.parseToJsonElement(text) }.getOrNull() as? JsonObject
             ?: return refused("not a JSON object")
         if (x.keys != setOf("v", "made", "files")) return refused("not a file list")

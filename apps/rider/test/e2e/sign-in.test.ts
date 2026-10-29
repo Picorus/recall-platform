@@ -463,7 +463,8 @@ it("a rider on the road sees his screen, today's and this week's hours and earni
   await db.pool.query(
     `INSERT INTO minute_summaries (screen_id, minute, seq, clock_s, pay_clock_s, moving_s,
        distance_m, plays, people, seconds_at, clock_at)
-     SELECT $1, to_timestamp($2 + (g - 1) * 60), g, 60, 60, 60, 400, 0, 0, '{}', '{}'
+     SELECT $1, to_timestamp($2 + (g - 1) * 60), g, 60, 60, 60, 400, 0, 0, '{}',
+            '{"inside:hyd-madhapur@1":60}'
        FROM generate_series(1, $3) g`,
     [box.screenId, opens, minutes],
   );

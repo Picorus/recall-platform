@@ -949,3 +949,9 @@ a.rc-button {
     object-position: 60% 40%;
   }
 }
+/* P7.8: a POC month's numbers, side by side (one column on a phone). */
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-3);
+}

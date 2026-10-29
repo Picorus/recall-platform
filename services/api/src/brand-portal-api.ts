@@ -50,7 +50,16 @@
 //   GET  /portal/invoices?brand=<id>[&fy=2027-28]      a year's documents, the years there are
 //   GET  /portal/invoices/pdf?brand=<id>&doc=RC-27-28-000123  one as a PDF (its number, - for /)
 //   GET  /portal/invoices/year-pdf?brand=<id>&fy=<fy>  all of a year's in one PDF
+// P7.8, the POC package (a POC brand's own; others get 404):
+//   GET  /portal/poc?brand=<id>[&month=YYYY-MM]   its months (paid, to pay, missed), its ads, and a
+//                                           month's numbers (plays, bikes, hours, streets, people)
+//   POST /portal/poc/pay?brand=<id>&month=YYYY-MM { agree: true, termsVersion }  the payment link
+//                                           (before the month starts), the POC rules agreed
 import {
+  brandPocPage,
+  pocBrandIds,
+  pocReport,
+  payPocFromPortal,
   partnerStatement,
   askFromPortal,
   brandQuestions,
@@ -119,6 +128,8 @@ import {
   isoAt,
   supportOpenAt,
   type BrandMemberRole,
+  POC_TERMS,
+  POC_TERMS_VERSION,
 } from '@recall/domain';
 import { renderReportHtml, renderReportPdf, renderTaxDocumentsPdf } from '@recall/workers';
 import { createHmac } from 'node:crypto';
@@ -378,7 +389,14 @@ export async function handleBrandPortal(
     send(res, 200, {
       address: me.address,
       shown: shown(me.address),
-      accounts: await portalAccounts(pool, me.address),
+      // P7.8: which of them are on the POC package (their menu shows "POC").
+      accounts: await (async () => {
+        const poc = await pocBrandIds(pool);
+        return (await portalAccounts(pool, me.address)).map((a) => ({
+          ...a,
+          poc: poc.has(a.brandId),
+        }));
+      })(),
     });
     return true;
   }
@@ -939,6 +957,72 @@ export async function handleBrandPortal(
       ),
     );
     send(res, 200, { version });
+    return true;
+  }
+  // P7.8.3: a POC brand's months (paid, to pay, missed) with a Pay button, and its numbers.
+  if (path === '/portal/poc' && method === 'GET') {
+    const a = await account();
+    const page = await brandPocPage(pool, a.brandId, now);
+    if (!page)
+      throw new HttpError(404, 'This business is not on the POC package', { code: 'not-poc' });
+    const months = page.months.map((m) => m.month);
+    const asked = new URL(req.url ?? '/', 'http://x').searchParams.get('month');
+    // The month asked for, else the latest one that has started, else the first.
+    const month =
+      asked && months.includes(asked)
+        ? asked
+        : ([...page.months].reverse().find((m) => m.payBy <= now)?.month ?? months[0] ?? '');
+    const report = month
+      ? await pocReport(pool, a.brandId, month, cfg.maps ?? cfg.reports?.maps)
+      : undefined;
+    send(res, 200, {
+      account: a,
+      ...page,
+      month,
+      report: report ?? null,
+      // The plain rules a brand agrees to before paying a month (P7.8, as P5.6).
+      terms: POC_TERMS,
+      termsVersion: POC_TERMS_VERSION,
+    });
+    return true;
+  }
+  if (path === '/portal/poc/pay' && method === 'POST') {
+    const a = await account();
+    const payments = cfg.payments;
+    if (!payments)
+      throw new HttpError(503, 'Payments are not set up yet: ask us on Help', {
+        code: 'not-set-up',
+      });
+    const month = new URL(req.url ?? '/', 'http://x').searchParams.get('month') ?? '';
+    const page = await brandPocPage(pool, a.brandId, now);
+    const m = page?.months.find((x) => x.month === month);
+    if (!m) throw new HttpError(404, 'No such POC month', { code: 'no-month' });
+    const b = await jsonBody(req);
+    if (b.agree !== true)
+      throw new HttpError(400, 'Tick the box to agree to the rules', { code: 'not-agreed' });
+    if (!Number.isSafeInteger(b.termsVersion))
+      throw new HttpError(400, 'termsVersion: a whole number');
+    const link = await refused(async () => {
+      try {
+        return await payPocFromPortal(
+          pool,
+          payments,
+          {
+            brandId: a.brandId,
+            month: m.month,
+            by: portalBy(me.address),
+            ip: ip(),
+            termsVersion: b.termsVersion as number,
+          },
+          now,
+        );
+      } catch (e) {
+        if (e instanceof Refusal && e.why?.code === 'paid')
+          throw new HttpError(409, e.message, e.why);
+        throw e;
+      }
+    });
+    send(res, 200, link);
     return true;
   }
   if (path === '/portal/campaigns' && method === 'GET') {

@@ -56,7 +56,9 @@ export async function settingRecords(c: Q): Promise<SettingRecords> {
   const out: Record<string, SettingRecord> = {};
   for (const k of SETTING_KEYS)
     out[k] = { value: DEFAULT_SETTINGS[k], version: 0, savedBy: null, savedAt: null, reason: null };
-  for (const x of r.rows)
+  for (const x of r.rows) {
+    // A setting that was replaced (payZone, P1.7.5) stays in the table as history only.
+    if (!(SETTING_KEYS as readonly string[]).includes(x.key)) continue;
     out[x.key] = {
       value: withNewRules(x.key as SettingKey, x.value as Settings[SettingKey]),
       version: x.version,
@@ -64,6 +66,7 @@ export async function settingRecords(c: Q): Promise<SettingRecords> {
       savedAt: x.saved_at.getTime() / 1000,
       reason: x.reason,
     };
+  }
   return out as unknown as SettingRecords;
 }
 
@@ -123,8 +126,9 @@ export async function saveSetting<K extends SettingKey>(
       throw new Refusal(e instanceof Error ? e.message : String(e));
     }
     if (same(now.value, next)) throw new Refusal('Nothing changes');
-    if (key === 'payZone' && (next as Settings['payZone']).kind === 'areas') {
-      const ids = (next as Extract<Settings['payZone'], { kind: 'areas' }>).areaIds;
+    const zone = key === 'pocZone' || key === 'regularZone' ? (next as Settings['pocZone']) : null;
+    if (zone?.kind === 'areas') {
+      const ids = zone.areaIds;
       const known = await c.query<{ area_id: string }>(
         'SELECT DISTINCT area_id FROM area_versions WHERE area_id = ANY($1) AND NOT draft',
         [ids],
@@ -134,6 +138,8 @@ export async function saveSetting<K extends SettingKey>(
       if (missing.length > 0)
         throw new Refusal(`Pay zone: no published area ${missing.join(', ')}`);
     }
+    if (key === 'poc')
+      await checkPocChange(c, now.value as Settings['poc'], next as Settings['poc']);
     await c.query(
       `INSERT INTO settings (key, version, value, saved_by, reason)
        VALUES ($1, $2, $3::jsonb, $4, $5)`,
@@ -141,4 +147,33 @@ export async function saveSetting<K extends SettingKey>(
     );
     return now.version + 1;
   });
+}
+
+/**
+ * P7.8: the most brands sets every bike's rotation (slots, and the 5 plays each): it cannot change
+ * while the POC runs (screens and counting would disagree mid-hour), and never below the brands a
+ * month already has (a paid brand would drop out of the plan).
+ */
+async function checkPocChange(
+  c: Q,
+  before: Settings['poc'],
+  after: Settings['poc'],
+): Promise<void> {
+  if (before.maxBrands === after.maxBrands) return;
+  const on = await c.query<{ mode: string }>(
+    `SELECT mode FROM business_modes m WHERE from_at <= now()
+        AND NOT EXISTS (SELECT 1 FROM business_mode_cancels x WHERE x.mode_id = m.id)
+      ORDER BY from_at DESC, id DESC LIMIT 1`,
+  );
+  if (on.rows[0]?.mode === 'poc')
+    throw new Refusal(
+      'The most brands cannot change while the POC runs: it sets every bike’s rotation',
+    );
+  const most = await c.query<{ month: string; n: string }>(
+    `SELECT month, count(*) AS n FROM poc_months_in_force
+      GROUP BY month ORDER BY count(*) DESC LIMIT 1`,
+  );
+  const m = most.rows[0];
+  if (m && Number(m.n) > after.maxBrands)
+    throw new Refusal(`${m.month} already has ${m.n} POC brands: the most cannot go below that`);
 }

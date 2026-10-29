@@ -15,6 +15,7 @@ import { bookingState, CapacityError, moveBooking, priceBooks, StepRace } from '
 import { advanceIfReady } from './ads.js';
 import { postEntry } from './ledger.js';
 import { inTransaction } from './makeups.js';
+import { applyPocLinkStatus, expirePocLinks, owePocMonthsBack, stopPocLinks } from './poc.js';
 import { Refusal } from './refusal.js';
 
 type Q = Pick<Pool, 'query'>;
@@ -231,7 +232,8 @@ export async function applyLinkStatus(
     [linkId],
   );
   const link = r.rows[0];
-  if (!link) return 'unknown';
+  // P7.8: a link for a POC month, not a booking.
+  if (!link) return (await applyPocLinkStatus(pool, linkId, status, now)) ?? 'unknown';
   const bookingId = link.booking_id;
   const l = { linkId, bookingId, brandId: link.brand_id };
   if (status.state === 'created') return 'waiting';
@@ -463,6 +465,16 @@ export async function expireUnpaid(
         log(`payments: could not cancel ${x.booking_id}: ${(e as Error).message}`);
     }
   }
+  // P7.8: POC months' links that ran out (an unpaid month simply never plays).
+  await expirePocLinks(pool, payments, now, log);
+  // Review S1: after a POC was cancelled, its months' links are stopped and their payments owed
+  // back here too, so a step that failed just after the cancel is tried again.
+  await stopPocLinks(pool, payments, now, log).catch((e: unknown) =>
+    log(`payments: stopping cancelled POC links: ${(e as Error).message}`),
+  );
+  await owePocMonthsBack(pool, now).catch((e: unknown) =>
+    log(`payments: owing cancelled POC months back: ${(e as Error).message}`),
+  );
   return cancelled;
 }
 

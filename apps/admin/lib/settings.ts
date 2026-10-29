@@ -36,7 +36,9 @@ export type PayZone =
       readonly centre: { readonly lat: number; readonly lng: number };
       readonly radiusM: number;
     }
-  | { readonly kind: 'areas'; readonly areaIds: readonly string[]; readonly withEdge: boolean };
+  | { readonly kind: 'areas'; readonly areaIds: readonly string[]; readonly withEdge: boolean }
+  /** Any area that is on (regular business, P1.7.5). */
+  | { readonly kind: 'allAreas'; readonly withEdge: boolean };
 export interface LoanBank {
   readonly name: string;
 }
@@ -128,7 +130,9 @@ export interface Settings {
   readonly fittingCentres: readonly FittingCentre[];
   readonly support: SupportSettings;
   readonly messages: MessageWordings;
-  readonly payZone: PayZone;
+  /** P1.7.5: the rider pay zone while the POC runs, and in regular business. */
+  readonly pocZone: PayZone;
+  readonly regularZone: PayZone;
   readonly loanBank: LoanBank;
   readonly riderSignIn: RiderSignInRules;
   readonly brandSignIn: BrandSignInRules;
@@ -138,8 +142,36 @@ export interface Settings {
     readonly gstin: string;
     readonly address: string;
   };
+  /** P7.8: the POC package. */
+  readonly poc: PocRules;
 }
 export type SettingKey = keyof Settings;
+
+/** P7.8: the POC package's numbers (a setting). */
+export interface PocRules {
+  readonly maxBrands: number;
+  /** Paise, before GST. */
+  readonly feePaise: number;
+  readonly maxBikes: number;
+  /** How long the POC is planned to run (alerts and the early-end guard), and the longest commitment. */
+  readonly pocMonths: number;
+}
+
+/** Where the POC stands (P7.8): scheduled before its 1st, running, or ended by a super admin. */
+export type PocPhase =
+  | { readonly phase: 'none' }
+  | {
+      readonly phase: 'scheduled' | 'running' | 'ended';
+      readonly startsAt: number;
+      /** Planned: 08:00 India time on the 1st after its months. */
+      readonly plannedEnd: number;
+      readonly endedAt: number | null;
+    };
+
+export interface PocAlert {
+  readonly kind: 'scheduled' | 'starts-today' | 'ends-soon' | 'months-over';
+  readonly text: string;
+}
 
 export interface SettingRecord<K extends SettingKey> {
   readonly value: Settings[K];
@@ -178,6 +210,10 @@ export interface BusinessSwitch {
   /** This person may switch now (a super admin, and the POC has not ended). */
   readonly canSwitch: boolean;
   readonly pocEnded: boolean;
+  /** P7.8: where the POC stands, its planned months, and what super admins are told. */
+  readonly poc: PocPhase;
+  readonly pocMonths: number;
+  readonly alerts: readonly PocAlert[];
   /** From when a switch made now would count: the POC from a 1st, regular from today 8 am. */
   readonly pocFrom: number;
   readonly regularFrom: number;
@@ -187,6 +223,12 @@ export interface BusinessSwitch {
     readonly setBy: string;
     readonly reason: string;
     readonly setAt: number;
+    /** P7.8: a scheduled POC cancelled before it started (it counts for nothing). */
+    readonly cancelled: {
+      readonly by: string;
+      readonly reason: string;
+      readonly at: number;
+    } | null;
   }[];
 }
 

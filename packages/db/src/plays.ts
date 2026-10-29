@@ -3,6 +3,7 @@ import { createPublicKey, verify } from 'node:crypto';
 import {
   DEFAULT_PLAY_RULES,
   isoAt,
+  isPocRef,
   judgePlay,
   lineIdOf,
   lineStartsAt,
@@ -22,6 +23,7 @@ import {
 } from '@recall/domain';
 import type { Pool, PoolClient } from 'pg';
 import { priceBooks } from './bookings.js';
+import { pocJudge } from './poc.js';
 
 type Q = Pick<PoolClient, 'query'>;
 
@@ -222,8 +224,14 @@ export async function judgePlays(
   const out = new Map<number, PlayJudgement>();
   if (plays.length === 0) return out;
   const books = knownBooks ?? (await priceBooks(c));
-  const keys = await c.query<{ key_id: string; public_key: string; until: string | null }>(
-    `SELECT k.key_id, k.public_key, extract(epoch FROM r.plays_until)::bigint AS until
+  const keys = await c.query<{
+    key_id: string;
+    public_key: string;
+    until: string | null;
+    revoked: string | null;
+  }>(
+    `SELECT k.key_id, k.public_key, extract(epoch FROM r.plays_until)::bigint AS until,
+            extract(epoch FROM r.revoked_at)::bigint AS revoked
        FROM screen_keys k LEFT JOIN screen_key_revocations r USING (screen_id, key_id)
       WHERE k.screen_id = $1`,
     [screenId],
@@ -238,6 +246,8 @@ export async function judgePlays(
   );
   const taken = near.rows.map((r) => Number(r.t));
   const lines = new Map<string, LineInfo | undefined>();
+  // P7.8: plays naming a POC month ("poc/<brand>/<YYYY-MM>"), at most 5 a brand a bike-hour.
+  const poc = pocJudge(c, screenId);
   for (const { seq, play } of [...plays].sort((a, b) => a.seq - b.seq)) {
     const rules = rulesOf(books, { time: play.startAt });
     // A revoked key still covers plays from before the moment it was given up (counted only if
@@ -264,10 +274,18 @@ export async function judgePlays(
         neighbours: taken.filter((t) => Math.abs(t - play.startAt) < rules.spotSeconds),
         areas,
         line: info && COUNTING.includes(info.state) ? info.line : undefined,
+        ...(isPocRef(play.ref) && signature === 'ok'
+          ? { poc: await poc.context(play.ref, play.startAt) }
+          : {}),
       },
       rules,
     );
     out.set(seq, j);
+    // A play signed with a key given up before now never counts (playsOf), so it must not use up
+    // the brand's 5 a bike-hour either.
+    const revokedBefore = key?.revoked != null && Number(key.revoked) <= now;
+    if (!j.refused && j.count.counts !== 'no' && isPocRef(play.ref) && !revokedBefore)
+      poc.counted(play.ref, play.startAt);
     if (!j.refused) taken.push(play.startAt);
   }
   return out;

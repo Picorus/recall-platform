@@ -112,4 +112,6 @@ export interface TaxDocument {
   readonly bikeHours: number;
   readonly firstDay: string;
   readonly lastDay: string;
+  /** P7.8: for a POC month's invoice, the month ("YYYY-MM"); `bookingId` is then its reference. */
+  readonly pocMonth?: string;
 }

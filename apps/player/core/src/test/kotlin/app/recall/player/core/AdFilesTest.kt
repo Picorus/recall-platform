@@ -45,6 +45,18 @@ class AdFilesTest {
     }
 
     @Test
+    fun `the same limits as the cloud - 600 files, 1 MB (review S2)`() {
+        assertEquals(v.getValue("maxFiles").jsonPrimitive.long, AdFiles.MAX_FILES.toLong())
+        assertEquals(v.getValue("maxListBytes").jsonPrimitive.long, AdFiles.MAX_LIST_BYTES.toLong())
+        fun list(n: Int) = "{\"v\":1,\"made\":1789990000000,\"files\":[" + (0 until n).joinToString(",") {
+            "{\"ad\":\"A$it\",\"sha256\":\"${"a".repeat(64)}\",\"bytes\":1000,\"url\":\"https://f.example/$it\",\"keepUntil\":1790000000}"
+        } + "]}"
+        assertEquals(AdFiles.MAX_FILES, AdFiles.parse(list(AdFiles.MAX_FILES)).files.size)
+        assertEquals("bad files", AdFiles.parse(list(AdFiles.MAX_FILES + 1)).problem)
+        assertEquals("too big", AdFiles.parse(" ".repeat(AdFiles.MAX_LIST_BYTES + 1)).problem)
+    }
+
+    @Test
     fun `the list travels on its own down topic`() {
         val me = "SCR-0123456Z"
         assertEquals("recall/v1/s/$me/down/files", ScreenLink.downTopic(me, DownKind.FILES))
