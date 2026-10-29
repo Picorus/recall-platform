@@ -6,6 +6,7 @@ import {
   MAX_OVERLAP_SQM,
   overlapSqm,
   pointInRing,
+  ringAreaSqm,
   ringGap,
   ringOverlap,
   sharedBorderMeters,
@@ -125,6 +126,9 @@ export interface AreaNeighbour {
   readonly overlap: readonly Ring[];
 }
 
+/** At most this many overlap pieces per neighbour, the largest (they are only drawn). */
+const MAX_PIECES = 200;
+
 /**
  * The areas that are on within `withinMeters` of a shape: the gap to each, the border shared, and
  * any overlap, nearest first. Of an area's versions in force, the one that overlaps most counts.
@@ -148,7 +152,11 @@ export function neighboursOf(
       gap: g.meters > 0 ? { from: g.from, to: g.to } : null,
       sharedMeters: g.meters > 0 ? 0 : sharedBorderMeters(ring, o.ring),
       overlapSqm: overlap.sqm,
-      overlap: overlap.sqm > MAX_OVERLAP_SQM ? overlap.pieces : [],
+      // The largest pieces only, so a big overlap stays a small answer (they are just drawn).
+      overlap:
+        overlap.sqm > MAX_OVERLAP_SQM
+          ? [...overlap.pieces].sort((p, q) => ringAreaSqm(q) - ringAreaSqm(p)).slice(0, MAX_PIECES)
+          : [],
     };
     const was = worst.get(o.areaId);
     const worse =
