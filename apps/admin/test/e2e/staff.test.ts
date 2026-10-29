@@ -362,6 +362,144 @@ it('the Areas page: check a shape, save a new version with a reason, see it in t
   expect(errors).toEqual([]);
 }, 120_000);
 
+it('P1.1.7: draw a new area corner by corner, snapped onto Madhapur; close Hitech City’s gap', async () => {
+  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  shift += 30_000;
+  await page.goto(`${SITE}/sign-in`);
+  await page.getByLabel('Email').fill('prateek@recall.in');
+  await page.getByLabel('Password').fill(PW);
+  await page.getByLabel('Code from your authenticator app').fill(totpCode(SECRET.value, step()));
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.getByText('Prateek · Super admin').waitFor();
+  await page.getByRole('link', { name: 'Areas' }).click();
+  await page.getByRole('heading', { name: 'Areas', exact: true }).waitFor();
+  await page.locator('.fleet-map[data-ready="yes"]').waitFor();
+  await page.getByRole('button', { name: 'Draw a new area' }).click();
+  await page.getByRole('heading', { name: 'New area' }).waitFor();
+
+  // Where a corner is on the screen: the map opens on Hitech City at zoom 12 (MapLibre's
+  // 512-pixel Web Mercator tiles), nothing moved yet.
+  const world = (lat: number, lng: number) => {
+    const size = 512 * 2 ** 12;
+    const s = Math.sin((lat * Math.PI) / 180);
+    return {
+      x: ((lng + 180) / 360) * size,
+      y: (0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * size,
+    };
+  };
+  const centre = world(17.4435, 78.3772);
+  const at = (lat: number, lng: number, dx = 0, dy = 0) => ({ lat, lng, dx, dy });
+  /** Clicks the map there (the page may have scrolled since: the canvas is measured each time). */
+  const click = async (p: ReturnType<typeof at>) => {
+    await page.locator('.fleet-map').scrollIntoViewIfNeeded();
+    const canvas = await page.locator('.fleet-map canvas').boundingBox();
+    if (!canvas) throw new Error('no map');
+    const w = world(p.lat, p.lng);
+    await page.mouse.click(
+      canvas.x + canvas.width / 2 + (w.x - centre.x) + p.dx,
+      canvas.y + canvas.height / 2 + (w.y - centre.y) + p.dy,
+    );
+    await page.waitForTimeout(150);
+  };
+  const corners = page.getByLabel('Corners (latitude, longitude per line)');
+  const lines = async () => (await corners.inputValue()).split('\n').filter(Boolean);
+
+  // Esc cancels a drawing.
+  await click(at(17.47, 78.39));
+  expect(await lines()).toHaveLength(1);
+  await page.keyboard.press('Escape');
+  await page.getByText('Drawing cancelled.').waitFor();
+  expect(await lines()).toHaveLength(0);
+  await page.getByRole('button', { name: 'Draw on the map' }).click();
+
+  // 1: a few pixels off Madhapur's north-west corner: snapped exactly onto it.
+  await click(at(17.458, 78.387, 3, -2));
+  await page.getByText("Snapped to Madhapur's corner.").waitFor();
+  // 2: just north of Madhapur's north border: snapped onto the border, its latitude exactly.
+  await click(at(17.458, 78.396, 0, -4));
+  await page.getByText("Snapped to Madhapur's border.").waitFor();
+  // A stray corner, taken back.
+  await click(at(17.475, 78.38));
+  expect(await lines()).toHaveLength(3);
+  await page.getByRole('button', { name: 'Undo last corner' }).click();
+  // 3 and 4: away from every area, where clicked.
+  await click(at(17.468, 78.396));
+  await page.getByText('Not near a neighbour: placed where clicked.').waitFor();
+  await click(at(17.468, 78.387));
+  // Clicking the first corner closes the shape.
+  await click(at(17.458, 78.387));
+  await page.getByText('Shape closed with 4 corners. Check it, then save.').waitFor();
+  const drawn = await lines();
+  expect(drawn).toHaveLength(4);
+  expect(drawn[0]).toBe('17.458000, 78.387000');
+  expect(drawn[1]).toMatch(/^17\.458000, 78\.39\d{4}$/);
+  await page.getByRole('button', { name: 'Check' }).click();
+  await page.getByText('The shape passes every rule.').waitFor();
+  await page.getByText(/^Shares \d+ m of border with Madhapur$/).waitFor();
+  if (process.env.SCREENSHOT_DIR) {
+    await page.waitForTimeout(1000);
+    await page.setViewportSize({ width: 1280, height: 1700 });
+    await page.evaluate('window.scrollTo(0, 0)');
+    await page.waitForTimeout(500);
+    // Zoom in on the new shape, where it meets Madhapur.
+    const c = await page.locator('.fleet-map canvas').boundingBox();
+    const w = world(17.459, 78.391);
+    if (c) {
+      await page.mouse.move(
+        c.x + c.width / 2 + (w.x - centre.x),
+        c.y + c.height / 2 + (w.y - centre.y),
+      );
+      for (let i = 0; i < 6; i++) {
+        await page.mouse.wheel(0, -300);
+        await page.waitForTimeout(250);
+      }
+    }
+    await page.waitForTimeout(800);
+    await page.screenshot({
+      path: `${process.env.SCREENSHOT_DIR}/areas-draw-snap.png`,
+    });
+  }
+  await page.getByLabel('Id (lower case, dashes: e.g. hyd-gachibowli)').fill('hyd-madhapur-north');
+  await page.getByLabel('Name').fill('Madhapur North');
+  await page.getByLabel('Reason (logged)').fill('drawn on the map, no gap with Madhapur');
+  await page.getByRole('button', { name: 'Save' }).click();
+  await page.getByText('Area added.').waitFor();
+  // PostGIS agrees: the two touch along a border, their insides never meet.
+  const r = await db.pool.query<{ touch: boolean; inner: boolean }>(
+    `SELECT ST_Touches(a.shape::geometry, b.shape::geometry) AS touch,
+            ST_Relate(a.shape::geometry, b.shape::geometry, '2********') AS inner
+       FROM area_versions a, area_versions b
+      WHERE a.area_id = 'hyd-madhapur-north' AND b.area_id = 'hyd-madhapur'
+        AND b.version = (SELECT max(version) FROM area_versions WHERE area_id = 'hyd-madhapur')`,
+  );
+  expect(r.rows).toEqual([{ touch: true, inner: false }]);
+
+  // Hitech City is 212 m from Madhapur: Check shows the gap; one press closes it.
+  await page
+    .getByRole('row', { name: /Hitech City/ })
+    .getByRole('button', { name: 'Open' })
+    .click();
+  await page.getByRole('button', { name: 'Check' }).click();
+  await page.getByText(/^2\d\d m gap to Madhapur \(/).waitFor();
+  await page.getByRole('button', { name: 'Close the gap with Madhapur', exact: true }).click();
+  await page.getByText('Corners near Madhapur moved onto its border.').waitFor();
+  await page.getByText('The shape passes every rule.').waitFor();
+  await page.getByText(/^Shares 1\.\d km of border with Madhapur$/).waitFor();
+  expect((await lines()).filter((l) => l.endsWith(', 78.387000'))).toHaveLength(2);
+  if (process.env.SCREENSHOT_DIR) {
+    await page.waitForTimeout(1500);
+    await page.setViewportSize({ width: 1280, height: 1700 });
+    await page.evaluate('window.scrollTo(0, 0)');
+    await page.waitForTimeout(500);
+    await page.screenshot({
+      path: `${process.env.SCREENSHOT_DIR}/areas-close-gap.png`,
+    });
+  }
+  expect(errors).toEqual([]);
+}, 120_000);
+
 it('the Prices page: start with the plan’s prices, check and save a change, see it in the versions', async () => {
   const page = await browser.newPage();
   const errors: string[] = [];
