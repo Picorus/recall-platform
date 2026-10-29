@@ -340,14 +340,26 @@ export function sharedBorderMeters(a: Ring, b: Ring): number {
     const ux = (q.x - p.x) / len;
     const uy = (q.y - p.y) / len;
     for (const [r, s] of sb) {
-      if (segmentDistance(r, p, q) > SHARED_M && segmentDistance(s, p, q) > SHARED_M) continue;
-      // Both ends of the other line must sit on this line (not just one end touching it).
-      const off = (z: Xy) => Math.abs((z.x - p.x) * uy - (z.y - p.y) * ux);
-      if (off(r) > SHARED_M || off(s) > SHARED_M) continue;
-      const tr = (r.x - p.x) * ux + (r.y - p.y) * uy;
-      const ts = (s.x - p.x) * ux + (s.y - p.y) * uy;
-      const lo = Math.max(0, Math.min(tr, ts));
-      const hi = Math.min(len, Math.max(tr, ts));
+      // The part of the other line within 10 cm of this one's line (its offset changes linearly
+      // along it), then how much of that lies along this line.
+      const off = (z: Xy) => (z.x - p.x) * uy - (z.y - p.y) * ux;
+      const or = off(r);
+      const os = off(s);
+      let u0 = 0;
+      let u1 = 1;
+      if (or === os) {
+        if (Math.abs(or) > SHARED_M) continue;
+      } else {
+        const a0 = (-SHARED_M - or) / (os - or);
+        const a1 = (SHARED_M - or) / (os - or);
+        u0 = Math.max(0, Math.min(a0, a1));
+        u1 = Math.min(1, Math.max(a0, a1));
+        if (u1 <= u0) continue;
+      }
+      const t = (u: number) =>
+        (r.x + u * (s.x - r.x) - p.x) * ux + (r.y + u * (s.y - r.y) - p.y) * uy;
+      const lo = Math.max(0, Math.min(t(u0), t(u1)));
+      const hi = Math.min(len, Math.max(t(u0), t(u1)));
       if (hi > lo) total += hi - lo;
     }
   }
@@ -356,7 +368,9 @@ export function sharedBorderMeters(a: Ring, b: Ring): number {
 
 /**
  * How far apart two shapes are at their nearest, with the two nearest points (0 when they touch
- * or overlap). Used to show the gap between neighbouring areas.
+ * or overlap). Used to show the gap between neighbouring areas. A crack of 10 cm or less counts as
+ * touching, as for a shared border: a corner snapped onto a slanted border at 6 decimals sits up to
+ * about 8 cm off the line (review, 29 Oct 2026).
  */
 export function ringGap(
   a: Ring,
@@ -384,6 +398,7 @@ export function ringGap(
   }
   for (const p of pa) nearest(p, pb, false);
   for (const p of pb) nearest(p, pa, true);
+  if (best.meters <= SHARED_M) return { meters: 0, from: at(a, 0), to: at(a, 0) };
   return {
     meters: best.meters,
     from: unproject(best.from, origin),

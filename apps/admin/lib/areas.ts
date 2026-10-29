@@ -174,11 +174,51 @@ export function snapCorner(
 const along = (pts: readonly Corner[]) =>
   pts.reduce((sum, p, i) => (i === 0 ? 0 : sum + metres(pts[i - 1] ?? p, p)), 0);
 
+/** Inside the shape (ray casting; the border may go either way). */
+function inside(p: Corner, ring: readonly Corner[]): boolean {
+  let hit = false;
+  ring.forEach((a, i) => {
+    const b = ring[(i + 1) % ring.length] ?? a;
+    if (a.lat > p.lat !== b.lat > p.lat) {
+      const lng = a.lng + ((p.lat - a.lat) / (b.lat - a.lat)) * (b.lng - a.lng);
+      if (p.lng < lng) hit = !hit;
+    }
+  });
+  return hit;
+}
+
+/** Points just inside the neighbour, 1 m in from the middle of each of its sides. */
+function probes(ring: readonly Corner[]): Corner[] {
+  const sign = turn(ring);
+  return ring.map((a, i) => {
+    const b = ring[(i + 1) % ring.length] ?? a;
+    const mid = { lat: (a.lat + b.lat) / 2, lng: (a.lng + b.lng) / 2 };
+    const d = xy(b, a);
+    const len = Math.hypot(d.x, d.y) || 1;
+    // Its inside is on the left of each side when it runs counter-clockwise.
+    const nx = (-d.y / len) * sign;
+    const ny = (d.x / len) * sign;
+    return {
+      lat: mid.lat + ny / M_PER_DEG,
+      lng: mid.lng + nx / (M_PER_DEG * Math.cos((mid.lat * Math.PI) / 180)),
+    };
+  });
+}
+
 /**
- * The neighbour's own corners between two snapped points on its border, the shorter way round,
- * so the new border follows the neighbour's exactly instead of cutting across a bend.
+ * The neighbour's own corners between two snapped points on its border, so the new border follows
+ * the neighbour's exactly instead of cutting across a bend. Of the two ways round, the one that
+ * keeps the new shape outside the neighbour: `rest` is the new shape's other corners, from after
+ * `to` round to before `from` (review, 29 Oct 2026: the shorter way can be the far side when the new
+ * shape wraps more than half of the neighbour). When that cannot tell (too few corners yet), the
+ * shorter way.
  */
-export function traceBetween(ring: readonly Corner[], from: Snap, to: Snap): Corner[] {
+export function traceBetween(
+  ring: readonly Corner[],
+  from: Snap,
+  to: Snap,
+  rest: readonly Corner[] = [],
+): Corner[] {
   const n = ring.length;
   if (n < 3 || from.areaId !== to.areaId) return [];
   const mod = (x: number) => ((x % n) + n) % n;
@@ -194,9 +234,41 @@ export function traceBetween(ring: readonly Corner[], from: Snap, to: Snap): Cor
     .filter((x) => x.d > span)
     .sort((a, b) => b.d - a.d)
     .map((x) => x.c);
+  // How much of the neighbour each way would take in: its inside points within the new shape.
+  const inner = probes(ring);
+  const takes = (way: Corner[]) => {
+    const shape = [from.point, ...way, to.point, ...rest];
+    return shape.length < 3 ? 0 : inner.filter((p) => inside(p, shape)).length;
+  };
+  const tf = takes(forward);
+  const tb = takes(backward);
+  if (tf !== tb) return tf < tb ? forward : backward;
   const f = along([from.point, ...forward, to.point]);
   const b = along([from.point, ...backward, to.point]);
   return f <= b ? forward : backward;
+}
+
+/**
+ * Closing a drawn shape: when its last and first corners both sit on the same neighbour, the
+ * neighbour's corners between them are added at the end, as between any two corners (review,
+ * 29 Oct 2026: closing used to cut straight across).
+ */
+export function closeRing(
+  ring: readonly Corner[],
+  snaps: readonly (Snap | undefined)[],
+  neighbours: readonly Neighbour[],
+): { ring: Corner[]; snaps: (Snap | undefined)[] } {
+  const last = snaps[ring.length - 1];
+  const first = snaps[0];
+  const n = last && first && neighbours.find((x) => x.areaId === last.areaId);
+  if (!last || !first || !n || ring.length < 3) return { ring: [...ring], snaps: [...snaps] };
+  const between = traceBetween(n.ring, last, first, ring.slice(1, -1)).filter(
+    (c) => !ring.some((p) => sameCorner(p, c)),
+  );
+  return {
+    ring: [...ring, ...between],
+    snaps: [...snaps.slice(0, ring.length), ...between.map(() => undefined)],
+  };
 }
 
 /**
@@ -217,7 +289,7 @@ export function addCorner(
       : { point: { lat: round6(p.lat), lng: round6(p.lng) }, snap: undefined };
   const prev = snaps[ring.length - 1];
   const n = s.snap && neighbours.find((x) => x.areaId === s.snap?.areaId);
-  const between = prev && s.snap && n ? traceBetween(n.ring, prev, s.snap) : [];
+  const between = prev && s.snap && n ? traceBetween(n.ring, prev, s.snap, ring.slice(0, -1)) : [];
   const last = ring[ring.length - 1];
   if (last && sameCorner(last, s.point))
     return { ring: [...ring], snaps: [...snaps], snap: s.snap };
@@ -271,7 +343,12 @@ export function closeGap(ring: readonly Corner[], n: Neighbour, limit: number): 
   moved.forEach((m, i) => {
     out.push(m.point);
     const next = moved[(i + 1) % moved.length];
-    if (m.snap && next?.snap) out.push(...traceBetween(n.ring, m.snap, next.snap));
+    // The rest of the shape, from after `next` round to before this corner.
+    const rest = moved
+      .map((_, k) => moved[(i + 2 + k) % moved.length]?.point)
+      .slice(0, Math.max(0, moved.length - 2))
+      .filter((p): p is Corner => p !== undefined);
+    if (m.snap && next?.snap) out.push(...traceBetween(n.ring, m.snap, next.snap, rest));
   });
   return withoutRepeats(out);
 }

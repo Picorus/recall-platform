@@ -1,6 +1,7 @@
 import {
   checkArea,
   launchAreas,
+  neighboursOf,
   overlapSqm,
   ringGap,
   sharedBorderMeters,
@@ -11,6 +12,7 @@ import { describe, expect, it } from 'vitest';
 import {
   addCorner,
   closeGap,
+  closeRing,
   cornersText,
   metresPerPixel,
   parseCorners,
@@ -252,5 +254,88 @@ describe('drawing beside a neighbour', () => {
     expect(closed).toContainEqual({ lat: 17.458, lng: 78.387 });
     expect(overlapSqm(closed, madhapur.ring)).toBeLessThan(1);
     expect(sharedBorderMeters(closed, madhapur.ring)).toBeGreaterThan(1_500);
+  });
+});
+
+describe('review fixes (29 Oct 2026)', () => {
+  const draw = (clicks: Corner[]) => {
+    let r: { ring: Corner[]; snaps: (Snap | undefined)[] } = { ring: [], snaps: [] };
+    for (const c of clicks) r = addCorner(r.ring, r.snaps, c, neighbours, 30);
+    return r;
+  };
+
+  it('closing a drawn shape follows the neighbour round its corner between the last and first corners', () => {
+    // First on Madhapur's north border, round to the west, last on its west border: closing
+    // must go round Madhapur's north-west corner, not cut across it.
+    const r = draw([
+      { lat: 17.458 + 10 * M_LAT, lng: 78.395 },
+      { lat: 17.465, lng: 78.395 },
+      { lat: 17.465, lng: 78.386 },
+      { lat: 17.45, lng: 78.387 - 20 * M_LNG },
+    ]);
+    expect(r.ring).toHaveLength(4);
+    expect(checkArea(asArea('hyd-new', r.ring), launch)).not.toEqual([]);
+    const closed = closeRing(r.ring, r.snaps, neighbours);
+    expect(closed.ring).toEqual([...r.ring, { lat: 17.458, lng: 78.387 }]);
+    expect(checkArea(asArea('hyd-new', closed.ring), launch)).toEqual([]);
+    expect(sharedBorderMeters(closed.ring, madhapur.ring)).toBeGreaterThan(1_500);
+    // Not on the same neighbour: nothing added.
+    const other = draw([
+      { lat: 17.465, lng: 78.395 },
+      { lat: 17.47, lng: 78.395 },
+      { lat: 17.47, lng: 78.39 },
+    ]);
+    expect(closeRing(other.ring, other.snaps, neighbours).ring).toEqual(other.ring);
+  });
+
+  it('wrapping more than half a neighbour, the trace takes the side the new shape is on', () => {
+    // An area hugging Madhapur on its west, north and east sides (a long way round), from its west
+    // border near the south to its east border near the south. The shorter way (along the south
+    // side) would swallow Madhapur.
+    const out = 200;
+    const r = draw([
+      { lat: 17.439, lng: 78.402 + 10 * M_LNG }, // east border, near the south
+      { lat: 17.439, lng: 78.402 + out * M_LNG },
+      { lat: 17.458 + out * M_LAT, lng: 78.402 + out * M_LNG },
+      { lat: 17.458 + out * M_LAT, lng: 78.387 - out * M_LNG },
+      { lat: 17.439, lng: 78.387 - out * M_LNG },
+      { lat: 17.439, lng: 78.387 - 10 * M_LNG }, // west border, near the south
+    ]);
+    const closed = closeRing(r.ring, r.snaps, neighbours);
+    // Madhapur's north-west and north-east corners, not its south ones.
+    expect(closed.ring.slice(6)).toEqual([
+      { lat: 17.458, lng: 78.387 },
+      { lat: 17.458, lng: 78.402 },
+    ]);
+    expect(overlapSqm(closed.ring, madhapur.ring)).toBeLessThan(1);
+    expect(sharedBorderMeters(closed.ring, madhapur.ring)).toBeGreaterThan(3_500);
+  });
+
+  it('a corner snapped onto a slanted border touches: Check says it shares the border, no gap', () => {
+    const slant: Neighbour = {
+      areaId: 'hyd-slant',
+      name: 'Slant',
+      ring: [
+        { lat: 17.5, lng: 78.5 },
+        { lat: 17.5, lng: 78.53 },
+        { lat: 17.523457, lng: 78.53 },
+      ],
+    };
+    for (const f of [0.21, 0.37, 0.5, 0.63, 0.88]) {
+      const click = {
+        lat: 17.5 + f * 0.023457 + (5 * M_LAT) / Math.SQRT2,
+        lng: 78.5 + f * 0.03 - (5 * M_LNG) / Math.SQRT2,
+      };
+      const s = snapCorner(click, [slant], 30);
+      const ring = [
+        { lat: 17.5, lng: 78.5 },
+        s.point,
+        { lat: 17.523457, lng: 78.53 },
+        { lat: 17.523457, lng: 78.5 },
+      ];
+      const [n] = neighboursOf(ring, [asArea('hyd-slant', slant.ring)]);
+      expect(n).toMatchObject({ gapMeters: 0, gap: null, overlap: [] });
+      expect(n?.sharedMeters).toBeGreaterThan(4_000);
+    }
   });
 });

@@ -11,6 +11,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import { api, ApiError, type Member } from '../../lib/api';
 import {
   addCorner,
+  closeRing,
   closeGap,
   cornersText,
   parseCorners,
@@ -171,9 +172,18 @@ export default function AreasEditor({ styleUrl }: { readonly styleUrl: string })
     setSnapNote('Click the map corner by corner.');
   };
   const finishDrawing = useCallback(() => {
-    if (live.current.ring.length < 3) return;
+    const l = live.current;
+    if (l.ring.length < 3) return;
+    // Last and first corner on the same neighbour: the closing side follows its border too.
+    const closed = closeRing(l.ring, l.snaps, l.others);
+    live.current = { ...l, ring: closed.ring, snaps: closed.snaps };
+    setRing(closed.ring);
+    setSnaps(closed.snaps);
+    setText(cornersText(closed.ring));
+    setProblems(undefined);
+    setBeside([]);
     setDrawing(false);
-    setSnapNote(`Shape closed with ${live.current.ring.length} corners. Check it, then save.`);
+    setSnapNote(`Shape closed with ${closed.ring.length} corners. Check it, then save.`);
   }, []);
   const cancelDrawing = useCallback(() => {
     setDrawing(false);

@@ -246,6 +246,39 @@ describe('shared border and gaps, for the Areas page', () => {
     expect(sharedBorderMeters(a, box(17.5, 78.5, 17.51, 78.51))).toBe(0);
   });
 
+  it('a corner a few centimetres off a slanted shared border is touching, not a "0 m gap" (review)', () => {
+    // A slanted neighbour; the new shape's middle corner sits `d` metres outside its slanted side,
+    // as a corner snapped there at 6 decimals can (up to about 8 cm).
+    const slant: Ring = [
+      { lat: 17.5, lng: 78.5 },
+      { lat: 17.5, lng: 78.53 },
+      { lat: 17.523457, lng: 78.53 },
+    ];
+    const lngPerM = 1 / (111_195 * Math.cos((17.51 * Math.PI) / 180));
+    const shape = (d: number): Ring => [
+      { lat: 17.5, lng: 78.5 },
+      // Half way along the slanted side, then `d` metres north-west (outside the neighbour).
+      { lat: 17.5117285 + (d * M_LAT) / Math.SQRT2, lng: 78.515 - (d * lngPerM) / Math.SQRT2 },
+      { lat: 17.523457, lng: 78.53 },
+      { lat: 17.523457, lng: 78.5 },
+    ];
+    const len = Math.hypot(0.023457 / M_LAT, 0.03 / lngPerM);
+    for (const d of [0.02, 0.08]) {
+      expect(ringGap(shape(d), slant).meters).toBe(0);
+      const [n] = neighboursOf(shape(d), [area('hyd-slant', slant)]);
+      expect(n).toMatchObject({ gapMeters: 0, gap: null });
+      expect(n?.sharedMeters).toBeGreaterThan(len * 0.95);
+      expect(checkArea(area('hyd-new', shape(d)), [area('hyd-slant', slant)])).toEqual([]);
+    }
+    // The whole shape 30 cm off (nothing snapped): a real gap, offered to close.
+    const off = shape(0).map((p) => ({
+      lat: p.lat + (0.3 * M_LAT) / Math.SQRT2,
+      lng: p.lng - (0.3 * lngPerM) / Math.SQRT2,
+    }));
+    expect(ringGap(off, slant).meters).toBeGreaterThan(0.1);
+    expect(neighboursOf(off, [area('hyd-slant', slant)])[0]?.gap).not.toBeNull();
+  });
+
   it('the gap between the launch areas Hitech City and Madhapur is about 212 m', () => {
     const areas = launchAreas();
     const ring = (id: string) => areas.find((x) => x.areaId === id)?.ring ?? [];
