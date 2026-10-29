@@ -2,6 +2,16 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 29 Oct 2026 · P7.8, P1.7.5, P2.4.2 · Second review fixes
+- **B1 (blocker):** a cancelled POC now closes its brands and months (`poc_brand_events`, migration 0064, with views `poc_commitments`, `poc_months_in_force`, `poc_payments_in_force`). One test, `paidInForce`, decides "paid and in force" for the plan, counting, earning, pay links and pages. Money back is per payment, so a month paid again after a re-schedule is its own. A closed brand rejoins with `addPocBrand`.
+- **S1:** a cancel stops the month's live links (`stopPocLinks`, also in the payments job with `owePocMonthsBack`); money taken for a month the POC is not on for is owed back.
+- **S2:** 600 files a list on both sides (1 MB at most; EMQX lets the gateway send 1 MB, screens stay at 300 KB); playing first; overflow logged, never silent.
+- **S3:** minutes before the pay-zone split keep their old result (migration 0065 records the split time).
+- **S4:** earlier ads stay listed for the 30-minute grace after a change; a change to the files or the POC plan sends both to every screen at once.
+- **m1:** the box marks pay seconds against the POC month's zone from down/poc (`LocalScheduler.payZoneAt`). **m2:** bookings refused while the POC is still on past its planned end. **m3:** `FILES_LINK_SECRET` ≥ 32 characters; the gateway warns if missing or refused by the API. **m4:** `report-sent` bookings keep their files. **m5:** the POC terms agreement is kept before the link.
+- Tests: DB POC +5 (cancel → re-schedule → rejoin → pay again → one earning, held never below 0; links stopped; money after a cancel owed back; the job retries; bookings past the planned end; terms first); DB pay zone 2; DB ad files +2 and unit 2 (600 limit, ordering, list size); API config 1; Kotlin +2 (zone from down/poc, 600/1 MB limits); domain (limits, cancel entry per payment); broker test with the new packet limits.
+- Open: overflow of the file list is logged, not yet an alarm on the staff pages; the gateway's push on change is not covered by an automatic test (it needs the broker); the box marks the POC zone only once it has the POC plan (before that, its built-in circle).
+
 ## 29 Oct 2026 · P2.4.2 · The cloud sends each screen its ad files
 - `packages/db/src/ad-files.ts`: `neededAdFiles` works out the files every screen must keep: the approved ads of playing bookings from 24 h before their first hour to a day after their last (make-ups); while the POC is scheduled or running, the paid POC brands' approved ads and RECALL's own (kept to the month's end); RECALL's own ads always (3 days ahead). Soonest first, at most 200 (`left` says how many wait). `signAdFiles` adds HTTPS links signed by the file store (6 h); `screenAdFiles` for one screen (none for a screen we do not know).
 - Gateway: every hello now also brings `down/files` (with the time, the POC plan, commands and updates); the list is worked out once a minute, links signed per screen. When the list changes, every screen gets it at once (checked once a minute in the gateway's timer). No list goes out if the store's links are not HTTPS.
