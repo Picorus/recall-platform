@@ -23,6 +23,7 @@ afterAll(async () => db.drop());
 
 /** A minute ridden outside every area, the box marking it all inside its POC circle. */
 const outside = (minute: number): MinuteSummary => ({
+  kind: 'minute',
   minute,
   secondsAt: { outside: 60 },
   clockSeconds: 60,
