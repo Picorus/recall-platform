@@ -107,8 +107,9 @@ describe("the cloud's checks (P1.5.2)", () => {
   });
 
   it('the cloud decides where the play was, whatever the screen thought', () => {
-    // The screen says inside Madhapur, but the position is in Kondapur.
-    expect(verdict(play({ latE6: 17_467_000, lngE6: 78_357_000 }))).toBe("outside the line's area");
+    // The screen says inside Madhapur, but the position is in Kondapur, or far from every area.
+    expect(verdict(play({ latE6: 17_467_000, lngE6: 78_357_000 }))).toBe('inside another area');
+    expect(verdict(play({ latE6: 17_300_000, lngE6: 78_600_000 }))).toBe("outside the line's area");
     // Just outside Madhapur's border: the edge zone.
     expect(verdict(play({ latE6: 17_458_300, place: 'inside:hyd-madhapur@1' }))).toBe('edge');
   });
@@ -128,18 +129,65 @@ describe("the cloud's checks (P1.5.2)", () => {
     expect(verdict(play(), ctx({ areas: [...AREAS, ...draft] }))).toBe('inside');
   });
 
-  it("an edge play counts for the line's area even where that edge lies inside a neighbouring area", () => {
-    // Just west of Madhapur's border (78.387) is the gap to Hitech City (ends 78.385); put Hitech
-    // City's border right at Madhapur's edge to make them overlap.
+  it('a play inside a neighbouring area is never the line’s edge play, even where the edge zone reaches in (P1.1.7)', () => {
+    // Hitech City redrawn to share Madhapur's west border (78.387): Madhapur's edge zone now lies
+    // inside Hitech City. A play 10 m into Hitech City is Hitech City's, not Madhapur's edge.
     const near = AREAS.map((a) =>
       a.areaId === 'hyd-hitech-city'
-        ? { ...a, ring: a.ring.map((q) => ({ ...q, lng: q.lng > 78.38 ? 78.3875 : q.lng })) }
+        ? { ...a, ring: a.ring.map((q) => ({ ...q, lng: q.lng > 78.38 ? 78.387 : q.lng })) }
         : a,
     );
     const p = play({ lngE6: 78_386_900 });
-    expect(verdict(p, ctx({ areas: near }))).toBe('edge');
+    expect(verdict(p, ctx({ areas: near }))).toBe('inside another area');
     const r = judgePlay(p, ctx({ areas: near }));
     expect(r.refused ?? r.cloudPlace).toBe('inside:hyd-hitech-city@1');
+    // North of Hitech City (it ends at 17.455) the edge zone is outside every area: it counts.
+    expect(verdict(play({ latE6: 17_456_000, lngE6: 78_386_900 }), ctx({ areas: near }))).toBe(
+      'edge',
+    );
+    // As before when the edge zone only meets the neighbour's edge zone (the launch areas' gap).
+    expect(verdict(p)).toBe('edge');
+  });
+
+  it('property: a play counts for one area at most, and never as an edge play inside another area', () => {
+    const near = AREAS.map((a) =>
+      a.areaId === 'hyd-hitech-city'
+        ? { ...a, ring: a.ring.map((q) => ({ ...q, lng: q.lng > 78.38 ? 78.387 : q.lng })) }
+        : a,
+    );
+    const lineOf = (areaId: string) => ({
+      lineId: lineIdOf('BK-1', areaId, '2027-08-24', 18),
+      areaId,
+      startsAt: HOUR,
+      endsAt: HOUR + 3600,
+      plays: 1000,
+    });
+    const ids = near.map((a) => a.areaId);
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 17_430_000, max: 17_465_000 }),
+        fc.integer({ min: 78_365_000, max: 78_410_000 }),
+        (latE6, lngE6) => {
+          const counts = ids.flatMap((id) => {
+            const l = lineOf(id);
+            const r = judgePlay(
+              play({ latE6, lngE6, ref: l.lineId }),
+              ctx({ areas: near, line: l }),
+            );
+            return !r.refused && r.count.counts !== 'no' ? [{ id, counts: r.count.counts, r }] : [];
+          });
+          expect(counts.filter((c) => c.counts === 'inside').length).toBeLessThanOrEqual(1);
+          for (const c of counts) {
+            const cloud = c.r.refused ? '' : c.r.cloudPlace;
+            if (c.counts === 'edge') expect(cloud.startsWith('inside:')).toBe(false);
+            if (c.counts === 'inside') expect(cloud).toBe(`inside:${c.id}@1`);
+          }
+          // Inside some area: only that area's line counts it.
+          if (counts.some((c) => c.counts === 'inside')) expect(counts.length).toBe(1);
+        },
+      ),
+      { numRuns: 3_000 },
+    );
   });
 
   it('kept but not counted: cut short, poor GPS, another hour, not a sold line, late, not a brand spot', () => {

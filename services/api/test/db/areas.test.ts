@@ -149,7 +149,9 @@ describe('Areas page routes (P3.5)', () => {
       reason: 'test',
     });
     expect(over.status).toBe(400);
-    expect(over.body.error).toMatch(/^overlaps or touches Kondapur/);
+    expect(over.body.error).toMatch(
+      /^overlaps Kondapur by about [\d,]+ m²: neighbours may share a border, but never overlap$/,
+    );
     // The check alone: nothing saved.
     const check = await post('/areas/check', ops, { ring: kondapur, edgeMeters: 300 });
     expect((check.body.problems as string[])[0]).toMatch(/Kondapur/);
@@ -234,6 +236,74 @@ describe('Areas page routes (P3.5)', () => {
       (await post('/areas/hyd-test-draft/versions', ops, { edgeMeters: 200, reason: 'fix' }))
         .status,
     ).toBe(200);
+  });
+
+  it('P1.1.7: Check shows the gap, the shared border and any overlap; a neighbour that only touches is saved', async () => {
+    const ops = await member('ravi.ops@recall.in', { role: 'admin', areas: ['operations'] });
+    const sup = await member('sixth@recall.in', { role: 'super-admin', areas: [] });
+    // Hitech City (east border 78.385) and Madhapur (west border 78.387) leave a 212 m gap.
+    const list = await get(ops);
+    const ring = (id: string) =>
+      list.body.areas.find((a) => a.latest.areaId === id)?.latest.ring ?? [];
+    type N = {
+      areaId: string;
+      name: string;
+      gapMeters: number;
+      gap: { from: { lng: number }; to: { lng: number } } | null;
+      sharedMeters: number;
+      overlapSqm: number;
+      overlap: unknown[];
+    };
+    const check = async (r: { lat: number; lng: number }[]) => {
+      const x = await post('/areas/check', ops, {
+        areaId: 'hyd-hitech-city',
+        ring: r,
+        edgeMeters: 300,
+      });
+      return { problems: x.body.problems as string[], neighbours: x.body.neighbours as N[] };
+    };
+    const before = await check(ring('hyd-hitech-city'));
+    expect(before.problems).toEqual([]);
+    const m = before.neighbours.find((n) => n.areaId === 'hyd-madhapur');
+    expect(m?.gapMeters).toBeGreaterThan(205);
+    expect(m?.gapMeters).toBeLessThan(220);
+    expect(m?.gap?.from.lng).toBeCloseTo(78.385, 6);
+    expect(m?.gap?.to.lng).toBeCloseTo(78.387, 6);
+    // Its east border moved onto Madhapur's west border: they share 1.8 km (17.4385, Madhapur's corner
+    // moved by the first test, to 17.455).
+    const touching = ring('hyd-hitech-city').map((p) =>
+      p.lng > 78.38 ? { ...p, lng: 78.387 } : p,
+    );
+    const after = await check(touching);
+    expect(after.problems).toEqual([]);
+    const t = after.neighbours.find((n) => n.areaId === 'hyd-madhapur');
+    expect(t).toMatchObject({ gapMeters: 0, gap: null, overlap: [] });
+    expect(t?.sharedMeters).toBeGreaterThan(1_830);
+    expect(t?.sharedMeters).toBeLessThan(1_840);
+    // 20 m further east: an overlap, shown where it is.
+    const over = await check(touching.map((p) => (p.lng > 78.38 ? { ...p, lng: 78.3872 } : p)));
+    expect(over.problems).toEqual([expect.stringMatching(/^overlaps Madhapur by about [\d,]+ m²/)]);
+    const o = over.neighbours.find((n) => n.areaId === 'hyd-madhapur');
+    expect(o?.overlapSqm).toBeGreaterThan(30_000);
+    expect(o?.overlap.length).toBeGreaterThan(0);
+    // The touching shape saves (Operations corrects shapes).
+    now += 60_000;
+    const saved = await post('/areas/hyd-hitech-city/versions', ops, {
+      ring: touching,
+      reason: 'no gap with Madhapur',
+    });
+    expect(saved.status).toBe(200);
+    // A new area that only touches Madhapur at a corner saves too (a super admin adds areas).
+    now += 60_000;
+    const corner = {
+      areaId: 'hyd-test-corner',
+      name: 'Corner test',
+      city: 'Hyderabad',
+      ring: square(17.458, 78.402),
+      edgeMeters: 300,
+      reason: 'touches Madhapur at its north-east corner',
+    };
+    expect((await post('/areas', sup, corner)).status).toBe(200);
   });
 
   it('an old shape no longer in force never blocks a new area', async () => {

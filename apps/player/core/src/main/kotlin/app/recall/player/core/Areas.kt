@@ -31,19 +31,33 @@ sealed interface Place {
 }
 
 object Areas {
+    /** Closer than this to a border (metres) is on the border: the cloud's ON_BORDER_M. */
+    const val ON_BORDER_M = 0.001
+
     /**
-     * Where a point is. A point in two edge zones belongs to the nearer area; ties go to the smaller
-     * id. Only areas that are on count.
+     * Where a point is (P1.1.7: neighbouring areas may share a border). Only areas that are on count.
+     * 1. Inside an area (more than 1 mm from its border): that area; inside always wins over
+     *    another area's edge zone.
+     * 2. On a border (within 1 mm), such as the line two neighbours share: the smaller id of the
+     *    areas whose border it is on. Checked against the cloud's cases (test-vectors/areas-locate.json).
+     * 3. Otherwise the nearer edge zone; nearer by 1 mm or less is a tie, and ties go to the smaller id.
      */
     fun locate(point: LatLng, areas: List<AreaVersion>): Place {
         // Ordered by id code unit by code unit, as the cloud compares strings.
         val sorted = areas.filter { it.active }.sortedWith { a, b -> a.areaId.compareTo(b.areaId) }
-        for (a in sorted) if (Geo.pointInRing(point, a.ring)) return Place.Inside(a.areaId, a.version)
+        val known = HashMap<Int, Double>()
+        fun border(i: Int) = known.getOrPut(i) { Geo.distanceToBorderMeters(point, sorted[i].ring) }
+        for (i in sorted.indices) {
+            val a = sorted[i]
+            if (Geo.pointInRing(point, a.ring) && border(i) > ON_BORDER_M) return Place.Inside(a.areaId, a.version)
+        }
+        for (i in sorted.indices) if (border(i) <= ON_BORDER_M) return Place.Inside(sorted[i].areaId, sorted[i].version)
         var best: AreaVersion? = null
         var bestMeters = 0.0
-        for (a in sorted) {
-            val m = Geo.distanceToBorderMeters(point, a.ring)
-            if (m <= a.edgeMeters && (best == null || m < bestMeters)) {
+        for (i in sorted.indices) {
+            val a = sorted[i]
+            val m = border(i)
+            if (m <= a.edgeMeters && (best == null || m < bestMeters - ON_BORDER_M)) {
                 best = a
                 bestMeters = m
             }

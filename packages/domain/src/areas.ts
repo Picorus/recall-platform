@@ -3,8 +3,12 @@
 import {
   distanceToBorderMeters,
   isSimpleRing,
+  MAX_OVERLAP_SQM,
+  overlapSqm,
   pointInRing,
-  ringsMeet,
+  ringGap,
+  ringOverlap,
+  sharedBorderMeters,
   type LatLng,
   type Ring,
 } from './geo.js';
@@ -40,7 +44,8 @@ export type AreaProblem =
   | { readonly kind: 'bad-shape'; readonly detail: string }
   | { readonly kind: 'bad-edge'; readonly detail: string }
   | { readonly kind: 'bad-date'; readonly detail: string }
-  | { readonly kind: 'overlap'; readonly withAreaId: string };
+  /** The insides overlap by `sqm` square metres (more than MAX_OVERLAP_SQM). */
+  | { readonly kind: 'overlap'; readonly withAreaId: string; readonly sqm: number };
 
 const ID = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
@@ -83,21 +88,78 @@ function shapeProblems(area: AreaVersion): AreaProblem[] {
 }
 
 /**
- * P1.1.4: checks run when an area is saved. Shapes may not overlap or touch any other area (leave a
- * gap; the edge zones cover it). Pass every version of the other areas that is in force at or after
- * this version's `validFrom`. Returns no problems when it can be saved.
+ * P1.1.4 and P1.1.7: checks run when an area is saved. Neighbouring areas may share a border (whole
+ * lines or single corners), but their insides must never overlap (Prateek, 29 Oct 2026): an
+ * overlap of more than MAX_OVERLAP_SQM (1 m²) is refused. Pass every version of the other areas
+ * that is in force at or after this version's `validFrom`. Returns no problems when it can be saved.
  */
 export function checkArea(area: AreaVersion, others: readonly AreaVersion[]): AreaProblem[] {
   const problems = shapeProblems(area);
   if (problems.some((p) => p.kind === 'bad-shape')) return problems;
   // An area that is off does not block others; turning it back on runs this check again.
   if (!area.active) return problems;
+  const worst = new Map<string, number>();
   for (const other of others) {
-    if (other.areaId === area.areaId || !other.active) continue;
-    if (ringsMeet(area.ring, other.ring))
-      problems.push({ kind: 'overlap', withAreaId: other.areaId });
+    if (other.areaId === area.areaId || !other.active || other.ring.length < 3) continue;
+    const sqm = overlapSqm(area.ring, other.ring);
+    if (sqm > MAX_OVERLAP_SQM && sqm > (worst.get(other.areaId) ?? 0)) worst.set(other.areaId, sqm);
   }
+  // One problem per neighbour (two of its versions may be in force: the newest and the published).
+  for (const [withAreaId, sqm] of worst)
+    problems.push({ kind: 'overlap', withAreaId, sqm: Math.ceil(sqm) });
   return problems;
+}
+
+/** How a shape sits next to one neighbouring area, for the Areas page's Check (P1.1.7). */
+export interface AreaNeighbour {
+  readonly areaId: string;
+  readonly name: string;
+  /** Metres between the borders at their nearest; 0 when they touch or overlap. */
+  readonly gapMeters: number;
+  /** The two nearest points, to draw the gap (only when there is one). */
+  readonly gap: { readonly from: LatLng; readonly to: LatLng } | null;
+  /** Metres of border shared with it. */
+  readonly sharedMeters: number;
+  /** Square metres the insides overlap (more than 1 is refused on save), and where. */
+  readonly overlapSqm: number;
+  readonly overlap: readonly Ring[];
+}
+
+/**
+ * The areas that are on within `withinMeters` of a shape: the gap to each, the border shared, and
+ * any overlap, nearest first. Of an area's versions in force, the one that overlaps most counts.
+ */
+export function neighboursOf(
+  ring: Ring,
+  others: readonly AreaVersion[],
+  withinMeters = 1_000,
+): AreaNeighbour[] {
+  const worst = new Map<string, AreaNeighbour>();
+  if (!isSimpleRing(ring)) return [];
+  for (const o of others) {
+    if (!o.active || !isSimpleRing(o.ring)) continue;
+    const g = ringGap(ring, o.ring);
+    if (g.meters > withinMeters) continue;
+    const overlap = g.meters > 0 ? { sqm: 0, pieces: [] } : ringOverlap(ring, o.ring);
+    const n: AreaNeighbour = {
+      areaId: o.areaId,
+      name: o.name,
+      gapMeters: g.meters,
+      gap: g.meters > 0 ? { from: g.from, to: g.to } : null,
+      sharedMeters: g.meters > 0 ? 0 : sharedBorderMeters(ring, o.ring),
+      overlapSqm: overlap.sqm,
+      overlap: overlap.sqm > MAX_OVERLAP_SQM ? overlap.pieces : [],
+    };
+    const was = worst.get(o.areaId);
+    const worse =
+      !was ||
+      n.overlapSqm > was.overlapSqm ||
+      (n.overlapSqm === was.overlapSqm && n.gapMeters < was.gapMeters);
+    if (worse) worst.set(o.areaId, n);
+  }
+  return [...worst.values()].sort(
+    (a, b) => a.gapMeters - b.gapMeters || a.name.localeCompare(b.name),
+  );
 }
 
 export class AreaError extends Error {
@@ -265,20 +327,48 @@ function byId(a: AreaVersion, b: AreaVersion): number {
 }
 
 /**
+ * A point closer than this to an area's border is on that border (1 mm: far finer than any GPS fix,
+ * far coarser than floating-point error, so the screen and the cloud agree).
+ */
+export const ON_BORDER_M = 0.001;
+
+/**
  * Where a point is: inside an area, in an area's edge zone, or outside every area that is on.
- * A point in two edge zones belongs to the nearer area (P1.1.4); ties go to the smaller id.
+ * 1. Inside an area (more than 1 mm from its border): that area. Inside always wins over another
+ *    area's edge zone, so a bike in Kondapur is never at Madhapur's edge (P1.1.7).
+ * 2. On a border (within 1 mm), such as the line two neighbours share: of the areas whose border
+ *    it is on, the one with the smaller id. Exactly one answer, the same on the screen (Kotlin
+ *    `Areas.locate`) as in the cloud (shared cases: test-vectors/areas-locate.json).
+ * 3. Otherwise the edge zone it is in; in two edge zones, the nearer area (P1.1.4); within 1 mm
+ *    of each other is a tie, and ties go to the smaller id.
  */
 export function locate(point: LatLng, areas: readonly AreaVersion[]): Place {
   const sorted = areas.filter((a) => a.active).sort(byId);
+  const known = new Map<AreaVersion, number>();
+  const border = (area: AreaVersion) => {
+    let m = known.get(area);
+    if (m === undefined) {
+      m = distanceToBorderMeters(point, area.ring);
+      known.set(area, m);
+    }
+    return m;
+  };
   for (const area of sorted) {
-    if (pointInRing(point, area.ring)) {
+    if (pointInRing(point, area.ring) && border(area) > ON_BORDER_M) {
+      return { kind: 'inside', areaId: area.areaId, version: area.version };
+    }
+  }
+  for (const area of sorted) {
+    if (border(area) <= ON_BORDER_M) {
       return { kind: 'inside', areaId: area.areaId, version: area.version };
     }
   }
   let best: { area: AreaVersion; meters: number } | undefined;
   for (const area of sorted) {
-    const meters = distanceToBorderMeters(point, area.ring);
-    if (meters <= area.edgeMeters && (!best || meters < best.meters)) best = { area, meters };
+    const meters = border(area);
+    // Nearer by more than 1 mm; closer than that is a tie (floating point alone could decide it).
+    if (meters <= area.edgeMeters && (!best || meters < best.meters - ON_BORDER_M))
+      best = { area, meters };
   }
   return best
     ? {

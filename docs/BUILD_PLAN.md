@@ -95,7 +95,8 @@ Six engines carry the business: areas, GPS, the scheduler, play counting, make-u
 3. **P1.1.3** Pre-compute each area as H3 hexagons (size 9, about 0.1 km²) for fast "which area is this point in" checks on the server and on the screen.
 4. **P1.1.4** Rules: areas may not overlap; a point in two edge zones belongs to the nearer area. Checked automatically when an area is saved.
 5. **P1.1.5** Seed data: the six launch areas (Madhapur, Kondapur, Gachibowli, Hitech City, Jubilee Hills, Banjara Hills) as draft shapes for ops to correct on the map.
-6. **P1.1.6** A super admin adds areas and turns them on or off (Prateek, 22 Oct 2026). Off = not offered to brands, and plays and moving hours there do not count. On/off is a new version from a chosen date, never a delete. An area with bookings still to run cannot be turned off until they are moved or refunded. Operations admins correct shapes. Shapes may not overlap or touch; the edge zones cover any gap.
+6. **P1.1.6** A super admin adds areas and turns them on or off (Prateek, 22 Oct 2026). Off = not offered to brands, and plays and moving hours there do not count. On/off is a new version from a chosen date, never a delete. An area with bookings still to run cannot be turned off until they are moved or refunded. Operations admins correct shapes. Shapes may share borders but never overlap.
+7. **P1.1.7** Neighbouring areas may share a border (Prateek, 29 Oct 2026), so there are no gaps between them. Insides never overlap (more than 1 m² of overlap is refused on save). A point exactly on a shared border belongs to one area only, the same on the screen and in the cloud. Inside an area always wins over a neighbour's edge zone: a play inside one area never counts as another area's edge play. The Areas page draws new areas corner by corner, snaps corners onto a neighbour's corner or border, and shows gaps and overlaps on Check.
 
 ### P1.2 GPS and moving hours
 
@@ -442,6 +443,7 @@ A new engineer should be able to read four files and start work the same day. Th
 
 | Date | Version | Change |
 | --- | --- | --- |
+| 29 Oct 2026 | 1.12 | Prateek: P1.1.7, neighbouring areas may share borders but never overlap (P1.1.6 changed from "may not overlap or touch"); the Areas page draws and snaps; brands see our areas on an animated map (P5.4.1). |
 | 29 Oct 2026 | 1.11 | Prateek: the POC package (P7.8): 40 brands × ₹2.5 L a month, 5 plays each per bike-hour on all 200 bikes, nothing promised; the rider's 25% is after the agency and aggregator cuts. |
 | 28 Oct 2026 | 1.10 | Prateek: approved Design 2.0 (P7.7), a premium redesign of the three apps on the same colours, in five steps. |
 | 22 Oct 2026 | 1.9 | Prateek: forecast only after the POC (a price-book setting, POC mode first); 6/12-month deals: no discount on Lite hours, hours spread about equally over the months (±20%, a setting), discount on the bill; aggregator ads are free. |
