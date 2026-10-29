@@ -31,6 +31,7 @@ export function useMe(): Me | undefined {
 const NAV = [
   ['/campaigns', 'Campaigns'],
   ['/poc', 'POC'],
+  ['/areas', 'Our areas'],
   ['/invoices', 'Invoices'],
   ['/team', 'Team'],
   ['/statement', 'Statement'],

@@ -88,6 +88,10 @@ export default function HelpPage() {
           {done}
         </p>
       )}
+      <p>
+        Where do the bikes ride?{' '}
+        <Link href={`/areas?brand=${encodeURIComponent(brand)}`}>See our areas on a map</Link>.
+      </p>
       {page && (
         <div className="book">
           <div className="stack">

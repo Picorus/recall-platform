@@ -253,7 +253,7 @@ describe('review fixes', () => {
     expect(v2.edgeMeters).toBe(300);
   });
 
-  it('shapes touching along a slanted border are caught', () => {
+  it('shapes touching along a slanted border may be saved (P1.1.7); pushed 1 m in, they may not', () => {
     const a = createArea(
       new_('hyd-a2', [
         { lat: 17.4, lng: 78.4 },
@@ -267,7 +267,14 @@ describe('review fixes', () => {
       { lat: 17.41095, lng: 78.41095 },
       { lat: 17.41645, lng: 78.39645 },
     ]);
-    expect(() => createArea(b, [a])).toThrow(AreaError);
+    expect(checkArea(createArea(b, [a]), [a])).toEqual([]);
+    // 1 m east is into a (its inside is east of the slanted line): about 6 m² of overlap.
+    const east = 1 / (111_195 * Math.cos((17.41 * Math.PI) / 180));
+    const pushed = {
+      ...b,
+      ring: b.ring.map((p, i) => (i < 2 ? { ...p, lng: p.lng + east } : p)),
+    };
+    expect(() => createArea(pushed, [a])).toThrow(AreaError);
   });
 });
 

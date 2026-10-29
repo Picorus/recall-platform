@@ -195,9 +195,17 @@ export function judgePlay(
     return no(p.slot === 'make-up' ? 'not an open make-up' : 'not a sold booking line');
   if (line.ads && !line.ads.includes(p.adId)) return no('not one of its ads');
   if (p.startAt < line.startsAt || p.startAt >= line.endsAt) return no('outside its hour');
-  // Inside or in the edge zone of the line's own area (even where that edge overlaps a neighbour).
+  // Inside the line's own area, or in its edge zone where that zone lies outside every area (even
+  // where it overlaps a neighbour's edge zone). Neighbours may share a border (P1.1.7), so an edge
+  // zone reaches into the neighbour: a play inside another area is never this line's edge play.
   const area = published(line.areaId);
-  const place = area?.active ? locate(point, [area]) : ({ kind: 'outside' } as const);
+  if (!area?.active) return no("outside the line's area");
+  const where = locate(point, inForce);
+  if (where.kind === 'inside')
+    return where.areaId === line.areaId
+      ? { count: { counts: 'inside', lineId: line.lineId }, cloudPlace }
+      : no('inside another area');
+  const place = locate(point, [area]);
   if (place.kind === 'outside') return no("outside the line's area");
   return { count: { counts: place.kind, lineId: line.lineId }, cloudPlace };
 }

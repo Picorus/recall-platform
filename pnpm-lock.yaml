@@ -99,6 +99,9 @@ importers:
       '@recall/web-ui':
         specifier: workspace:*
         version: link:../../packages/web-ui
+      maplibre-gl:
+        specifier: 6.13.0
+        version: 6.13.0
       next:
         specifier: 16.4.1
         version: 16.4.1(@types/node@22.20.5)(babel-plugin-react-compiler@1.0.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)

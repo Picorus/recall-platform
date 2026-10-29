@@ -12,7 +12,14 @@ import {
   savePriceBook,
   setPortalMember,
 } from '@recall/db';
-import { launchAreas, PRICE_BOOK_V1, type CampaignReport } from '@recall/domain';
+import {
+  createArea,
+  launchAreas,
+  PRICE_BOOK_V1,
+  reviseArea,
+  setAreaActive,
+  type CampaignReport,
+} from '@recall/domain';
 import { randomBytes } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -868,5 +875,108 @@ describe('brand portal sign-in routes (P5.1)', () => {
     expect(
       (await call('/portal/campaigns?brand=dosa-co', undefined, { cookie: ag.session })).status,
     ).toBe(404);
+  });
+});
+
+describe('our areas on a map (P5.4.1)', () => {
+  const box = (s: number, w: number, n: number, e: number) => [
+    { lat: s, lng: w },
+    { lat: s, lng: e },
+    { lat: n, lng: e },
+    { lat: n, lng: w },
+  ];
+  const T = '2027-01-01T00:00:00.000Z';
+  const make = (areaId: string, name: string, ring: ReturnType<typeof box>, over = {}) =>
+    createArea({ areaId, name, city: 'Hyderabad', ring, validFrom: T, ...over }, []);
+
+  it('signed-in people get the areas that are on now, in their published shapes; drafts and off areas hidden', async () => {
+    // Never published: a draft only.
+    await saveAreaVersion(
+      pool,
+      make('hyd-test-draft', 'Draft only', box(17.2, 78.2, 17.21, 78.21), { draft: true }),
+      'system',
+    );
+    // Published, then turned off.
+    const off1 = make('hyd-test-off', 'Turned off', box(17.22, 78.2, 17.23, 78.21));
+    await saveAreaVersion(pool, off1, 'system');
+    await saveAreaVersion(
+      pool,
+      setAreaActive([off1], false, '2027-02-01T00:00:00.000Z', []),
+      'prateek',
+    );
+    // Published, with a redrawn draft pending: brands see the published shape.
+    const on1 = make('hyd-test-on', 'Aaa test on', box(17.24, 78.2, 17.25, 78.21), {
+      edgeMeters: 250,
+    });
+    await saveAreaVersion(pool, on1, 'system');
+    await saveAreaVersion(
+      pool,
+      reviseArea(
+        [on1],
+        { ring: box(17.24, 78.2, 17.26, 78.21), draft: true },
+        '2027-03-01T00:00:00.000Z',
+        [],
+      ),
+      'arjun',
+    );
+    // Starts after now: not on yet.
+    await saveAreaVersion(
+      pool,
+      make('hyd-test-later', 'Later', box(17.27, 78.2, 17.28, 78.21), {
+        validFrom: '2027-12-01T00:00:00.000Z',
+      }),
+      'system',
+    );
+
+    expect((await call('/portal/areas')).status).toBe(401);
+    // A staff cookie opens nothing here.
+    const staff = await member('areas.look@recall.in', { role: 'admin', areas: ['operations'] });
+    expect((await call('/portal/areas', undefined, { cookie: staff })).status).toBe(401);
+
+    const s = await signIn('98480 55555', 'whatsapp');
+    const r = await call('/portal/areas', undefined, { cookie: s.session });
+    expect(r.status).toBe(200);
+    type A = {
+      areaId: string;
+      name: string;
+      version: number;
+      ring: { lat: number; lng: number }[];
+      edgeMeters: number;
+      sqKm: number;
+    };
+    const areas = r.body.areas as A[];
+    const ids = areas.map((a) => a.areaId);
+    expect(ids).toContain('hyd-madhapur');
+    expect(ids).toHaveLength(7);
+    for (const hidden of ['hyd-test-draft', 'hyd-test-off', 'hyd-test-later'])
+      expect(ids).not.toContain(hidden);
+    const on = areas.find((a) => a.areaId === 'hyd-test-on');
+    expect(on).toMatchObject({
+      name: 'Aaa test on',
+      version: 1,
+      edgeMeters: 250,
+      ring: box(17.24, 78.2, 17.25, 78.21),
+    });
+    // 0.01° × 0.01° near 17.24° N: about 1.18 km².
+    expect(on?.sqKm).toBeCloseTo(1.18, 1);
+    // Sorted by name; only what the map needs.
+    const names = areas.map((a) => a.name);
+    expect(names).toEqual([...names].sort((x, y) => x.localeCompare(y)));
+    expect(Object.keys(on ?? {}).sort()).toEqual([
+      'areaId',
+      'edgeMeters',
+      'name',
+      'ring',
+      'sqKm',
+      'version',
+    ]);
+  });
+
+  it('a few hundred map loads an hour each, then 429', async () => {
+    const s = await signIn('98480 66666', 'whatsapp');
+    let last = 0;
+    for (let i = 0; i < 601; i++)
+      last = (await call('/portal/areas', undefined, { cookie: s.session })).status;
+    expect(last).toBe(429);
   });
 });

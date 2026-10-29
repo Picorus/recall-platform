@@ -1,6 +1,13 @@
 // Areas in the database (P1.1). The rules live in @recall/domain; this file only stores and loads,
 // and makes sure two people saving at the same moment cannot both slip past the overlap check.
-import { AreaError, checkArea, parseUtcIso, type AreaVersion, type Ring } from '@recall/domain';
+import {
+  AreaError,
+  checkArea,
+  parseUtcIso,
+  publishedAt,
+  type AreaVersion,
+  type Ring,
+} from '@recall/domain';
 import type { Pool, PoolClient } from 'pg';
 
 interface Row {
@@ -150,4 +157,27 @@ export async function areaRecords(pool: Pick<Pool, 'query'>): Promise<AreaRecord
 export async function allAreaVersions(pool: Pick<Pool, 'query'>): Promise<AreaVersion[]> {
   const r = await pool.query<Row>(`SELECT ${COLUMNS} FROM area_versions ORDER BY area_id, version`);
   return r.rows.map(toArea);
+}
+
+/**
+ * The areas that are on at `instant` (UTC ISO), each in its published version then: what brands
+ * see on our map (P5.4.1). Drafts are proposals and never shown; areas that are off are left out.
+ * Sorted by name.
+ */
+export async function areasOnAt(
+  pool: Pick<Pool, 'query'>,
+  instant: string,
+): Promise<AreaVersion[]> {
+  if (Number.isNaN(parseUtcIso(instant))) throw new RangeError(`Not a UTC time: ${instant}`);
+  const all = await allAreaVersions(pool);
+  const ids = [...new Set(all.map((a) => a.areaId))];
+  return ids
+    .flatMap((id) => {
+      const v = publishedAt(
+        all.filter((a) => a.areaId === id),
+        instant,
+      );
+      return v?.active ? [v] : [];
+    })
+    .sort((a, b) => a.name.localeCompare(b.name) || (a.areaId < b.areaId ? -1 : 1));
 }
