@@ -109,7 +109,13 @@ async function items(c: Q, only: string | null, open: boolean): Promise<MoneyBac
       amountPaise: Number(x.amount),
       owedAt: secs(x.at),
       why: x.memo,
-      paymentId: isRefund ? x.booking_payment : x.entry_id.replace(/^to-return:/, ''),
+      // A POC month owed back names its own payment (B1: a month may be paid again later).
+      paymentId:
+        x.kind === 'poc-cancelled'
+          ? x.entry_id.slice(`poc-cancelled:${x.ref}:`.length) || x.booking_payment
+          : isRefund
+            ? x.booking_payment
+            : x.entry_id.replace(/^to-return:/, ''),
       state: last?.status ?? 'owed',
       reason:
         last?.status === 'by-hand'

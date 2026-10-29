@@ -12,6 +12,7 @@ import {
   canSwitch,
   cancelScheduledPoc,
   owePocMonthsBack,
+  stopPocLinks,
   businessModes,
   pocPhaseAt,
   pocMonthsSetting,
@@ -128,7 +129,12 @@ export async function handleSettings(
     if (reason.length < 5) throw new HttpError(400, 'Say why (a few words)');
     try {
       const from = await cancelScheduledPoc(pool, { id: me.id, role: me.access.role }, reason, now);
-      // Months already paid for it never ran: owed back.
+      // Its months' payment links are stopped (money taken anyway is owed back), and months already
+      // paid for it never ran: owed back. Both are tried again by the payments job if this fails.
+      if (cfg.payments)
+        await stopPocLinks(pool, cfg.payments, now).catch((e: unknown) =>
+          console.error(`payments: stopping cancelled POC links: ${(e as Error).message}`),
+        );
       const owed = await owePocMonthsBack(pool, now);
       send(res, 200, { cancelled: from, owedBack: owed });
     } catch (e) {

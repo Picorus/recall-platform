@@ -225,11 +225,17 @@ export async function addPocBrand(
   const months = Array.from({ length: b.months }, (_, i) => addMonths(b.firstMonth, i));
   return inTransaction(pool, async (c) => {
     await c.query("SELECT pg_advisory_xact_lock(hashtext('poc'))");
-    const there = await c.query('SELECT 1 FROM poc_brands WHERE brand_id = $1', [b.brandId]);
-    if (there.rowCount) throw new Refusal(`${account.name} is already on the POC package`);
+    // A brand closed by a cancelled POC (B1) joins again with its new commitment.
+    const there = await c.query<{ open: boolean }>(
+      'SELECT open FROM poc_commitments WHERE brand_id = $1',
+      [b.brandId],
+    );
+    const rejoin = there.rows[0]?.open === false;
+    if (there.rows[0]?.open) throw new Refusal(`${account.name} is already on the POC package`);
     const ads = await checkAds(c, b.brandId, b.adIds);
+    // Only months in force fill a month (a closed brand's months have left it).
     const full = await c.query<{ month: string; n: string }>(
-      'SELECT month, count(*) AS n FROM poc_months WHERE month = ANY($1) GROUP BY month',
+      'SELECT month, count(*) AS n FROM poc_months_in_force WHERE month = ANY($1) GROUP BY month',
       [months],
     );
     for (const f of full.rows)
@@ -238,16 +244,24 @@ export async function addPocBrand(
           `${rules.maxBrands} brands already have ${monthName(f.month)}: the POC is full that month`,
           { code: 'poc-full', n: rules.maxBrands },
         );
-    await c.query(
-      `INSERT INTO poc_brands (brand_id, first_month, months, added_by, reason, added_at)
-       VALUES ($1, $2, $3, $4, $5, to_timestamp($6))`,
-      [b.brandId, b.firstMonth, b.months, by, why, now],
-    );
+    if (rejoin)
+      await c.query(
+        `INSERT INTO poc_brand_events (brand_id, kind, first_month, months, by_who, reason, at)
+         VALUES ($1, 'rejoined', $2, $3, $4, $5, to_timestamp($6))`,
+        [b.brandId, b.firstMonth, b.months, by.slice(0, 120), why, now],
+      );
+    else
+      await c.query(
+        `INSERT INTO poc_brands (brand_id, first_month, months, added_by, reason, added_at)
+         VALUES ($1, $2, $3, $4, $5, to_timestamp($6))`,
+        [b.brandId, b.firstMonth, b.months, by, why, now],
+      );
+    // A month it had before keeps its record (and the fee and GST fixed then): it is in force again.
     for (const m of months)
       await c.query(
         `INSERT INTO poc_months (ref, brand_id, month, fee_paise, gst_bp, gst_paise, total_paise,
                                  created_by, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, to_timestamp($9))`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, to_timestamp($9)) ON CONFLICT (ref) DO NOTHING`,
         [
           pocRef(b.brandId, m),
           b.brandId,
@@ -262,7 +276,8 @@ export async function addPocBrand(
       );
     await c.query(
       `INSERT INTO poc_ad_sets (brand_id, version, ad_ids, set_by, set_at)
-       VALUES ($1, 1, $2, $3, to_timestamp($4))`,
+       SELECT $1, coalesce(max(version), 0) + 1, $2, $3, to_timestamp($4)
+         FROM poc_ad_sets WHERE brand_id = $1`,
       [b.brandId, ads, by, now],
     );
     return months.map((m) => pocRef(b.brandId, m));
@@ -279,7 +294,9 @@ export async function setPocAds(
 ): Promise<number> {
   return inTransaction(pool, async (c) => {
     await c.query("SELECT pg_advisory_xact_lock(hashtext('poc'))");
-    const there = await c.query('SELECT 1 FROM poc_brands WHERE brand_id = $1', [brandId]);
+    const there = await c.query('SELECT 1 FROM poc_commitments WHERE brand_id = $1 AND open', [
+      brandId,
+    ]);
     if (!there.rowCount) throw new Refusal(`${brandId} is not on the POC package`);
     const ads = await checkAds(c, brandId, adIds);
     const v = await c.query<{ n: number }>(
@@ -349,15 +366,29 @@ interface MonthRow {
   readonly total_paise: string;
 }
 
-/** Whether a POC month is paid (a payment recorded on one of its links). */
-async function paidOf(c: Q, ref: string): Promise<{ at: number; paymentId: string } | undefined> {
+/**
+ * B1: the one test of "paid and in force" for a POC month, used by the plan, counting, earning, the
+ * pay links and the pages: its brand is open (not closed by a cancelled POC), the month is in its
+ * commitment, and its payment was not owed back since. Undefined: not paid and in force.
+ */
+export async function paidInForce(
+  c: Q,
+  ref: string,
+): Promise<{ at: number; paymentId: string } | undefined> {
   const r = await c.query<{ at: Date; payment_id: string }>(
-    `SELECT e.at, e.payment_id FROM payment_link_events e JOIN payment_links l USING (link_id)
-      WHERE l.poc_ref = $1 AND e.state = 'paid' ORDER BY e.id LIMIT 1`,
+    `SELECT p.at, p.payment_id FROM poc_payments_in_force p
+      WHERE p.ref = $1 AND EXISTS (SELECT 1 FROM poc_months_in_force m WHERE m.ref = p.ref)`,
     [ref],
   );
   const x = r.rows[0];
   return x ? { at: secs(x.at), paymentId: x.payment_id } : undefined;
+}
+
+/** Whether a POC month is in force: its brand open and the month in its commitment. */
+async function monthInForce(c: Q, ref: string): Promise<boolean> {
+  return (
+    ((await c.query('SELECT 1 FROM poc_months_in_force WHERE ref = $1', [ref])).rowCount ?? 0) > 0
+  );
 }
 
 /** A month's links, newest first, with what happened to each. */
@@ -397,7 +428,11 @@ export async function sendPocForPayment(
   const r = await pool.query<MonthRow>('SELECT * FROM poc_months WHERE ref = $1', [ref]);
   const m = r.rows[0];
   if (!m) throw new Refusal(`No POC month ${ref}`, { code: 'no-month' });
-  if (await paidOf(pool, ref)) throw new Refusal('This month is paid', { code: 'paid' });
+  if (!(await monthInForce(pool, ref)))
+    throw new Refusal(`${monthName(m.month)} is not on this brand's POC package now`, {
+      code: 'no-month',
+    });
+  if (await paidInForce(pool, ref)) throw new Refusal('This month is paid', { code: 'paid' });
   if (!(await pocOnAt(pool, pocMonthWindow(m.month).startsAt)))
     throw new Refusal(`The POC is not on in ${monthName(m.month)}: nothing to pay`, {
       code: 'poc-off',
@@ -542,13 +577,29 @@ export async function applyPocLinkStatus(
       );
       return out === 'already' ? 'already' : 'wrong-amount';
     }
-    if (await paidOf(c, l.ref)) {
-      const out = await moneyBack(c, l, 'paid-late', paid, 'the POC month was already paid', now);
-      return out === 'already' ? 'already' : 'paid-late';
-    }
     const m = await c.query<MonthRow>('SELECT * FROM poc_months WHERE ref = $1', [l.ref]);
     const row = m.rows[0];
     if (!row) throw new Error(`No POC month ${l.ref}`);
+    // S1: a month the POC is no longer on for (a cancelled POC, its brand closed) takes no money:
+    // whatever the provider took, even before its link was stopped, is owed back.
+    if (
+      !(await monthInForce(c, l.ref)) ||
+      modeAt(await businessModes(c), pocMonthWindow(row.month).startsAt) !== 'poc'
+    ) {
+      const out = await moneyBack(
+        c,
+        l,
+        'paid-late',
+        paid,
+        'the POC is not on for this month (it was cancelled)',
+        now,
+      );
+      return out === 'already' ? 'already' : 'paid-late';
+    }
+    if (await paidInForce(c, l.ref)) {
+      const out = await moneyBack(c, l, 'paid-late', paid, 'the POC month was already paid', now);
+      return out === 'already' ? 'already' : 'paid-late';
+    }
     // A month is paid before it starts (links stop then): news of a payment may come a little
     // later, never days later; and a link we recorded as run out or stopped takes no money.
     // Our own "run out" record gives way to the provider's word that it took the money before the
@@ -668,6 +719,55 @@ export async function expirePocLinks(
   return n;
 }
 
+/**
+ * S1: stops the live links of POC months the POC is no longer on for (a cancelled POC, its brand
+ * closed): each is stopped at the provider and asked once more; money it took anyway is owed back
+ * (applyPocLinkStatus), otherwise it is recorded as stopped. Safe to run again; one link failing
+ * never stops the others. Returns the links handled.
+ */
+export async function stopPocLinks(
+  pool: Pool,
+  payments: PaymentsAdapter,
+  now: number,
+  log: (line: string) => void = (l) => console.error(l),
+): Promise<number> {
+  const changes = await businessModes(pool);
+  const r = await pool.query<{ link_id: string; month: string; in_force: boolean }>(
+    `SELECT l.link_id, m.month,
+            EXISTS (SELECT 1 FROM poc_months_in_force f WHERE f.ref = m.ref) AS in_force
+       FROM payment_links l JOIN poc_months m ON m.ref = l.poc_ref
+      WHERE NOT EXISTS (SELECT 1 FROM payment_link_events e WHERE e.link_id = l.link_id
+                         AND e.state IN ('paid', 'expired', 'cancelled'))
+      ORDER BY l.created_at LIMIT 500`,
+  );
+  let n = 0;
+  for (const x of r.rows) {
+    if (x.in_force && modeAt(changes, pocMonthWindow(x.month).startsAt) === 'poc') continue;
+    try {
+      await payments.cancelLink(x.link_id).catch(() => undefined);
+      let s: LinkStatus;
+      try {
+        s = await payments.status(x.link_id);
+      } catch {
+        // Asked again on the next run: a payment may be behind it.
+        log(`payments: no answer for POC link ${x.link_id}; asking again later`);
+        continue;
+      }
+      const out = await applyPocLinkStatus(
+        pool,
+        x.link_id,
+        s.state === 'paid' ? s : { state: 'cancelled' },
+        now,
+      );
+      if (out !== 'expired') await applyPocLinkStatus(pool, x.link_id, { state: 'cancelled' }, now);
+      n += 1;
+    } catch (e) {
+      log(`payments: could not stop POC link ${x.link_id}: ${(e as Error).message}`);
+    }
+  }
+  return n;
+}
+
 // ---------------------------------------------------------------- earning a month as it runs
 
 /**
@@ -686,8 +786,8 @@ export async function earnPocMonths(c: Q, now: number): Promise<number> {
     `SELECT m.ref, m.brand_id, m.month, m.fee_paise,
             coalesce((SELECT array_agg(e.entry_id) FROM ledger_entries e
                        WHERE e.ref = m.ref AND e.kind = 'poc-earned'), '{}') AS done
-       FROM poc_months m
-      WHERE EXISTS (SELECT 1 FROM ledger_entries p WHERE p.ref = m.ref AND p.kind = 'poc-paid')
+       FROM poc_months_in_force m
+      WHERE EXISTS (SELECT 1 FROM poc_payments_in_force p WHERE p.ref = m.ref)
         AND m.month <= $1`,
     [calendarMonth(now)],
   );
@@ -753,9 +853,8 @@ export async function pocPlans(c: Q, now: number): Promise<PocPlan[]> {
     // so a brand paying late or losing its ads never moves the others mid-hour.
     const all = await c.query<{ ref: string; brand_id: string; paid: boolean }>(
       `SELECT m.ref, m.brand_id,
-              EXISTS (SELECT 1 FROM payment_links l JOIN payment_link_events e USING (link_id)
-                       WHERE l.poc_ref = m.ref AND e.state = 'paid') AS paid
-         FROM poc_months m WHERE m.month = $1 ORDER BY m.ref`,
+              EXISTS (SELECT 1 FROM poc_payments_in_force p WHERE p.ref = m.ref) AS paid
+         FROM poc_months_in_force m WHERE m.month = $1 ORDER BY m.ref`,
       [month],
     );
     const ads = await adChoices(
@@ -815,7 +914,7 @@ export function pocJudge(c: Q, screenId: string) {
         return {
           ref,
           brandId: r.brandId,
-          paid: (await paidOf(c, ref)) !== undefined,
+          paid: (await paidInForce(c, ref)) !== undefined,
           ...pocMonthWindow(r.month),
           adsAt: (t: number) => ads.at(r.brandId, t, true),
         };
@@ -897,8 +996,7 @@ async function monthViews(c: Q, brandIds: readonly string[], now: number) {
     }
   >(
     `SELECT m.*,
-            (SELECT min(e.at) FROM payment_link_events e JOIN payment_links l USING (link_id)
-              WHERE l.poc_ref = m.ref AND e.state = 'paid') AS paid_at,
+            (SELECT p.at FROM poc_payments_in_force p WHERE p.ref = m.ref) AS paid_at,
             k.url AS link_url, k.expires_at AS link_ends
        FROM poc_months m
        LEFT JOIN LATERAL (
@@ -907,7 +1005,8 @@ async function monthViews(c: Q, brandIds: readonly string[], now: number) {
             AND NOT EXISTS (SELECT 1 FROM payment_link_events e WHERE e.link_id = l.link_id
                              AND e.state IN ('paid', 'expired', 'cancelled'))
           ORDER BY l.created_at DESC LIMIT 1) k ON true
-      WHERE m.brand_id = ANY($1) ORDER BY m.brand_id, m.month`,
+      WHERE m.brand_id = ANY($1) AND m.ref IN (SELECT ref FROM poc_months_in_force)
+      ORDER BY m.brand_id, m.month`,
     [brandIds, now],
   );
   const out = new Map<string, PocMonthView[]>();
@@ -998,10 +1097,11 @@ export async function pocDesk(c: Q, now: number): Promise<PocDesk> {
     added_at: Date;
     name: string | null;
   }>(
-    `SELECT p.brand_id, p.first_month, p.added_by, p.added_at,
+    `SELECT p.brand_id, k.first_month, p.added_by, p.added_at,
             (SELECT v.name FROM brand_versions v WHERE v.brand_id = p.brand_id
               ORDER BY v.version DESC LIMIT 1) AS name
-       FROM poc_brands p ORDER BY name, p.brand_id`,
+       FROM poc_brands p JOIN poc_commitments k USING (brand_id)
+      WHERE k.open ORDER BY name, p.brand_id`,
   );
   const ids = b.rows.map((x) => x.brand_id);
   const months = await monthViews(c, ids, now);
@@ -1058,13 +1158,14 @@ export async function pocDesk(c: Q, now: number): Promise<PocDesk> {
 /** Whether a brand is on the POC package. */
 export async function isPocBrand(c: Q, brandId: string): Promise<boolean> {
   return (
-    ((await c.query('SELECT 1 FROM poc_brands WHERE brand_id = $1', [brandId])).rowCount ?? 0) > 0
+    ((await c.query('SELECT 1 FROM poc_commitments WHERE brand_id = $1 AND open', [brandId]))
+      .rowCount ?? 0) > 0
   );
 }
 
 /** The brands on the POC package (for the portal's menu). */
 export async function pocBrandIds(c: Q): Promise<Set<string>> {
-  const r = await c.query<{ brand_id: string }>('SELECT brand_id FROM poc_brands');
+  const r = await c.query<{ brand_id: string }>('SELECT brand_id FROM poc_commitments WHERE open');
   return new Set(r.rows.map((x) => x.brand_id));
 }
 
@@ -1110,8 +1211,8 @@ async function pocDeskFor(c: Q, brandId: string, now: number): Promise<BrandPocP
 
 /**
  * The brand agrees to the POC package's plain rules and pays a month (P7.8, as P5.6): refused when
- * the rules changed since it read them; the agreement is kept once the link is made (once per month
- * and rules version, with who and from where).
+ * the rules changed since it read them; the agreement is kept before the link is made (once per
+ * month and rules version, with who and from where).
  */
 export async function payPocFromPortal(
   pool: Pool,
@@ -1131,13 +1232,16 @@ export async function payPocFromPortal(
     });
   if (!isMonth(p.month)) throw new Refusal('No such POC month', { code: 'no-month' });
   const ref = pocRef(p.brandId, p.month);
-  const link = await sendPocForPayment(pool, payments, ref, p.by, now);
+  if (!(await monthInForce(pool, ref)))
+    throw new Refusal('No such POC month', { code: 'no-month' });
+  // Review m5: the agreement is kept first, so a link is never out without it (a link that then
+  // cannot be made leaves only the agreement, which is true).
   await pool.query(
     `INSERT INTO poc_terms (ref, terms_version, accepted_by, ip, at)
      VALUES ($1, $2, $3, $4, to_timestamp($5)) ON CONFLICT (ref, terms_version) DO NOTHING`,
     [ref, p.termsVersion, p.by.slice(0, 254), p.ip.slice(0, 64), now],
   );
-  return link;
+  return sendPocForPayment(pool, payments, ref, p.by, now);
 }
 
 // ---------------------------------------------------------------- a cancelled POC
@@ -1152,16 +1256,18 @@ export async function owePocMonthsBack(pool: Pool, now: number): Promise<string[
   // Only for a POC that never ran: after one ended early, unplayed days stay held for a super
   // admin to decide (DECISIONS, 29 Oct 2026).
   if (pocEndedAt(changes) !== undefined) return [];
-  const r = await pool.query<MonthRow>(
-    `SELECT m.* FROM poc_months m
-      WHERE EXISTS (SELECT 1 FROM ledger_entries e WHERE e.ref = m.ref AND e.kind = 'poc-paid')
-        AND NOT EXISTS (SELECT 1 FROM ledger_entries e WHERE e.ref = m.ref
-                         AND e.kind IN ('poc-cancelled', 'poc-earned'))
+  // Every payment still in force (not owed back yet) of a month that never ran, whose POC is no
+  // longer on for it or whose brand was closed with a cancelled POC (B1).
+  const r = await pool.query<MonthRow & { payment_id: string; in_force: boolean }>(
+    `SELECT m.*, p.payment_id,
+            EXISTS (SELECT 1 FROM poc_months_in_force f WHERE f.ref = m.ref) AS in_force
+       FROM poc_months m JOIN poc_payments_in_force p ON p.ref = m.ref
+      WHERE NOT EXISTS (SELECT 1 FROM ledger_entries e WHERE e.ref = m.ref AND e.kind = 'poc-earned')
       ORDER BY m.ref`,
   );
   const out: string[] = [];
   for (const m of r.rows) {
-    if (modeAt(changes, pocMonthWindow(m.month).startsAt) === 'poc') continue;
+    if (m.in_force && modeAt(changes, pocMonthWindow(m.month).startsAt) === 'poc') continue;
     await inTransaction(pool, async (c) => {
       await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`poc-pay:${m.ref}`]);
       const entry = pocMonthCancelled({
@@ -1169,6 +1275,7 @@ export async function owePocMonthsBack(pool: Pool, now: number): Promise<string[
         brandId: m.brand_id,
         fee: Number(m.fee_paise),
         gst: Number(m.gst_paise),
+        paymentId: m.payment_id,
         at: now,
       });
       if ((await postEntry(c, entry, 'poc-cancelled')) === 'already') return;

@@ -259,17 +259,20 @@ export function pocDayEarned(d: {
 
 /**
  * A POC month paid for a POC cancelled before it started (Prateek, 29 Oct 2026): it never ran, so
- * the fee and its GST go back to the brand (with a credit note), owed until paid back. Once, ever.
+ * the fee and its GST go back to the brand (with a credit note), owed until paid back. Once per
+ * payment, ever (a POC scheduled again may be paid again, and that payment is its own).
  */
 export function pocMonthCancelled(p: {
   readonly ref: string;
   readonly brandId: string;
   readonly fee: number;
   readonly gst: number;
+  /** The payment that goes back. */
+  readonly paymentId: string;
   readonly at: number;
 }): Entry {
   return {
-    entryId: `poc-cancelled:${p.ref}`,
+    entryId: `poc-cancelled:${p.ref}:${p.paymentId}`,
     at: p.at,
     kind: 'poc-cancelled',
     ref: p.ref,

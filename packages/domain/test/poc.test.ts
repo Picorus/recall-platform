@@ -186,8 +186,17 @@ describe('money (P7.8.1): the month is paid before it starts and earned day by d
   });
 
   it('a POC cancelled before it started: the month goes back, with its GST, balanced', () => {
-    const e = pocMonthCancelled({ ref: 'poc/x/2026-11', brandId: 'x', fee: 100, gst: 18, at: 1 });
+    const e = pocMonthCancelled({
+      ref: 'poc/x/2026-11',
+      brandId: 'x',
+      fee: 100,
+      gst: 18,
+      paymentId: 'pay_1',
+      at: 1,
+    });
     expect(checkEntry(e)).toEqual([]);
+    // Once per payment: a month paid again after the POC was scheduled again is its own.
+    expect(e.entryId).toBe('poc-cancelled:poc/x/2026-11:pay_1');
     expect(e.postings.find((p) => p.account === 'refunds-payable')?.credit).toBe(118);
     expect(POC_TERMS).toHaveLength(4);
     expect(POC_TERMS_VERSION).toBe(1);

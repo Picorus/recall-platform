@@ -148,6 +148,15 @@ export async function cancelScheduledPoc(
        VALUES ($1, $2, $3, to_timestamp($4))`,
       [poc.id, by.id, reason.trim(), now],
     );
+    // B1: its brands and their months are closed with it (a record each): they leave the cap,
+    // nothing of theirs plays or is earned, and each may join again if the POC is scheduled again.
+    await c.query("SELECT pg_advisory_xact_lock(hashtext('poc'))");
+    await c.query(
+      `INSERT INTO poc_brand_events (brand_id, kind, mode_id, by_who, reason, at)
+       SELECT brand_id, 'closed', $1, $2, $3, to_timestamp($4) FROM poc_commitments WHERE open
+        ORDER BY brand_id`,
+      [poc.id, by.id.slice(0, 120), `POC cancelled: ${reason.trim()}`.slice(0, 300), now],
+    );
     return Number(poc.from);
   });
 }

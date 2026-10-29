@@ -16,6 +16,7 @@ import type pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { brandDocuments } from '../../src/brand-invoices.js';
 import { applyLinkStatus, expireUnpaid, paymentMessage } from '../../src/booking-desk.js';
+import { moneyBackItem } from '../../src/money-back.js';
 import { createBooking, savePriceBook } from '../../src/bookings.js';
 import { createAccount } from '../../src/brands.js';
 import {
@@ -35,6 +36,10 @@ import {
   addPocBrand,
   bikesFitted,
   brandPocPage,
+  earnPocMonths,
+  paidInForce,
+  pocJudge,
+  stopPocLinks,
   expirePocLinks,
   owePocMonthsBack,
   checkPocBikeRoom,
@@ -900,7 +905,7 @@ describe('review fixes (P7.8): payment news, ad changes, revoked keys, bookings,
       // Its other month cannot be paid now.
       await expect(
         sendPocForPayment(p, payments, 'poc/cancelled/2027-09', SALES, ON + 86_400),
-      ).rejects.toThrow(/The POC is not on in September 2027/);
+      ).rejects.toThrow(/September 2027 is not on this brand's POC package now/);
       await expect(cancelScheduledPoc(p, SUPER, 'again please', ON + 86_400)).rejects.toThrow(
         /No POC is scheduled/,
       );
@@ -913,6 +918,210 @@ describe('review fixes (P7.8): payment news, ad changes, revoked keys, bookings,
       await expect(cancelScheduledPoc(p, SUPER, 'too late now', AUG.startsAt + 60)).rejects.toThrow(
         /has started/,
       );
+    } finally {
+      await d.drop();
+    }
+  });
+});
+
+describe('second review (P7.8): a cancelled POC, scheduled again', () => {
+  const held = async (p: pg.Pool, ref: string) => {
+    const t = await accountTotals(p, 'campaign-held', { ref });
+    return t.credit - t.debit;
+  };
+
+  it('B1: cancel, schedule again, the brand rejoins and pays again: one earning, held never below 0', async () => {
+    const { d, p, own } = await pocWorld('xray');
+    const ref = 'poc/xray/2027-08';
+    try {
+      const fake = fakePayments({ clock: () => ON + 60 });
+      const first = await sendPocForPayment(p, fake, ref, SALES, ON);
+      const m1 = fake.pay(first.linkId);
+      expect(await paymentMessage(p, fake, m1.body, m1.signature, ON + 60)).toBe('paid');
+      expect(await held(p, ref)).toBe(25_000_000);
+      // Cancelled: the brand and its month are closed, the payment goes back.
+      await cancelScheduledPoc(p, SUPER, 'not ready yet', ON + 3600);
+      expect(await owePocMonthsBack(p, ON + 3600)).toEqual([ref]);
+      expect(await held(p, ref)).toBe(0);
+      expect(await paidInForce(p, ref)).toBeUndefined();
+      // Scheduled again for the same 1st: the closed brand is not in it, nor in the cap.
+      await setBusinessMode(p, 'poc', SUPER, 'POC on again', ON + 7200);
+      const plan = await pocPlans(p, ON + 7200);
+      expect(plan.map((x) => x.brands.map((b) => b.ref))).toEqual([[]]);
+      expect((await pocDesk(p, ON + 7200)).brands).toEqual([]);
+      await expect(sendPocForPayment(p, fake, ref, SALES, ON + 7200)).rejects.toThrow(
+        /not on this brand's POC package/,
+      );
+      const judge = pocJudge(p, SCREEN);
+      expect((await judge.context(ref, AUG.startsAt + 3600)).month?.paid).toBe(false);
+      // It rejoins: the month is in force again, and not paid ("This month is paid" no more).
+      await addPocBrand(
+        p,
+        {
+          brandId: 'xray',
+          firstMonth: '2027-08',
+          months: 1,
+          adIds: own.slice(0, 2),
+          reason: 'back in',
+        },
+        SALES,
+        ON + 7300,
+      );
+      await expect(
+        addPocBrand(
+          p,
+          {
+            brandId: 'xray',
+            firstMonth: '2027-08',
+            months: 1,
+            adIds: own.slice(0, 2),
+            reason: 'twice',
+          },
+          SALES,
+          ON + 7400,
+        ),
+      ).rejects.toThrow(/already on the POC package/);
+      const fake2 = fakePayments({ clock: () => ON + 8000 });
+      const second = await sendPocForPayment(p, fake2, ref, SALES, ON + 7500);
+      expect(second.linkId).not.toBe(first.linkId);
+      const m2 = fake2.pay(second.linkId);
+      expect(await paymentMessage(p, fake2, m2.body, m2.signature, ON + 8000)).toBe('paid');
+      expect(await held(p, ref)).toBe(25_000_000);
+      expect((await pocPlans(p, ON + 8000))[0]?.brands.map((b) => [b.ref, b.ads.length])).toEqual([
+        [ref, 2],
+      ]);
+      expect((await pocJudge(p, SCREEN).context(ref, AUG.startsAt + 3600)).month?.paid).toBe(true);
+      // August runs: earned once, the whole fee, held back to 0, never below.
+      await earnPocMonths(p, AUG.startsAt + 15 * 86_400);
+      expect(await held(p, ref)).toBeGreaterThan(0);
+      await earnPocMonths(p, AUG.endsAt + 3600);
+      await earnPocMonths(p, AUG.endsAt + 7200);
+      expect(await held(p, ref)).toBe(0);
+      const earned = await accountTotals(p, 'revenue', { ref });
+      expect(earned.credit - earned.debit).toBe(25_000_000);
+      // Nothing more is owed back (the second payment is in force and ran).
+      expect(await owePocMonthsBack(p, AUG.endsAt + 7200)).toEqual([]);
+      const tb = await trialBalance(p);
+      expect(tb.debit).toBe(tb.credit);
+    } finally {
+      await d.drop();
+    }
+  });
+
+  it("S1: a cancel stops the month's live links; money taken after the cancel is owed back", async () => {
+    const { d, p } = await pocWorld('sierra');
+    const ref = 'poc/sierra/2027-08';
+    try {
+      const fake = fakePayments({ clock: () => ON + 600 });
+      const live = await sendPocForPayment(p, fake, ref, SALES, ON);
+      // The provider takes the money just as the POC is cancelled (its news comes after).
+      const paidMsg = fake.pay(live.linkId);
+      await cancelScheduledPoc(p, SUPER, 'not this year', ON + 900);
+      expect(await paymentMessage(p, fake, paidMsg.body, paidMsg.signature, ON + 1000)).toBe(
+        'paid-late',
+      );
+      expect(await held(p, ref)).toBe(0);
+      const back = await accountTotals(p, 'refunds-payable', { party: 'sierra' });
+      expect(back.credit - back.debit).toBe(29_500_000);
+      // A link still out for a cancelled POC's month is stopped and recorded.
+      const { d: d2, p: p2 } = await pocWorld('tango');
+      try {
+        const f2 = fakePayments({ clock: () => ON + 600 });
+        const l2 = await sendPocForPayment(p2, f2, 'poc/tango/2027-08', SALES, ON);
+        await cancelScheduledPoc(p2, SUPER, 'not this year', ON + 900);
+        expect(await stopPocLinks(p2, f2, ON + 900, () => undefined)).toBe(1);
+        const ev = await p2.query<{ state: string }>(
+          'SELECT state FROM payment_link_events WHERE link_id = $1',
+          [l2.linkId],
+        );
+        expect(ev.rows.map((x) => x.state)).toEqual(['cancelled']);
+        expect(() => f2.pay(l2.linkId)).toThrow(/cannot be paid/);
+        expect(await stopPocLinks(p2, f2, ON + 1000, () => undefined)).toBe(0);
+      } finally {
+        await d2.drop();
+      }
+    } finally {
+      await d.drop();
+    }
+  });
+
+  it('S1: a month paid, then the POC cancelled and the owing back not done: the payments job does it', async () => {
+    const { d, p } = await pocWorld('uniform');
+    const ref = 'poc/uniform/2027-08';
+    try {
+      const fake = fakePayments({ clock: () => ON + 60 });
+      const l = await sendPocForPayment(p, fake, ref, SALES, ON);
+      const m = fake.pay(l.linkId);
+      expect(await paymentMessage(p, fake, m.body, m.signature, ON + 60)).toBe('paid');
+      await cancelScheduledPoc(p, SUPER, 'not this year', ON + 900);
+      // (The API failed before owing it back.) The next payments run does it, once.
+      await expireUnpaid(p, fake, ON + 1800, () => undefined);
+      await expireUnpaid(p, fake, ON + 2400, () => undefined);
+      const e = await p.query<{ entry_id: string }>(
+        "SELECT entry_id FROM ledger_entries WHERE kind = 'poc-cancelled' AND ref = $1",
+        [ref],
+      );
+      expect(e.rows).toHaveLength(1);
+      const owed = e.rows[0]?.entry_id ?? '';
+      expect(owed).toMatch(new RegExp(`^poc-cancelled:${ref}:pay_`));
+      expect(await held(p, ref)).toBe(0);
+      // The money back item names the payment that goes back.
+      expect((await moneyBackItem(p, owed))?.paymentId).toBe(owed.split(':')[2]);
+    } finally {
+      await d.drop();
+    }
+  });
+
+  it('m2: past its planned end and still on, the POC keeps every hour: area bookings refused', async () => {
+    const { d, p } = await pocWorld('whisky');
+    try {
+      const later = ist('2027-11-05T12:00:00'); // planned end 1 Nov; nobody switched back yet
+      expect((await pocPhaseAt(p, later)).phase).toBe('running');
+      await expect(
+        createBooking(
+          p,
+          {
+            bookingId: 'BK-POC-LATE',
+            brandId: 'whisky',
+            request: {
+              lines: [{ areaId: 'hyd-madhapur', date: '2027-12-10', startHour: 19, bikes: 20 }],
+              repeatMonths: 1,
+              channel: 'admin',
+            },
+            by: SALES,
+          },
+          later,
+        ),
+      ).rejects.toThrow(/The POC is still on \(its planned end has passed\)/);
+    } finally {
+      await d.drop();
+    }
+  });
+
+  it('m5: paying from the portal keeps the agreement first', async () => {
+    const { d, p } = await pocWorld('victor');
+    try {
+      const broken = {
+        ...fakePayments({ clock: () => ON }),
+        createLink: () => Promise.reject(new Error('provider down')),
+      };
+      const { payPocFromPortal } = await import('../../src/poc.js');
+      await expect(
+        payPocFromPortal(
+          p,
+          broken,
+          {
+            brandId: 'victor',
+            month: '2027-08',
+            by: 'v@victor.in',
+            ip: '1.2.3.4',
+            termsVersion: 1,
+          },
+          ON,
+        ),
+      ).rejects.toThrow(/provider down/);
+      const t = await p.query('SELECT 1 FROM poc_terms WHERE ref = $1', ['poc/victor/2027-08']);
+      expect(t.rowCount).toBe(1);
     } finally {
       await d.drop();
     }

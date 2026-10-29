@@ -51,7 +51,7 @@ export async function pocReport(
 ): Promise<PocReport | undefined> {
   if (!isMonth(month)) return undefined;
   const all = await c.query<{ month: string }>(
-    'SELECT month FROM poc_months WHERE brand_id = $1 ORDER BY month',
+    'SELECT month FROM poc_months_in_force WHERE brand_id = $1 ORDER BY month',
     [brandId],
   );
   if (!all.rows.some((x) => x.month === month)) return undefined;

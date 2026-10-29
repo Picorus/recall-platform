@@ -170,7 +170,8 @@ async function checkPocChange(
       'The most brands cannot change while the POC runs: it sets every bike’s rotation',
     );
   const most = await c.query<{ month: string; n: string }>(
-    `SELECT month, count(*) AS n FROM poc_months GROUP BY month ORDER BY count(*) DESC LIMIT 1`,
+    `SELECT month, count(*) AS n FROM poc_months_in_force
+      GROUP BY month ORDER BY count(*) DESC LIMIT 1`,
   );
   const m = most.rows[0];
   if (m && Number(m.n) > after.maxBrands)
