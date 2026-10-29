@@ -2,6 +2,7 @@
 // public key on a server others can reach; production without a real provider runs without payments.
 import { describe, expect, it } from 'vitest';
 import {
+  filesFrom,
   inboundFrom,
   pushFrom,
   paymentsFrom,
@@ -142,5 +143,16 @@ describe('outside services for the Settings page (P3.17)', () => {
     expect(() =>
       readConfig({ ...base, API_HOST: '0.0.0.0', STAFF_SECRET_KEY: 'ab'.repeat(32) }),
     ).not.toThrow('STAFF_SECRET_KEY');
+  });
+});
+
+describe('ad file links (P2.4.2, review m3)', () => {
+  it('a shared link key must be long enough; links it signs are good for the gateway too', () => {
+    expect(() => filesFrom({ FILES_LINK_SECRET: 'short' }, false)).toThrow(/at least 32/);
+    const key = 'k'.repeat(32);
+    const a = filesFrom({ FILES_LINK_SECRET: key, FILES_PUBLIC_URL: 'https://a.test/f' }, false);
+    const b = filesFrom({ FILES_LINK_SECRET: key, FILES_PUBLIC_URL: 'https://a.test/f' }, false);
+    expect(a?.readLink('0'.repeat(64), 100)).toBe(b?.readLink('0'.repeat(64), 100));
+    expect(filesFrom({}, true)).toBeUndefined();
   });
 });

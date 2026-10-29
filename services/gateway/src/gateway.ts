@@ -7,7 +7,15 @@ import { createServer, type Server } from 'node:http';
 import mqtt from 'mqtt';
 import type { Pool } from 'pg';
 import { hookHandler, type HookConfig } from './hooks.js';
-import { filesFingerprint, filesMessage, handleUp, LineMemory, type AdLinks } from './line.js';
+import {
+  filesFingerprint,
+  filesMessage,
+  handleUp,
+  LineMemory,
+  pocFingerprint,
+  pocMessageNow,
+  type AdLinks,
+} from './line.js';
 import { Waiting } from './waiting.js';
 import { enrolledScreens, freshCommands } from '@recall/db';
 import { downTopic, MAX_COMMAND_LIFE_MS } from '@recall/domain';
@@ -110,23 +118,27 @@ export async function startGateway(
         }
       };
       // P2.4.2: when the files the screens need change (an ad approved, a booking cancelled, a POC
-      // month paid), every screen gets its new list at once, not only at its next hello. Checked at
-      // most once a minute; the first check only notes where things stand.
-      let filesSeen: string | undefined;
-      let filesCheckedAt = 0;
+      // month paid), or the POC months' plan changes (S4: a brand's ads, a month paid), every
+      // screen gets its new file list and plan at once, together, not only at its next hello.
+      // Checked at most once a minute; the first check only notes where things stand.
+      let seen: string | undefined;
+      let checkedAt = 0;
       const sendFiles = async () => {
         const links = cfg.links;
         const nowMs = Date.now();
-        if (!links || nowMs - filesCheckedAt < 60_000) return;
-        filesCheckedAt = nowMs;
-        const now = await filesFingerprint(pool, nowMs);
-        const changed = filesSeen !== undefined && now !== filesSeen;
-        filesSeen = now;
+        if (nowMs - checkedAt < 60_000) return;
+        checkedAt = nowMs;
+        const files = links ? await filesFingerprint(pool, nowMs) : '';
+        const now = `${files}|${await pocFingerprint(pool, nowMs)}`;
+        const changed = seen !== undefined && now !== seen;
+        seen = now;
         if (!changed) return;
+        const poc = await pocMessageNow(pool, nowMs);
         for (const screenId of await enrolledScreens(pool)) {
           if (stopping) return;
-          const text = await filesMessage(pool, screenId, nowMs, links);
+          const text = links ? await filesMessage(pool, screenId, nowMs, links) : undefined;
           if (text) c.publish(downTopic(screenId, 'files'), text, { qos: 1 });
+          if (poc) c.publish(downTopic(screenId, 'poc'), poc, { qos: 1 });
         }
       };
       const tick = () => {

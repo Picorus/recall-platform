@@ -22,8 +22,13 @@ export interface AdFile {
 
 /** Largest ad file (a 15-second video for the screen is a few MB). */
 export const MAX_AD_BYTES = 64 * 1024 * 1024;
-/** Most files in one list. */
-export const MAX_AD_FILES = 200;
+/**
+ * Most files in one list (review S2: a full POC alone is 40 brands × 5 ads; with RECALL's own and the
+ * bookings' a box may need several hundred; 600 average-sized ads fit the box's 4 GB for ads).
+ */
+export const MAX_AD_FILES = 600;
+/** Largest list text, bytes (the broker's packet limit for messages to screens is 1 MB). */
+export const MAX_AD_LIST_BYTES = 1024 * 1024;
 /** No file is kept longer than this past the list's own time (a wrong date cannot lock storage). */
 export const MAX_KEEP_SECONDS = 400 * 24 * 3600;
 
@@ -80,13 +85,16 @@ export function adFilesText(files: readonly AdFile[], madeMs: number): string {
   if (problem) throw new Error(problem);
   const entry = (f: AdFile) =>
     `{"ad":${JSON.stringify(f.ad)},"sha256":"${f.sha256}","bytes":${f.bytes},"url":${JSON.stringify(f.url)},"keepUntil":${f.keepUntil}}`;
-  return `{"v":1,"made":${madeMs},"files":[${files.map(entry).join(',')}]}`;
+  const text = `{"v":1,"made":${madeMs},"files":[${files.map(entry).join(',')}]}`;
+  if (Buffer.byteLength(text, 'utf8') > MAX_AD_LIST_BYTES) throw new Error('list too big');
+  return text;
 }
 
 /** A list read back (the box's rules, for tests and tools), or why it is refused whole. */
 export function parseAdFiles(
   text: string,
 ): { readonly made: number; readonly files: AdFile[] } | { readonly problem: string } {
+  if (Buffer.byteLength(text, 'utf8') > MAX_AD_LIST_BYTES) return { problem: 'too big' };
   let x: unknown;
   try {
     x = JSON.parse(text);

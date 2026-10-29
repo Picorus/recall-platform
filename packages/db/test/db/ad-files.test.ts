@@ -22,7 +22,7 @@ import { paymentMessage } from '../../src/booking-desk.js';
 import { createBooking, moveBooking, savePriceBook } from '../../src/bookings.js';
 import { createAccount } from '../../src/brands.js';
 import { setBusinessMode } from '../../src/business-mode.js';
-import { addPocBrand, sendPocForPayment } from '../../src/poc.js';
+import { addPocBrand, sendPocForPayment, setPocAds } from '../../src/poc.js';
 import { chooseAds, freshDatabase } from './fresh-db.js';
 
 /** India time, as UTC seconds. */
@@ -199,8 +199,67 @@ describe('the files a screen keeps (P2.4.2)', () => {
     // RECALL's own ads are kept at least to the POC month's end too.
     expect(files.find((f) => f.ad === A.own)?.keepUntil).toBe(AUG.endsAt);
     // Running, mid-August: the same.
-    expect(ads(await screenAdFiles(pool, SCREEN, AUG.startsAt + 5 * 86_400, link))).toEqual(
-      [A.own, poc1, poc2].sort(),
+    const mid = AUG.startsAt + 5 * 86_400;
+    expect(ads(await screenAdFiles(pool, SCREEN, mid, link))).toEqual([A.own, poc1, poc2].sort());
+    // S4: the brand changes its ads: the earlier ones stay listed for the 30-minute grace (screens
+    // take the new plan with their next hello), then go.
+    const poc3 = await ad('ponnu');
+    await setPocAds(pool, 'ponnu', [poc2, poc3], SALES, mid);
+    expect(ads(await screenAdFiles(pool, SCREEN, mid + 60, link))).toEqual(
+      [A.own, poc1, poc2, poc3].sort(),
+    );
+    expect(
+      (await screenAdFiles(pool, SCREEN, mid + 60, link)).find((f) => f.ad === poc1)?.keepUntil,
+    ).toBe(mid + 1800);
+    expect(ads(await screenAdFiles(pool, SCREEN, mid + 1801, link))).toEqual(
+      [A.own, poc2, poc3].sort(),
+    );
+  });
+});
+
+describe('review fixes (S4, m4)', () => {
+  const DAY3 = '2027-06-25';
+  const first = lineStartsAt({ date: DAY3, startHour: 10 });
+  let old1 = '';
+  let new1 = '';
+  beforeAll(async () => {
+    old1 = await ad('chai');
+    new1 = await ad('chai');
+    await booking('BK-F3', 'chai', DAY3, [old1]);
+  });
+
+  it("S4: a booking's earlier ads stay listed 30 minutes after a change", async () => {
+    const t = first - 3 * 3600;
+    await pool.query(
+      `INSERT INTO booking_ad_sets (booking_id, version, ad_ids, set_by, set_at)
+       SELECT 'BK-F3', max(version) + 1, $1, 'test', to_timestamp($2)
+         FROM booking_ad_sets WHERE booking_id = 'BK-F3'`,
+      [[new1], t],
+    );
+    const during = ads(await screenAdFiles(pool, SCREEN, t + 60, link));
+    expect(during).toContain(old1);
+    expect(during).toContain(new1);
+    const after = ads(await screenAdFiles(pool, SCREEN, t + 1801, link));
+    expect(after).not.toContain(old1);
+    expect(after).toContain(new1);
+  });
+
+  it('m4: a booking whose report was sent keeps its files for its make-ups', async () => {
+    const last = first + 3600;
+    for (const [state, at] of [
+      ['running', first],
+      ['done', last],
+      ['report-sent', last + 600],
+    ] as const)
+      await pool.query(
+        `INSERT INTO booking_events (booking_id, seq, state, at, by_who)
+         SELECT 'BK-F3', max(seq) + 1, $1, to_timestamp($2), 'test'
+           FROM booking_events WHERE booking_id = 'BK-F3'`,
+        [state, at],
+      );
+    expect(ads(await screenAdFiles(pool, SCREEN, last + 3600, link))).toContain(new1);
+    expect(ads(await screenAdFiles(pool, SCREEN, last + MAKE_UP_KEEP_SECONDS, link))).not.toContain(
+      new1,
     );
   });
 });

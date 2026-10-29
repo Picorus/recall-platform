@@ -9,6 +9,7 @@
 import type { FileStore } from '@recall/adapters';
 import {
   businessModes,
+  fileListText,
   isEnrolledScreen,
   lastAppCode,
   neededAdFiles,
@@ -22,8 +23,8 @@ import {
 } from '@recall/db';
 import {
   ackText,
-  adFilesText,
   downTopic,
+  MAX_AD_FILES,
   parseHello,
   parseUpload,
   parseUpTopic,
@@ -134,6 +135,11 @@ async function neededNow(pool: Pool, nowMs: number) {
   if (cached?.minute === minute) return cached.needed;
   const needed = await neededAdFiles(pool, Math.floor(nowMs / 1000));
   filesCache.set(pool, { minute, needed });
+  // Review S2: never cut silently: staff see it in the gateway's log (once a minute at most).
+  if (needed.left > 0)
+    console.error(
+      `ad files: ${needed.left} files the screens need do not fit in one list (most ${MAX_AD_FILES}): they wait for a later list`,
+    );
   return needed;
 }
 
@@ -152,7 +158,7 @@ export async function filesMessage(
   if (!links.readLink('0'.repeat(64), now + 60).startsWith('https://')) return undefined;
   if (!(await isEnrolledScreen(pool, screenId))) return undefined;
   const { files } = await neededNow(pool, nowMs);
-  return adFilesText(
+  return fileListText(
     signAdFiles(files, (k, u) => links.readLink(k, u), now),
     nowMs,
   );
@@ -163,3 +169,12 @@ export async function filesFingerprint(pool: Pool, nowMs: number): Promise<strin
   const { files } = await neededNow(pool, nowMs);
   return files.map((f) => `${f.ad}:${f.sha256}:${f.keepUntil}`).join(',');
 }
+
+/** The POC months' plan as it stands now (without its time), to see when it changed (S4). */
+export async function pocFingerprint(pool: Pool, nowMs: number): Promise<string> {
+  return JSON.stringify(await pocPlans(pool, Math.floor(nowMs / 1000)));
+}
+
+/** The POC months' plan for every screen now (as with a hello), or undefined when none is sent. */
+export const pocMessageNow = (pool: Pool, nowMs: number): Promise<string | undefined> =>
+  pocMessage(pool, nowMs);
