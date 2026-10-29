@@ -726,3 +726,152 @@ it('a POC brand: its months, a Pay button for the next, and its numbers by day (
   expect(errors).toEqual([]);
   await page.close();
 }, 90_000);
+
+it('our areas: an animated map with the areas listed beside it; on the Book page, picks stand out (P5.4.1)', async () => {
+  await setPortalMember(
+    db.pool,
+    {
+      brandId: 'chai-co',
+      address: 'maps@chaico.in',
+      role: 'booker',
+      active: true,
+      reason: 'marketing',
+      by: 'Sana',
+    },
+    Math.floor(Date.now() / 1000) - 10,
+  );
+  const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const page = await context.newPage();
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto(`${SITE}/sign-in`);
+  await page.getByRole('button', { name: 'Email' }).click();
+  await page.getByLabel('Work email').fill('maps@chaico.in');
+  await page.getByRole('button', { name: 'Send code by email' }).click();
+  await page.getByText('by email to maps@chaico.in').waitFor();
+  await page.getByLabel('Code').fill(lastCode('maps@chaico.in'));
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.getByRole('heading', { name: 'Chai Co' }).waitFor();
+
+  // From the top bar. The map's worker is allowed by the content rules, nothing from outside.
+  const res = page.waitForResponse((r) => r.url().includes('/areas?brand='));
+  await page.getByRole('link', { name: 'Our areas' }).click();
+  const csp = (await res).headers()['content-security-policy'] ?? '';
+  expect(csp).toContain("worker-src 'self'");
+  expect(csp).toContain("connect-src 'self';");
+  await page.getByRole('heading', { name: 'Our areas' }).waitFor();
+  const list = page.getByRole('list', { name: 'Our areas' });
+  await list.getByRole('button').first().waitFor();
+  // The six launch areas, by name, each with its size.
+  const names = await list.locator('.areas-map__name').allInnerTexts();
+  expect(names).toEqual([
+    'Banjara Hills',
+    'Gachibowli',
+    'Hitech City',
+    'Jubilee Hills',
+    'Kondapur',
+    'Madhapur',
+  ]);
+  for (const s of await list.locator('.areas-map__size').allInnerTexts())
+    expect(s).toMatch(/^\d+\.\d km²$/);
+  // The map draws (the outlines one by one), then says it is done.
+  await page.locator('.areas-map__map canvas, .areas-map__svg').first().waitFor();
+  if (SHOTS) {
+    await page.waitForTimeout(700);
+    await page.locator('.areas-map').screenshot({ path: `${SHOTS}/brand-areas-drawing.png` });
+  }
+  await page.locator('.areas-map[data-state="drawn"]').waitFor();
+  // Hover or focus a name: the area is highlighted, its name and size said.
+  const card = page.locator('.areas-map__card');
+  await list.getByRole('button', { name: /Madhapur/ }).hover();
+  await card.getByText('Madhapur').waitFor();
+  await card.getByText(/^\d+\.\d km²$/).waitFor();
+  await list.getByRole('button', { name: /Kondapur/ }).focus();
+  await card.getByText('Kondapur').waitFor();
+  expect(await list.locator('.areas-map__item.hot').allInnerTexts()).toEqual([
+    expect.stringContaining('Kondapur'),
+  ]);
+  await page.mouse.move(0, 0);
+  await list.getByRole('button', { name: /Kondapur/ }).blur();
+  // Enter on a name keeps it highlighted; Esc clears it.
+  await list.getByRole('button', { name: /Gachibowli/ }).press('Enter');
+  expect(await list.getByRole('button', { name: /Gachibowli/ }).getAttribute('aria-pressed')).toBe(
+    'true',
+  );
+  await page.keyboard.press('Escape');
+  expect(await list.getByRole('button', { name: /Gachibowli/ }).getAttribute('aria-pressed')).toBe(
+    'false',
+  );
+
+  // Screenshots: light and dark, desktop and a 360 px phone. At phone width nothing scrolls sideways.
+  for (const scheme of ['light', 'dark'] as const) {
+    for (const [width, height, name] of [
+      [1280, 900, 'desktop'],
+      [360, 780, 'phone'],
+    ] as const) {
+      const c = await browser.newContext({
+        viewport: { width, height },
+        colorScheme: scheme,
+        storageState: await context.storageState(),
+      });
+      const p = await c.newPage();
+      p.on('pageerror', (e) => errors.push(e.message));
+      await p.goto(`${SITE}/areas?brand=chai-co`);
+      await p.locator('.areas-map[data-state="drawn"]').waitFor();
+      await p
+        .getByRole('list', { name: 'Our areas' })
+        .getByRole('button', { name: /Madhapur/ })
+        .click();
+      expect(Number(await p.evaluate('document.documentElement.scrollWidth'))).toBeLessThanOrEqual(
+        width,
+      );
+      if (SHOTS) {
+        await p.evaluate('window.scrollTo(0, 0)');
+        await p.waitForTimeout(400);
+        await p.screenshot({ path: `${SHOTS}/brand-areas-${scheme}-${name}.png`, fullPage: true });
+      }
+      await c.close();
+    }
+  }
+
+  // Reduced motion: no animation, everything is there at once.
+  const calm = await browser.newContext({
+    viewport: { width: 1280, height: 900 },
+    reducedMotion: 'reduce',
+    storageState: await context.storageState(),
+  });
+  const still = await calm.newPage();
+  await still.goto(`${SITE}/areas?brand=chai-co`);
+  await still.locator('.areas-map__map canvas, .areas-map__svg').first().waitFor();
+  // Drawn at the first frame after the map loads: far sooner than the ~3 s animation.
+  const t0 = Date.now();
+  await still.locator('.areas-map[data-state="drawn"]').waitFor();
+  expect(Date.now() - t0).toBeLessThan(2_500);
+  await calm.close();
+
+  // The Book page: the same map; picking from the map ticks the area, and the map shows it.
+  await page.goto(`${SITE}/book?brand=chai-co`);
+  await page.getByRole('heading', { name: 'Book for Chai Co' }).waitFor();
+  const bookList = page.getByRole('list', { name: 'Our areas' });
+  await page.locator('.areas-map[data-state="drawn"]').waitFor();
+  await bookList.getByRole('button', { name: /Madhapur/ }).click();
+  await page.getByRole('button', { name: 'Pick Madhapur' }).click();
+  expect(await page.getByRole('checkbox', { name: 'Madhapur' }).getAttribute('aria-checked')).toBe(
+    'true',
+  );
+  await bookList.locator('.areas-map__item.picked', { hasText: 'Madhapur' }).waitFor();
+  await page.getByRole('checkbox', { name: 'Kondapur' }).click();
+  await bookList.locator('.areas-map__item.picked', { hasText: 'Kondapur' }).waitFor();
+  await page.locator('.areas-map__card').getByText('Picked', { exact: false }).waitFor();
+  if (SHOTS) {
+    await page.waitForTimeout(400);
+    await page.evaluate('window.scrollTo(0, 0)');
+    await page.screenshot({ path: `${SHOTS}/brand-book-map.png` });
+  }
+  await page.getByRole('button', { name: 'Remove Madhapur' }).click();
+  expect(await page.getByRole('checkbox', { name: 'Madhapur' }).getAttribute('aria-checked')).toBe(
+    'false',
+  );
+  expect(errors).toEqual([]);
+  await context.close();
+}, 120_000);

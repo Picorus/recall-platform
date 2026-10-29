@@ -135,3 +135,89 @@ describe('areas in the database', () => {
     expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
   });
 });
+
+// The overlap rule lives in the domain (checkArea, under the save lock); the database has no shape
+// check of its own (no ST_Overlaps or ST_Touches anywhere). These tests ask PostGIS to confirm it.
+describe('neighbours sharing a border (P1.1.7)', () => {
+  const area = (areaId: string, ring: Ring): AreaVersion => ({
+    areaId,
+    version: 1,
+    name: areaId,
+    city: 'Hyderabad',
+    ring,
+    edgeMeters: 300,
+    validFrom: T0,
+    draft: false,
+    active: true,
+  });
+  const wkt = (ring: Ring) =>
+    `SRID=4326;POLYGON((${[...ring, ring[0]].map((p) => `${p?.lng} ${p?.lat}`).join(', ')}))`;
+  // A slanted border, corners to 6 decimals as the Areas page keeps them.
+  const slantA: Ring = [
+    { lat: 17.2, lng: 78.2 },
+    { lat: 17.2, lng: 78.23 },
+    { lat: 17.223457, lng: 78.23 },
+  ];
+  const slantB: Ring = [
+    { lat: 17.2, lng: 78.2 },
+    { lat: 17.223457, lng: 78.23 },
+    { lat: 17.223457, lng: 78.2 },
+  ];
+
+  it('touching areas save, load back exactly, and PostGIS agrees their insides never meet', async () => {
+    const saved = [
+      area('hyd-touch-a', box(17.25, 78.25, 17.26, 78.26)),
+      area('hyd-touch-b', box(17.25, 78.26, 17.26, 78.27)), // a whole shared border
+      area('hyd-touch-c', box(17.26, 78.26, 17.27, 78.27)), // a corner with a, a border with b
+      area('hyd-touch-d', box(17.255, 78.24, 17.258, 78.25)), // part of a's west border
+      area('hyd-slant-a', slantA),
+      area('hyd-slant-b', slantB),
+    ];
+    for (const a of saved) await saveAreaVersion(pool, a, 'arjun', 'no gap with the neighbour');
+    const loaded = await areasAt(pool, '2026-11-02T00:00:00.000Z');
+    for (const a of saved) expect(loaded.find((x) => x.areaId === a.areaId)?.ring).toEqual(a.ring);
+    // PostGIS's own word: the insides never meet ('2********'); the borders touch.
+    const r = await pool.query<{ a: string; b: string; inner: boolean; touch: boolean }>(
+      `SELECT x.area_id AS a, y.area_id AS b,
+              ST_Relate(x.shape::geometry, y.shape::geometry, '2********') AS inner,
+              ST_Touches(x.shape::geometry, y.shape::geometry) AS touch
+         FROM area_versions x JOIN area_versions y ON x.area_id < y.area_id
+        WHERE (x.area_id LIKE 'hyd-touch-%' AND y.area_id LIKE 'hyd-touch-%')
+           OR (x.area_id LIKE 'hyd-slant-%' AND y.area_id LIKE 'hyd-slant-%')
+        ORDER BY 1, 2`,
+    );
+    expect(r.rows.length).toBe(7);
+    expect(r.rows.every((x) => !x.inner)).toBe(true);
+    expect(r.rows.filter((x) => x.touch).map((x) => `${x.a}|${x.b}`)).toEqual([
+      'hyd-slant-a|hyd-slant-b',
+      'hyd-touch-a|hyd-touch-b',
+      'hyd-touch-a|hyd-touch-c',
+      'hyd-touch-a|hyd-touch-d',
+      'hyd-touch-b|hyd-touch-c',
+    ]);
+  });
+
+  it('an overlap over 1 m² is refused, and PostGIS measures about the same overlap', async () => {
+    const east = 2 / (111_195 * Math.cos((17.255 * Math.PI) / 180));
+    const pushed = area('hyd-touch-e', box(17.25, 78.27 - east, 17.26, 78.28));
+    const err = await saveAreaVersion(pool, pushed, 'arjun').catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(AreaError);
+    const problem = (err as AreaError).problems[0];
+    expect(problem?.kind === 'overlap' && problem.withAreaId).toBe('hyd-touch-b');
+    const r = await pool.query<{ sqm: number }>(
+      `SELECT ST_Area(ST_Intersection(ST_GeogFromText($1), ST_GeogFromText($2))) AS sqm`,
+      [wkt(pushed.ring), wkt(box(17.25, 78.26, 17.26, 78.27))],
+    );
+    const sqm = problem?.kind === 'overlap' ? problem.sqm : 0;
+    expect(sqm).toBeGreaterThan(2_000);
+    expect(Math.abs(Number(r.rows[0]?.sqm) - sqm) / sqm).toBeLessThan(0.01);
+  });
+
+  it('two people saving neighbours that touch at the same moment: both get in', async () => {
+    const results = await Promise.allSettled([
+      saveAreaVersion(pool, area('hyd-pair-a', box(17.15, 78.15, 17.16, 78.16)), 'a'),
+      saveAreaVersion(pool, area('hyd-pair-b', box(17.15, 78.16, 17.16, 78.17)), 'b'),
+    ]);
+    expect(results.map((x) => x.status)).toEqual(['fulfilled', 'fulfilled']);
+  });
+});

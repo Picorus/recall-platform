@@ -1,7 +1,7 @@
 // P1.5: play counting and proof. Hard rule 1: the screen is the truth for plays; each play is signed
 // on the screen with its own key, and the cloud never invents one. The cloud checks every play,
 // re-checks where it happened against the real area shape, and counts what the promise allows.
-import { locate, placeKey, publishedAt, type AreaVersion } from './areas.js';
+import { lineCount, locate, placeKey, publishedAt, type AreaVersion } from './areas.js';
 import { isPocRef, pocPlayProblem, type PocPlayContext } from './poc.js';
 
 /** Settings for checking and counting plays (in the price book, versioned). */
@@ -195,11 +195,14 @@ export function judgePlay(
     return no(p.slot === 'make-up' ? 'not an open make-up' : 'not a sold booking line');
   if (line.ads && !line.ads.includes(p.adId)) return no('not one of its ads');
   if (p.startAt < line.startsAt || p.startAt >= line.endsAt) return no('outside its hour');
-  // Inside or in the edge zone of the line's own area (even where that edge overlaps a neighbour).
-  const area = published(line.areaId);
-  const place = area?.active ? locate(point, [area]) : ({ kind: 'outside' } as const);
-  if (place.kind === 'outside') return no("outside the line's area");
-  return { count: { counts: place.kind, lineId: line.lineId }, cloudPlace };
+  // Inside the line's own area, or in its edge zone where that zone lies outside every area (even
+  // where it overlaps a neighbour's edge zone). Neighbours may share a border (P1.1.7), so an edge
+  // zone reaches into the neighbour: a play inside another area is never this line's edge play.
+  // The same rule the screen uses to stop carrying a line (lineCount, Areas.lineCount).
+  const counts = lineCount(point, line.areaId, inForce);
+  if (counts === 'inside another area') return no('inside another area');
+  if (counts === 'outside') return no("outside the line's area");
+  return { count: { counts, lineId: line.lineId }, cloudPlace };
 }
 
 // ---------------------------------------------------------------- P1.5.3–4 counting per line

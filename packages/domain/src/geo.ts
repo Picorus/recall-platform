@@ -150,3 +150,258 @@ export function ringsMeet(a: Ring, b: Ring): boolean {
   }
   return pointInRing(at(a, 0), b) || pointInRing(at(b, 0), a);
 }
+
+// ---------------------------------------------------------------- P1.1.7 shared borders
+
+/**
+ * Neighbouring areas may share a border (Prateek, 29 Oct 2026); their insides must never overlap.
+ * Floating point cannot put a corner exactly on a slanted line, so an overlap counts only above
+ * this many square metres (a sliver 1 mm wide along 1 km of shared border is 1 m²).
+ */
+export const MAX_OVERLAP_SQM = 1;
+
+/** Corners closer to each other than this count as the same corner. */
+const SAME_M = 1e-6;
+
+function unproject(p: Xy, origin: LatLng): LatLng {
+  return {
+    lat: origin.lat + p.y / (RAD * EARTH_RADIUS_M),
+    lng: origin.lng + p.x / (RAD * EARTH_RADIUS_M * Math.cos(origin.lat * RAD)),
+  };
+}
+
+function cross(a: Xy, b: Xy, c: Xy): number {
+  return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+}
+
+function twiceSignedArea(poly: readonly Xy[]): number {
+  let twice = 0;
+  for (const [a, b] of edges(poly)) twice += a.x * b.y - b.x * a.y;
+  return twice;
+}
+
+/** The same corners, counter-clockwise. */
+function counterClockwise(poly: readonly Xy[]): Xy[] {
+  return twiceSignedArea(poly) < 0 ? [...poly].reverse() : [...poly];
+}
+
+type Triangle = readonly [Xy, Xy, Xy];
+
+/** Inside the counter-clockwise triangle, or on its border. */
+function inTriangle(p: Xy, [a, b, c]: Triangle): boolean {
+  return cross(a, b, p) >= 0 && cross(b, c, p) >= 0 && cross(c, a, p) >= 0;
+}
+
+const same = (p: Xy, q: Xy) => Math.abs(p.x - q.x) < SAME_M && Math.abs(p.y - q.y) < SAME_M;
+
+/**
+ * A simple shape cut into triangles (ear clipping), counter-clockwise. Corners in a straight line
+ * add no area and are dropped. Together the triangles cover the shape exactly once.
+ */
+function triangles(shape: readonly Xy[]): Triangle[] {
+  const v = counterClockwise(shape);
+  const out: Triangle[] = [];
+  let guard = v.length * v.length + 10;
+  while (v.length > 3 && guard-- > 0) {
+    let cut = -1;
+    for (let i = 0; i < v.length && cut < 0; i++) {
+      const prev = at(v, (i + v.length - 1) % v.length);
+      const cur = at(v, i);
+      const next = at(v, (i + 1) % v.length);
+      const c = cross(prev, cur, next);
+      const scale =
+        Math.hypot(cur.x - prev.x, cur.y - prev.y) * Math.hypot(next.x - cur.x, next.y - cur.y);
+      if (Math.abs(c) <= 1e-12 * scale) {
+        // A corner on the straight line between its neighbours: no area, just drop it.
+        v.splice(i, 1);
+        cut = -2;
+        break;
+      }
+      if (c < 0) continue;
+      const t: Triangle = [prev, cur, next];
+      const blocked = v.some(
+        (p) =>
+          p !== prev &&
+          p !== cur &&
+          p !== next &&
+          !same(p, prev) &&
+          !same(p, cur) &&
+          !same(p, next) &&
+          inTriangle(p, t),
+      );
+      if (!blocked) cut = i;
+    }
+    if (cut === -2) continue;
+    if (cut < 0) {
+      // Only floating point can leave no ear in a simple shape: cut the most convex corner.
+      let best = 0;
+      let bestC = -Infinity;
+      for (let i = 0; i < v.length; i++) {
+        const c = cross(at(v, (i + v.length - 1) % v.length), at(v, i), at(v, (i + 1) % v.length));
+        if (c > bestC) [best, bestC] = [i, c];
+      }
+      cut = best;
+    }
+    out.push([at(v, (cut + v.length - 1) % v.length), at(v, cut), at(v, (cut + 1) % v.length)]);
+    v.splice(cut, 1);
+  }
+  if (v.length === 3 && twiceSignedArea(v) > 0) out.push([at(v, 0), at(v, 1), at(v, 2)]);
+  return out;
+}
+
+/** A convex shape cut down to the part inside a counter-clockwise triangle (Sutherland–Hodgman). */
+function clipToTriangle(subject: readonly Xy[], clip: Triangle): Xy[] {
+  let out: Xy[] = [...subject];
+  for (const [a, b] of edges(clip)) {
+    const input = out;
+    out = [];
+    for (let i = 0; i < input.length; i++) {
+      const p = at(input, i);
+      const q = at(input, (i + 1) % input.length);
+      const sp = cross(a, b, p);
+      const sq = cross(a, b, q);
+      if (sp >= 0) out.push(p);
+      if (sp >= 0 !== sq >= 0) {
+        const t = sp / (sp - sq);
+        out.push({ x: p.x + t * (q.x - p.x), y: p.y + t * (q.y - p.y) });
+      }
+    }
+    if (out.length < 3) return [];
+  }
+  return out;
+}
+
+interface Box {
+  readonly minX: number;
+  readonly minY: number;
+  readonly maxX: number;
+  readonly maxY: number;
+}
+
+function boxOf(points: readonly Xy[]): Box {
+  return {
+    minX: Math.min(...points.map((p) => p.x)),
+    minY: Math.min(...points.map((p) => p.y)),
+    maxX: Math.max(...points.map((p) => p.x)),
+    maxY: Math.max(...points.map((p) => p.y)),
+  };
+}
+
+const boxesMeet = (a: Box, b: Box) =>
+  a.minX <= b.maxX && b.minX <= a.maxX && a.minY <= b.maxY && b.minY <= a.maxY;
+
+/**
+ * Where the insides of two simple shapes overlap, as pieces (each a convex shape), with their
+ * total area. Each shape is cut into triangles; every pair of triangles is clipped one by the other.
+ * Shapes that only share a border or a corner give (next to) nothing: a clipped piece along a
+ * shared line has no width. Works for any simple shapes, not only convex ones.
+ */
+export function ringOverlap(a: Ring, b: Ring): { readonly sqm: number; readonly pieces: Ring[] } {
+  if (a.length < 3 || b.length < 3) return { sqm: 0, pieces: [] };
+  const origin = at(a, 0);
+  const pa = a.map((p) => project(p, origin));
+  const pb = b.map((p) => project(p, origin));
+  if (!boxesMeet(boxOf(pa), boxOf(pb))) return { sqm: 0, pieces: [] };
+  const tb = triangles(pb).map((t) => ({ t, box: boxOf(t) }));
+  let sqm = 0;
+  const pieces: Ring[] = [];
+  for (const t of triangles(pa)) {
+    const box = boxOf(t);
+    for (const other of tb) {
+      if (!boxesMeet(box, other.box)) continue;
+      const piece = clipToTriangle(t, other.t);
+      if (piece.length < 3) continue;
+      const size = Math.abs(twiceSignedArea(piece)) / 2;
+      sqm += size;
+      if (size > 0.01) pieces.push(piece.map((p) => unproject(p, origin)));
+    }
+  }
+  return { sqm, pieces };
+}
+
+/** Square metres where the insides of the two shapes overlap (0 when they only touch). */
+export function overlapSqm(a: Ring, b: Ring): number {
+  return ringOverlap(a, b).sqm;
+}
+
+/** Shared border closer than this counts as one line (a corner snapped onto a border to 6 decimals is within 8 cm). */
+const SHARED_M = 0.1;
+
+/** Metres of border the two shapes share (lines lying on each other, within 10 cm). */
+export function sharedBorderMeters(a: Ring, b: Ring): number {
+  if (a.length < 2 || b.length < 2) return 0;
+  const origin = at(a, 0);
+  const sa = edges(a.map((p) => project(p, origin)));
+  const sb = edges(b.map((p) => project(p, origin)));
+  let total = 0;
+  for (const [p, q] of sa) {
+    const len = Math.hypot(q.x - p.x, q.y - p.y);
+    if (len === 0) continue;
+    const ux = (q.x - p.x) / len;
+    const uy = (q.y - p.y) / len;
+    for (const [r, s] of sb) {
+      // The part of the other line within 10 cm of this one's line (its offset changes linearly
+      // along it), then how much of that lies along this line.
+      const off = (z: Xy) => (z.x - p.x) * uy - (z.y - p.y) * ux;
+      const or = off(r);
+      const os = off(s);
+      let u0 = 0;
+      let u1 = 1;
+      if (or === os) {
+        if (Math.abs(or) > SHARED_M) continue;
+      } else {
+        const a0 = (-SHARED_M - or) / (os - or);
+        const a1 = (SHARED_M - or) / (os - or);
+        u0 = Math.max(0, Math.min(a0, a1));
+        u1 = Math.min(1, Math.max(a0, a1));
+        if (u1 <= u0) continue;
+      }
+      const t = (u: number) =>
+        (r.x + u * (s.x - r.x) - p.x) * ux + (r.y + u * (s.y - r.y) - p.y) * uy;
+      const lo = Math.max(0, Math.min(t(u0), t(u1)));
+      const hi = Math.min(len, Math.max(t(u0), t(u1)));
+      if (hi > lo) total += hi - lo;
+    }
+  }
+  return total;
+}
+
+/**
+ * How far apart two shapes are at their nearest, with the two nearest points (0 when they touch
+ * or overlap). Used to show the gap between neighbouring areas. A crack of 10 cm or less counts as
+ * touching, as for a shared border: a corner snapped onto a slanted border at 6 decimals sits up to
+ * about 8 cm off the line (review, 29 Oct 2026).
+ */
+export function ringGap(
+  a: Ring,
+  b: Ring,
+): { readonly meters: number; readonly from: LatLng; readonly to: LatLng } {
+  const origin = at(a, 0);
+  const pa = a.map((p) => project(p, origin));
+  const pb = b.map((p) => project(p, origin));
+  let best = { meters: Infinity, from: at(pa, 0), to: at(pb, 0) };
+  const nearest = (p: Xy, s: readonly Xy[], swap: boolean) => {
+    for (const [c, d] of edges(s)) {
+      const dx = d.x - c.x;
+      const dy = d.y - c.y;
+      const len2 = dx * dx + dy * dy;
+      const t =
+        len2 === 0 ? 0 : Math.max(0, Math.min(1, ((p.x - c.x) * dx + (p.y - c.y) * dy) / len2));
+      const q = { x: c.x + t * dx, y: c.y + t * dy };
+      const m = Math.hypot(p.x - q.x, p.y - q.y);
+      if (m < best.meters)
+        best = swap ? { meters: m, from: q, to: p } : { meters: m, from: p, to: q };
+    }
+  };
+  if (ringsMeet(a, b)) {
+    return { meters: 0, from: at(a, 0), to: at(a, 0) };
+  }
+  for (const p of pa) nearest(p, pb, false);
+  for (const p of pb) nearest(p, pa, true);
+  if (best.meters <= SHARED_M) return { meters: 0, from: at(a, 0), to: at(a, 0) };
+  return {
+    meters: best.meters,
+    from: unproject(best.from, origin),
+    to: unproject(best.to, origin),
+  };
+}

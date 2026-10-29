@@ -17,3 +17,6 @@ build/
 
 # Coverage reports (P7.3)
 coverage/
+
+# Helpers' separate working copies (Claude Code worktrees).
+.claude/worktrees/

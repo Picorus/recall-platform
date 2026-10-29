@@ -8,5 +8,8 @@ packages/domain/test-vectors/
 apps/admin/next-env.d.ts
 apps/brand/next-env.d.ts
 apps/admin/public/
+apps/brand/public/
 tools/demo/investor/index.html
 docs/design/design-2-board.html
+# Helpers' separate working copies (Claude Code worktrees).
+.claude/

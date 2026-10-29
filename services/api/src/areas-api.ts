@@ -1,9 +1,12 @@
 // P3.5: the Areas page's API. Looking needs Sales or Operations; changing a shape, its edge zone or
 // name (a new version, or a draft for later) needs an Operations admin; adding an area and turning
 // one on or off needs a super admin (DECISIONS, 22 Oct 2026). Every save is checked by the area
-// rules (corners, no crossing border, no overlap or touching, edge zone 0–2,000 m) and gives why.
+// rules (corners, no crossing border, insides never overlapping, though neighbours may share a
+// border (P1.1.7), edge zone 0–2,000 m) and gives why.
 //   GET  /areas                    every area: its newest version and its history
-//   POST /areas/check              { areaId?, ring, edgeMeters, active? } → problems, nothing saved
+//   POST /areas/check              { areaId?, ring, edgeMeters, active? } → problems, and the gap,
+//                                  shared border and any overlap with each area within 1 km;
+//                                  nothing saved
 //   POST /areas                    { areaId, name, city, ring, edgeMeters, draft, reason }
 //   POST /areas/<id>/versions      { name?, ring?, edgeMeters?, draft?, reason }
 //   POST /areas/<id>/active        { active, reason }
@@ -15,6 +18,7 @@ import {
   createArea,
   othersInForce,
   DEFAULT_EDGE_METERS,
+  neighboursOf,
   reviseArea,
   setAreaActive,
   type AreaProblem,
@@ -36,7 +40,7 @@ const mayLook = (a: StaffAccess) =>
 /** A problem in words, naming the other area by its name. */
 export function problemText(p: AreaProblem, names: ReadonlyMap<string, string>): string {
   return p.kind === 'overlap'
-    ? `overlaps or touches ${names.get(p.withAreaId) ?? p.withAreaId}: leave a gap (the edge zones cover it)`
+    ? `overlaps ${names.get(p.withAreaId) ?? p.withAreaId} by about ${p.sqm.toLocaleString('en-IN')} m²: neighbours may share a border, but never overlap`
     : p.detail;
 }
 
@@ -130,8 +134,14 @@ export async function handleAreas(
       draft: false,
       active: b.active !== false,
     };
-    const problems = checkArea(draftOf, othersThan(areaId)).filter((p) => p.kind !== 'bad-id');
-    send(res, 200, { problems: problems.map((p) => problemText(p, names)) });
+    const others = othersThan(areaId);
+    const problems = checkArea(draftOf, others).filter((p) => p.kind !== 'bad-id');
+    send(res, 200, {
+      problems: problems.map((p) => problemText(p, names)),
+      neighbours: problems.some((p) => p.kind === 'bad-shape')
+        ? []
+        : neighboursOf(draftOf.ring, others),
+    });
     return true;
   }
 
