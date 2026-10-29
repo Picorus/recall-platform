@@ -122,6 +122,24 @@ class PocTest {
     }
 
     @Test
+    fun `the box marks pay seconds against the zone the cloud sent for the POC month (review m1)`() {
+        val s = LocalScheduler(dir, me)
+        // No POC plan: the built-in POC circle.
+        assertEquals(PayZone.POC, s.payZoneAt(h18))
+        s.onPoc(okText)
+        val z = plans[0].zone as PocZone.Circle
+        assertEquals(PayZone.Circle(z.centre, z.radiusM.toDouble()), s.payZoneAt(h18))
+        // December's zone is areas: a second inside Madhapur counts, one in Kondapur does not.
+        val dec = plans[1].startsAt + 10 * 3600
+        val m = Minutes(s::payZoneAt)
+        m.add(Second(dec, FixVerdict.USED, far, Place.Inside("hyd-madhapur", 3), true, false, true))
+        m.add(Second(dec + 1, FixVerdict.USED, near, Place.Inside("hyd-kondapur", 1), true, false, true))
+        assertEquals(1L, m.flush().single().getValue("payClockSeconds").jsonPrimitive.long)
+        // At night no POC month covers the hour: the built-in circle again.
+        assertEquals(PayZone.POC, s.payZoneAt(h18 + 9 * 3600))
+    }
+
+    @Test
     fun `a month whose zone is areas plays inside them (and at their edge when it says so)`() {
         val s = LocalScheduler(dir, me)
         s.onPoc(okText)

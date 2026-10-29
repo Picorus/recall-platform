@@ -207,6 +207,20 @@ class LocalScheduler(
         return seen[utcSecond] ?: Where.unknown(place.key)
     }
 
+    /**
+     * The pay zone the box marks second `t` against (review m1): the zone of the POC month that
+     * covers it, as the cloud sent it (down/poc, the pocZone setting); otherwise the POC circle (in
+     * regular business the cloud reads the zone from the seconds by place).
+     */
+    fun payZoneAt(t: Long): PayZone {
+        val plan = state.poc.plans.firstOrNull { PocPlans.covers(it, t) } ?: return PayZone.POC
+        return when (val z = plan.zone) {
+            is PocZone.Circle -> PayZone.Circle(z.centre, z.radiusM.toDouble())
+            is PocZone.Areas -> PayZone.Areas(z.areaIds.toSet(), z.withEdge)
+            is PocZone.AllAreas -> PayZone.AllAreas(z.withEdge)
+        }
+    }
+
     /** The areas in force, for the tracker. */
     fun areas(): List<AreaVersion> = state.areas.areas
 

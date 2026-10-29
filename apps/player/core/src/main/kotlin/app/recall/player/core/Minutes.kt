@@ -51,8 +51,14 @@ sealed interface PayZone {
     }
 }
 
-/** Builds the minute summaries and live positions from the tracker's seconds. Not thread-safe. */
-class Minutes(private val zone: PayZone = PayZone.POC) {
+/**
+ * Builds the minute summaries and live positions from the tracker's seconds. Not thread-safe.
+ * `zoneAt`: the pay zone each second is marked against (review m1: the POC month's zone from the
+ * cloud's down/poc, LocalScheduler.payZoneAt; else the POC circle).
+ */
+class Minutes(private val zoneAt: (Long) -> PayZone) {
+    constructor(zone: PayZone = PayZone.POC) : this({ _: Long -> zone })
+
     private var minute: Long? = null
     private var secondsAt = LinkedHashMap<String, Long>()
     private var clockSeconds = 0L
@@ -96,7 +102,7 @@ class Minutes(private val zone: PayZone = PayZone.POC) {
             clockSeconds++
             clockAt.merge(key, 1, Long::plus)
             // Without a fix this second, the last known position decides (a short GPS gap).
-            if (zone.counts(p ?: last?.first, s.place)) payClockSeconds++
+            if (zoneAt(s.t).counts(p ?: last?.first, s.place)) payClockSeconds++
         }
         if (s.moving) movingSeconds++
         plays += playsNow
