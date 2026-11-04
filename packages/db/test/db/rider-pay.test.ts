@@ -281,6 +281,17 @@ describe('rider pay in the POC (P1.7.6)', () => {
   });
 });
 
+describe('the month the first price book came in (P1.7.5)', () => {
+  it('a month whose start is before every price book is paid by the first book in force in it', async () => {
+    // The default price book starts on 22 Oct 2026: October used to have "no price book in force".
+    const r = await accrueRiderPay(pool, '2026-10', Date.UTC(2026, 10, 4) / 1000);
+    expect(r.failed).toEqual([]);
+    await expect(accrueRiderPay(pool, '2026-09', Date.UTC(2026, 10, 4) / 1000)).rejects.toThrow(
+      'No price book in force for 2026-09',
+    );
+  });
+});
+
 describe('rider pay after the POC (P1.7.5)', () => {
   const SEP = '2027-09';
   const DAY = '2027-09-14';
