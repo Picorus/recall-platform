@@ -58,10 +58,9 @@ No target dates were filled in.
 - Indian outdoor advertising: about ₹5,500 Cr (IOAA).
 - Hyderabad brand pool: 2,600–4,100 brands (also in `MODEL_V52.md`).
 
-## Rules in the old documents, not built (see OPEN_QUESTIONS 28–29)
-- No rival ad on a Swiggy rider's bike (rulebook G17).
-- A rider loyalty ladder.
-- Founding-brand perks: 10% off for 12 months after the POC, and first pick of peak hours.
+## Rules in the old documents (answered 4 Nov 2026)
+- No rival ad on a Swiggy rider's bike (rulebook G17): dropped.
+- A rider loyalty ladder and founding-brand perks (10% off for 12 months after the POC, first pick of peak hours): options a super admin can give (BUILD_PLAN P7.9).
 
 ## Files the documents name that are not in this repo
 - `RECALL_Financial_Model_v5.3.xlsx`

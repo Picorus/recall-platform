@@ -340,6 +340,13 @@ While the business switch is on POC (Settings, super admin). Prateek, 28 Oct 202
 4. **P7.8.4 Riders.** Already built: the POC base (₹2,000 / ₹4,000 / ₹6,000) and the founding bonus (150-hour rule); no share of sales in the POC.
 5. **P7.8.5 Proof.** Tests at every layer, not a demo (Prateek, 29 Oct 2026: the demo stays regular business): the rotation (every brand ≤ 5 a bike-hour, 200 + 40 = 240, even spread; property tests, shared with the screen's Kotlin code), the money (the days of a month add up to its fee; the ledger balances), counting (never twice, the 6th refused), payments, limits, the switch (scheduled, the early-end guard, the POC once), access rules over HTTP, and the staff and brand POC pages in a browser.
 
+### P7.9 Options for founding brands and loyal riders (Prateek, 4 Nov 2026; not built yet)
+Each is an option a super admin turns on per brand or rider, with a reason. Each is versioned and logged, and none is automatic.
+1. **P7.9.1 Founding-brand perks.**
+   - 10% off for 12 months after the POC, on the bill (a setting).
+   - First pick of peak hours: their bookings open a set time before others (a setting).
+2. **P7.9.2 Rider loyalty ladder.** Steps by months ridden and hours kept, each with a small extra a month. The steps and amounts are settings, and they are money, so the ledger and its tests apply.
+
 ## External services to plug in later
 
 Eleven outside services are needed. Each gets an adapter in the code with a working fake from day one, so the whole platform runs and is tested without any keys. Going live = sign the contract, add the keys, run the adapter's tests. Providers listed are candidates to compare at that time, not decisions.
@@ -422,7 +429,8 @@ Phases overlap on purpose: each starts once the part it depends on is stable, no
 | P7 | Hardening, load test, security audit, POC readiness | Code done (P7.1–P7.5); the outside audit, staging and the 2-week road test need accounts, bikes and people | Jun – Jul 2027 |
 | P5 | Brand portal for self-serve | Done (real payments, GST lookups and messages wait for the outside accounts, P6) | Jul – Oct 2027 |
 | P7.7 | Design 2.0: premium look for the three apps | Done (the rider map home waits for the maps account, P6) | Oct 2026 |
-| P7.8 | The POC package: 40 brands share every hour on every bike for a fixed monthly fee | Done (agency cuts on a POC package and the ad-file sender to screens still open) | Oct 2026 |
+| P7.8 | The POC package: 40 brands share every hour on every bike for a fixed monthly fee | Done (no cuts on POC packages; ad files go to screens, P2.4.2) | Oct 2026 |
+| P7.9 | Options: founding-brand perks and a rider loyalty ladder | To do | — |
 
 ## Records for a human takeover
 
