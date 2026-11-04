@@ -55,7 +55,8 @@ jobs:
 
   database:
     name: Database tests (real PostgreSQL)
-    runs-on: ubuntu-latest
+    # Pinned: Ubuntu 24.04 ships the PostgreSQL 16 client tools that backups need (26.04 does not).
+    runs-on: ubuntu-24.04
     if: github.event_name == 'pull_request'
     timeout-minutes: 25
     env:
