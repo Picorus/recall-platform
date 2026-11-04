@@ -33,6 +33,16 @@ For a ready-made screen with its own Android box and receiving card. If all five
 | V5 | Can our app set the LED brightness, through your toolkit (SDK)? | Night dimming, never blinding riders behind (P2.10) |
 | V6 | Can your own cloud be switched off, so the box takes orders only from RECALL? | No one else can change what plays |
 
+## Answered 4 Nov 2026 (now in DECISIONS)
+| # | Answer |
+|---|---|
+| ~~24~~ | Tech is subscriptions only (estimates in `TECH_SUBSCRIPTIONS.md`) |
+| ~~25~~ | Model updated: POC about ₹1.51 Cr without the agency cut and the tech team |
+| ~~26~~ | POC base weekly, as built |
+| ~~27~~ | The ₹3,000 is a bonus; we suggest riders use it for the screen loan |
+| ~~28~~ | Rival-ad rule dropped |
+| ~~29~~ | Founding-brand perks and the loyalty ladder are options (P7.9) |
+
 ## Answered 24 Oct 2026 (now in DECISIONS)
 | # | Answer |
 |---|---|

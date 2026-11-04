@@ -55,7 +55,8 @@ jobs:
 
   database:
     name: Database tests (real PostgreSQL)
-    runs-on: ubuntu-latest
+    # Pinned: Ubuntu 24.04 ships the PostgreSQL 16 client tools that backups need (26.04 does not).
+    runs-on: ubuntu-24.04
     if: github.event_name == 'pull_request'
     timeout-minutes: 25
     env:
@@ -69,6 +70,13 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: docker compose -f infra/docker-compose.yml up -d --wait db
+      # Backups need pg_dump and pg_restore of the server's major version (16): the runner's own
+      # client is newer and writes settings PostgreSQL 16 does not know (transaction_timeout).
+      - name: PostgreSQL 16 client tools
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends postgresql-client-16
+          echo /usr/lib/postgresql/16/bin >> "$GITHUB_PATH"
       # All of the database package's tests, with the coverage floor on money and plays (P7.3).
       - run: pnpm --filter @recall/db coverage
       - run: pnpm --filter @recall/gateway test:db

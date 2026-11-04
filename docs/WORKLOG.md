@@ -2,6 +2,25 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 4 Nov 2026 · P0.1 · Business context from Prateek's saved documents
+- Read his 13 claude.ai documents (data room, unit economics, CTO job, two build plan docs, two slide decks, platform pages, design artifacts) and compared them with the repo. The repo is newer and wins.
+- New `docs/BUSINESS_CONTEXT.md`: facts the repo did not have (open items before the seed, gates, investor KPIs, sales plan, hiring, warehouse, market) and what is out of date in those documents.
+- OPEN_QUESTIONS 24–29: tech budget vs a built platform; POC cost without the agency cut; POC base weekly or monthly; the ₹3,000 at day 90; the rival-ad rule (G17); founding-brand perks and the rider loyalty ladder.
+- CLAUDE.md: the new file is in the read-first list.
+- Tests: docs only.
+- Prateek's answers (same day), now in DECISIONS:
+  - tech is subscriptions only (`TECH_SUBSCRIPTIONS.md`, estimates);
+  - the model is updated (POC about ₹1.51 Cr, before-POC spend about ₹1.76 Cr; the xlsx still needs a re-run);
+  - the POC base is paid weekly;
+  - the ₹3,000 stays a bonus, with a suggestion to use it for the screen loan;
+  - the G17 rival-ad rule is dropped;
+  - perks and the loyalty ladder are options (BUILD_PLAN P7.9).
+- CI: the database job installs the PostgreSQL 16 client tools. The runner's newer pg_dump wrote `transaction_timeout`, which PostgreSQL 16 refuses, so the backup tests failed. Nothing in the code changed.
+- CI follow-ups:
+  - The database job now runs on Ubuntu 24.04. GitHub moved "latest" to 26.04, which has no PostgreSQL 16 client.
+  - Rider pay no longer fails for the month the first price book came in mid-month: it uses that month's first book in force. The staff payouts browser test hit this once October became last month. New DB test; DB 364 and admin e2e 19 pass.
+- Next: rebuild the investor deck and data room from the current numbers (in progress); P7.9 when wanted.
+
 ## 29 Oct 2026 · P1.1.7 · Review fixes: border crossings, closing a shape, cracks, the trace
 - **Crossing a shared border** (play counting): the screen's 15-second hold kept the old area's brand line playing about 14 s (125 m at 30 km/h) into the neighbour, and the cloud judged those plays "inside another area", so every crossing owed a make-up. Now, while the bike's latest position would not count for the held area's line, the screen plays RECALL's own ads (never blank); the hold still stops brand flicker along a border. One rule for both sides: `lineCount` in the domain (used by the cloud's play check) and `Areas.lineCount` in Kotlin, with every shared case now giving each area's answer. Same fix for a POC month whose zone is areas (circle zones already used the position). Blank decisions stay on the held place: the lag only delays showing ads, never counts a play wrongly.
 - **Closing a drawn shape** now follows the neighbour between the last and first corners, as between any two.

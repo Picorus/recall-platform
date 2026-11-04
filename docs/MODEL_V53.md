@@ -3,6 +3,15 @@
 v5.3 = v5.2 (scratchpad/MODEL_V52.md) + an AI camera on EVERY screen. Everything in MODEL_V52.md stays true EXCEPT the items listed here; where they differ, v5.3 wins.
 Model script: scratchpad/ue/m16.py. Monthly data: scratchpad/ue/v53_plan.json, v53_55.json, scratchpad/v53_monthly.csv (new fields: camera = camera cash at fitting, dep = camera write-off in profit). Tables: scratchpad/v53/month_table.md, per100_month.md, per100_year.md. Chart data: scratchpad/v53/gen.json.
 
+## Changes on 4 Nov 2026 (Prateek). These win over the numbers below.
+- **Tech is subscriptions only.** The platform is built, so there are no outside developers and no tech team in the tech line. See `TECH_SUBSCRIPTIONS.md`.
+  - Before the POC, tech is about ₹3 L (was ₹78 L), so before-POC spend is about ₹1.76 Cr (was ₹2.51 Cr).
+  - In the POC, the "tech team (CTO + 4 engineers) 31.5" line goes. Subscriptions of about ₹2–3 L sit inside "screen SIMs, cloud, licences".
+  - A CTO, if hired, is a team decision for Prateek, outside this line.
+- **No agency cut on POC packages** (DECISIONS 29 Oct), so the ₹13.5 L goes.
+- **POC cost:** about ₹1.51 Cr (was ₹1.95 Cr): 194.9 − 31.5 − 13.5 + about 1.5.
+- **Lowest money in the bank:** better by about ₹1.2 Cr, so about ₹2.9 Cr. This is a rough figure; the xlsx is not in this repo and must be re-run.
+
 ## The decision (19 Oct 2026)
 - Every screen carries an AI camera module (a small camera + a small AI chip), on all bikes (the old 1-in-5 plan is dropped).
 - The camera counts people on the bike itself. Each picture is held in the chip's memory for well under a second, turned into a number, then deleted. Video is never stored, never sent and never seen by anyone. Only the count leaves the bike, encrypted, with time and place: e.g. "Madhapur, 17:10–17:11, about 40 people facing the screen".

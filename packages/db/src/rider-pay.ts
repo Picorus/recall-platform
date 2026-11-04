@@ -228,9 +228,17 @@ function daysOf(month: string, now: number) {
   return { count, ended: days.filter((d) => now >= d.to) };
 }
 
-/** The rules for a month: the price book in force when the month starts. */
+/**
+ * The rules for a month: the price book in force when the month starts. In the month the first
+ * price book came in (the system started mid-month), the first one that came into force in it.
+ */
 function rulesFor(books: readonly PriceBook[], month: string) {
-  const book = priceBookAt(books, isoAt(monthBounds(month).start));
+  const { start, end } = monthBounds(month);
+  const book =
+    priceBookAt(books, isoAt(start)) ??
+    [...books]
+      .filter((b) => Date.parse(b.validFrom) / 1000 < end)
+      .sort((a, b) => a.version - b.version)[0];
   if (!book) throw new Error(`No price book in force for ${month}`);
   return book.riderPay;
 }
