@@ -15,14 +15,14 @@ Model script: scratchpad/ue/m16.py. Monthly data: scratchpad/ue/v53_plan.json, v
 
   | Figure | v5.3 | v5.4 |
   |---|---|---|
-  | Before-POC spend | ₹2.51 Cr | ₹1.68 Cr |
+  | Before-POC spend | ₹2.51 Cr | ₹1.70 Cr (incl. a ₹2 L security audit) |
   | POC cost | ₹1.95 Cr | ₹1.47 Cr |
   | POC profit | ₹1.05 Cr | ₹1.53 Cr |
-  | Lowest bank | ₹1.71 Cr (Feb 2028) | ₹3.10 Cr (Jul 2027) |
-  | Most cash ever used | ₹3.43 Cr | ₹1.90 Cr |
+  | Lowest bank | ₹1.71 Cr (Feb 2028) | ₹3.08 Cr (Jul 2027) |
+  | Most cash ever used | ₹3.43 Cr | ₹1.92 Cr |
   | First profitable month | Apr 2028 | Feb 2028 |
 
-  - **Profit before tax** 2027–31: −2.3 / 4.0 / 33 / 98 / 148 Cr → −0.6 / 6.9 / 38 / 105 / 156 Cr. Revenue we keep is unchanged.
+  - **Profit before tax** 2027–31: −2.3 / 4.0 / 33 / 98 / 148 Cr → −0.66 / 6.9 / 38 / 105 / 156 Cr. Revenue we keep is unchanged.
   - **Why the exact figures are lower than the rough ones:** the 10% buffer now shrinks with the tech taken out.
   - **CTO:** an optional switch in Assumptions, off by default. Turned on, it adds ₹4.5 L a month from Mar 2027.
   - **Tech 2027–31:** ₹31.1 Cr → ₹9.2 Cr.
