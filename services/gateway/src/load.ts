@@ -189,6 +189,9 @@ export async function runLoad(o: {
         .connectionString,
       max: atOnce,
     });
+    // Dropping the test database at the end cuts any connection still closing: expected, not a
+    // failure (without a listener the pool throws it as an unhandled error).
+    line.on('error', () => {});
     const memory = new LineMemory();
     const took: number[] = [];
     let refused = 0;
