@@ -20,6 +20,12 @@ Answer whenever you like; each answer moves to `docs/DECISIONS.md` and the row i
 | 21 | Google Play developer account (company), or direct install of the rider app for the POC | Rider app install | P7 |
 | 22 | Someone who reads Telugu and Hindi to check the rider app's words (written by Claude; `apps/rider/src/i18n.ts`, shown in screenshots) | Every rider screen | Before riders use the app |
 | 23 | The WhatsApp "sign_in_code" template (in Telugu, Hindi and English) approved with the WhatsApp provider; SMS sender id and template registered (DLT) | Rider sign-in | P6 |
+| 24 | Tech budget: the model still has ₹25 L for outside developers and ₹78 L of tech before the POC (CTO from Mar 2027), but the platform is mostly built. Keep, cut or move it? (`docs/BUSINESS_CONTEXT.md`) | Model; investor data room | Next model update |
+| 25 | POC cost: MODEL_V53 counts a 4.5% agency cut (₹13.5 L) in the POC's ₹1.95 Cr; DECISIONS 29 Oct says no cuts on POC packages. Update the model to about ₹1.82 Cr? | Model; data room | Next model update |
+| 26 | POC rider base: paid weekly on Mondays (DECISIONS 24 Oct, as built) or once a month after it ends (22 Oct; the R06 design screen)? The code pays weekly | Rider Earnings, Payouts | Before the POC |
+| 27 | The ₹3,000 at day 90: given to riders who finish the POC and keep the screen (as built), or paid into the rider's screen loan (older docs)? | Rider pay; loan | Before the POC ends |
+| 28 | "No rival ad on a Swiggy rider's bike" (rulebook G17): build it? It needs each rider's delivery app on record and brand categories | Scheduler; rider joining | Before aggregator deals |
+| 29 | Founding-brand perks (10% off for 12 months after the POC, first pick of peak hours) and the rider loyalty ladder: still wanted? Only in the old decks | Prices; rider pay | After the POC |
 
 ## To ask screen vendors before buying a sample (added 25 Oct 2026)
 For a ready-made screen with its own Android box and receiving card. If all five answers are yes, our player app runs on it as it is (only the brightness link to the vendor's toolkit is extra work, about a week). If the box is locked to the vendor's own app or cloud, it can still play our ads and we read its play log, but we lose plays signed inside the box (our protection against fake counts) and people counting needs a separate small AI camera (about ₹2,500); about 2–3 weeks of work.

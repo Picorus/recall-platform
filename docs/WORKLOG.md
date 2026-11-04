@@ -2,6 +2,14 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 4 Nov 2026 · P0.1 · Business context from Prateek's saved documents
+- Read his 13 claude.ai documents (data room, unit economics, CTO job, two build plan docs, two slide decks, platform pages, design artifacts) and compared them with the repo. The repo is newer and wins.
+- New `docs/BUSINESS_CONTEXT.md`: facts the repo did not have (open items before the seed, gates, investor KPIs, sales plan, hiring, warehouse, market) and what is out of date in those documents.
+- OPEN_QUESTIONS 24–29: tech budget vs a built platform; POC cost without the agency cut; POC base weekly or monthly; the ₹3,000 at day 90; the rival-ad rule (G17); founding-brand perks and the rider loyalty ladder.
+- CLAUDE.md: the new file is in the read-first list.
+- Tests: docs only.
+- Next: Prateek's answers; update the investor deck and data room from v5.3/v5.4 when he asks.
+
 ## 29 Oct 2026 · P1.1.7 · Review fixes: border crossings, closing a shape, cracks, the trace
 - **Crossing a shared border** (play counting): the screen's 15-second hold kept the old area's brand line playing about 14 s (125 m at 30 km/h) into the neighbour, and the cloud judged those plays "inside another area", so every crossing owed a make-up. Now, while the bike's latest position would not count for the held area's line, the screen plays RECALL's own ads (never blank); the hold still stops brand flicker along a border. One rule for both sides: `lineCount` in the domain (used by the cloud's play check) and `Areas.lineCount` in Kotlin, with every shared case now giving each area's answer. Same fix for a POC month whose zone is areas (circle zones already used the position). Blank decisions stay on the held place: the lag only delays showing ads, never counts a play wrongly.
 - **Closing a drawn shape** now follows the neighbour between the last and first corners, as between any two.

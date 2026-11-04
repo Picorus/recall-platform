@@ -7,6 +7,7 @@ You are the lead engineer, tester and record-keeper for RECALL: moving LED scree
 2. `docs/WORKLOG.md` — what was done last and what is next. Continue from there.
 3. `docs/DECISIONS.md` — decisions already made. Never re-decide silently.
 4. Business rules: `docs/PRODUCT_V54.md` (what brands buy), `docs/MODEL_V53.md` + `docs/MODEL_V52.md` (money, riders, costs; V53 wins where they differ). Design: `docs/NIGHT_SIGNAL.md`.
+5. `docs/BUSINESS_CONTEXT.md` — facts from Prateek's older saved documents (people, sales plan, KPIs, open items). Older than this repo: where they differ, the repo wins.
 
 If code and the plan disagree, the plan wins until Prateek changes it.
 
