@@ -26,7 +26,7 @@ Newest first. Each entry: date · step id · what changed · tests · open issue
   | Profit before tax 2031 | ₹156 Cr |
 
 - Open for Prateek:
-  - the ₹5 Cr + ₹3 Cr ask against a ₹1.92 Cr cash need;
+  - the ask stays ₹5 Cr + ₹3 Cr (Prateek, same day; in DECISIONS);
   - the "[to confirm]" placeholders;
   - whether the POC moves earlier than Aug 2027.
 
