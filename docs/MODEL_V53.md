@@ -36,8 +36,8 @@ The kit cost comes from Prateek's sheet "RECALL_Hardware_Sourcing", tab "Kit v2 
 | POC kit (210 kits) | ₹34,000 | ₹49,100 (₹47,300 screen + ₹1,800 RECALL's camera) |
 | 210 POC kits | ₹71.4 L | ₹1.03 Cr |
 | Kit for a new bike (1,000+) | ₹34,000 | ₹41,600 (₹40,100 screen + ₹1,500 camera) |
-| Rider loan, POC screen | ₹36,600, EMI about ₹1,370 | about ₹55,800, EMI about ₹2,089 |
-| Rider loan, new screen | ₹36,600, EMI about ₹1,370 | about ₹47,300, EMI about ₹1,771 |
+| Rider loan, POC screen | ₹36,600, EMI about ₹1,370 | about ₹55,800 price; ₹3,000 down from the finishing bonus; ₹52,800 financed, EMI about ₹1,977 |
+| Rider loan, new screen | ₹36,600, EMI about ₹1,370 | about ₹47,300, no down payment, EMI about ₹1,771 |
 | New before-POC lines | — | road test with 4 sample kits ₹2.93 L (replaces the old ₹3 L samples line); mount and hinge design ₹0.43 L |
 | Before-POC spend | ₹1.70 Cr | ₹2.02 Cr |
 | POC cost | ₹1.47 Cr | ₹1.47 Cr (unchanged) |
@@ -47,7 +47,7 @@ The kit cost comes from Prateek's sheet "RECALL_Hardware_Sourcing", tab "Kit v2 
 | First profitable month | Feb 2028 | Feb 2028 (unchanged) |
 | Profit before tax 2027–31 | −0.66 / 6.9 / 37.7 / 104.7 / 155.8 Cr | −0.98 / 6.95 / 37.9 / 105.2 / 156.5 Cr |
 
-- The ₹35,000 kit cap (rule G14) is broken. Proposed: a planning cost of ₹49,100 with a cap of ₹52,000 (Prateek to confirm).
+- Rule G14: the kit cap is ₹52,000 (Prateek, 5 Nov 2026), with a planning cost of ₹49,100. The old ₹35,000 cap is gone.
 - Possible savings, not counted: shared chargers, the LED vendor's own Android player, batteries direct from a BIS cell assembler. Together they could bring the POC kit to about ₹39,600 and the 1,000+ kit to about ₹33,900.
 
 ## The decision (19 Oct 2026)
