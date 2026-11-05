@@ -2,6 +2,34 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 5 Nov 2026 · P0.1 · Kit v2.1 cost in the model and every paper
+- The kit cost now comes from Prateek's sheet RECALL_Hardware_Sourcing, tab "Kit v2 (full spec)", table Kit v2.1 (27 Oct 2026), not the old ₹34,000:
+  - POC kit ₹49,100 (210 kits ₹1.03 Cr); new-bike kit ₹41,600;
+  - RECALL's camera ₹1,800 / ₹1,500;
+  - rider loans about ₹55,800 (EMI about ₹2,089) and ₹47,300 (EMI about ₹1,771);
+  - road test with 4 kits ₹2.93 L (replaces the old ₹3 L samples line); mount and hinge design ₹0.43 L.
+- Model v5.4 re-run:
+
+  | Figure | v5.4 with Kit v2.1 |
+  |---|---|
+  | Before-POC spend | ₹2.02 Cr |
+  | POC cost | ₹1.47 Cr (unchanged) |
+  | POC profit | ₹1.53 Cr (unchanged) |
+  | Lowest bank | ₹2.70 Cr (Jul 2027) |
+  | Most cash used | ₹2.30 Cr |
+  | First profit | Feb 2028 |
+  | Profit before tax 2027–31 | −0.98 / 6.95 / 37.9 / 105.2 / 156.5 Cr |
+
+- Updated in `docs/investor/`: the eight v5.4 files.
+- Updated outside the repo: the lawyer, broker and lender briefs (claude.ai docs and Word copies).
+- Hardware wording now follows Kit v2.1: 5,000 nits; Android RK3568 controller; NavIC; 2 MP camera on the AI chip; 60 Ah / 768 Wh battery; IP65/IP54 case with fan; 4-point bolted rack; hinge with a 2-point lock.
+- Open for Prateek:
+  - the G14 cap (proposed ₹52,000);
+  - written quotes;
+  - total kit weight;
+  - whether the ₹3,000 down payment reduces the loan amount;
+  - the rulebook's bike drawings still show the old clamp mount.
+
 ## 4 Nov 2026 · P0.1 · Prateek's eight files at v5.4
 - Prateek uploaded eight of his own files, and each was updated in place to v5.4, keeping his layout. They are in `docs/investor/` and replace the interim rebuilds.
   - Financial model, recalculated with no errors:
