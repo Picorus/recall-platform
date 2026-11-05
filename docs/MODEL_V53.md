@@ -47,7 +47,7 @@ The kit cost comes from Prateek's sheet "RECALL_Hardware_Sourcing", tab "Kit v2 
 | First profitable month | Feb 2028 | Feb 2028 (unchanged) |
 | Profit before tax 2027–31 | −0.66 / 6.9 / 37.7 / 104.7 / 155.8 Cr | −0.98 / 6.95 / 37.9 / 105.2 / 156.5 Cr |
 
-- Timing (Prateek, 5 Nov 2026): the road test is not delayed to April. Mount and hinge design 9 Nov – 24 Dec 2026, 4 sample kits ordered from 23 Nov, road test 25 Jan – 8 Feb 2027. About ₹4.9 L (with GST) is spent in Nov–Dec 2026, advanced before the seed and repaid at close in Jan 2027. Rule G16 lets the 4 sample kits go ahead after the lawyer's first written view on checks 1–6; the 210-kit order still waits. Plan sheet: `docs/investor/12_RECALL_3-Bike_Road_Test_Plan.xlsx`.
+- Timing (Prateek, 5 Nov 2026): the road test is not delayed to April. Mount and hinge design 9 Nov – 24 Dec 2026, 4 sample kits ordered from 23 Nov, road test 25 Jan – 8 Feb 2027. About ₹4.9 L (with GST) is spent in Nov–Dec 2026, paid by the seed investors as an early part of the ₹5 Cr seed (the model counts it in Jan 2027). Rule G16 lets the 4 sample kits go ahead after the lawyer's first written view on checks 1–6; the 210-kit order still waits. Plan sheet: `docs/investor/12_RECALL_3-Bike_Road_Test_Plan.xlsx`.
 - Rule G14: the kit cap is ₹52,000 (Prateek, 5 Nov 2026), with a planning cost of ₹49,100. The old ₹35,000 cap is gone.
 - Possible savings, not counted: shared chargers, the LED vendor's own Android player, batteries direct from a BIS cell assembler. Together they could bring the POC kit to about ₹39,600 and the 1,000+ kit to about ₹33,900.
 
