@@ -27,6 +27,29 @@ Model script: scratchpad/ue/m16.py. Monthly data: scratchpad/ue/v53_plan.json, v
   - **CTO:** an optional switch in Assumptions, off by default. Turned on, it adds ₹4.5 L a month from Mar 2027.
   - **Tech 2027–31:** ₹31.1 Cr → ₹9.2 Cr.
 
+## Kit v2.1 (5 Nov 2026, Prateek). This wins over every kit figure below and above.
+
+The kit cost comes from Prateek's sheet "RECALL_Hardware_Sourcing", tab "Kit v2 (full spec)", table Kit v2.1 (27 Oct 2026), the full spec designed after the platform was built. All prices are landed in Hyderabad, before GST. They are listed prices, not quotes.
+
+| Item | Old | Kit v2.1 |
+| --- | --- | --- |
+| POC kit (210 kits) | ₹34,000 | ₹49,100 (₹47,300 screen + ₹1,800 RECALL's camera) |
+| 210 POC kits | ₹71.4 L | ₹1.03 Cr |
+| Kit for a new bike (1,000+) | ₹34,000 | ₹41,600 (₹40,100 screen + ₹1,500 camera) |
+| Rider loan, POC screen | ₹36,600, EMI about ₹1,370 | about ₹55,800, EMI about ₹2,089 |
+| Rider loan, new screen | ₹36,600, EMI about ₹1,370 | about ₹47,300, EMI about ₹1,771 |
+| New before-POC lines | — | road test with 4 sample kits ₹2.93 L (replaces the old ₹3 L samples line); mount and hinge design ₹0.43 L |
+| Before-POC spend | ₹1.70 Cr | ₹2.02 Cr |
+| POC cost | ₹1.47 Cr | ₹1.47 Cr (unchanged) |
+| POC profit | ₹1.53 Cr | ₹1.53 Cr (unchanged) |
+| Lowest bank | ₹3.08 Cr | ₹2.70 Cr (Jul 2027) |
+| Most cash used | ₹1.92 Cr | ₹2.30 Cr |
+| First profitable month | Feb 2028 | Feb 2028 (unchanged) |
+| Profit before tax 2027–31 | −0.66 / 6.9 / 37.7 / 104.7 / 155.8 Cr | −0.98 / 6.95 / 37.9 / 105.2 / 156.5 Cr |
+
+- The ₹35,000 kit cap (rule G14) is broken. Proposed: a planning cost of ₹49,100 with a cap of ₹52,000 (Prateek to confirm).
+- Possible savings, not counted: shared chargers, the LED vendor's own Android player, batteries direct from a BIS cell assembler. Together they could bring the POC kit to about ₹39,600 and the 1,000+ kit to about ₹33,900.
+
 ## The decision (19 Oct 2026)
 - Every screen carries an AI camera module (a small camera + a small AI chip), on all bikes (the old 1-in-5 plan is dropped).
 - The camera counts people on the bike itself. Each picture is held in the chip's memory for well under a second, turned into a number, then deleted. Video is never stored, never sent and never seen by anyone. Only the count leaves the bike, encrypted, with time and place: e.g. "Madhapur, 17:10–17:11, about 40 people facing the screen".

@@ -8,7 +8,7 @@ Collected on 4 Nov 2026 from Prateek's claude.ai documents: the investor data ro
 | Item | Status then |
 |---|---|
 | Incorporation and cap table | Not started |
-| Screen vendor quote (about ₹34,000 + GST a kit) | Not started |
+| Screen vendor quote (Kit v2.1: about ₹49,100 + GST a kit for 210; listed prices, RFQs drafted in the sourcing sheet) | Not started |
 | Aggregator talks: Swiggy, Zomato, Ola, Uber (2% referral) | Not started |
 | Valuation | Not started |
 | GHMC permits (₹300 a bike set aside) | Not started |
