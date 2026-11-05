@@ -2,6 +2,14 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 5 Nov 2026 · P0.1 · 3-bike road test plan updated (v1.5)
+- Prateek's `12_RECALL_3-Bike_Road_Test_Plan.xlsx` updated in place and saved to `docs/investor/` (same name, his sheets and formulas kept; 0 formula errors after recalculation).
+- Kit sheet now uses the Kit v2.1 parts at 4-kit prices, with supplier links from the sourcing sheet and RFQ status (all drafted, none sent). Mount and hinge design ₹43,000 shown.
+- Cash by month from 5 Nov 2026, with GST: Nov ₹2.37 L, Dec ₹2.49 L, Jan ₹0.86 L, Feb ₹0.86 L, plus ₹0.66 L contingency held. Total ₹7.25 L. A check row proves months + contingency = budget total.
+- Legal sheet: 7 new rows (L21–L27: white-plate bikes, plate visibility, bike taxis, WPC/TEC, RBI loan rules, company and trademark, rider contracts and tax), 27 risks, 4 high.
+- Open (Prateek to decide): this plan runs the road test 25 Jan – 8 Feb 2027 and spends about ₹4.9 L in Nov–Dec 2026, before the seed and before the legal answers (rulebook G16). Model v5.4 has the design in Feb 2027 and the road test in Apr 2027. Keep one set of dates.
+- **Next:** Prateek's call on the dates; then the open items from the 5 Nov entries below.
+
 ## 5 Nov 2026 · P0.1 · Kit v2.1 cost in the model and every paper
 - The kit cost now comes from Prateek's sheet RECALL_Hardware_Sourcing, tab "Kit v2 (full spec)", table Kit v2.1 (27 Oct 2026), not the old ₹34,000:
   - POC kit ₹49,100 (210 kits ₹1.03 Cr); new-bike kit ₹41,600;
