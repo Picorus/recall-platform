@@ -2,6 +2,34 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 4 Nov 2026 · P0.1 · Prateek's eight files at v5.4
+- Prateek uploaded eight of his own files, and each was updated in place to v5.4, keeping his layout. They are in `docs/investor/` and replace the interim rebuilds.
+  - Financial model, recalculated with no errors:
+    - tech is subscriptions only;
+    - the CTO is a switch, off;
+    - no POC agency cut;
+    - the buffer follows the tech removed;
+    - a ₹2 L security audit before go-live.
+  - Rulebook (G17 marked removed); investor deck (38 slides); unit economics and cash plan; investor cheat sheet.
+  - Milestone plan, re-based on 4 Nov 2026 (done items first, the rest planned forward).
+  - CTO job description (an optional hire, rewritten for a built platform); investor data room.
+- v5.4 results:
+
+  | Figure | v5.4 |
+  |---|---|
+  | Before-POC spend | ₹1.70 Cr |
+  | POC cost | ₹1.47 Cr |
+  | POC profit | ₹1.53 Cr |
+  | Lowest bank | ₹3.08 Cr (Jul 2027) |
+  | Most cash used | ₹1.92 Cr |
+  | First profit | Feb 2028 |
+  | Profit before tax 2031 | ₹156 Cr |
+
+- Open for Prateek:
+  - the ask stays ₹5 Cr + ₹3 Cr (Prateek, same day; in DECISIONS);
+  - the "[to confirm]" placeholders;
+  - whether the POC moves earlier than Aug 2027.
+
 ## 4 Nov 2026 · P0.1 · Business context from Prateek's saved documents
 - Read his 13 claude.ai documents (data room, unit economics, CTO job, two build plan docs, two slide decks, platform pages, design artifacts) and compared them with the repo. The repo is newer and wins.
 - New `docs/BUSINESS_CONTEXT.md`: facts the repo did not have (open items before the seed, gates, investor KPIs, sales plan, hiring, warehouse, market) and what is out of date in those documents.

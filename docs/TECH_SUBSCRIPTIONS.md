@@ -40,6 +40,8 @@ The platform is built (see `BUILD_PLAN.md` and `POC_READINESS.md`). From now on 
 
 **Before-POC tech: about ₹3 L.** The model had ₹78 L.
 
+**Security audit:** an outside firm checks the platform before go-live, one payment of about ₹2 L in Jun 2027 (quotes run ₹1–3.5 L). It is its own line in the model, outside tech (Prateek, 4 Nov 2026).
+
 ## After the POC (rough, for the model)
 Fixed costs grow slowly: about ₹1.5–2.5 L a month at 2,000 bikes, and about ₹4–6 L at 15,500.
 

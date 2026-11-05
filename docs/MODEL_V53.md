@@ -11,6 +11,21 @@ Model script: scratchpad/ue/m16.py. Monthly data: scratchpad/ue/v53_plan.json, v
 - **No agency cut on POC packages** (DECISIONS 29 Oct), so the ₹13.5 L goes.
 - **POC cost:** about ₹1.51 Cr (was ₹1.95 Cr): 194.9 − 31.5 − 13.5 + about 1.5.
 - **Lowest money in the bank:** better by about ₹1.2 Cr, so about ₹2.9 Cr. This is a rough figure; the xlsx is not in this repo and must be re-run.
+- **Re-run in the model (4 Nov 2026):** `RECALL_Financial_Model_v5.4.xlsx` (Prateek's file, updated). Its exact figures replace the rough ones above:
+
+  | Figure | v5.3 | v5.4 |
+  |---|---|---|
+  | Before-POC spend | ₹2.51 Cr | ₹1.70 Cr (incl. a ₹2 L security audit) |
+  | POC cost | ₹1.95 Cr | ₹1.47 Cr |
+  | POC profit | ₹1.05 Cr | ₹1.53 Cr |
+  | Lowest bank | ₹1.71 Cr (Feb 2028) | ₹3.08 Cr (Jul 2027) |
+  | Most cash ever used | ₹3.43 Cr | ₹1.92 Cr |
+  | First profitable month | Apr 2028 | Feb 2028 |
+
+  - **Profit before tax** 2027–31: −2.3 / 4.0 / 33 / 98 / 148 Cr → −0.66 / 6.9 / 38 / 105 / 156 Cr. Revenue we keep is unchanged.
+  - **Why the exact figures are lower than the rough ones:** the 10% buffer now shrinks with the tech taken out.
+  - **CTO:** an optional switch in Assumptions, off by default. Turned on, it adds ₹4.5 L a month from Mar 2027.
+  - **Tech 2027–31:** ₹31.1 Cr → ₹9.2 Cr.
 
 ## The decision (19 Oct 2026)
 - Every screen carries an AI camera module (a small camera + a small AI chip), on all bikes (the old 1-in-5 plan is dropped).

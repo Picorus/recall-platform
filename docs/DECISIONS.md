@@ -4,6 +4,8 @@ Newest first. Each: date · decision · why · who.
 
 | Date | Decision | Why | Who |
 |---|---|---|---|
+| 4 Nov 2026 | The ask stays ₹5 Cr seed + ₹3 Cr round 2, although v5.4 shows a most-cash-used of about ₹1.92 Cr (₹2.1 Cr at 55% sold); the rest is headroom for slower sales, the camera stock and growth | Prateek: "keep the ask as it is" | Prateek |
+| 4 Nov 2026 | The rider's ₹3,000 screen-loan down payment stays; a POC rider may pay it from the ₹3,000 POC finishing bonus instead of cash at fitting. Prateek's files are versioned v5.4 (model, rulebook, deck, unit economics and cash plan, cheat sheet); the model's 10% buffer shrinks with the tech taken out | Prateek: "they can give it to downpayment"; "name version 5.4" | Prateek |
 | 4 Nov 2026 | Tech costs are subscriptions only: no outside developers or tech team in the model's tech line (estimates in `TECH_SUBSCRIPTIONS.md`: about ₹3 L before the POC, about ₹2–3 L during it, about ₹60–120 a bike a month at scale). Brand POC fees are taken by bank transfer, not a 2% card gateway | The platform is built; a card gateway would cost about ₹2.4 L a month on POC fees | Prateek |
 | 4 Nov 2026 | Model updated for no agency cut on POC packages and subscriptions-only tech: POC cost about ₹1.51 Cr (was ₹1.95 Cr), before-POC spend about ₹1.76 Cr (was ₹2.51 Cr). The xlsx must be re-run | Follows the 29 Oct "no cuts" answer and the tech decision above | Prateek |
 | 4 Nov 2026 | The POC base is paid weekly, as built (replaces "once a month after it ends", 22 Oct) | Riders get money every week | Prateek |
