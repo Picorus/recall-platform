@@ -2,6 +2,14 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 5 Nov 2026 · P0.1 · Road test stays early; investors pay for it
+- Prateek: "Drive tests should be before, cant delay so much" and "Investors only will pay the money". Road test 25 Jan – 8 Feb 2027 (was Apr 2027); mount and hinge design 9 Nov – 24 Dec 2026; 4 sample kits ordered from 23 Nov after the lawyer's first written view on checks 1–6 (G16 exception; the 210-kit order still waits).
+- Road-test plan v1.6: the Summary now says what investors pay: ₹7.25 L in all (with GST and 10% contingency), about ₹4.9 L in Nov–Dec 2026 as an early part of the ₹5 Cr seed, the rest in Jan–Feb 2027. Not extra money; the founder pays nothing.
+- Model v5.4: road-test kits and mount design are paid in Jan 2027 (Jan spend ₹9.0 L → ₹12.7 L; Feb–Jul ₹221.0 L → ₹217.3 L). Lowest bank ₹2.70 Cr (Jul 2027), POC cost and profit, first profit (Feb 2028) and profit before tax 2027–31 are unchanged.
+- All 9 files in `docs/investor/` updated (dates, G16, "founder pays nothing", change logs). 0 formula errors; the documents and the deck convert to PDF.
+- Open: the ₹0.5 L tech set-up stays in Feb 2027; the Milestone Plan's quote task ends 4 Dec, so the 4 kits use the first written quotes.
+- **Next:** Prateek's other open items (placeholders, written quotes, rulebook bike drawings).
+
 ## 5 Nov 2026 · P0.1 · 3-bike road test plan updated (v1.5)
 - Prateek's `12_RECALL_3-Bike_Road_Test_Plan.xlsx` updated in place and saved to `docs/investor/` (same name, his sheets and formulas kept; 0 formula errors after recalculation).
 - Kit sheet now uses the Kit v2.1 parts at 4-kit prices, with supplier links from the sourcing sheet and RFQ status (all drafted, none sent). Mount and hinge design ₹43,000 shown.
