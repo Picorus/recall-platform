@@ -38,7 +38,7 @@ The kit cost comes from Prateek's sheet "RECALL_Hardware_Sourcing", tab "Kit v2 
 | Kit for a new bike (1,000+) | ₹34,000 | ₹41,600 (₹40,100 screen + ₹1,500 camera) |
 | Rider loan, POC screen | ₹36,600, EMI about ₹1,370 | about ₹55,800 price; ₹3,000 down from the finishing bonus; ₹52,800 financed, EMI about ₹1,977 |
 | Rider loan, new screen | ₹36,600, EMI about ₹1,370 | about ₹47,300, no down payment, EMI about ₹1,771 |
-| New before-POC lines | — | road test with 4 sample kits ₹2.93 L (replaces the old ₹3 L samples line); mount and hinge design ₹0.43 L |
+| New before-POC lines | — | road test with 4 sample kits ₹2.93 L (replaces the old ₹3 L samples line); mount and hinge design ₹0.43 L. Both paid in Jan 2027 at seed close (work done Nov 2026 – Feb 2027, see below) |
 | Before-POC spend | ₹1.70 Cr | ₹2.02 Cr |
 | POC cost | ₹1.47 Cr | ₹1.47 Cr (unchanged) |
 | POC profit | ₹1.53 Cr | ₹1.53 Cr (unchanged) |
@@ -47,6 +47,7 @@ The kit cost comes from Prateek's sheet "RECALL_Hardware_Sourcing", tab "Kit v2 
 | First profitable month | Feb 2028 | Feb 2028 (unchanged) |
 | Profit before tax 2027–31 | −0.66 / 6.9 / 37.7 / 104.7 / 155.8 Cr | −0.98 / 6.95 / 37.9 / 105.2 / 156.5 Cr |
 
+- Timing (Prateek, 5 Nov 2026): the road test is not delayed to April. Mount and hinge design 9 Nov – 24 Dec 2026, 4 sample kits ordered from 23 Nov, road test 25 Jan – 8 Feb 2027. About ₹4.9 L (with GST) is spent in Nov–Dec 2026, advanced before the seed and repaid at close in Jan 2027. Rule G16 lets the 4 sample kits go ahead after the lawyer's first written view on checks 1–6; the 210-kit order still waits. Plan sheet: `docs/investor/12_RECALL_3-Bike_Road_Test_Plan.xlsx`.
 - Rule G14: the kit cap is ₹52,000 (Prateek, 5 Nov 2026), with a planning cost of ₹49,100. The old ₹35,000 cap is gone.
 - Possible savings, not counted: shared chargers, the LED vendor's own Android player, batteries direct from a BIS cell assembler. Together they could bring the POC kit to about ₹39,600 and the 1,000+ kit to about ₹33,900.
 
@@ -60,7 +61,7 @@ The kit cost comes from Prateek's sheet "RECALL_Hardware_Sourcing", tab "Kit v2 
 - After the POC: ₹3,000 cash per new bike at fitting (2028 ₹54 L, 2029 ₹1.3 Cr, 2030 ₹1.8 Cr, 2031 ₹0.9 Cr). In profit, written off over 36 months (₹83 a camera a month): 2028 ₹10 L, 2029 ₹39 L, 2030 ₹97 L, 2031 ₹1.3 Cr. About ₹0.3 of every ₹100 billed.
 - Power: the camera and AI chip draw about 1–2 W against the screen's ~50 W average — the 11-hour battery holds.
 - Data and cloud: a count is a few bytes; no change to SIM or cloud costs.
-- Platform build: the ₹1.5 L "audience-count analytics" line now means fitting a ready-made people-counting model onto the AI chip and the counts dashboard; the CTO confirms it on the 2-week road test (April 2027).
+- Platform build: the ₹1.5 L "audience-count analytics" line now means fitting a ready-made people-counting model onto the AI chip and the counts dashboard; it is confirmed on the 3-bike road test (25 Jan – 8 Feb 2027) and again on the fleet kits before the POC.
 - Tech rule (2) is now: "Cameras count on the bike; video is never stored or sent; only encrypted counts leave the bike; no face recognition." Replace every "no cameras" / "audience estimates" wording with this.
 
 ## How the chip counts (plain words, for docs and Q&A)

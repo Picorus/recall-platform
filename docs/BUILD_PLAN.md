@@ -422,11 +422,11 @@ Phases overlap on purpose: each starts once the part it depends on is stable, no
 | P1.7 | Ledger, GST, rider earnings, payouts | Done | Jan – Feb 2027 |
 | P1.8–P1.9 | People counts, final report | Done | Feb 2027 |
 | P2.1–P2.8 | Player on emulator | Done | Jan – Feb 2027 |
-| P2.9–P2.14 | Counter, health, updates, fitting check on the sample unit | Code done except the people counter (P2.9); proof on the sample unit blocked | Mar – Apr 2027 |
+| P2.9–P2.14 | Counter, health, updates, fitting check on the sample unit | Code done except the people counter (P2.9); proof on the sample unit waits for the 4 road-test kits (Jan 2027) | Jan – Feb 2027 |
 | P3 | Admin portal | Done | Feb – May 2027 |
 | P4 | Rider app | Done (phone notifications and real sign-in messages wait for the outside accounts, P6) | Mar – Jun 2027 |
 | P6 | Real integrations (needs company accounts) | Blocked | Mar – Jul 2027 |
-| P7 | Hardening, load test, security audit, POC readiness | Code done (P7.1–P7.5); the outside audit, staging and the 2-week road test need accounts, bikes and people | Jun – Jul 2027 |
+| P7 | Hardening, load test, security audit, POC readiness | Code done (P7.1–P7.5); the outside audit and staging need accounts; the 3-bike road test runs 25 Jan – 8 Feb 2027, and the fleet kits get a final road check before the POC | Jan – Jul 2027 |
 | P5 | Brand portal for self-serve | Done (real payments, GST lookups and messages wait for the outside accounts, P6) | Jul – Oct 2027 |
 | P7.7 | Design 2.0: premium look for the three apps | Done (the rider map home waits for the maps account, P6) | Oct 2026 |
 | P7.8 | The POC package: 40 brands share every hour on every bike for a fixed monthly fee | Done (no cuts on POC packages; ad files go to screens, P2.4.2) | Oct 2026 |
