@@ -2,6 +2,11 @@
 
 Newest first. Each entry: date · step id · what changed · tests · open issues · next.
 
+## 7 Nov 2026 · P0.1 · New-design investor deck on v5.4 numbers
+- `docs/investor/01_RECALL_Investor_Deck_v5.4_NewDesign.pptx` (+ PDF): the 20-slide dark "city lights" deck from 4 Nov, rebuilt on model v5.4: Kit v2.1 (₹49,100, cap ₹52,000), rider loans, road test 25 Jan – 8 Feb 2027 paid from the seed, POC ₹1.47 Cr cost / ₹1.53 Cr profit, before-POC ₹2.02 Cr, lowest bank ₹2.70 Cr, first profit Feb 2028, PBT 2027–31 −0.98 / 6.95 / 37.9 / 105.2 / 156.5 Cr.
+- All 20 slides rendered and checked: no overflow. Prateek's own 38-slide deck stays as `01_RECALL_Investor_Deck_v5.4.pptx`.
+- Open: the money-in-the-bank-by-milestone table has no slide of its own (a possible slide 21); founder background, advisors and cap table stay "[to confirm]".
+
 ## 5 Nov 2026 · P0.1 · Road test stays early; investors pay for it
 - Prateek: "Drive tests should be before, cant delay so much" and "Investors only will pay the money". Road test 25 Jan – 8 Feb 2027 (was Apr 2027); mount and hinge design 9 Nov – 24 Dec 2026; 4 sample kits ordered from 23 Nov after the lawyer's first written view on checks 1–6 (G16 exception; the 210-kit order still waits).
 - Road-test plan v1.6: the Summary now says what investors pay: ₹7.25 L in all (with GST and 10% contingency), about ₹4.9 L in Nov–Dec 2026 as an early part of the ₹5 Cr seed, the rest in Jan–Feb 2027. Not extra money; the founder pays nothing.
